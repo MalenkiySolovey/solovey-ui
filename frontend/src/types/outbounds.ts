@@ -24,6 +24,9 @@ export const OutTypes = {
   Call: 'call',
   Mieru: 'mieru',
   TrustTunnel: 'trusttunnel',
+  MASQUE: 'masque',
+  Bond: 'bond',
+  CoreFailover: 'core-failover',
   Sudoku: 'sudoku',
   Selector: 'selector',
   URLTest: 'urltest',
@@ -111,6 +114,26 @@ export interface SOCKS extends OutboundBasics, Dial {
     enabled: true
     version?: number
   }
+}
+
+export interface MASQUE extends OutboundBasics, Dial {
+  system?: boolean
+  name?: string
+  allowed_ips?: string | string[]
+  use_http2?: boolean
+  use_l4_proxy?: boolean
+  use_ipv6?: boolean
+  profile: { id?: string; auth_token?: unknown; private_key?: unknown; license_key?: unknown; recreate?: boolean; detour?: string }
+  address?: string
+  port?: number
+  udp_timeout?: string
+  udp_keepalive_period?: string
+  udp_initial_packet_size?: number
+  reconnect_delay?: string
+  handshake_timeout?: string
+  congestion_controller?: string
+  cwnd?: number
+  tls?: { server_name?: string; insecure?: boolean; cipher_suites?: string[]; curve_preferences?: string[]; fragment?: boolean; fragment_fallback_delay?: string; record_fragment?: boolean; kernel_tx?: boolean; kernel_rx?: boolean }
 }
 
 export interface HTTP extends OutboundBasics, Dial {
@@ -345,6 +368,9 @@ const defaultValues: Record<OutType, Outbound> = {
   call: { type: OutTypes.Call, platform: 'telemost' },
   mieru: { type: OutTypes.Mieru, transport: 'TCP' },
   trusttunnel: { type: OutTypes.TrustTunnel, tls: { enabled: true } },
+  masque: { type: OutTypes.MASQUE, profile: {}, tls: {} },
+  bond: { type: OutTypes.Bond, outbounds: [] },
+  'core-failover': { type: OutTypes.CoreFailover, outbounds: [], strategy: 'sequential' },
   sudoku: { type: OutTypes.Sudoku },
   selector: { type: OutTypes.Selector },
   urltest: { type: OutTypes.URLTest },
@@ -354,4 +380,23 @@ const defaultValues: Record<OutType, Outbound> = {
 export function createOutbound<T extends Outbound>(type: string,json?: Partial<T>): Outbound {
   const defaultObject: Outbound = { ...JSON.parse(JSON.stringify(defaultValues[type] ?? {})), ...(json || {}) }
   return defaultObject
+}
+
+// Review the editable native group shape without copying member options.
+// Existence, provider eligibility and cycles remain backend owner checks.
+export function nativeOutboundGroupValid(data: Outbound): boolean {
+  if (![OutTypes.Bond, OutTypes.CoreFailover].includes(data.type)) return true
+  if (!Array.isArray(data.outbounds) || data.outbounds.length === 0) return false
+  if (data.type === OutTypes.CoreFailover) return data.outbounds.every((tag: unknown) => typeof tag === 'string' && tag.trim().length > 0)
+  let down = 0, up = 0, legs = 0
+  for (const member of data.outbounds) {
+    if (!member || typeof member.outbound !== 'string' || !member.outbound.trim()) return false
+    const count = member.count ?? 0
+    if (![count, member.download_ratio, member.upload_ratio].every(Number.isInteger) || count < 0 || count > 255 ||
+      member.download_ratio < 0 || member.download_ratio > 100 || member.upload_ratio < 0 || member.upload_ratio > 100) return false
+    legs += Math.max(count, 1)
+    down += Math.max(count, 1) * member.download_ratio
+    up += Math.max(count, 1) * member.upload_ratio
+  }
+  return legs <= 255 && down === 100 && up === 100
 }

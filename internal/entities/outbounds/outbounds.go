@@ -10,6 +10,7 @@ import (
 	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds/composition"
 	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveeligibility"
@@ -78,9 +79,13 @@ func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 		return nil, err
 	}
 	directTag := DirectFallbackTag(db)
+	view, err := loadRuntimeOutboundView(db)
+	if err != nil {
+		return nil, err
+	}
 	failoverRejectSupportAdded := false
 	for _, outbound := range rows {
-		if !runtimeprojection.Included("outbounds", outbound.Type) {
+		if !view.facts[outbound.Tag].Available {
 			continue
 		}
 		if outbound.Type == FailoverType {
@@ -99,17 +104,7 @@ func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 			}
 			continue
 		} else {
-			outboundJSON, err := outbound.MarshalJSON()
-			if err != nil {
-				return nil, err
-			}
-			if len(managedCredentialFields(outbound.Type)) != 0 {
-				outboundJSON, err = marshalManagedRuntime(db, *outbound, outboundJSON)
-				if err != nil {
-					return nil, err
-				}
-			}
-			outboundJSON, err = marshalTransportRuntime(db, *outbound, outboundJSON)
+			outboundJSON, err := view.render(db, *outbound)
 			if err != nil {
 				return nil, err
 			}
@@ -140,7 +135,10 @@ func ValidateStored(db *gorm.DB) error {
 			}
 		}
 	}
-	return nil
+	if _, err := composition.Build(rows); err != nil {
+		return err
+	}
+	return tagrefs.ValidateNativeOutboundGroups(rows)
 }
 
 func Save(tx *gorm.DB, act string, data json.RawMessage) (*singboxapply.Change, error) {
@@ -203,6 +201,9 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 		return nil, err
 	}
 	outbound.Options = prepared.Candidate
+	if err := validateNativeGroupCandidate(tx, outbound); err != nil {
+		return nil, err
+	}
 	if outbound.Type == FailoverType {
 		if err := validateFailoverGroup(tx, outbound); err != nil {
 			return nil, err
@@ -233,10 +234,10 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 	if err := validateTransportReferences(tx); err != nil {
 		return nil, err
 	}
-	if outbound.Type == FailoverType {
+	if outbound.Type == FailoverType || composition.IsGroup(outbound.Type) {
 		return &singboxapply.Change{
 			NeedsRestart:  true,
-			RestartReason: fmt.Sprintf("failover group %q is assembled as a selector", outbound.Tag),
+			RestartReason: fmt.Sprintf("outbound group %q captures its selected members", outbound.Tag),
 		}, nil
 	}
 
@@ -307,6 +308,10 @@ func Restart(tx *gorm.DB, ids []uint, core Core) error {
 	if _, err := runtimeprojection.ValidateReferences(tx, nil); err != nil {
 		return err
 	}
+	view, err := loadRuntimeOutboundView(tx)
+	if err != nil {
+		return err
+	}
 	var rows []*model.Outbound
 	if err := tx.Model(model.Outbound{}).Where("id IN ?", ids).Find(&rows).Error; err != nil {
 		return err
@@ -319,7 +324,7 @@ func Restart(tx *gorm.DB, ids []uint, core Core) error {
 	// Complete capability/serialization preflight for the whole batch before
 	// the first removal. Unavailable historical rows do not mutate live state.
 	for _, row := range rows {
-		if !runtimeprojection.Included("outbounds", row.Type) {
+		if !view.facts[row.Tag].Available {
 			continue
 		}
 
@@ -331,17 +336,7 @@ func Restart(tx *gorm.DB, ids []uint, core Core) error {
 				return err
 			}
 		} else {
-			config, err := row.MarshalJSON()
-			if err != nil {
-				return err
-			}
-			if len(managedCredentialFields(row.Type)) != 0 {
-				config, err = marshalManagedRuntime(tx, *row, config)
-				if err != nil {
-					return err
-				}
-			}
-			config, err = marshalTransportRuntime(tx, *row, config)
+			config, err := view.render(tx, *row)
 			if err != nil {
 				return err
 			}

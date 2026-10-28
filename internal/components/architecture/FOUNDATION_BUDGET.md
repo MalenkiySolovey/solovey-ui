@@ -1,5 +1,11 @@
 # Foundation regression budget
 
+R7 MASQUE Outbound reviews the existing `core/registry.outboundDeclarations`
+site from `ee279e14...` to `aadf4b88...`. The sole declaration adds the native
+Extended/QUIC registration and an Official unavailable fact. Direct fallback
+selection, ownership and budget count remain unchanged; the old exact digest
+is retired without regenerating the legacy inventory.
+
 R1 source: `bb306959fe17f49bfcb201cb69eb39cf7f7e4030`. The external R1 evidence is under workspace `.artifacts/architecture-stabilization-r1/`: final report, ownership map, lifecycle audit and `09-ratchet/legacy-baseline.json` (source inventory digest `3a366e7ae6c1c04d919988807f07ca9e6b01ac564bd083e5b88d23bde6e01301`). R1's 627 lexical candidates remain advisory; they are not imported as 627 exceptions.
 
 Run `go test ./internal/components/architecture` and, after `npm ci --prefix frontend`, `node --test scripts/audit/architecture-policy.test.mjs` plus `node scripts/audit/architecture-policy.mjs`. Existing Backend/profile/race CI runs the Go tests; CI Frontend runs the frontend guard.
@@ -183,6 +189,16 @@ retains unavailable capability facts and lossless stored-state preservation.
 The Direct declaration, routing decisions, worker allowance and R1 inventory
 remain unchanged; only this exact reviewed digest is replaced.
 
+R7 native Bond/CoreFailover Outbounds reviews the existing declaration site
+from `ee279e14...` to `f58fba0d...` and the existing tag reference scanner from
+`082a464f...` to `cddcb505...`. The registry adds two native Extended groups;
+the scanner protects canonical member references during rename/delete/reload.
+Outbounds retains row and credential ownership. Anonymous native selectors
+borrow the actual canonical runtime members, including their mutable selection
+and existing Panel health policy; the outer native group owns its wire protocol.
+The scanner also remains the authority for dependency-cycle interpretation.
+Its existing final/Direct policy is unchanged. These replace two exact reviewed
+digests without a new Direct site, worker allowance or R1 inventory regeneration.
 R7 Sudoku Outbound reviews the same `outboundDeclarations` Direct site from
 `ee279e14...` to `4d701dbd...`. The added declaration selects the native Extended
 Sudoku client. Outbounds owns its existing row, complete-candidate validation
@@ -195,4 +211,6 @@ TCP/UDP/restart qualification cover those seams. Official keeps Sudoku
 unavailable and preserves stored state. This exact declaration digest review
 adds no Direct routing decision, worker allowance or new R1 inventory.
 
-R7 XHTTP reviews scanOutboundRowsForTag at 72cd323d8a9f2da5aa236021c7db06834479d74e9d3ff3754cb16a1077d50ede. The existing reference owner protects transport.download.detour during rename/delete and eager reload. Its existing Direct/final policy is unchanged; no source inventory or new fallback site is introduced.
+R7 XHTTP and accepted native outbound groups compose at scanOutboundRowsForTag with reviewed digest df09e05a1c7b9d2ea00ba85c908370985714bd2a9dba79b17737ad2c3d4914f6. The existing reference owner protects transport.download.detour and native group membership during rename/delete and eager reload. Its existing Direct/final policy is unchanged; no source inventory or new fallback site is introduced.
+
+The accepted Sudoku, native outbound groups and MASQUE consumers compose at the existing outbound registry declaration with reviewed digest 368115e9a46640be0a2505510a26b3e33b63cc6db1021f4eb2446ecbec1f9750. Each selected native constructor keeps its availability gate. This composition adds no Direct routing decision or inventory site.

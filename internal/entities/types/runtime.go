@@ -15,6 +15,7 @@ var mappings = [...]Mapping{
 	{Category: "endpoints", Type: Warp, RuntimeType: "wireguard"},
 	{Category: "outbounds", Type: Failover, RuntimeType: "selector"},
 	{Category: "inbounds", Type: CoreFailover, RuntimeType: "failover", CanonicalOnly: true},
+	{Category: "outbounds", Type: CoreFailover, RuntimeType: "failover", CanonicalOnly: true},
 }
 
 func Mappings() []Mapping { return append([]Mapping(nil), mappings[:]...) }

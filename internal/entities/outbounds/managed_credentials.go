@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/secretref"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -26,11 +27,59 @@ func managedCredentialFields(kind string) []string {
 		return []string{"cookies", "join_link"}
 	case "mieru", "trusttunnel":
 		return []string{"password"}
+	case "masque":
+		return []string{"auth_token", "private_key", "license_key"}
 	case "sudoku":
 		return []string{"key"}
 	default:
 		return nil
 	}
+}
+
+// MASQUE keeps its native profile object. Its declared secret fields use the
+// same row-bound lifecycle as top-level credentials, without flattening the
+// canonical config or treating profile metadata as a secret replacement.
+func managedCredentialOptions(kind string, root map[string]json.RawMessage) (map[string]json.RawMessage, error) {
+	values := root
+	if kind == "masque" {
+		for key := range root {
+			if key != "profile" && strings.EqualFold(key, "profile") {
+				return nil, errOutboundCredentialInvalid
+			}
+		}
+		values = map[string]json.RawMessage{}
+		if raw, present := root["profile"]; present {
+			if jsonvalue.StrictObject(raw) != nil || json.Unmarshal(raw, &values) != nil || values == nil {
+				return nil, errOutboundCredentialInvalid
+			}
+		}
+	}
+	for key := range values {
+		for _, field := range managedCredentialFields(kind) {
+			if key != field && strings.EqualFold(key, field) {
+				return nil, errOutboundCredentialInvalid
+			}
+		}
+	}
+	return values, nil
+}
+
+func storeManagedCredentialOptions(kind string, root, values map[string]json.RawMessage) error {
+	if kind == "masque" {
+		raw, err := json.Marshal(values)
+		if err != nil {
+			return err
+		}
+		root["profile"] = raw
+	}
+	return nil
+}
+
+func managedCredentialReference(kind string, id uint, field string) (secretref.Reference, error) {
+	if kind == "masque" {
+		field = "profile." + field
+	}
+	return ownerdb.Reference("outbounds", id, field)
 }
 
 func capturedOutboundCredential(options map[string]json.RawMessage, field string) (json.RawMessage, string) {
@@ -43,9 +92,13 @@ func capturedOutboundCredential(options map[string]json.RawMessage, field string
 }
 
 func validateManagedCredential(kind, field, value string) error {
+	if kind == "masque" {
+		if (field == "auth_token" || field == "private_key" || field == "license_key") && calloptions.CredentialValid("password", value) {
+			return nil
+		}
+		return errOutboundCredentialInvalid
+	}
 	if kind == "sudoku" && field == "key" {
-		// The selected native source accepts split/private/public hex keys and
-		// legacy PSK strings. Keep that language; all are private owner values.
 		if !calloptions.CredentialValid("password", value) {
 			return errOutboundCredentialInvalid
 		}
@@ -61,8 +114,8 @@ func validateManagedCredential(kind, field, value string) error {
 }
 
 func prepareManagedCredentials(tx *gorm.DB, outbound *model.Outbound) error {
-	var next, old map[string]json.RawMessage
-	if jsonvalue.StrictObject(outbound.Options) != nil || json.Unmarshal(outbound.Options, &next) != nil || next == nil {
+	var nextRoot, oldRoot map[string]json.RawMessage
+	if jsonvalue.StrictObject(outbound.Options) != nil || json.Unmarshal(outbound.Options, &nextRoot) != nil || nextRoot == nil {
 		return errOutboundCredentialInvalid
 	}
 	if outbound.Id != 0 {
@@ -70,9 +123,17 @@ func prepareManagedCredentials(tx *gorm.DB, outbound *model.Outbound) error {
 		if err := tx.Select("id", "type", "options").First(&stored, outbound.Id).Error; err != nil {
 			return err
 		}
-		if stored.Type == outbound.Type && len(stored.Options) != 0 && json.Unmarshal(stored.Options, &old) != nil {
+		if stored.Type == outbound.Type && len(stored.Options) != 0 && json.Unmarshal(stored.Options, &oldRoot) != nil {
 			return errOutboundCredentialInvalid
 		}
+	}
+	next, err := managedCredentialOptions(outbound.Type, nextRoot)
+	if err != nil {
+		return err
+	}
+	old, err := managedCredentialOptions(outbound.Type, oldRoot)
+	if err != nil {
+		return err
 	}
 	available := entitycapabilities.Resolve("outbounds", outbound.Type).Available
 	for _, field := range managedCredentialFields(outbound.Type) {
@@ -120,7 +181,7 @@ func prepareManagedCredentials(tx *gorm.DB, outbound *model.Outbound) error {
 			}
 			outbound.Id = placeholder.Id
 		}
-		ref, err := ownerdb.Reference("outbounds", outbound.Id, field)
+		ref, err := managedCredentialReference(outbound.Type, outbound.Id, field)
 		if err != nil {
 			return err
 		}
@@ -136,8 +197,10 @@ func prepareManagedCredentials(tx *gorm.DB, outbound *model.Outbound) error {
 			next[field], _ = json.Marshal(sealed)
 		}
 	}
-	var err error
-	outbound.Options, err = json.Marshal(next)
+	if err := storeManagedCredentialOptions(outbound.Type, nextRoot, next); err != nil {
+		return err
+	}
+	outbound.Options, err = json.Marshal(nextRoot)
 	return err
 }
 
@@ -146,13 +209,25 @@ func projectManagedCredentials(outbound model.Outbound, data *map[string]interfa
 	if json.Unmarshal(outbound.Options, &options) != nil {
 		return errOutboundCredentialInvalid
 	}
+	values, err := managedCredentialOptions(outbound.Type, options)
+	if err != nil {
+		return err
+	}
 	for _, field := range managedCredentialFields(outbound.Type) {
-		_, captured := capturedOutboundCredential(options, field)
-		ref, err := ownerdb.Reference("outbounds", outbound.Id, field)
+		_, captured := capturedOutboundCredential(values, field)
+		ref, err := managedCredentialReference(outbound.Type, outbound.Id, field)
 		if err != nil {
 			return err
 		}
-		(*data)[field] = ownerdb.View(ref, captured)
+		view := ownerdb.View(ref, captured)
+		if outbound.Type == "masque" {
+			values[field], _ = json.Marshal(view)
+		} else {
+			(*data)[field] = view
+		}
+	}
+	if outbound.Type == "masque" {
+		(*data)["profile"] = values
 	}
 	return nil
 }
@@ -162,16 +237,20 @@ func marshalManagedRuntime(db *gorm.DB, outbound model.Outbound, raw []byte) ([]
 	if json.Unmarshal(raw, &fields) != nil {
 		return nil, errOutboundCredentialInvalid
 	}
+	values, err := managedCredentialOptions(outbound.Type, fields)
+	if err != nil {
+		return nil, err
+	}
 	for _, field := range managedCredentialFields(outbound.Type) {
-		_, captured := capturedOutboundCredential(fields, field)
+		_, captured := capturedOutboundCredential(values, field)
 		if captured == "" {
-			delete(fields, field)
+			delete(values, field)
 			continue
 		}
 		if !secretbox.IsEncrypted(captured) {
 			return nil, errOutboundCredentialInvalid
 		}
-		ref, err := ownerdb.Reference("outbounds", outbound.Id, field)
+		ref, err := managedCredentialReference(outbound.Type, outbound.Id, field)
 		if err != nil {
 			return nil, err
 		}
@@ -181,15 +260,18 @@ func marshalManagedRuntime(db *gorm.DB, outbound model.Outbound, raw []byte) ([]
 				return err
 			}
 			if field == "cookies" {
-				fields[field] = append(json.RawMessage(nil), value...)
+				values[field] = append(json.RawMessage(nil), value...)
 			} else {
-				fields[field], _ = json.Marshal(string(value))
+				values[field], _ = json.Marshal(string(value))
 			}
 			return nil
 		})
 		if err != nil {
 			return nil, err
 		}
+	}
+	if err := storeManagedCredentialOptions(outbound.Type, fields, values); err != nil {
+		return nil, err
 	}
 	return json.Marshal(fields)
 }
