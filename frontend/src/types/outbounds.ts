@@ -24,6 +24,7 @@ export const OutTypes = {
   Call: 'call',
   Mieru: 'mieru',
   TrustTunnel: 'trusttunnel',
+  MASQUE: 'masque',
   Bond: 'bond',
   CoreFailover: 'core-failover',
   Sudoku: 'sudoku',
@@ -113,6 +114,26 @@ export interface SOCKS extends OutboundBasics, Dial {
     enabled: true
     version?: number
   }
+}
+
+export interface MASQUE extends OutboundBasics, Dial {
+  system?: boolean
+  name?: string
+  allowed_ips?: string | string[]
+  use_http2?: boolean
+  use_l4_proxy?: boolean
+  use_ipv6?: boolean
+  profile: { id?: string; auth_token?: unknown; private_key?: unknown; license_key?: unknown; recreate?: boolean; detour?: string }
+  address?: string
+  port?: number
+  udp_timeout?: string
+  udp_keepalive_period?: string
+  udp_initial_packet_size?: number
+  reconnect_delay?: string
+  handshake_timeout?: string
+  congestion_controller?: string
+  cwnd?: number
+  tls?: { server_name?: string; insecure?: boolean; cipher_suites?: string[]; curve_preferences?: string[]; fragment?: boolean; fragment_fallback_delay?: string; record_fragment?: boolean; kernel_tx?: boolean; kernel_rx?: boolean }
 }
 
 export interface HTTP extends OutboundBasics, Dial {
@@ -347,6 +368,7 @@ const defaultValues: Record<OutType, Outbound> = {
   call: { type: OutTypes.Call, platform: 'telemost' },
   mieru: { type: OutTypes.Mieru, transport: 'TCP' },
   trusttunnel: { type: OutTypes.TrustTunnel, tls: { enabled: true } },
+  masque: { type: OutTypes.MASQUE, profile: {}, tls: {} },
   bond: { type: OutTypes.Bond, outbounds: [] },
   'core-failover': { type: OutTypes.CoreFailover, outbounds: [], strategy: 'sequential' },
   sudoku: { type: OutTypes.Sudoku },

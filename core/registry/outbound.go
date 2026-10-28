@@ -50,6 +50,7 @@ func outboundDeclarations() []declaration[*outbound.Registry] {
 		{typeName: "call", buildTag: "shtorm_extended", compiled: supportsCallOutbound, register: registerCallOutbound},
 		{typeName: "mieru", buildTag: "shtorm_extended", compiled: supportsMieruOutbound, register: registerMieruOutbound},
 		{typeName: "trusttunnel", buildTag: "shtorm_extended,with_quic", compiled: supportsTrustTunnelOutbound, register: registerTrustTunnelOutbound},
+		{typeName: "masque", buildTag: "shtorm_extended,with_quic", compiled: supportsMASQUEOutbound, register: registerMASQUEOutbound},
 		{typeName: "bond", buildTag: "shtorm_extended", compiled: supportsNativeOutboundGroups, register: registerBondOutbound},
 		{typeName: "failover", buildTag: "shtorm_extended", compiled: supportsNativeOutboundGroups, register: registerCoreFailoverOutbound},
 		{typeName: "sudoku", buildTag: "shtorm_extended", compiled: supportsSudokuOutbound, register: registerSudokuOutbound},
