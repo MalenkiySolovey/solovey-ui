@@ -536,6 +536,19 @@ export default {
       "overrideAddr": "Override Address",
       "overridePort": "Override Port"
     },
+    "consumerTuning": {
+      "title": "HTTP/2 and QUIC settings",
+      "sizes": "Sizes accept bytes or {units}. KB and MB use binary units.",
+      "stream_receive_window": "Stream receive window",
+      "connection_receive_window": "Connection receive window",
+      "quic_session_receive_window": "QUIC session receive window",
+      "idle_timeout": "Idle timeout",
+      "keep_alive_period": "Keepalive interval",
+      "max_concurrent_streams": "Maximum concurrent streams",
+      "initial_packet_size": "Initial QUIC packet size (bytes)",
+      "disable_path_mtu_discovery": "Disable path MTU discovery",
+      "disable_chrome_parrot": "Disable Chrome QUIC emulation"
+    },
     "hy": {
     "disableMtuDiscovery": "Disable MTU discovery",
     "recvWindow": "Receive window",
@@ -553,6 +566,8 @@ export default {
       "auth": "Authentication Password",
       "hyOptions": "Hysteria Options",
       "hy2Options": "Hysteria2 Options",
+      "bbrProfile": "BBR profile",
+      "hopIntervalMax": "Maximum port hopping interval",
       "ignoreBw": "Ignore Client Bandwidth"
     },
     "shdwTls": {

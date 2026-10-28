@@ -48,6 +48,12 @@ func CurrentFindings(kind, side, path string, source json.RawMessage) []diagnost
 		} else {
 			consumer = &option.Hysteria2OutboundOptions{}
 		}
+	case "tuic":
+		if side == "inbound" {
+			consumer = &option.TUICInboundOptions{}
+		} else {
+			consumer = &option.TUICOutboundOptions{}
+		}
 	case "naive":
 		if side == "inbound" {
 			consumer = &option.NaiveInboundOptions{}

@@ -25,6 +25,8 @@ export const OutTypes = {
   Mieru: 'mieru',
   TrustTunnel: 'trusttunnel',
   MASQUE: 'masque',
+  Bond: 'bond',
+  CoreFailover: 'core-failover',
   Sudoku: 'sudoku',
   Selector: 'selector',
   URLTest: 'urltest',
@@ -239,7 +241,7 @@ export interface VLESS extends OutboundBasics, Dial {
   transport?: Transport
 }
 
-export interface TUIC extends OutboundBasics, Dial {
+export interface TUIC extends OutboundBasics, Dial, QUICTuning {
   server: string
   server_port: number
   uuid: string
@@ -254,6 +256,8 @@ export interface TUIC extends OutboundBasics, Dial {
 }
 
 export interface Hysteria2 extends OutboundBasics, Dial, QUICTuning {
+  bbr_profile?: string
+  hop_interval_max?: string
   disable_chrome_parrot?: boolean
   server: string
   server_port: number
@@ -365,6 +369,8 @@ const defaultValues: Record<OutType, Outbound> = {
   mieru: { type: OutTypes.Mieru, transport: 'TCP' },
   trusttunnel: { type: OutTypes.TrustTunnel, tls: { enabled: true } },
   masque: { type: OutTypes.MASQUE, profile: {}, tls: {} },
+  bond: { type: OutTypes.Bond, outbounds: [] },
+  'core-failover': { type: OutTypes.CoreFailover, outbounds: [], strategy: 'sequential' },
   sudoku: { type: OutTypes.Sudoku },
   selector: { type: OutTypes.Selector },
   urltest: { type: OutTypes.URLTest },
@@ -374,4 +380,23 @@ const defaultValues: Record<OutType, Outbound> = {
 export function createOutbound<T extends Outbound>(type: string,json?: Partial<T>): Outbound {
   const defaultObject: Outbound = { ...JSON.parse(JSON.stringify(defaultValues[type] ?? {})), ...(json || {}) }
   return defaultObject
+}
+
+// Review the editable native group shape without copying member options.
+// Existence, provider eligibility and cycles remain backend owner checks.
+export function nativeOutboundGroupValid(data: Outbound): boolean {
+  if (![OutTypes.Bond, OutTypes.CoreFailover].includes(data.type)) return true
+  if (!Array.isArray(data.outbounds) || data.outbounds.length === 0) return false
+  if (data.type === OutTypes.CoreFailover) return data.outbounds.every((tag: unknown) => typeof tag === 'string' && tag.trim().length > 0)
+  let down = 0, up = 0, legs = 0
+  for (const member of data.outbounds) {
+    if (!member || typeof member.outbound !== 'string' || !member.outbound.trim()) return false
+    const count = member.count ?? 0
+    if (![count, member.download_ratio, member.upload_ratio].every(Number.isInteger) || count < 0 || count > 255 ||
+      member.download_ratio < 0 || member.download_ratio > 100 || member.upload_ratio < 0 || member.upload_ratio > 100) return false
+    legs += Math.max(count, 1)
+    down += Math.max(count, 1) * member.download_ratio
+    up += Math.max(count, 1) * member.upload_ratio
+  }
+  return legs <= 255 && down === 100 && up === 100
 }

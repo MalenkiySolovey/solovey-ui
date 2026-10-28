@@ -62,7 +62,8 @@
         "trusttunnel-outbound-constructor-validation",
         "trusttunnel-outbound-client-retirement",
         "trusttunnel-response-writer-retirement",
-        "masque-outbound-serving-scope-and-local-validation"
+        "masque-outbound-serving-scope-and-local-validation",
+        "native-outbound-group-lifetime"
       ],
       "copyRole": "mirror/cache/development",
       "patchSeries": {

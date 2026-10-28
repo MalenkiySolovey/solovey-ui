@@ -10,6 +10,7 @@ import (
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/composition"
+	outboundcomposition "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds/composition"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
 	"gorm.io/gorm"
 )
@@ -115,7 +116,58 @@ func Stored(db *gorm.DB) ([]Entity, error) {
 			}
 		}
 	}
+	if db.Migrator().HasTable(&model.Outbound{}) {
+		var outbounds []model.Outbound
+		if err := db.Select("id", "type", "tag", "options").Find(&outbounds).Error; err != nil {
+			return nil, err
+		}
+		facts, err := OutboundEligibility(outbounds)
+		if err != nil {
+			return nil, err
+		}
+		for i := range result {
+			if result[i].Category == "outbounds" {
+				result[i].Capability = facts[result[i].Tag]
+			}
+		}
+	}
 	return result, nil
+}
+
+// Outbound members remain independently usable. Only the native group which
+// embeds an unavailable member is omitted, including transitive native groups.
+func OutboundEligibility(rows []model.Outbound) (map[string]entitycapabilities.Fact, error) {
+	index, err := outboundcomposition.Build(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := tagrefs.ValidateNativeOutboundGroups(rows); err != nil {
+		return nil, err
+	}
+	facts := make(map[string]entitycapabilities.Fact, len(rows))
+	for _, row := range rows {
+		facts[row.Tag] = entitycapabilities.Resolve("outbounds", row.Type)
+	}
+	done := map[string]bool{}
+	var resolve func(string) entitycapabilities.Fact
+	resolve = func(tag string) entitycapabilities.Fact {
+		fact := facts[tag]
+		if done[tag] {
+			return fact
+		}
+		done[tag] = true
+		for _, member := range index.Members(tag) {
+			if !resolve(member.Outbound).Available && fact.Available {
+				fact.Available, fact.Reason = false, "OUTBOUND_GROUP_MEMBER_UNAVAILABLE"
+			}
+		}
+		facts[tag] = fact
+		return fact
+	}
+	for tag := range facts {
+		resolve(tag)
+	}
+	return facts, nil
 }
 
 func Omissions(rows []Entity) []Entity {

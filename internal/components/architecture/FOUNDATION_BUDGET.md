@@ -189,6 +189,16 @@ retains unavailable capability facts and lossless stored-state preservation.
 The Direct declaration, routing decisions, worker allowance and R1 inventory
 remain unchanged; only this exact reviewed digest is replaced.
 
+R7 native Bond/CoreFailover Outbounds reviews the existing declaration site
+from `ee279e14...` to `f58fba0d...` and the existing tag reference scanner from
+`082a464f...` to `cddcb505...`. The registry adds two native Extended groups;
+the scanner protects canonical member references during rename/delete/reload.
+Outbounds retains row and credential ownership. Anonymous native selectors
+borrow the actual canonical runtime members, including their mutable selection
+and existing Panel health policy; the outer native group owns its wire protocol.
+The scanner also remains the authority for dependency-cycle interpretation.
+Its existing final/Direct policy is unchanged. These replace two exact reviewed
+digests without a new Direct site, worker allowance or R1 inventory regeneration.
 R7 Sudoku Outbound reviews the same `outboundDeclarations` Direct site from
 `ee279e14...` to `4d701dbd...`. The added declaration selects the native Extended
 Sudoku client. Outbounds owns its existing row, complete-candidate validation
@@ -201,4 +211,4 @@ TCP/UDP/restart qualification cover those seams. Official keeps Sudoku
 unavailable and preserves stored state. This exact declaration digest review
 adds no Direct routing decision, worker allowance or new R1 inventory.
 
-The accepted Sudoku declaration and this consumer queue compose at the existing registry site with reviewed digest b109c599ea8bed31342eb45489ff6cb0f7754febf84ce23c88c263d668e5eb2e. Both native constructors and their original availability gates are retained; this adds no Direct decision or inventory site.
+The accepted Sudoku, native outbound groups and MASQUE consumers compose at the existing outbound registry declaration with reviewed digest 368115e9a46640be0a2505510a26b3e33b63cc6db1021f4eb2446ecbec1f9750. Each selected native constructor keeps its availability gate. This composition adds no Direct routing decision or inventory site.

@@ -157,6 +157,9 @@ func (c *Core) Stop() error {
 		api.close()
 	}
 	err := instance.Close()
+	// Dial admission holds the lifecycle read lease only while resolving its
+	// generation. Closing the Box cancels network work before we join it.
+	c.outboundDials.Wait()
 	c.access.Lock()
 	if err != nil {
 		c.lifecycleState = "stopped_by_error"
