@@ -22,7 +22,7 @@
           color="primary"
           prepend-icon="lucide:plus"
           variant="flat"
-          @click="emit('add')"
+          v-if="canCreate()" @click="emit('add')"
         >
           {{ $t('actions.add') }}
         </v-btn>
@@ -49,15 +49,16 @@
     >
       <template #col.status="{ item }">
         <status-badge
-          v-if="onlines.includes(item.tag)"
+          v-if="resourceAvailability(item).allowed && onlines.includes(item.tag)"
           :label="$t('online')"
           tone="success"
         />
-        <status-badge v-else :label="$t('nexus.status.offline')" tone="neutral" />
+        <status-badge v-else :label="$t(resourceAvailability(item).historical ? 'capability.inactive' : 'nexus.status.offline')" tone="neutral" />
       </template>
 
       <template #col.tag="{ item }">
         <span class="inbounds-nexus__tag">{{ item.tag }}</span>
+        <CapabilityBadge :state="resourceAvailability(item)" />
       </template>
 
       <template #col.listen="{ item }">
@@ -98,6 +99,9 @@
 </template>
 
 <script lang="ts" setup>
+import CapabilityBadge from '@/components/fields/CapabilityBadge.vue'
+import { useResourceAvailability } from '@/features/useResourceAvailability'
+const { resourceAvailability, canCreate } = useResourceAvailability('inbounds')
 import { computed, ref } from 'vue'
 import { isInboundGroup } from '@/types/inbounds'
 import { useI18n } from 'vue-i18n'
@@ -212,8 +216,8 @@ const deleteSelected = async () => {
 const inboundActions = (item: InboundRow): RowAction[] => [
   { key: 'up', labelKey: 'table.moveUp', icon: 'lucide:arrow-up', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || props.inbounds.findIndex(row => row.id === item.id) === 0 },
   { key: 'down', labelKey: 'table.moveDown', icon: 'lucide:arrow-down', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || props.inbounds.findIndex(row => row.id === item.id) === props.inbounds.length - 1 },
-  { key: 'edit', labelKey: 'actions.edit', icon: 'lucide:pencil', inline: true },
-  { key: 'clone', labelKey: 'actions.clone', icon: 'lucide:copy', inline: true },
+  { key: 'edit', labelKey: resourceAvailability(item).historical ? 'capability.inspect' : 'actions.edit', icon: 'lucide:pencil', inline: true },
+  { key: 'clone', hidden: !resourceAvailability(item).allowed, labelKey: 'actions.clone', icon: 'lucide:copy', inline: true },
   { key: 'stats', labelKey: 'stats.graphTitle', icon: 'lucide:line-chart', inline: true, hidden: !props.enableTraffic },
   { key: 'del', labelKey: 'actions.del', icon: 'lucide:trash-2', tone: 'error', divider: true },
 ]

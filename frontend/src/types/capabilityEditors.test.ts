@@ -18,15 +18,25 @@ describe('capability editor projection',()=>{
   expect(capabilityEditState(snapshot,'inbounds','warp','warp').allowed).toBe(false)
   expect(capabilityEditState(snapshot,'outbounds','unknown','unknown').allowed).toBe(false)
  })
- it('keeps same-type history editable without allowing a new unavailable type',()=>{
-  expect(capabilityEditState(snapshot,'outbounds','naive','naive')).toMatchObject({allowed:true,message:'capability.historical'})
+ it('separates preserved inspection from available creation and reactivates from new facts',()=>{
+  expect(capabilityEditState(snapshot,'outbounds','naive','naive')).toMatchObject({allowed:false,historical:true,message:'capability.historical'})
   expect(capabilityEditState(snapshot,'outbounds','naive','direct').allowed).toBe(false)
-  const choices=capabilityTypeChoices(snapshot,'outbounds',{Direct:'direct',Naive:'naive'},'unknown')
-  expect(choices.find(choice=>choice.value==='direct')?.props.disabled).toBe(false)
-  expect(choices.find(choice=>choice.value==='direct')?.props['aria-disabled']).toBe(false)
-  expect(choices.find(choice=>choice.value==='naive')?.props.disabled).toBe(true)
-  expect(choices.find(choice=>choice.value==='naive')?.props['aria-disabled']).toBe(true)
-  expect(choices.find(choice=>choice.value==='unknown')).toMatchObject({title:'unknown',props:{disabled:true}})
+  const catalog={Direct:'direct',Naive:'naive',Unknown:'unknown'}
+  expect(capabilityTypeChoices(undefined,'outbounds',catalog)).toEqual([])
+  expect(capabilityTypeChoices(snapshot,'outbounds',catalog)).toEqual([{title:'Direct',value:'direct'}])
+  const supporting=structuredClone(snapshot)
+  Object.assign(supporting.facts[1], { available:true, compiled:true, registered:true })
+  expect(capabilityEditState(supporting,'outbounds','naive','naive')).toEqual({allowed:true})
+  expect(capabilityTypeChoices(supporting,'outbounds',catalog).map(choice=>choice.value)).toEqual(['direct','naive'])
   expect(snapshot.facts).toHaveLength(3)
+ })
+ it('treats unavailable nested transports as inactive history without changing the draft',()=>{
+  const supporting=structuredClone(snapshot)
+  supporting.facts.push({...supporting.facts[0],type:'vless',runtimeType:'vless'})
+  const transport={type:'mkcp',seed:{present:true,revision:'unchanged'},future:{value:42}}
+  const original=structuredClone(transport)
+  expect(capabilityEditState(supporting,'outbounds','vless','vless',transport,{mkcp:{available:false}})).toMatchObject({allowed:false,historical:true,reason:'TRANSPORT_CAPABILITY_UNAVAILABLE'})
+  expect(capabilityEditState(supporting,'outbounds','vless','vless',transport,{mkcp:{available:true}})).toEqual({allowed:true})
+  expect(transport).toEqual(original)
  })
 })

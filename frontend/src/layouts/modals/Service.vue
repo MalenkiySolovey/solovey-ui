@@ -2,12 +2,12 @@
   <v-dialog transition="dialog-bottom-transition" width="800">
     <v-card class="rounded-lg">
       <v-card-title>
-        {{ $t('actions.' + title) + " " + $t('objects.service') }}
+        {{ $t(capabilityState.historical ? 'capability.inspect' : 'actions.' + title) + " " + $t('objects.service') }}
       </v-card-title>
       <v-divider></v-divider>
       <v-card-text style="padding: 0 16px; overflow-y: scroll;">
-        <SaveGuardNotice :reasons="saveReasons" />
-      <CapabilityNotice v-if="capabilityState.allowed" :state="capabilityState" />
+        <SaveGuardNotice v-if="!capabilityState.historical" :reasons="saveReasons" />
+      <CapabilitySurface :state="capabilityState" :type="srv.type">
       <v-row>
           <v-col cols="12" sm="6" md="4">
             <v-select
@@ -28,6 +28,7 @@
         <SSMapi v-if="srv.type == srvTypes.SSMAPI" :data="srv" :ssTags="ssTags" />
         <OomKiller v-if="srv.type == srvTypes.OOMKiller" :data="srv" />
         <InTLS v-if="HasTls.includes(srv.type)"  :inbound="srv" :tlsConfigs="tlsConfigs" :tls_id="srv.tls_id" />
+      </CapabilitySurface>
       </v-card-text>
       <v-card-actions>
         <v-spacer></v-spacer>
@@ -42,6 +43,7 @@
           color="primary"
           variant="tonal"
           :loading="loading"
+          v-if="!capabilityState.historical"
           :disabled="saveReasons.length > 0"
           @click="saveChanges"
         >

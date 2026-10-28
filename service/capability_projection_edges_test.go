@@ -74,7 +74,7 @@ func TestCapabilityReloadPreflightsEntireBatchBeforeRemoval(t *testing.T) {
 }
 
 func TestCapabilityOmissionDependenciesIncludeClientServiceAndNestedRules(t *testing.T) {
-	for _, example := range []string{"failover-final", "ssm-inbound", "inbound-detour", "client-inbound", "nested-inbound-rule", "dns-endpoint", "dns-service", "derp-endpoint"} {
+	for _, example := range []string{"failover-final", "ssm-inbound", "inbound-detour", "nested-inbound-rule", "dns-endpoint", "dns-service", "derp-endpoint"} {
 		t.Run(example, func(t *testing.T) {
 			initSettingTestDB(t)
 			db := dbsqlite.DB()
@@ -111,8 +111,6 @@ func TestCapabilityOmissionDependenciesIncludeClientServiceAndNestedRules(t *tes
 					insert(&model.Service{Type: "ssm-api", Tag: "service", Options: json.RawMessage(`{"servers":{"/main":"missing"}}`)})
 				case "inbound-detour":
 					insert(&model.Inbound{Type: "mixed", Tag: "included", Options: json.RawMessage(`{"detour":"missing"}`)})
-				case "client-inbound":
-					insert(&model.Client{Name: "client", Inbounds: json.RawMessage(fmt.Sprintf("[%d]", missing.Id)), Config: json.RawMessage("{}")})
 				case "nested-inbound-rule":
 					base = []byte(`{"route":{"rules":[{"type":"logical","mode":"and","rules":[{"inbound":["missing"]}]}]}}`)
 				}

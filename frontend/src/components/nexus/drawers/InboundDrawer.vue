@@ -4,16 +4,18 @@
     :loading="loading"
     :model-value="visible"
     :save-disabled="saveReasons.length > 0"
+    :read-only="capabilityState.historical"
     :saving="loading"
-    :title="$t('actions.' + title) + ' ' + $t('objects.inbound')"
+    :title="$t(capabilityState.historical ? 'capability.inspect' : 'actions.' + title) + ' ' + $t('objects.inbound')"
     :width="720"
     @close="closeModal"
     @save="saveChanges"
   >
+    <CapabilitySurface :state="capabilityState" :type="inbound.type">
     <form-section icon="lucide:zap" :title="$t('form.sections.basic')">
-      <SaveGuardNotice :reasons="saveReasons" />
+      <SaveGuardNotice v-if="!capabilityState.historical" :reasons="saveReasons" />
       <InboundGuidance :hints="guidanceHints" />
-      <CapabilityNotice v-if="capabilityState.allowed" :state="capabilityState" />
+
       <v-row>
         <v-col cols="12" sm="6">
           <v-select
@@ -118,6 +120,7 @@
         </v-window-item>
       </v-window>
     </form-section>
+    </CapabilitySurface>
   </entity-drawer>
 </template>
 

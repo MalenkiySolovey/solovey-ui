@@ -1,4 +1,5 @@
 import { defineComponent } from 'vue'
+import { coreConfigContract } from '@/types/coreConfigContract'
 import { runtimeCapability } from '@/types/runtimeCapabilities'
 import { createInboundAddressKey } from './inboundAddressKeys'
 import { inboundGuidanceKeys } from './inboundGuidance'
@@ -35,7 +36,7 @@ import Transport from '@/components/fields/Transport.vue'
 import AddrVue from '@/components/fields/Addr.vue'
 import OutJsonVue from '@/components/subscription/OutJson.vue'
 import Data from '@/store/modules/data'
-import CapabilityNotice from '@/components/fields/CapabilityNotice.vue'
+import CapabilitySurface from '@/components/fields/CapabilitySurface.vue'
 import SaveGuardNotice from '@/components/fields/SaveGuardNotice.vue'
 import { entitySaveReasons, type SaveReason } from './entitySaveReview'
 import { capabilityEditState, capabilityTypeChoices, type CapabilityChoice, type CapabilityEditState } from '@/types/capabilityEditors'
@@ -218,10 +219,10 @@ export default defineComponent({
       return reasons
     },
     capabilityState(): CapabilityEditState {
-      return capabilityEditState(Data().capabilities, "inbounds", this.inbound.type, this.storedCapabilityType)
+      return capabilityEditState(Data().capabilities, "inbounds", this.inbound.type, this.storedCapabilityType, (<any>this.inbound).transport, coreConfigContract.value?.protocol?.transports)
     },
     typeChoices(): CapabilityChoice[] {
-      return capabilityTypeChoices(Data().capabilities, "inbounds", this.inTypes, this.storedCapabilityType)
+      return capabilityTypeChoices(Data().capabilities, "inbounds", this.inTypes)
     },
     dirty(): boolean {
       return this.snapshot !== "" && JSON.stringify(this.inbound) !== this.snapshot
@@ -259,7 +260,7 @@ export default defineComponent({
       }
     },
   },
-  components: { InboundGuidance, SaveGuardNotice, CapabilityNotice,
+  components: { InboundGuidance, SaveGuardNotice, CapabilitySurface,
     Listen, InTls, Hysteria2, Naive, Direct, Shadowsocks,
     Users, Hysteria, ShadowTls, TProxy, Multiplex, Tuic, Tun,
     Trojan, AnyTls, Snell, Mieru, TrustTunnel, SshInbound, MTProxy, Sudoku, InboundGroup, CallInbound, Transport, AddrVue, OutJsonVue, Dial, DomainResolver

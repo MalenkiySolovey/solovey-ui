@@ -237,8 +237,12 @@ func TestCapabilitySaveRejectsNewChangeAndForgedIdentityBeforeWrites(t *testing.
 	if err := db.Create(&historical).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Save("endpoints", "edit", json.RawMessage(fmt.Sprintf("{\"id\":%d,\"type\":\"tailscale\",\"tag\":\"historical\",\"hostname\":\"edited\"}", historical.Id)), "", "admin", "example.invalid"); err != nil {
-		t.Fatalf("safe historical edit: %v", err)
+	if _, err := service.Save("endpoints", "edit", json.RawMessage(fmt.Sprintf("{\"id\":%d,\"type\":\"tailscale\",\"tag\":\"historical\",\"hostname\":\"edited\"}", historical.Id)), "", "admin", "example.invalid"); err == nil {
+		t.Fatal("unavailable history admitted through the ordinary editor")
+	}
+	saved = model.Endpoint{}
+	if err := db.First(&saved, historical.Id).Error; err != nil || saved.Type != historical.Type || saved.Tag != historical.Tag || string(saved.Options) != string(historical.Options) {
+		t.Fatal("rejected historical edit changed canonical desired state", err)
 	}
 	var count int64
 	if err := db.Model(&model.Endpoint{}).Count(&count).Error; err != nil {

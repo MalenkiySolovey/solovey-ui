@@ -18,7 +18,7 @@
           @save="emit('saveOrder')"
           @sort="sortByName"
         />
-        <v-btn color="primary" prepend-icon="lucide:plus" variant="flat" @click="emit('add')">
+        <v-btn color="primary" prepend-icon="lucide:plus" variant="flat" v-if="canCreate()" @click="emit('add')">
           {{ $t('actions.add') }}
         </v-btn>
         <v-btn prepend-icon="lucide:plus" variant="tonal" @click="emit('addBulk')">
@@ -55,12 +55,13 @@
       @rows-drop="(dragged, target, position) => emit('moveManyTo', dragged.map(item => item.id), target.id, position)"
     >
       <template #col.status="{ item }">
-        <status-badge v-if="onlines.includes(item.tag)" :label="$t('online')" tone="success" />
-        <status-badge v-else :label="$t('nexus.status.offline')" tone="neutral" />
+        <status-badge v-if="resourceAvailability(item).allowed && onlines.includes(item.tag)" :label="$t('online')" tone="success" />
+        <status-badge v-else :label="$t(resourceAvailability(item).historical ? 'capability.inactive' : 'nexus.status.offline')" tone="neutral" />
       </template>
 
       <template #col.tag="{ item }">
         <span class="outbounds-nexus__tag">{{ item.tag }}</span>
+        <CapabilityBadge :state="resourceAvailability(item)" />
         <nexus-badge
           v-for="badge in item.componentBadges || []"
           :key="badge.labelKey || badge.label"
@@ -144,6 +145,9 @@
 </template>
 
 <script lang="ts" setup>
+import CapabilityBadge from '@/components/fields/CapabilityBadge.vue'
+import { useResourceAvailability } from '@/features/useResourceAvailability'
+const { resourceAvailability, canCreate } = useResourceAvailability('outbounds')
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -280,7 +284,7 @@ const deleteSelected = async () => {
 const outboundActions = (item: OutboundRow): RowAction[] => [
   { key: 'up', labelKey: 'table.moveUp', icon: 'lucide:arrow-up', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || props.outbounds.findIndex(row => row.id === item.id) === 0 },
   { key: 'down', labelKey: 'table.moveDown', icon: 'lucide:arrow-down', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || props.outbounds.findIndex(row => row.id === item.id) === props.outbounds.length - 1 },
-  { key: 'edit', labelKey: 'actions.edit', icon: 'lucide:pencil', inline: true },
+  { key: 'edit', labelKey: resourceAvailability(item).historical ? 'capability.inspect' : 'actions.edit', icon: 'lucide:pencil', inline: true },
   { key: 'stats', labelKey: 'stats.graphTitle', icon: 'lucide:line-chart', inline: true, hidden: !props.enableTraffic },
   { key: 'del', labelKey: 'actions.del', icon: 'lucide:trash-2', tone: 'error', divider: true },
 ]

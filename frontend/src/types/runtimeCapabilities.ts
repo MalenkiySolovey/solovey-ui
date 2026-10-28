@@ -16,6 +16,7 @@ export interface RuntimeCapability {
   buildTag?: string
   platform?: string
   reason?: string
+  requiredProvider?: string
 }
 
 export interface RuntimeCapabilities {
@@ -49,7 +50,8 @@ export function readRuntimeCapabilities(value: unknown): RuntimeCapabilities | u
           fact.supportedByProduct !== false && fact.runtimeEligible !== false && fact.platformDependencyAvailable !== false) ||
         (fact.buildTag !== undefined && typeof fact.buildTag !== 'string') ||
         (fact.platform !== undefined && typeof fact.platform !== 'string') ||
-        (fact.reason !== undefined && typeof fact.reason !== 'string')) return undefined
+        (fact.reason !== undefined && typeof fact.reason !== 'string') ||
+        (fact.requiredProvider !== undefined && typeof fact.requiredProvider !== 'string')) return undefined
     const key = `${fact.category}:${fact.type}`
     if (seen.has(key)) return undefined
     seen.add(key)

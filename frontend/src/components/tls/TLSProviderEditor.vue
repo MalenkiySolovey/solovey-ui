@@ -1,5 +1,6 @@
 <template>
   <v-card v-if="profile.provider" subtitle="Certificate provider">
+    <CapabilitySurface :state="providerState" :type="profile.provider.type">
     <v-alert type="info" variant="tonal" density="compact">Stored secrets remain masked. Keep the marker to retain a secret; enter an empty value to clear it. Editing a shared provider updates all bound TLS profiles.</v-alert>
     <v-alert v-if="profile.provider.runtimeMode === 'legacy_inline'" type="info" variant="tonal" density="compact">Legacy ACME keeps its existing transport and account behavior. Native mode uses the configured core HTTP client.</v-alert>
     <v-row>
@@ -10,6 +11,7 @@
     <v-alert v-if="unavailable" type="error" variant="tonal" density="compact">{{ unavailable }}</v-alert>
     <v-textarea v-model="optionsText" @update:model-value="applyOptions" label="Provider options (JSON)" :error-messages="parseError" rows="6" auto-grow />
     <div v-if="contract" class="text-caption">Available fields: {{ contract.providerFields[profile.provider.runtimeMode]?.join(', ') }}</div>
+    </CapabilitySurface>
   </v-card>
 </template>
 
@@ -17,15 +19,22 @@
 import { defineComponent, type PropType } from 'vue'
 import type { tls } from '@/types/tls'
 import { coreConfigContract, loadCoreConfigContract } from '@/types/coreConfigContract'
+import CapabilitySurface from '@/components/fields/CapabilitySurface.vue'
+import type { CapabilityEditState } from '@/types/capabilityEditors'
 
 export default defineComponent({
+  components: { CapabilitySurface },
   props: { profile: { type: Object as PropType<tls>, required: true } },
   emits: ['validity'],
   data: () => ({ optionsText: '', parseError: '' }),
   computed: {
     contract: () => coreConfigContract.value?.tls,
-    types(): string[] { return [...new Set([...(this.contract?.providerTypes ?? []), ...(this.profile.provider?.type ? [this.profile.provider.type] : [])])] },
+    types(): string[] { return this.contract?.providerTypes ?? [] },
     unavailable(): string { return this.contract?.providerUnavailable[this.profile.provider?.type ?? ''] ?? '' },
+    providerState(): CapabilityEditState {
+      const allowed = this.types.includes(this.profile.provider?.type ?? '')
+      return { allowed, historical: !allowed && this.profile.id > 0, message: allowed ? undefined : this.profile.id > 0 ? 'capability.historical' : 'capability.unavailable', reason: this.unavailable }
+    },
   },
   methods: {
     setTag(value: string) {
@@ -39,7 +48,7 @@ export default defineComponent({
         if (!options || typeof options !== 'object' || Array.isArray(options)) throw new Error('object required')
         if (this.profile.provider) this.profile.provider.options = options
         this.parseError = ''
-        this.$emit('validity', true)
+        this.$emit('validity', this.providerState.allowed)
       } catch {
         this.parseError = 'Use a JSON object. The existing provider draft is preserved.'
         this.$emit('validity', false)
@@ -48,7 +57,8 @@ export default defineComponent({
   },
   mounted() { this.optionsText = JSON.stringify(this.profile.provider?.options ?? {}, null, 2); void loadCoreConfigContract() },
   watch: {
-    'profile.provider': { handler() { this.optionsText = JSON.stringify(this.profile.provider?.options ?? {}, null, 2); this.parseError = ''; this.$emit('validity', true) } },
+    'profile.provider': { handler() { this.optionsText = JSON.stringify(this.profile.provider?.options ?? {}, null, 2); this.parseError = ''; this.$emit('validity', this.providerState.allowed) } },
+    providerState: { handler() { this.$emit('validity', this.providerState.allowed && !this.parseError) }, immediate: true },
   },
 })
 </script>

@@ -1,8 +1,9 @@
 export default {
   hostContext: {"label": "Host", "local": "Local", "unavailable": "Unavailable", "localOnly": "This Host is unavailable. Only Local is supported.", "featureUnavailable": "This feature is unavailable on this Host. Check the installed Components in Settings."},
   capability: {
+    inspect: "Inspect preserved resource", requires: "Requires: {provider}", inactive: "Inactive on current runtime",
     "unknown": "This type is not recognized by the current runtime. Review the type before saving.",
-    "contextUnsupported": "This type is not supported in this entity context. Choose a supported type.", waiting: "Waiting for runtime capability information. Reload data if it does not arrive.", unavailable: "This type is unavailable in the current binary or entity context. Choose an available type before saving.", historical: "This historical type is unavailable in the current binary. Same-type edits remain possible; the entity stays excluded from runtime. Remove its references before applying changes." },
+    "contextUnsupported": "This type is not supported in this entity context. Choose a supported type.", waiting: "Waiting for runtime capability information. Reload data if it does not arrive.", unavailable: "This type is unavailable in the current binary or entity context. Choose an available type before saving.", historical: "This resource is preserved but inactive on the current runtime. Inspect, export or delete it through its owner. Return to a supporting Provider to revalidate and use the same resource." },
   inboundGuidance: {
   "title": "Protocol setup guidance",
   "vless": "Use matching client identifiers on the server and client.",

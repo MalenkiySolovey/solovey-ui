@@ -16,6 +16,7 @@ type Fact struct {
 	RuntimeType                 string `json:"runtimeType"`
 	ContextSupported            bool   `json:"contextSupported"`
 	Available                   bool   `json:"available"`
+	RequiredProvider            string `json:"requiredProvider,omitempty"`
 	RuntimeEligible             *bool  `json:"runtimeEligible,omitempty"`
 	PlatformDependencyAvailable *bool  `json:"platformDependencyAvailable,omitempty"`
 }
@@ -63,7 +64,7 @@ func ResolveWithEnvironment(category, panelType string, environment Environment)
 	if contextSupported && runtimeFact.Available() && reason != "" {
 		runtimeFact.Reason = reason
 	}
-	return Fact{Fact: runtimeFact, RuntimeType: runtimeType, ContextSupported: contextSupported,
+	return Fact{Fact: runtimeFact, RuntimeType: runtimeType, ContextSupported: contextSupported, RequiredProvider: coreprovider.RequiredProviderName(runtimeFact.BuildTag),
 		RuntimeEligible: &eligible, PlatformDependencyAvailable: &dependencyAvailable,
 		Available: contextSupported && runtimeFact.Available() && eligible && dependencyAvailable}
 }

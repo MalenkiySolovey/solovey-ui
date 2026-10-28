@@ -28,7 +28,7 @@ for (const mode of ['classic', 'nexus']) {
       await page.getByRole('button', { name: 'Add', exact: true }).first().click()
       const form = page.getByRole('dialog').filter({ hasText: 'Add Inbound' })
       await form.getByRole('combobox', { name: 'Type', exact: true }).press('Enter')
-      await expect(page.getByRole('option', { name: 'Sudoku', exact: true })).toHaveAttribute('aria-disabled', 'true')
+      await expect(page.getByRole('option', { name: 'Sudoku', exact: true })).toHaveCount(0)
       await page.keyboard.press('Escape')
       await form.getByRole('button', { name: 'Close', exact: true }).first().click()
       return
@@ -251,7 +251,7 @@ for (const mode of ['classic', 'nexus']) for (const kind of ['mieru', 'trusttunn
       const form = page.getByRole('dialog').filter({ hasText: 'Add Inbound' })
       await form.getByRole('combobox', { name: 'Type', exact: true }).press('Enter')
       const option = page.getByRole('option', { name: kindLabels[kind], exact: true })
-      await expect(option).toHaveAttribute('aria-disabled', 'true')
+      await expect(option).toHaveCount(0)
       await page.keyboard.press('Escape')
       await expect(form.getByRole('textbox', { name: 'Tag', exact: true })).toBeVisible()
       await form.getByRole('button', { name: 'Close', exact: true }).first().click()

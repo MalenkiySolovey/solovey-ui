@@ -30,6 +30,7 @@ import HttpUpgrade from '@/components/transports/HttpUpgrade.vue'
 import Xhttp from '@/components/transports/Xhttp.vue'
 import Mkcp from '@/components/transports/Mkcp.vue'
 import { coreConfigContract, loadCoreConfigContract } from '@/types/coreConfigContract'
+import { availableCreationChoices } from '@/types/capabilityEditors'
 export default {
   props: ['data', 'direction'],
   data() {
@@ -46,11 +47,8 @@ export default {
     transportItems() {
       return [
         { title: 'TCP', value: this.tcpType },
-        ...Object.keys(this.trspTypes).map((key, index) => ({
-          title: key,
-          value: Object.values(this.trspTypes)[index],
-          props: { disabled: !this.facts?.[Object.values(this.trspTypes)[index]]?.available },
-        })),
+        ...availableCreationChoices(Object.entries(this.trspTypes).map(([title, value]) => ({ title, value })),
+          choice => this.facts?.[choice.value]?.available),
       ]
     },
     transportType: {

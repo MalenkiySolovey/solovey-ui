@@ -2,17 +2,19 @@
   <entity-drawer
     :dirty="dirty"
     :save-disabled="saveReasons.length > 0"
+    :read-only="capabilityState.historical"
     :loading="loading"
     :model-value="visible"
     :saving="loading"
-    :title="$t('actions.' + title) + ' ' + $t('objects.service')"
+    :title="$t(capabilityState.historical ? 'capability.inspect' : 'actions.' + title) + ' ' + $t('objects.service')"
     :width="720"
     @close="closeModal"
     @save="saveChanges"
   >
+    <CapabilitySurface :state="capabilityState" :type="srv.type">
     <form-section icon="lucide:sliders-horizontal" :title="$t('form.sections.configuration')">
-      <SaveGuardNotice :reasons="saveReasons" />
-      <CapabilityNotice v-if="capabilityState.allowed" :state="capabilityState" />
+      <SaveGuardNotice v-if="!capabilityState.historical" :reasons="saveReasons" />
+
       <v-row>
         <v-col cols="12" sm="6">
           <v-select
@@ -34,6 +36,7 @@
       <OomKiller v-if="srv.type == srvTypes.OOMKiller" :data="srv" />
       <InTLS v-if="HasTls.includes(srv.type)"  :inbound="srv" :tlsConfigs="tlsConfigs" :tls_id="srv.tls_id" />
     </form-section>
+    </CapabilitySurface>
   </entity-drawer>
 </template>
 

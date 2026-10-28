@@ -54,6 +54,7 @@
       <v-spacer />
       <v-btn variant="text" @click="requestClose">{{ $t('actions.close') }}</v-btn>
       <v-btn
+        v-if="!readOnly"
         color="primary"
         :disabled="saveDisabled"
         :loading="saving"
@@ -80,6 +81,7 @@ const props = withDefaults(defineProps<{
   dirty?: boolean
   saving?: boolean
   saveDisabled?: boolean
+  readOnly?: boolean
 }>(), {
   width: 560,
 })

@@ -7,6 +7,7 @@
     :loading="loading"
     :model-value="modelValue"
     :save-disabled="saveDisabled"
+    :read-only="readOnly"
     :saving="loading"
     :title="title"
     :width="width"
@@ -35,7 +36,7 @@
         <v-btn color="primary" variant="outlined" @click="requestClose">
           {{ $t('actions.close') }}
         </v-btn>
-        <v-btn color="primary" variant="tonal" :disabled="saveDisabled" :loading="loading" @click="emit('save')">
+        <v-btn v-if="!readOnly" color="primary" variant="tonal" :disabled="saveDisabled" :loading="loading" @click="emit('save')">
           {{ $t('actions.save') }}
         </v-btn>
       </v-card-actions>
@@ -77,6 +78,7 @@ const props = withDefaults(defineProps<{
   loading?: boolean
   dirty?: boolean
   saveDisabled?: boolean
+  readOnly?: boolean
 }>(), {
   modelValue: false,
   width: 720,

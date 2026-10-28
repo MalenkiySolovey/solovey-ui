@@ -1,5 +1,17 @@
 # Provider maintenance ownership
 
+Capability facts describe the current creation surface. Create/Add pickers show
+only options whose backend availability is explicitly true; unknown and
+unavailable types are absent. This includes nested transport and DNS types and
+the existing TLS/editor contracts.
+
+Stored desired resources are independent of current availability. An unavailable
+resource retains its identity, options and SecretRef ownership for inspection,
+export/backup and canonical deletion. It is inactive in effective runtime and
+cannot be saved through the ordinary editor, including conversion to another
+type. Returning to a supporting Provider revalidates the same preserved resource
+before it becomes effective again. No preservation path strips unknown fields.
+
 Source authorities, shared dependency queues and upstream-first copy policy are
 defined in [Core repository topology](CORE_REPOSITORY_TOPOLOGY.md). Panel owns
 provider selection and qualification; external module source changes belong to
