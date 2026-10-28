@@ -17,6 +17,7 @@ import (
 
 type Core struct {
 	lifecycle         sync.RWMutex
+	outboundDials     sync.WaitGroup
 	mutation          sync.RWMutex
 	access            sync.RWMutex
 	ctx               context.Context
