@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
@@ -35,7 +36,7 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 	}
 	var outboundCount int64
 	var outboundKinds []string
-	for _, kind := range []string{"call", "mieru", "trusttunnel", "sudoku"} {
+	for _, kind := range []string{"call", "mieru", "trusttunnel", "sudoku", "masque", "bond", "core-failover"} {
 		if entitycapabilities.Resolve("outbounds", kind).Available {
 			outboundKinds = append(outboundKinds, kind)
 		}
@@ -46,7 +47,7 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 		}
 	}
 	transportCandidate := false
-	if registry.ResolveTransport("xhttp").Available() {
+	if registry.ResolveTransport("xhttp").Available() || registry.ResolveTransport("mkcp").Available() || registry.ResolveTransport("quic").Available() {
 		for _, entity := range []any{&model.Inbound{}, &model.Outbound{}} {
 			if !tx.Migrator().HasTable(entity) {
 				continue
@@ -57,7 +58,7 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 			}
 			for _, row := range rows {
 				var options struct{ Transport struct{ Type string } }
-				if json.Unmarshal(row.Options, &options) == nil && options.Transport.Type == "xhttp" {
+				if json.Unmarshal(row.Options, &options) == nil && (options.Transport.Type == "xhttp" || options.Transport.Type == "mkcp" || options.Transport.Type == "quic") && registry.ResolveTransport(options.Transport.Type).Available() {
 					transportCandidate = true
 					break
 				}

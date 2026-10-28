@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	outboundcomposition "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds/composition"
 	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 )
 
@@ -69,6 +70,17 @@ func scanOutboundRowsForTag(rows []model.Outbound, tag string, excludeID uint) [
 		opts := optionsMapOf(row.Options)
 		if opts == nil {
 			continue
+		}
+		if outboundcomposition.IsGroup(row.Type) {
+			members, err := outboundcomposition.Members(row.Type, row.Options)
+			if err == nil {
+				for _, member := range members {
+					if member.Outbound == tag {
+						refs = append(refs, TagReference{Kind: "native group member", Locator: fmt.Sprintf("%s %q (outbounds list)", row.Type, row.Tag)})
+						break
+					}
+				}
+			}
 		}
 		if detour, _ := opts["detour"].(string); detour == tag {
 			refs = append(refs, TagReference{

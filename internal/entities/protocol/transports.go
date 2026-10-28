@@ -26,6 +26,12 @@ func transportEditorFacts() map[string]TransportEditorFact {
 	result := map[string]TransportEditorFact{}
 	for _, fact := range registry.TransportFacts() {
 		item := TransportEditorFact{Fact: fact, Available: fact.Available()}
+		if fact.Type == "mkcp" && fact.Registered {
+			if field, found := reflect.TypeFor[option.V2RayTransportOptions]().FieldByName("KCPOptions"); found {
+				item.Fields = map[string][]string{"root": jsonfields.Names(field.Type, false)}
+			}
+			item.Choices = map[string][]string{"header_type": {"none", "srtp", "utp", "wechat-video", "dtls", "wireguard"}}
+		}
 		if fact.Type == "xhttp" && fact.Registered {
 			item.Fields = map[string][]string{}
 			if field, found := reflect.TypeFor[option.V2RayTransportOptions]().FieldByName("XHTTPOptions"); found {
@@ -132,8 +138,28 @@ func TransportFindings(kind, side, path string, source json.RawMessage) []diagno
 			}
 		}
 	}
+	consumerRaw := raw
+	if name == "mkcp" {
+		if !transportObjectKeys(fields, append([]string{"type"}, transportEditorFacts()[name].Fields["root"]...)) {
+			return []diagnostics.Finding{finding(path+".transport", "TRANSPORT_OPTIONS_INVALID", diagnostics.Error, "Transport fields must use the selected native schema and canonical names.")}
+		}
+		if seed, present := fields["seed"]; present {
+			var value string
+			if json.Unmarshal(seed, &value) != nil {
+				var mutation struct{ Intent string }
+				if jsonvalue.StrictObject(seed) != nil || json.Unmarshal(seed, &mutation) != nil || (mutation.Intent != "replace" && mutation.Intent != "unchanged" && mutation.Intent != "clear") {
+					return []diagnostics.Finding{finding(path+".transport.seed", "TRANSPORT_CREDENTIAL_INVALID", diagnostics.Error, "Use the owning transport credential field.")}
+				}
+				// Only the isolated schema probe substitutes this value. The save
+				// owner validates the actual row-bound mutation before persistence;
+				// the complete candidate uses its borrowed plaintext afterward.
+				fields["seed"] = json.RawMessage(`"owner-validation"`)
+				consumerRaw, _ = json.Marshal(fields)
+			}
+		}
+	}
 	var native option.V2RayTransportOptions
-	if sbjson.Unmarshal(raw, &native) != nil {
+	if sbjson.Unmarshal(consumerRaw, &native) != nil {
 		return []diagnostics.Finding{finding(path+".transport", "TRANSPORT_OPTIONS_INVALID", diagnostics.Error, "Transport fields or combinations are rejected by the selected native consumer.")}
 	}
 	return nil

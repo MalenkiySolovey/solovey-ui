@@ -8,7 +8,7 @@
     <v-text-field v-else-if="mode === 'replace'" :model-value="replacement" @update:model-value="replace" type="password"
       autocomplete="new-password" :disabled="!available" :label="$t('secretCredential.replacement')"
       :error-messages="replacement ? [] : [$t('secretCredential.required')]" />
-    <div v-else class="text-caption">{{ $t(baseline?.present ? 'secretCredential.present' : 'secretCredential.absent') }}</div>
+    <div v-else class="text-caption">{{ baseline?.present ? $t('secretCredential.present') : (absentLabel ?? $t('secretCredential.absent')) }}</div>
   </div>
 </template>
 
@@ -17,7 +17,7 @@ import { computed, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { unchangedSecret } from '@/features/secretCredentialDraft'
 
-const props = defineProps<{ modelValue?: unknown; available: boolean; label: string; multiline?: boolean; clearLabel?: string }>()
+const props = defineProps<{ modelValue?: unknown; available: boolean; label: string; multiline?: boolean; clearLabel?: string; absentLabel?: string }>()
 const emit = defineEmits<{ 'update:modelValue': [value: unknown] }>()
 const { t } = useI18n()
 const baseline = shallowRef(unchangedSecret(props.modelValue))

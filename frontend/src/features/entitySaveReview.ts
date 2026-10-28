@@ -1,6 +1,6 @@
 import type { CapabilityEditState } from '@/types/capabilityEditors'
 
-export type SaveReason = 'form.saveIdentity' | 'form.savePortRequired' | 'form.savePortInvalid' | 'form.saveTls' | 'form.savePending' | 'secretCredential.required' | 'nativeInbound.bondMembersRequired' | NonNullable<CapabilityEditState['message']>
+export type SaveReason = 'form.saveIdentity' | 'form.savePortRequired' | 'form.savePortInvalid' | 'form.saveTls' | 'form.savePending' | 'secretCredential.required' | 'nativeInbound.bondMembersRequired' | 'nativeOutbound.groupInvalid' | NonNullable<CapabilityEditState['message']>
 export interface EditorSaveFacts {
   identity: unknown
   port?: unknown

@@ -151,19 +151,19 @@
             <v-row>
               <v-col>{{ $t('in.addr') }}</v-col>
               <v-col>
-                {{ item.server?? '-' }}
+                {{ (item.type === 'masque' ? item.address : item.server) ?? '-' }}
               </v-col>
             </v-row>
             <v-row>
               <v-col>{{ $t('in.port') }}</v-col>
               <v-col>
-                {{ item.server_port?? '-' }}
+                {{ (item.type === 'masque' ? item.port : item.server_port) ?? '-' }}
               </v-col>
             </v-row>
             <v-row>
               <v-col>{{ $t('objects.tls') }}</v-col>
               <v-col>
-                {{ Object.hasOwn(item,'tls') ? $t(item.tls?.enabled ? 'enable' : 'disable') : '-'  }}
+                {{ item.type === 'masque' ? $t('enable') : Object.hasOwn(item,'tls') ? $t(item.tls?.enabled ? 'enable' : 'disable') : '-' }}
               </v-col>
             </v-row>
             <v-row>

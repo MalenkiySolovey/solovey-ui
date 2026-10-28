@@ -39,8 +39,8 @@ github.com/MalenkiySolovey/sing-anytls v0.0.12-0.20261011014237-8f440972b353 h1:
 github.com/MalenkiySolovey/sing-anytls v0.0.12-0.20261011014237-8f440972b353/go.mod h1:7rjN6IukwysmdusYsrV51Fgu1uW6vsrdd6ctjnEAln8=
 github.com/MalenkiySolovey/sing-box v1.14.3-0.20261012000247-8b914e4be510 h1:RkQg7xe/iBA9+PrEgN8oN0p9LNBNsd2OR65KUEmo4K0=
 github.com/MalenkiySolovey/sing-box v1.14.3-0.20261012000247-8b914e4be510/go.mod h1:O4q0spxb+xwV/p9HYR+Es1cMjK3bBvYl6k08V9rSpwU=
-github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261028104045-bb2f685fd8ea h1:4Z+hqamrneKE4IbvrvR1Be8GJBl9AxsBgg9/PTAsiNs=
-github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261028104045-bb2f685fd8ea/go.mod h1:sg62CEdWhkOVVDDI3fA01dd82eoZuZKSlLY0oKAUHmc=
+github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261028113537-99598e07bd3d h1:T8yUej/TbdyGUGtgWHsm/lu+9zjRcfhwdBOcX6HhMmo=
+github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261028113537-99598e07bd3d/go.mod h1:sg62CEdWhkOVVDDI3fA01dd82eoZuZKSlLY0oKAUHmc=
 github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762 h1:0x0RTO9IyqRHO9rmEpUhCKRBeISM5LwKLsIiIifFbRY=
 github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762/go.mod h1:rJFeVxbEej2iuyeCJ3drKW+p5rOgtLIW3XhZ6ty7Fig=
 github.com/MalenkiySolovey/sing-quic v0.7.2-0.20261025183737-9034c2c10c63 h1:kRQoFAgCMnYrjyyejCWtJd7Sc08t40HMHY4x58Es88c=
@@ -167,6 +167,7 @@ github.com/djherbis/times v1.6.0/go.mod h1:gOHeRAz2h+VJNZ5Gmc/o7iD9k4wW7NMVqieYC
 github.com/dnsimple/dnsimple-go/v4 v4.0.0/go.mod h1:AXT2yfAFOntJx6iMeo1J/zKBw0ggXFYBt4e97dqqPnc=
 github.com/docker/docker v28.5.2+incompatible/go.mod h1:eEKB0N0r5NX/I1kEveEz05bcu8tLC/8azJZsviup8Sk=
 github.com/docker/go-connections v0.7.0/go.mod h1:no1qkHdjq7kLMGUXYAduOhYPSJxxvgWBh7ogVvptn3Q=
+github.com/dunglas/httpsfv v1.1.0 h1:Jw76nAyKWKZKFrpMMcL76y35tOpYHqQPzHQiwDvpe54=
 github.com/dunglas/httpsfv v1.1.0/go.mod h1:zID2mqw9mFsnt7YC3vYQ9/cjq30q41W+1AnDwH8TiMg=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/dvyukov/go-fuzz v0.0.0-20210103155950-6a8e9d1f2415/go.mod h1:11Gm+ccJnvAhCNLlf5+cS9KjtbaD5I5zaZpFMsTHWTw=
@@ -698,6 +699,7 @@ github.com/selectel/go-selvpcclient/v4 v4.2.0/go.mod h1:eFhL1KUW159KOJVeGO7k/Uxl
 github.com/shirou/gopsutil/v4 v4.26.5 h1:RPcBXkpz7kOj9PqGFQOlBPZHsyaPvPVQc098y9RmCNM=
 github.com/shirou/gopsutil/v4 v4.26.5/go.mod h1:LZ6ewCSkBqUpvSOf+LsTGnRinC6iaNUNMGBtDkJBaLQ=
 github.com/shopspring/decimal v1.4.0/go.mod h1:gawqmDU56v4yIKSwfBSFip1HdCCXN8/+DMd9qYNcwME=
+github.com/shtorm-7/connect-ip-go v1.0.0-extended-1.1.1 h1:Q86M08m8BZxe0umG2VE8CBMbMRutiwnyJpL5loEh0JM=
 github.com/shtorm-7/connect-ip-go v1.0.0-extended-1.1.1/go.mod h1:mRwx4w32qQxsWB2kThuHpbo7iNjJiq1jYWubgqEPjHA=
 github.com/shtorm-7/dnscrypt/v2 v2.4.0-extended-1.0.0 h1:e5s7RKBd2rIPR0StbvZ2vTVtJ5jDTsTk5wtIIapZTRg=
 github.com/shtorm-7/dnscrypt/v2 v2.4.0-extended-1.0.0/go.mod h1:WpEFV2uhebXb8Jhes/5/fSdpmhGV8TL22RDaeWwV6hI=
@@ -807,6 +809,7 @@ github.com/xyproto/randomstring v1.0.5/go.mod h1:rgmS5DeNXLivK7YprL0pY+lTuhNQW3i
 github.com/yandex-cloud/go-genproto v0.73.0/go.mod h1:0LDD/IZLIUIV4iPH+YcF+jysO3jkSvADFGm4dCAuwQo=
 github.com/yandex-cloud/go-sdk/services/dns v0.0.54/go.mod h1:BWW+s95kl4rAlMIbD+7q86VlaqsWVdTD45J1NIS+dw0=
 github.com/yandex-cloud/go-sdk/v2 v2.92.0/go.mod h1:ZbJGsuUl4VKSaxxQ8KWNKZ2QaU8zfmDGbLhquYf/Ugc=
+github.com/yosida95/uritemplate/v3 v3.0.2 h1:Ed3Oyj9yrmi9087+NczuL5BwkIc4wvTb5zIM+UJPGz4=
 github.com/yosida95/uritemplate/v3 v3.0.2/go.mod h1:ILOh0sOhIJR3+L/8afwt/kE++YT040gmv5BQTMR2HP4=
 github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78/go.mod h1:aL8wCCfTfSfmXjznFBSZNN13rSJjlIOI1fUNAtF7rmI=
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=

@@ -67,6 +67,12 @@ func TestCapabilityConsumersAgreeForEveryAuthoritativeEntityFact(t *testing.T) {
 		if fact.Type == "failover" {
 			options = json.RawMessage("{\"outbounds\":[\"capability-seed\"],\"final\":\"reject\"}")
 		}
+		if fact.Category == "outbounds" && fact.Type == "bond" {
+			options = json.RawMessage(`{"outbounds":[{"outbound":"capability-seed","download_ratio":100,"upload_ratio":100}]}`)
+		}
+		if fact.Category == "outbounds" && fact.Type == "core-failover" {
+			options = json.RawMessage(`{"outbounds":["capability-seed"]}`)
+		}
 		if fact.Category == "inbounds" && composition.IsGroup(fact.Type) {
 			memberTag := tag + "-member"
 			if err := db.Create(&model.Inbound{Type: "socks", Tag: memberTag, Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":0}`)}).Error; err != nil {
