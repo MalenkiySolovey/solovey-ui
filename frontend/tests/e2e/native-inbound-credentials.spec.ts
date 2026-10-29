@@ -16,7 +16,7 @@ for (const mode of ['classic', 'nexus']) {
     if (process.env.SUI_E2E_EXPECT_PROVIDER === 'shtorm-extended') expect(available).toBe(true)
     const tag = `r7-${mode}-realm-client-${Date.now()}`
     const token = `synthetic-${mode}-realm-access-token`
-    const read = async () => (await (await page.request.get('api/outbounds')).json()).obj.outbounds.find((row: { tag: string }) => row.tag === tag)
+    const read = async () => ((await (await page.request.get('api/outbounds')).json()).obj.outbounds ?? []).find((row: { tag: string }) => row.tag === tag)
     try {
       await page.goto('hosts/local/outbounds')
       await page.getByRole('button', { name: 'Add', exact: true }).first().click()
