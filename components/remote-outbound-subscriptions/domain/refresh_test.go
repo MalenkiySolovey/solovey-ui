@@ -3,6 +3,7 @@
 package remote
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"gorm.io/gorm"
@@ -11,6 +12,55 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 )
+
+func TestSourceNameTransformPreservesIdentityGroupsAndCapturedIR(t *testing.T) {
+	db := newRemoteSyncDB(t)
+	sub := RemoteOutboundSubscription{Name: "Names", TagPrefix: "names-"}
+	if err := db.Create(&sub).Error; err != nil {
+		t.Fatal(err)
+	}
+	fetched, err := ParseFetchedSubscription(`{"outbounds":[{"type":"trojan","tag":"🇩🇪 primary 🚀","server":"de.invalid","server_port":443,"password":"private-name-fixture"},{"type":"trojan","tag":"DE primary","server":"other.invalid","server_port":443,"password":"other-name-fixture"},{"type":"selector","tag":"Group","outbounds":["🇩🇪 primary 🚀","DE primary"]}]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var original []RemoteOutboundConnection
+	for pass, remove := range []bool{false, true, false} {
+		previous := sub
+		sub.RemoveEmojis = remove
+		if pass > 0 && previous.SameSource(sub) {
+			t.Fatal("stale presentation policy retained refresh authority")
+		}
+		if _, _, err := RefreshFetchedSubscription(db, &sub, fetched, int64(100+pass)); err != nil {
+			t.Fatal(err)
+		}
+		var current []RemoteOutboundConnection
+		if err := db.Order("id").Find(&current).Error; err != nil || len(current) != 3 {
+			t.Fatal("presentation transform lost a connection", err)
+		}
+		if pass == 0 {
+			original = current
+		} else {
+			for i, row := range current {
+				before := original[i]
+				if row.Id != before.Id || row.SourceKey != before.SourceKey || row.OutboundTag != before.OutboundTag || !bytes.Equal(row.Options, before.Options) || !bytes.Equal(row.Canonical, before.Canonical) {
+					t.Fatal("presentation transform changed identity or captured semantics")
+				}
+			}
+		}
+		wantName := "🇩🇪 primary 🚀"
+		if remove {
+			wantName = "DE primary"
+		}
+		if current[0].Name != wantName {
+			t.Fatal("display transform was not reversible")
+		}
+		config, err := connectionOutboundConfigForSync(db, current[2])
+		var group struct{ Outbounds []string }
+		if err != nil || json.Unmarshal(config, &group) != nil || len(group.Outbounds) != 2 || group.Outbounds[0] != current[0].OutboundTag || group.Outbounds[1] != current[1].OutboundTag {
+			t.Fatal("display-name collision changed a captured group binding", err)
+		}
+	}
+}
 
 func TestSourceFiltersSelectIRWithoutRewritingCapturedSemantics(t *testing.T) {
 	fetched, err := ParseFetchedSubscription(`{"outbounds":[{"type":"trojan","tag":"DE primary","server":"de.example","server_port":443,"password":"filter-private-fixture"},{"type":"trojan","tag":"US primary","server":"us.example","server_port":443,"password":"other-fixture"},{"type":"trojan","tag":"DE test","server":"test.example","server_port":443,"password":"test-fixture"}]}`)

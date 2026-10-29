@@ -61,6 +61,7 @@ type CollectionSnapshot struct {
 }
 
 type FetchOptions struct {
+	UserAgent        string
 	GroupAdaptation  string
 	ConversionPolicy subconversion.Policy
 }
@@ -94,6 +95,13 @@ func ValidateSubscriptionURL(rawURL string) error {
 	return nil
 }
 
+func ValidateSourceUserAgent(value string) error {
+	if len(value) > 4096 || strings.ContainsFunc(value, func(r rune) bool { return r < 0x20 || r == 0x7F }) {
+		return common.NewError("SUBSCRIPTION_SOURCE_USER_AGENT_INVALID")
+	}
+	return nil
+}
+
 func FetchSubscription(rawURL string) (*FetchedSubscription, error) {
 	return FetchSubscriptionWithOptions(rawURL, FetchOptions{})
 }
@@ -112,12 +120,20 @@ func FetchSubscriptionWithOptionsContext(ctx context.Context, rawURL string, opt
 }
 
 func fetchSubscriptionWithOptions(rawURL string, options FetchOptions, fetch func(fetchCandidate) (string, error)) (*FetchedSubscription, error) {
+	if err := ValidateSourceUserAgent(options.UserAgent); err != nil {
+		return nil, err
+	}
 	if rawURL == "" {
 		return nil, common.NewError("no url")
 	}
 	candidates, err := subscriptionFetchCandidates(rawURL)
 	if err != nil {
 		return nil, common.NewError("invalid or disallowed subscription url")
+	}
+	if userAgent := strings.TrimSpace(options.UserAgent); userAgent != "" {
+		// An explicit client identity requests the original source once. The
+		// automatic multi-format identities remain the default when omitted.
+		candidates = []fetchCandidate{{Variant: "custom-user-agent", URL: rawURL, UserAgent: userAgent}}
 	}
 	var attempts []FetchAttempt
 	var fetchedParts []*FetchedSubscription
