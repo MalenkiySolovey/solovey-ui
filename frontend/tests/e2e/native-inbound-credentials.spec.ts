@@ -21,7 +21,7 @@ for (const mode of ['classic', 'nexus']) {
       await page.goto('hosts/local/outbounds')
       await page.getByRole('button', { name: 'Add', exact: true }).first().click()
       let form = page.getByRole('dialog').filter({ hasText: 'Add Outbound' })
-      await select(page, form, 'Type', 'Hysteria2')
+      if (!await selectAvailableHysteria(page, form, 'outbounds')) return
       if (!available) {
         await expect(form.getByLabel('Use Realm rendezvous', { exact: true })).toHaveCount(0)
         await form.getByRole('button', { name: 'Close', exact: true }).click()
@@ -238,6 +238,20 @@ for (const mode of ['classic', 'nexus']) {
 async function select(page: Page, form: Locator, label: string, value: string) {
   await form.getByRole('combobox', { name: label, exact: true }).press('Enter')
   await page.getByRole('option', { name: value, exact: true }).click()
+}
+
+async function selectAvailableHysteria(page: Page, form: Locator, category: string) {
+  const capabilities = await (await page.request.get('api/capabilities')).json()
+  const available = capabilities.obj?.facts?.some((fact: { category: string; type: string; available: boolean }) => fact.category === category && fact.type === 'hysteria2' && fact.available)
+  if (available) {
+    await select(page, form, 'Type', 'Hysteria2')
+    return true
+  }
+  await form.getByRole('combobox', { name: 'Type', exact: true }).press('Enter')
+  await expect(page.getByRole('option', { name: 'Hysteria2', exact: true })).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await form.getByRole('button', { name: 'Close', exact: true }).first().click()
+  return false
 }
 
 async function save(page: Page, form: Locator, success = true) {
