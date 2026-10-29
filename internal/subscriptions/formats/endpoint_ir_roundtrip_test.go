@@ -260,3 +260,30 @@ func TestEndpointIRCriticalUnsupportedProjectionIsExplicit(t *testing.T) {
 		t.Fatal("unsupported transport silently became TCP")
 	}
 }
+
+func TestEndpointIRHysteria2RealmPreservesNativeAddressing(t *testing.T) {
+	raw := map[string]any{"type": "hysteria2", "tag": "Realm peer", "password": "fixture-protocol-password", "tls": map[string]any{"enabled": true},
+		"realm": map[string]any{"server_url": "https://realm.invalid", "realm_id": "peer", "token": "private-realm-token", "stun_servers": []string{"stun.invalid:3478"}}}
+	before := canonical.ObserveOutbound(canonical.FormatSingBox, raw, 0)
+	body, err := RenderJSON([]map[string]any{raw}, JSONOptions{})
+	if err != nil {
+		t.Fatal("native Realm could not be delivered", err)
+	}
+	nodes, err := parser.ParseSingBoxOutbounds(body)
+	if err != nil || len(nodes) != 1 {
+		t.Fatal("native Realm delivery could not be imported", err)
+	}
+	after := canonical.ObserveOutbound(canonical.FormatSingBox, nodes[0], 0)
+	if before.EndpointID != after.EndpointID || after.Projection != canonical.ProjectionExact || nodes[0]["realm"] == nil || nodes[0]["server"] != nil {
+		t.Fatal("native Realm identity or rendezvous addressing changed")
+	}
+	for _, render := range []func() error{
+		func() error { _, err := RenderClash([]map[string]any{raw}, DefaultClashConfig); return err },
+		func() error { _, err := RenderXray([]map[string]any{raw}); return err },
+		func() error { _, err := uri.RenderEndpoint(before); return err },
+	} {
+		if err := render(); err == nil || strings.Contains(err.Error(), "private-realm-token") {
+			t.Fatal("unsupported target silently lost Realm or disclosed its token")
+		}
+	}
+}

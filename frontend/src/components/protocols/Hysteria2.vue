@@ -111,13 +111,13 @@
         <v-col cols="12" sm="6" md="4">
           <Network :data="data" />
         </v-col>
-        <v-col cols="12" sm="8" v-if="optionMPort">
+        <v-col cols="12" sm="8" v-if="optionMPort && !data.realm">
           <v-text-field
             :label="$t('rule.portRange') + ' ' + $t('commaSeparated')"
             v-model="server_ports">
           </v-text-field>
         </v-col>
-        <v-col cols="12" sm="6" md="4" v-if="optionMPort">
+        <v-col cols="12" sm="6" md="4" v-if="optionMPort && !data.realm">
           <v-text-field
             :label="$t('ruleset.interval')"
             type="number"
@@ -128,6 +128,7 @@
         </v-col>
       </v-row>
     </template>
+    <Hysteria2Realm v-if="direction === 'out' && realmAvailable" :data="data" :available="realmAvailable" />
     <v-row>
       <v-col v-if="supportedFields.includes('bbr_profile')" cols="12" sm="6">
         <v-select v-model="data.bbr_profile" :items="bbrProfiles" :label="$t('types.hy.bbrProfile')" clearable @click:clear="delete data.bbr_profile" />
@@ -154,7 +155,7 @@
               </v-list-item>
             </template>
             <template v-else>
-              <v-list-item>
+              <v-list-item v-if="!data.realm">
                 <v-switch v-model="optionMPort" color="primary" :label="$t('rule.portRange')" hide-details></v-switch>
               </v-list-item>
             </template>
@@ -171,6 +172,7 @@
 <script lang="ts">
 import Network from '@/components/fields/Network.vue'
 import ConsumerTuning from './ConsumerTuning.vue'
+import Hysteria2Realm from './Hysteria2Realm.vue'
 import Headers from '@/components/fields/Headers.vue'
 import { i18n } from '@/locales'
 import { coreConfigContract } from '@/types/coreConfigContract'
@@ -189,6 +191,9 @@ export default {
     }
   },
   computed: {
+    realmAvailable(): boolean {
+      return coreConfigContract.value?.protocol?.criticalFields?.['hysteria2/out']?.realm?.available === true
+    },
     supportedFields(): string[] {
       const side = this.direction === 'out_json' ? 'out' : this.direction
       return coreConfigContract.value?.protocol?.fields[`hysteria2/${side}`] ?? []
@@ -252,6 +257,6 @@ export default {
       else this.$props.data.hop_interval_max = value
     },
   },
-  components: { ConsumerTuning, Network, Headers }
+  components: { ConsumerTuning, Hysteria2Realm, Network, Headers }
 }
 </script>

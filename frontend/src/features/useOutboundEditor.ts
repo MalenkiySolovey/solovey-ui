@@ -145,12 +145,19 @@ export default defineComponent({
       }
       const rangeOnly = this.outbound.type === OutTypes.Mieru && !this.outbound.server_port &&
         (typeof this.outbound.server_ports === 'string' ? this.outbound.server_ports.trim().length > 0 : this.outbound.server_ports?.length > 0)
-      const reasons = entitySaveReasons({ identity: this.outbound.tag, port: this.outbound.server_port, requiresPort: !this.NoServer.includes(this.outbound.type) && !rangeOnly, pending: this.loading, capability: this.capabilityState, credentialInvalid, missingRequiredTls: this.outbound.type === OutTypes.TrustTunnel && !this.outbound.tls?.enabled })
+      if (this.outbound.type === OutTypes.Hysteria2 && this.outbound.realm) {
+        try { secretMutation(this.outbound.realm.token) } catch { credentialInvalid = true }
+        credentialInvalid ||= !this.outbound.realm.server_url?.trim() || !this.outbound.realm.realm_id?.trim()
+      }
+      const reasons = entitySaveReasons({ identity: this.outbound.tag, port: this.outbound.server_port, requiresPort: this.requiresServer && !rangeOnly, pending: this.loading, capability: this.capabilityState, credentialInvalid, missingRequiredTls: this.outbound.type === OutTypes.TrustTunnel && !this.outbound.tls?.enabled })
       if (!nativeOutboundGroupValid(this.outbound)) reasons.push('nativeOutbound.groupInvalid')
       return reasons
     },
     capabilityState(): CapabilityEditState {
-      return capabilityEditState(Data().capabilities, "outbounds", this.outbound.type, this.storedCapabilityType, (<any>this.outbound).transport, coreConfigContract.value?.protocol?.transports)
+      return capabilityEditState(Data().capabilities, "outbounds", this.outbound.type, this.storedCapabilityType, (<any>this.outbound).transport, coreConfigContract.value?.protocol?.transports, this.outbound, coreConfigContract.value?.protocol?.criticalFields)
+    },
+    requiresServer(): boolean {
+      return !this.NoServer.includes(this.outbound.type) && !(this.outbound.type === OutTypes.Hysteria2 && this.outbound.realm)
     },
     typeChoices(): CapabilityChoice[] {
       return capabilityTypeChoices(Data().capabilities, "outbounds", this.outTypes)

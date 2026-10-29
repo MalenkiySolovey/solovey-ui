@@ -8,7 +8,7 @@ export function useResourceAvailability(category: string) {
  onMounted(() => { void loadCoreConfigContract() })
  return {
   resourceAvailability: (row: { type: string; transport?: unknown }) =>
-   capabilityEditState(Data().capabilities, category, row.type, row.type, row.transport, coreConfigContract.value?.protocol?.transports),
+   capabilityEditState(Data().capabilities, category, row.type, row.type, row.transport, coreConfigContract.value?.protocol?.transports, row, coreConfigContract.value?.protocol?.criticalFields),
   canCreate: () => Data().capabilities?.facts.some(fact => fact.category === category && fact.available === true) === true,
  }
 }

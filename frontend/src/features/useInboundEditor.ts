@@ -215,7 +215,7 @@ export default defineComponent({
       return reasons
     },
     capabilityState(): CapabilityEditState {
-      return capabilityEditState(Data().capabilities, "inbounds", this.inbound.type, this.storedCapabilityType, (<any>this.inbound).transport, coreConfigContract.value?.protocol?.transports)
+      return capabilityEditState(Data().capabilities, "inbounds", this.inbound.type, this.storedCapabilityType, (<any>this.inbound).transport, coreConfigContract.value?.protocol?.transports, this.inbound, coreConfigContract.value?.protocol?.criticalFields)
     },
     typeChoices(): CapabilityChoice[] {
       return capabilityTypeChoices(Data().capabilities, "inbounds", this.inTypes)

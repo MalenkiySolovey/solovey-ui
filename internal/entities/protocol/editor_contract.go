@@ -9,11 +9,12 @@ import (
 )
 
 type EditorFacts struct {
-	Fields      map[string][]string                 `json:"fields"`
-	Enums       map[string]map[string][]string      `json:"enums"`
-	MemoryUnits map[string]uint64                   `json:"memoryUnits"`
-	Snell       map[string]registry.SnellCapability `json:"snell"`
-	Transports  map[string]TransportEditorFact      `json:"transports"`
+	Fields         map[string][]string                                    `json:"fields"`
+	Enums          map[string]map[string][]string                         `json:"enums"`
+	MemoryUnits    map[string]uint64                                      `json:"memoryUnits"`
+	Snell          map[string]registry.SnellCapability                    `json:"snell"`
+	Transports     map[string]TransportEditorFact                         `json:"transports"`
+	CriticalFields map[string]map[string]registry.ProtocolFieldCapability `json:"criticalFields"`
 }
 
 func EditorContract() EditorFacts {
@@ -25,5 +26,6 @@ func EditorContract() EditorFacts {
 	}
 	facts.Snell = map[string]registry.SnellCapability{"in": registry.SnellContract("inbounds"), "out": registry.SnellContract("outbounds")}
 	facts.Transports = transportEditorFacts()
+	facts.CriticalFields = registry.CriticalProtocolFields()
 	return facts
 }

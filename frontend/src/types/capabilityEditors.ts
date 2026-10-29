@@ -1,4 +1,5 @@
 import { runtimeCapability, type RuntimeCapabilities } from './runtimeCapabilities'
+import type { CriticalProtocolFields } from './coreConfigContract'
 
 export interface CapabilityEditState {
  allowed: boolean
@@ -16,7 +17,7 @@ export function availableCreationChoices<T>(choices: readonly T[] | undefined, a
 }
 
 // History is owned desired state, never an exception to host availability.
-export function capabilityEditState(snapshot: RuntimeCapabilities | undefined, category: string, type: string, storedType = '', transport?: unknown, transports?: TransportFacts): CapabilityEditState {
+export function capabilityEditState(snapshot: RuntimeCapabilities | undefined, category: string, type: string, storedType = '', transport?: unknown, transports?: TransportFacts, resource?: object, criticalFields?: CriticalProtocolFields): CapabilityEditState {
  const historical = storedType !== '' && storedType === type
  if (!snapshot) return { allowed: false, historical, message: 'capability.waiting' }
  const fact = runtimeCapability(snapshot, category, type)
@@ -25,6 +26,18 @@ export function capabilityEditState(snapshot: RuntimeCapabilities | undefined, c
  if (!fact?.known) return unavailable('capability.unknown')
  if (!fact.contextSupported) return unavailable('capability.contextUnsupported')
  if (!fact.available) return unavailable('capability.unavailable')
+ if (resource && ['inbounds', 'outbounds'].includes(category)) {
+  const side = category === 'inbounds' ? 'in' : 'out'
+  const values = resource as Record<string, unknown>
+  const fields = criticalFields?.[`${type}/${side}`]
+  // Realm changes endpoint addressing. Missing facts cannot authorize its use.
+  const critical = type === 'hysteria2' ? ['realm'] : []
+  for (const field of critical) {
+   if (values[field] != null && fields?.[field]?.available !== true) {
+    return { ...unavailable('capability.unavailable', 'PROTOCOL_FIELD_CAPABILITY_UNAVAILABLE'), requiredProvider: fields?.[field]?.requiredProvider }
+   }
+  }
+ }
  if (['inbounds', 'outbounds'].includes(category) && ['vmess', 'vless', 'trojan'].includes(type) && transport && typeof transport === 'object' && 'type' in transport) {
   const kind = (transport as { type?: unknown }).type
   if (typeof kind === 'string' && kind && transports?.[kind]?.available !== true) return unavailable('capability.unavailable', 'TRANSPORT_CAPABILITY_UNAVAILABLE')
