@@ -34,6 +34,7 @@
         <Warp v-if="endpoint.type == epTypes.Warp" :data="endpoint" />
         <TailscaleVue v-if="endpoint.type == epTypes.Tailscale" :data="endpoint" />
         <OpenConnectEndpoint v-if="endpoint.type == epTypes.OpenConnect" :data="endpoint" :available="capabilityState.allowed" />
+        <OpenVPNClient v-if="endpoint.type == epTypes.OpenVPNClient" :data="endpoint" :available="capabilityState.allowed" />
         <Dial :dial="endpoint" />
     </CapabilitySurface>
   </form-shell>
@@ -47,6 +48,7 @@ import Wireguard from '@/components/protocols/Wireguard.vue'
 import Warp from '@/components/protocols/Warp.vue'
 import TailscaleVue from '@/components/protocols/Tailscale.vue'
 import OpenConnectEndpoint from '@/components/protocols/OpenConnectEndpoint.vue'
+import OpenVPNClient from '@/components/protocols/OpenVPNClient.vue'
 import { serializeEndpointCredentialDraft } from '@/features/endpointCredentialDraft'
 import { generateKeypair } from '@/shared/composables/useKeypairs'
 import { push } from 'notivue'
@@ -231,6 +233,6 @@ export default {
       }
     },
   },
-  components: { CapabilitySurface, FormShell, Dial, Wireguard, Warp, TailscaleVue, OpenConnectEndpoint }
+  components: { CapabilitySurface, FormShell, Dial, Wireguard, Warp, TailscaleVue, OpenConnectEndpoint, OpenVPNClient }
 }
 </script>

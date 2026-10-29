@@ -41,5 +41,6 @@ func dnsDeclarations() []declaration[*dns.TransportRegistry] {
 		{typeName: "sdns", buildTag: "shtorm_extended", compiled: supportsNativeDNS, register: registerSDNS},
 		{typeName: "fallback", buildTag: "shtorm_extended", compiled: supportsNativeDNS, register: registerFallbackDNS},
 		{typeName: "openconnect", buildTag: "shtorm_extended,with_openconnect,with_gvisor", compiled: supportsOpenConnect, register: registerOpenConnectDNS},
+		{typeName: "openvpn", buildTag: "shtorm_extended,with_openvpn,with_gvisor", compiled: supportsOpenVPNClient, register: registerOpenVPNDNS},
 	}
 }

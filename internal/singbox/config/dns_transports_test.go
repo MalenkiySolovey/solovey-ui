@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
@@ -11,18 +12,24 @@ import (
 )
 
 func TestNativeDNSReferencesUseSelectedProvider(t *testing.T) {
-	for _, test := range []struct{ source, code string }{
-		{`{"dns":{"servers":[{"type":"openconnect","endpoint":"vpn","accept_search_domain":true}]},"endpoints":[{"type":"openconnect","tag":"vpn"}]}`, ""},
-		{`{"dns":{"servers":[{"type":"openconnect"}]},"endpoints":[]}`, "dns_openconnect_endpoint_required"},
-		{`{"dns":{"servers":[{"type":"openconnect","endpoint":"vpn"}]},"endpoints":[{"type":"wireguard","tag":"vpn"}]}`, "dns_openconnect_endpoint_missing"},
-	} {
-		code := test.code
-		if !registry.Resolve("dns", "openconnect").Available() {
-			code = "dns_native_transport_unavailable"
-		}
-		findings := DNSSelectedTransportFindings([]byte(test.source))
-		if code == "" && len(findings) != 0 || code != "" && !hasDNSCode(findings, code) {
-			t.Fatalf("OpenConnect DNS result: %+v", findings)
+	for _, kind := range []string{"openconnect", "openvpn"} {
+		for _, test := range []struct{ source, code string }{
+			{`{"dns":{"servers":[{"type":"openconnect","endpoint":"vpn","accept_search_domain":true}]},"endpoints":[{"type":"openconnect","tag":"vpn"}]}`, ""},
+			{`{"dns":{"servers":[{"type":"openconnect"}]},"endpoints":[]}`, "dns_openconnect_endpoint_required"},
+			{`{"dns":{"servers":[{"type":"openconnect","endpoint":"vpn"}]},"endpoints":[{"type":"wireguard","tag":"vpn"}]}`, "dns_openconnect_endpoint_missing"},
+		} {
+			source := strings.ReplaceAll(test.source, "openconnect", kind)
+			if kind == "openvpn" {
+				source = strings.ReplaceAll(source, `"endpoints":[{"type":"openvpn"`, `"endpoints":[{"type":"openvpn-client"`)
+			}
+			code := strings.ReplaceAll(test.code, "openconnect", kind)
+			if !registry.Resolve("dns", kind).Available() {
+				code = "dns_native_transport_unavailable"
+			}
+			findings := DNSSelectedTransportFindings([]byte(source))
+			if code == "" && len(findings) != 0 || code != "" && !hasDNSCode(findings, code) {
+				t.Fatalf("%s DNS result: %+v", kind, findings)
+			}
 		}
 	}
 	for _, test := range []struct{ source, code string }{
