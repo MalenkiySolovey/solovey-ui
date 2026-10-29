@@ -71,7 +71,13 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 			return err
 		}
 	}
-	if count == 0 && outboundCount == 0 && endpointCount == 0 && !transportCandidate {
+	var serviceCount int64
+	if entitycapabilities.Resolve("services", "hysteria-realm").Available && tx.Migrator().HasTable(&model.Service{}) {
+		if err := tx.Model(&model.Service{}).Where("type = ?", "hysteria-realm").Count(&serviceCount).Error; err != nil {
+			return err
+		}
+	}
+	if count == 0 && outboundCount == 0 && endpointCount == 0 && serviceCount == 0 && !transportCandidate {
 		return nil
 	}
 	projection, err := s.singBoxConfigBuilder().BuildCandidateProjectionFromDB(tx, "", false)
@@ -81,6 +87,9 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 	if err != nil {
 		// Provider diagnostics may quote configuration values. Return only an
 		// owner code; the rejected candidate and its credential uses roll back.
+		if serviceCount != 0 {
+			return common.NewError("NATIVE_SERVICE_CANDIDATE_REJECTED: the complete provider configuration is invalid")
+		}
 		if endpointCount != 0 {
 			return common.NewError("NATIVE_ENDPOINT_CANDIDATE_REJECTED: the complete provider configuration is invalid")
 		}

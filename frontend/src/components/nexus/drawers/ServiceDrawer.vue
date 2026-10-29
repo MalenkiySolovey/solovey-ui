@@ -34,6 +34,7 @@
       <Derp v-if="srv.type == srvTypes.DERP" :data="srv" :inTags="inTags" :tsTags="tsTags" />
       <SSMapi v-if="srv.type == srvTypes.SSMAPI" :data="srv" :ssTags="ssTags" />
       <OomKiller v-if="srv.type == srvTypes.OOMKiller" :data="srv" />
+      <HysteriaRealm v-if="srv.type == srvTypes.HysteriaRealm" :data="srv" :available="capabilityState.allowed" />
       <InTLS v-if="HasTls.includes(srv.type)"  :inbound="srv" :tlsConfigs="tlsConfigs" :tls_id="srv.tls_id" />
     </form-section>
     </CapabilitySurface>

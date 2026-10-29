@@ -1,4 +1,18 @@
 export default {
+  "nativeRealm": {
+    "identityHint": "Эти учётные записи разрешают доступ к сервису rendezvous и задают лимит активных realm. Токены остаются закрытыми. Переименование требует замены токена; удаление записи отзывает доступ.",
+    "addIdentity": "Добавить учётную запись realm",
+    "removeIdentity": "Отозвать учётную запись realm",
+    "name": "Имя учётной записи",
+    "token": "Токен rendezvous",
+    "maxRealms": "Максимум активных realm",
+    "unlimited": "Пустое значение или ноль — без лимита для этой записи.",
+    "idle_timeout": "Таймаут простоя HTTP/2",
+    "keep_alive_period": "Интервал keepalive HTTP/2",
+    "stream_receive_window": "Окно приёма потока",
+    "connection_receive_window": "Окно приёма соединения",
+    "max_concurrent_streams": "Максимум одновременных потоков"
+  },
   "nativeMasque": {
     "profileHint": "Для существующего профиля Cloudflare укажите ID устройства и токен. Без них ядро создаст профиль при запуске.",
     "deviceId": "ID устройства Cloudflare",

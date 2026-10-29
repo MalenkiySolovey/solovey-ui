@@ -16,7 +16,7 @@
         "with_gvisor",
         "with_openconnect"
       ],
-      "sourceRevision": "8c20a01a21506ed3693a859428e01dee7fa6e54e"
+      "sourceRevision": "f25315984f7702b1185d0e29cde89f21107902da"
     }
   ],
   "sources": [
@@ -47,12 +47,12 @@
     {
       "id": "shtorm-extended",
       "name": "Shtorm Extended",
-      "providerVersion": "v0.0.0-20261029092715-8c20a01a2150",
+      "providerVersion": "v0.0.0-20261029130744-f25315984f77",
       "runtimeSemanticVersion": "1.14.3",
       "module": "github.com/MalenkiySolovey/sing-box-extended",
-      "moduleSum": "h1:xched3F7MrdcOCs0CZ/EOon3MLZHS80hygCV3Jku+YI=",
+      "moduleSum": "h1:xZgwQhHJluAd+cCbeqCpcJ5H1+rfHVWCMh2dBqvbpok=",
       "sourceRepository": "https://github.com/MalenkiySolovey/sing-box-extended",
-      "sourceRevision": "8c20a01a21506ed3693a859428e01dee7fa6e54e",
+      "sourceRevision": "f25315984f7702b1185d0e29cde89f21107902da",
       "upstreamRepository": "https://github.com/shtorm-7/sing-box-extended",
       "upstreamRevision": "d9442d14b19ddd02605bf3ee893a171947038e19"
     }

@@ -14,6 +14,51 @@ function nativeCredential(kind: string, mode: string, revision: string) {
 }
 
 for (const mode of ['classic', 'nexus']) {
+  test(`${mode} realm service keeps tokens private through the shared editor`, async ({ page }) => {
+    test.setTimeout(120_000)
+    await page.addInitScript(layout => window.localStorage.setItem('sui:ui:mode', layout), mode)
+    await login(page)
+    const capabilities = await (await page.request.get('api/capabilities')).json()
+    const available = capabilities.obj.facts.find((row: any) => row.category === 'services' && row.type === 'hysteria-realm')?.available
+    await page.goto('hosts/local/services')
+    await page.getByRole('button', { name: 'Add', exact: true }).first().click()
+    let form = page.getByRole('dialog').filter({ hasText: 'Add Service' })
+    await form.getByRole('combobox', { name: 'Type', exact: true }).press('Enter')
+    if (!available) {
+      await expect(page.getByRole('option', { name: 'HysteriaRealm', exact: true })).toHaveCount(0)
+      return
+    }
+    await page.getByRole('option', { name: 'HysteriaRealm', exact: true }).click()
+    const tag = `realm-${mode}-${Date.now()}`
+    const token = `synthetic-${tag}`
+    try {
+      await form.getByRole('textbox', { name: 'Tag', exact: true }).fill(tag)
+      await form.getByRole('textbox', { name: 'Address', exact: true }).fill('127.0.0.1')
+      await form.getByRole('spinbutton', { name: 'Port', exact: true }).fill('29891')
+      await form.getByRole('button', { name: 'Add realm identity', exact: true }).click()
+      await form.getByRole('textbox', { name: 'Identity name', exact: true }).fill('operator')
+      await form.getByLabel('New credential', { exact: true }).fill(token)
+      await form.getByRole('spinbutton', { name: 'Maximum active realms', exact: true }).fill('2')
+      await form.getByRole('textbox', { name: 'HTTP/2 idle timeout', exact: true }).fill('15s')
+      expect((await save(page, form)).users[0].token).toEqual({intent:'replace',value:token})
+      const read = async () => (await (await page.request.get('api/services')).json()).obj.services.find((row:any)=>row.tag===tag)
+      const stored = await read()
+      expect(stored.users[0].token.reference.owner).toBe('services')
+      expect(JSON.stringify(stored)).not.toContain(token)
+      const row = mode === 'classic' ? page.locator('.services__card').filter({hasText:tag}) : page.getByRole('row').filter({hasText:tag})
+      await row.getByRole('button', { name:'Edit',exact:true }).click()
+      form = page.getByRole('dialog').filter({hasText:'Edit Service'})
+      await expect(form.getByLabel('New credential', {exact:true})).toHaveCount(0)
+      await expect(form.getByRole('textbox', {name:'Identity name',exact:true})).toHaveAttribute('readonly')
+      await form.getByRole('spinbutton', { name:'Maximum active realms',exact:true }).fill('3')
+      expect((await save(page, form)).users[0].token.intent).toBe('unchanged')
+      expect((await read()).users[0]).toMatchObject({name:'operator',max_realms:3,token:stored.users[0].token})
+    } finally {
+      const response = await page.request.post('api/save', {headers:mutationHeaders(await csrfToken(page)),form:{object:'services',action:'del',data:JSON.stringify(tag)}})
+      expect((await response.json()).success).toBe(true)
+    }
+  })
+
   test(`${mode} sudoku keeps serving identity and delivery credentials in their canonical owners`, async ({ page }, testInfo) => {
     test.setTimeout(120_000)
     await page.addInitScript(layout => window.localStorage.setItem('sui:ui:mode', layout), mode)

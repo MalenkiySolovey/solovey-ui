@@ -54,6 +54,9 @@ func GetAll(db *gorm.DB) (*[]map[string]interface{}, error) {
 			}
 		}
 
+		if err := projectRealmCredentials(srv, srvData); err != nil {
+			return nil, err
+		}
 		data = append(data, srvData)
 	}
 	return &data, nil
@@ -70,7 +73,7 @@ func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 		if !runtimeprojection.Included("services", srv.Type) {
 			continue
 		}
-		srvJSON, err := srv.MarshalJSON()
+		srvJSON, err := marshalServiceRuntime(db, *srv)
 		if err != nil {
 			return nil, err
 		}
@@ -118,6 +121,9 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 		return nil, err
 	}
 	if err := entityidentity.ValidateTypeTag(srv.Type, srv.Tag); err != nil {
+		return nil, err
+	}
+	if err := prepareRealmCredentials(tx, &srv); err != nil {
 		return nil, err
 	}
 	if srv.Type == "resolved" {
@@ -265,7 +271,7 @@ func Restart(tx *gorm.DB, ids []uint, core Core) error {
 			continue
 		}
 
-		config, err := row.MarshalJSON()
+		config, err := marshalServiceRuntime(tx, *row)
 		if err != nil {
 			return err
 		}
