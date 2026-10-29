@@ -641,6 +641,7 @@ export default {
       "realm": "Координатор Realm",
       "realmEnable": "Использовать координатор Realm",
       "realmServerUrl": "URL сервера Realm",
+      "realmStunResolver": "DNS-резолвер STUN",
       "realmToken": "Токен доступа Realm",
       "realmId": "Идентификатор Realm",
       "realmStun": "STUN-серверы (по одному в строке)",

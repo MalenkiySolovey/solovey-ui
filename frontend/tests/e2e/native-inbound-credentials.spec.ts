@@ -6,6 +6,73 @@ import { csrfToken, login, mutationHeaders } from './helpers'
 test.use({ actionTimeout: 15_000 })
 
 for (const mode of ['classic', 'nexus']) {
+  test(`${mode} realm inbound keeps the serving token in Inbounds`, async ({ page }) => {
+    test.setTimeout(120_000)
+    await page.addInitScript(layout => window.localStorage.setItem('sui:ui:mode', layout), mode)
+    await login(page)
+    const contract = await (await page.request.get('api/editor-contract')).json()
+    expect(contract.success).toBe(true)
+    const available = contract.obj?.protocol?.criticalFields?.['hysteria2/in']?.realm?.available === true
+    if (process.env.SUI_E2E_EXPECT_PROVIDER === 'shtorm-extended') expect(available).toBe(true)
+    const tag = `r7-${mode}-realm-inbound-${Date.now()}`
+    const token = `synthetic-${mode}-realm-serving-token`
+    const read = async () => {
+      const row = (await (await page.request.get('api/inbounds')).json()).obj.inbounds.find((row: { tag: string }) => row.tag === tag)
+      if (!row) return undefined
+      return (await (await page.request.get(`api/inbounds?id=${row.id}`)).json()).obj.inbounds[0]
+    }
+    try {
+      if (available) {
+        const certPath = process.env.SUI_E2E_TLS_CERT_PATH
+        const keyPath = process.env.SUI_E2E_TLS_KEY_PATH
+        if (!certPath || !keyPath) throw new Error('Realm inbound qualification requires private synthetic TLS fixture paths')
+        const tls = await page.request.post('api/save', {
+          headers: mutationHeaders(await csrfToken(page)),
+          form: { object: 'tls', action: 'new', data: JSON.stringify({ name: `${tag}-tls`,
+            server: { enabled: true, certificate: [fs.readFileSync(certPath, 'utf8')], key: [fs.readFileSync(keyPath, 'utf8')] }, client: {} }) },
+        })
+        expect((await tls.json()).success).toBe(true)
+      }
+      await page.goto('hosts/local/inbounds')
+      await page.getByRole('button', { name: 'Add', exact: true }).first().click()
+      let form = page.getByRole('dialog').filter({ hasText: 'Add Inbound' })
+      if (!await selectAvailableHysteria(page, form, 'inbounds')) return
+      if (!available) {
+        await expect(form.getByLabel('Use Realm rendezvous', { exact: true })).toHaveCount(0)
+        await form.getByRole('button', { name: 'Close', exact: true }).first().click()
+        return
+      }
+      await form.getByRole('textbox', { name: 'Tag', exact: true }).fill(tag)
+      await form.getByRole('textbox', { name: 'Address', exact: true }).fill('127.0.0.1')
+      await form.getByRole('spinbutton', { name: 'Port', exact: true }).fill(mode === 'classic' ? '42100' : '42120')
+      await select(page, form, 'Template', `${tag}-tls`)
+      await form.getByLabel('Use Realm rendezvous', { exact: true }).check()
+      await form.getByRole('textbox', { name: 'Realm server URL', exact: true }).fill('https://127.0.0.1:8443')
+      await form.getByRole('textbox', { name: 'Realm ID', exact: true }).fill('serving-peer')
+      await form.getByRole('textbox', { name: 'STUN servers (one per line)', exact: true }).fill('127.0.0.1:3478')
+      await select(page, form, 'Realm access token', 'Replace credential')
+      await form.getByLabel('New credential', { exact: true }).fill(token)
+      const created = await save(page, form)
+      expect(created.realm.token).toEqual({ intent: 'replace', value: token })
+      expect(created).not.toHaveProperty('users')
+      const stored = await read()
+      expect(stored.realm.token.present).toBe(true)
+      expect(stored.realm.token.reference.owner).toBe('inbounds')
+      expect(!JSON.stringify(stored).includes(token)).toBe(true)
+      await page.goto('hosts/local/inbounds')
+      const row = mode === 'nexus' ? page.getByRole('row').filter({ hasText: tag }) : page.locator('.inbounds__card').filter({ hasText: tag })
+      await row.getByRole('button', { name: 'Edit', exact: true }).click()
+      form = page.getByRole('dialog').filter({ hasText: 'Edit Inbound' })
+      await expect(form.getByLabel('New credential', { exact: true })).toHaveCount(0)
+      await form.getByRole('textbox', { name: 'Realm ID', exact: true }).fill('edited-serving-peer')
+      expect((await save(page, form)).realm.token.intent).toBe('unchanged')
+      expect((await read()).realm.token).toEqual(stored.realm.token)
+      expect((await read()).realm.realm_id).toBe('edited-serving-peer')
+    } finally {
+      await removeFixture(page, tag)
+    }
+  })
+
   test(`${mode} realm client keeps rendezvous addressing and its owned token`, async ({ page }) => {
     test.setTimeout(120_000)
     await page.addInitScript(layout => window.localStorage.setItem('sui:ui:mode', layout), mode)
@@ -16,12 +83,12 @@ for (const mode of ['classic', 'nexus']) {
     if (process.env.SUI_E2E_EXPECT_PROVIDER === 'shtorm-extended') expect(available).toBe(true)
     const tag = `r7-${mode}-realm-client-${Date.now()}`
     const token = `synthetic-${mode}-realm-access-token`
-    const read = async () => (await (await page.request.get('api/outbounds')).json()).obj.outbounds.find((row: { tag: string }) => row.tag === tag)
+    const read = async () => ((await (await page.request.get('api/outbounds')).json()).obj.outbounds ?? []).find((row: { tag: string }) => row.tag === tag)
     try {
       await page.goto('hosts/local/outbounds')
       await page.getByRole('button', { name: 'Add', exact: true }).first().click()
       let form = page.getByRole('dialog').filter({ hasText: 'Add Outbound' })
-      await select(page, form, 'Type', 'Hysteria2')
+      if (!await selectAvailableHysteria(page, form, 'outbounds')) return
       if (!available) {
         await expect(form.getByLabel('Use Realm rendezvous', { exact: true })).toHaveCount(0)
         await form.getByRole('button', { name: 'Close', exact: true }).click()
@@ -240,6 +307,20 @@ async function select(page: Page, form: Locator, label: string, value: string) {
   await page.getByRole('option', { name: value, exact: true }).click()
 }
 
+async function selectAvailableHysteria(page: Page, form: Locator, category: string) {
+  const capabilities = await (await page.request.get('api/capabilities')).json()
+  const available = capabilities.obj?.facts?.some((fact: { category: string; type: string; available: boolean }) => fact.category === category && fact.type === 'hysteria2' && fact.available)
+  if (available) {
+    await select(page, form, 'Type', 'Hysteria2')
+    return true
+  }
+  await form.getByRole('combobox', { name: 'Type', exact: true }).press('Enter')
+  await expect(page.getByRole('option', { name: 'Hysteria2', exact: true })).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await form.getByRole('button', { name: 'Close', exact: true }).first().click()
+  return false
+}
+
 async function save(page: Page, form: Locator, success = true) {
   const [response] = await Promise.all([
     page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/api/save')),
@@ -271,7 +352,7 @@ async function removeFixture(page: Page, tag: string) {
   for (const object of ['inbounds', 'clients', 'tls']) {
     const list = await (await page.request.get(`api/${object}`)).json()
     expect(list.success).toBe(true)
-    const row = list.obj[object].find((row: { tag?: string; name?: string }) => object === 'inbounds'
+    const row = (list.obj[object] ?? []).find((row: { tag?: string; name?: string }) => object === 'inbounds'
       ? row.tag === tag : row.name === `${tag}-${object === 'tls' ? 'tls' : 'user'}`)
     if (!row) continue
     const response = await page.request.post('api/save', {

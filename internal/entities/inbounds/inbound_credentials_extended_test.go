@@ -66,6 +66,60 @@ func saveSSH(t *testing.T, db *gorm.DB, row *model.Inbound) error {
 	return db.Transaction(func(tx *gorm.DB) error { return FillAndSave(tx, row, "") })
 }
 
+func TestHysteriaRealmInboundTokenOwnershipAndModeTransition(t *testing.T) {
+	db := sshCredentialDB(t)
+	const token = "synthetic-serving-realm-token"
+	realm := map[string]any{"server_url": "https://realm.example", "realm_id": "serving-peer", "token": map[string]string{"intent": "replace", "value": token}}
+	options := func() json.RawMessage {
+		raw, _ := json.Marshal(map[string]any{"listen": "127.0.0.1", "listen_port": 23456, "realm": realm})
+		return raw
+	}
+	row := model.Inbound{Type: "hysteria2", Tag: "realm-serving", Options: options(), OutJson: json.RawMessage(`{}`)}
+	if err := saveSSH(t, db, &row); err != nil {
+		t.Fatal("Realm inbound save failed", err)
+	}
+	if err := db.First(&row, row.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	_, captured, err := inboundRealmFields(row.Options)
+	var envelope string
+	if err != nil || json.Unmarshal(captured["token"], &envelope) != nil || !secretbox.IsEncrypted(envelope) || bytes.Contains(row.Options, []byte(token)) || bytes.Contains(row.OutJson, []byte("token")) {
+		t.Fatal("Realm token escaped its serving owner")
+	}
+	view, err := GetByIDs(db, strconv.Itoa(int(row.Id)))
+	encoded, _ := json.Marshal(view)
+	if err != nil || len(*view) != 1 || bytes.Contains(encoded, []byte(token)) || bytes.Contains(encoded, []byte(envelope)) {
+		t.Fatal("normal Realm read disclosed its token")
+	}
+	var normal []struct {
+		Realm struct{ Token secretref.View }
+	}
+	if json.Unmarshal(encoded, &normal) != nil || !normal[0].Realm.Token.Present || normal[0].Realm.Token.Reference.Owner != "inbounds" {
+		t.Fatal("Realm token lost its row-bound reference")
+	}
+	realm["token"] = unchangedSSH(normal[0].Realm.Token)
+	realm["realm_id"] = "renamed-peer"
+	row.Options = options()
+	if err := saveSSH(t, db, &row); err != nil || !bytes.Contains(row.Options, []byte(envelope)) {
+		t.Fatal("masked Realm edit lost its token", err)
+	}
+	runtime, err := marshalRuntimeInbound(db, row)
+	if err != nil || !bytes.Contains(runtime, []byte(token)) || !bytes.Contains(runtime, []byte("renamed-peer")) {
+		t.Fatal("Realm runtime borrow failed", err)
+	}
+	copyRow := model.Inbound{Type: "hysteria2", Tag: "foreign-realm", Options: bytes.Clone(row.Options)}
+	if err := db.Create(&copyRow).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := marshalRuntimeInbound(db, copyRow); err == nil {
+		t.Fatal("Realm token crossed its inbound row binding")
+	}
+	row.Options = json.RawMessage(`{"listen":"127.0.0.1","listen_port":23456}`)
+	if err := saveSSH(t, db, &row); err != nil || bytes.Contains(row.OutJson, []byte(`"realm"`)) || bytes.Contains(row.Options, []byte(envelope)) {
+		t.Fatal("explicit Realm mode removal retained a stale delivery endpoint", err)
+	}
+}
+
 func storedSSHKey(t *testing.T, db *gorm.DB, row *model.Inbound) string {
 	t.Helper()
 	if err := db.First(row, row.Id).Error; err != nil {

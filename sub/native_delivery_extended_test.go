@@ -16,12 +16,79 @@ import (
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
+	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	"github.com/MalenkiySolovey/solovey-ui/internal/secrets/ownerdb"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 	mieruapp "github.com/enfein/mieru/v3/pkg/appctl"
 	"golang.org/x/crypto/ssh"
 )
+
+func TestNativeHysteriaRealmPrivateDeliveryPreservesServingAndUserOwners(t *testing.T) {
+	initSubTestDB(t)
+	db := dbsqlite.DB()
+	const token, password = "synthetic-realm-delivery-token", "synthetic-user-hysteria-password"
+	ref, _ := ownerdb.Reference("inbounds", 1, "realm.token")
+	mutation, _ := json.Marshal(map[string]string{"intent": "replace", "value": token})
+	sealed, err := ownerdb.Apply(db, ref, "", mutation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options, _ := json.Marshal(map[string]any{"listen_port": 3443, "realm": map[string]any{"server_url": "https://realm.example", "realm_id": "serving-peer", "token": sealed,
+		"stun_servers": []string{"stun.example:3478"}, "stun_domain_resolver": "host-dns", "http_client": "host-http-policy"}})
+	inbound := model.Inbound{Id: 1, Type: "hysteria2", Tag: "Realm endpoint", Options: options,
+		Addrs: json.RawMessage(`[{"server":"direct.example","server_port":3443},{"server":"other.example","server_port":4443}]`), OutJson: json.RawMessage(`{}`)}
+	if err := entityinbounds.FillOutboundJSONFromDB(db, &inbound, ""); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(inbound.OutJson, []byte("token")) || bytes.Contains(inbound.OutJson, []byte("host-")) {
+		t.Fatal("public template acquired private serving state")
+	}
+	if err := db.Create(&inbound).Error; err != nil {
+		t.Fatal(err)
+	}
+	client := model.Client{Name: "private-realm", Enable: true, Config: json.RawMessage(`{"hysteria2":{"password":"` + password + `"}}`), Inbounds: json.RawMessage(`[1]`), Links: json.RawMessage(`[]`)}
+	raw, _ := json.Marshal(client)
+	if _, err := entityclients.Save(entityclients.SaveRequest{Tx: db, Action: "new", Data: raw}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Where("name = ?", client.Name).First(&client).Error; err != nil {
+		t.Fatal(err)
+	}
+	before := bytes.Clone(client.Config)
+	if strings.Contains(string(client.Links), "hysteria2://") {
+		t.Fatal("Realm was advertised as a direct URI")
+	}
+	body, _, err := (&JSONService{}).GetJSON(client.SubSecret)
+	if err != nil || body == nil {
+		t.Fatal("private Realm JSON unavailable", err)
+	}
+	var profile struct{ Outbounds []map[string]any }
+	if json.Unmarshal([]byte(*body), &profile) != nil {
+		t.Fatal("invalid Realm JSON")
+	}
+	count := 0
+	for _, outbound := range profile.Outbounds {
+		if outbound["type"] != "hysteria2" {
+			continue
+		}
+		count++
+		realm, ok := outbound["realm"].(map[string]any)
+		if !ok || realm["realm_id"] != "serving-peer" || realm["token"] != token || outbound["password"] != password || outbound["server"] != nil || outbound["server_port"] != nil || realm["http_client"] != nil || realm["stun_domain_resolver"] != nil {
+			t.Fatal("Realm delivery changed addressing, credentials or host reference ownership")
+		}
+	}
+	if count != 1 || strings.Contains(*body, sealed) {
+		t.Fatal("Realm endpoint was duplicated or contained a serving envelope")
+	}
+	var after model.Inbound
+	if err := db.First(&after, inbound.Id).Error; err != nil || !bytes.Equal(after.Options, inbound.Options) || !bytes.Equal(after.OutJson, inbound.OutJson) {
+		t.Fatal("delivery changed the canonical inbound")
+	}
+	if err := db.First(&client, client.Id).Error; err != nil || !bytes.Equal(client.Config, before) {
+		t.Fatal("delivery changed the canonical User")
+	}
+}
 
 func TestNativeSSHPrivateDeliveryPinsPublicServingIdentity(t *testing.T) {
 	initSubTestDB(t)
