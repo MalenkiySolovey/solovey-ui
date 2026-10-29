@@ -16,6 +16,81 @@ import (
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 )
 
+func TestHysteria2RealmOutboundUsesCanonicalCredentialsAndPrivateAdmission(t *testing.T) {
+	initSettingTestDB(t)
+	seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
+	db := dbsqlite.DB()
+	svc, applier, lifecycle := newHotReloadConfigService(t)
+	const token = "private-realm-outbound-token-canary"
+	realm := map[string]any{"server_url": ":private-invalid-url-canary", "realm_id": "native-realm", "token": map[string]string{"intent": "replace", "value": token}, "stun_servers": []string{"127.0.0.1:3478"}, "ip_version": 4}
+	draft := map[string]any{"type": "hysteria2", "tag": "realm-client", "realm": realm, "password": "protocol-authentication", "tls": map[string]any{"enabled": true}}
+	save := func(action string, value any) error {
+		raw, _ := json.Marshal(value)
+		_, err := svc.Save("outbounds", action, raw, "", "admin", "fixture.invalid")
+		return err
+	}
+	if err := save("new", draft); err == nil || !strings.HasPrefix(err.Error(), "NATIVE_OUTBOUND_CANDIDATE_REJECTED") || strings.Contains(err.Error(), "canary") {
+		t.Fatal("invalid Realm candidate was not privately rejected", err)
+	}
+	var count int64
+	if err := db.Model(&model.Outbound{}).Where("tag = ?", "realm-client").Count(&count).Error; err != nil || count != 0 || len(applier.calls) != 0 || len(lifecycle.calls) != 0 {
+		t.Fatal("rejected Realm candidate committed effects", err)
+	}
+	realm["server_url"] = "https://127.0.0.1:8443"
+	if err := save("new", draft); err != nil {
+		t.Fatal(err)
+	}
+	var stored model.Outbound
+	if err := db.Where("tag = ?", "realm-client").First(&stored).Error; err != nil || bytes.Contains(stored.Options, []byte(token)) {
+		t.Fatal("Realm token was not sealed", err)
+	}
+	views, err := entityoutbounds.GetAll(db)
+	masked, _ := json.Marshal(views)
+	if err != nil || bytes.Contains(masked, []byte(token)) || bytes.Contains(masked, []byte("sbox:v1:")) {
+		t.Fatal("Realm read disclosed a credential", err)
+	}
+	var rows []map[string]any
+	_ = json.Unmarshal(masked, &rows)
+	var editable map[string]any
+	for _, row := range rows {
+		if row["tag"] == "realm-client" {
+			editable = row
+		}
+	}
+	if editable == nil {
+		t.Fatal("Realm resource disappeared")
+	}
+	nested := editable["realm"].(map[string]any)
+	view := nested["token"].(map[string]any)
+	if view["present"] != true {
+		t.Fatal("Realm token presence missing")
+	}
+	nested["token"] = map[string]any{"intent": "unchanged", "reference": view["reference"], "present": view["present"], "rotationRevision": view["rotationRevision"]}
+	nested["realm_id"] = "renamed-realm"
+	if err := save("edit", editable); err != nil {
+		t.Fatal("Realm Keep edit failed", err)
+	}
+	config, err := svc.GetConfig("")
+	if err != nil || !bytes.Contains(*config, []byte(token)) || !bytes.Contains(*config, []byte("renamed-realm")) || singboxvalidation.ValidateConfig(*config) != nil {
+		t.Fatal("Realm runtime projection lost owned semantics", err)
+	}
+	foreign := map[string]any{"type": "hysteria2", "tag": "realm-copy", "realm": nested, "tls": map[string]any{"enabled": true}}
+	if err := save("new", foreign); err == nil {
+		t.Fatal("another resource borrowed a Realm token")
+	}
+	if err := db.First(&stored, stored.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	before := append([]byte(nil), stored.Options...)
+	nested["TOKEN"] = map[string]string{"intent": "replace", "value": "private-alias-canary"}
+	if err := save("edit", editable); err == nil {
+		t.Fatal("case alias bypassed Realm ownership")
+	}
+	if err := db.First(&stored, stored.Id).Error; err != nil || !bytes.Equal(before, stored.Options) {
+		t.Fatal("rejected alias rewrote desired state", err)
+	}
+}
+
 func TestNativeOpenConnectCandidateUsesCanonicalOwnerAndDNSReferences(t *testing.T) {
 	if !registry.Resolve("endpoints", "openconnect").Available() {
 		t.Skip("OpenConnect is absent from this profile")

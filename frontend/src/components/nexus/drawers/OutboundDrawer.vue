@@ -29,7 +29,7 @@
           <v-text-field v-model="outbound.tag" :label="$t('objects.tag')" hide-details></v-text-field>
         </v-col>
       </v-row>
-      <v-row v-if="!NoServer.includes(outbound.type)">
+      <v-row v-if="requiresServer">
         <v-col cols="12" sm="6">
           <v-text-field :label="$t('out.addr')" hide-details v-model="outbound.server"></v-text-field>
         </v-col>

@@ -17,13 +17,20 @@ import (
 // The same fixture runs in both immutable provider graphs: unsupported state
 // is omitted and cannot be edited; supporting state becomes eligible again.
 func TestCapabilityTransportHistoryFollowsCurrentProvider(t *testing.T) {
-	for _, transport := range []string{"xhttp", "mkcp"} {
+	for _, transport := range []string{"xhttp", "mkcp", "realm"} {
 		t.Run(transport, func(t *testing.T) {
 			initSettingTestDB(t)
 			db := dbsqlite.DB()
 			options := json.RawMessage(fmt.Sprintf("{ \"transport\":{\"type\":%q}, \"future\":{\"counter\":9007199254740993} }", transport))
-			in := model.Inbound{Type: "vless", Tag: "preserved-in", Options: options, Addrs: json.RawMessage("[]"), OutJson: json.RawMessage(`{"future":true}`)}
-			out := model.Outbound{Type: "vless", Tag: "preserved-out", Options: options}
+			kind, reason := "vless", "TRANSPORT_CAPABILITY_UNAVAILABLE"
+			available := registry.ResolveTransport(transport).Available()
+			if transport == "realm" {
+				kind, reason = "hysteria2", "PROTOCOL_FIELD_CAPABILITY_UNAVAILABLE"
+				options = json.RawMessage(`{ "realm":{"server_url":"https://realm.invalid","realm_id":"preserved","token":"historical-private-token"}, "future":{"counter":9007199254740993} }`)
+				available = registry.Resolve("outbounds", "hysteria2").Available() && registry.CriticalProtocolFields()["hysteria2/out"]["realm"].Available
+			}
+			in := model.Inbound{Type: kind, Tag: "preserved-in", Options: options, Addrs: json.RawMessage("[]"), OutJson: json.RawMessage(`{"future":true}`)}
+			out := model.Outbound{Type: kind, Tag: "preserved-out", Options: options}
 			if err := db.Create(&in).Error; err != nil {
 				t.Fatal(err)
 			}
@@ -39,7 +46,6 @@ func TestCapabilityTransportHistoryFollowsCurrentProvider(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			available := registry.ResolveTransport(transport).Available()
 			matched := 0
 			for _, row := range rows {
 				if row.Tag != in.Tag && row.Tag != out.Tag {
@@ -63,7 +69,7 @@ func TestCapabilityTransportHistoryFollowsCurrentProvider(t *testing.T) {
 					// ordinary destructive conversion workflow.
 					err := saveeligibility.Validate(db, "edit", target.id, target.model, target.category, "direct")
 					var rejected *saveeligibility.Rejection
-					if !errors.As(err, &rejected) || rejected.ReasonCode() != "TRANSPORT_CAPABILITY_UNAVAILABLE" {
+					if !errors.As(err, &rejected) || rejected.ReasonCode() != reason {
 						t.Fatal("historical edit admitted", err)
 					}
 				}
