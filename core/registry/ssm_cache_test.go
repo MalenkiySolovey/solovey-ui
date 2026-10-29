@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/tls"
 	"encoding/json"
 	"io"
 	"net"
@@ -22,7 +21,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/ssmcache"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
-	"golang.org/x/net/http2"
 )
 
 func ssmBox(t *testing.T, cache string, port int) *box.Box {
@@ -94,9 +92,9 @@ func TestRealmServiceNativeAuthenticationAndClosedGeneration(t *testing.T) {
 	if address == "" {
 		t.Fatal("realm did not publish its listener")
 	}
-	transport := &http2.Transport{AllowHTTP: true, DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
-		return (&net.Dialer{}).DialContext(ctx, network, addr)
-	}}
+	protocols := new(http.Protocols)
+	protocols.SetUnencryptedHTTP2(true)
+	transport := &http.Transport{Protocols: protocols}
 	t.Cleanup(transport.CloseIdleConnections)
 	client := &http.Client{Transport: transport, Timeout: 2 * time.Second}
 	request := func(realm, token string) (int, error) {
