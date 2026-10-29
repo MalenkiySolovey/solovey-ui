@@ -33,6 +33,7 @@
           @refreshPeerKey="refreshWgPeerKey" />
         <Warp v-if="endpoint.type == epTypes.Warp" :data="endpoint" />
         <TailscaleVue v-if="endpoint.type == epTypes.Tailscale" :data="endpoint" />
+        <OpenConnectEndpoint v-if="endpoint.type == epTypes.OpenConnect" :data="endpoint" :available="capabilityState.allowed" />
         <Dial :dial="endpoint" />
     </CapabilitySurface>
   </form-shell>
@@ -45,6 +46,8 @@ import Dial from '@/components/fields/Dial.vue'
 import Wireguard from '@/components/protocols/Wireguard.vue'
 import Warp from '@/components/protocols/Warp.vue'
 import TailscaleVue from '@/components/protocols/Tailscale.vue'
+import OpenConnectEndpoint from '@/components/protocols/OpenConnectEndpoint.vue'
+import { serializeEndpointCredentialDraft } from '@/features/endpointCredentialDraft'
 import { generateKeypair } from '@/shared/composables/useKeypairs'
 import { push } from 'notivue'
 import { i18n } from '@/locales'
@@ -100,7 +103,7 @@ export default {
       const tag = this.endpoint.type + "-" + RandomUtil.randomSeq(3)
 
       // Use previous data
-      let prevConfig = {}
+      let prevConfig: Record<string, any> = { tag }
       switch (this.endpoint.type) {
         case EpTypes.Wireguard:
           const wgKeys = (await this.genWgKey())
@@ -142,7 +145,7 @@ export default {
       // save data
       this.loading = true
       try {
-        const success = await Data().save("endpoints", this.$props.id == 0 ? "new" : "edit", this.endpoint)
+        const success = await Data().save("endpoints", this.$props.id == 0 ? "new" : "edit", serializeEndpointCredentialDraft(this.endpoint))
         if (success) this.closeModal()
       } finally {
         this.loading = false
@@ -228,6 +231,6 @@ export default {
       }
     },
   },
-  components: { CapabilitySurface, FormShell, Dial, Wireguard, Warp, TailscaleVue }
+  components: { CapabilitySurface, FormShell, Dial, Wireguard, Warp, TailscaleVue, OpenConnectEndpoint }
 }
 </script>

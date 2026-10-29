@@ -55,6 +55,9 @@ var sensitiveExactKeys = []string{
 	"totp",
 	"mfa",
 	"2fa",
+	"client_key",
+	"mca_key",
+	"form_entries",
 }
 
 var sensitiveValuePatterns = []struct {

@@ -8,11 +8,59 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entityendpoints "github.com/MalenkiySolovey/solovey-ui/internal/entities/endpoints"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 )
+
+func TestNativeOpenConnectCandidateUsesCanonicalOwnerAndDNSReferences(t *testing.T) {
+	if !registry.Resolve("endpoints", "openconnect").Available() {
+		t.Skip("OpenConnect is absent from this profile")
+	}
+	initSettingTestDB(t)
+	seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
+	db := dbsqlite.DB()
+	svc, applier, lifecycle := newHotReloadConfigService(t)
+	const secret = "private-openconnect-candidate-canary"
+	draft := map[string]any{"type": "openconnect", "tag": "native-vpn", "server": "https://192.0.2.1", "flavor": "invalid-canary", "username": "fixture", "password": map[string]string{"intent": "replace", "value": secret}}
+	raw, _ := json.Marshal(draft)
+	if _, err := svc.Save("endpoints", "new", raw, "", "admin", "fixture.invalid"); err == nil || !strings.HasPrefix(err.Error(), "NATIVE_ENDPOINT_CANDIDATE_REJECTED") || strings.Contains(err.Error(), "canary") {
+		t.Fatal("invalid native endpoint was not privately rejected", err)
+	}
+	var count int64
+	if err := db.Model(&model.Endpoint{}).Count(&count).Error; err != nil || count != 0 || len(applier.calls) != 0 || len(lifecycle.calls) != 0 {
+		t.Fatal("rejected endpoint committed identity or runtime effects", err)
+	}
+	draft["flavor"] = "anyconnect"
+	raw, _ = json.Marshal(draft)
+	if _, err := svc.Save("endpoints", "new", raw, "", "admin", "fixture.invalid"); err != nil {
+		t.Fatal(err)
+	}
+	view, err := entityendpoints.GetAll(db)
+	masked, _ := json.Marshal(view)
+	if err != nil || bytes.Contains(masked, []byte(secret)) || bytes.Contains(masked, []byte("sbox:v1:")) {
+		t.Fatal("endpoint API disclosed credentials", err)
+	}
+	base := NewSingBoxBaseConfigStore(nil)
+	valid := json.RawMessage(`{"log":{"disabled":true},"dns":{"servers":[{"type":"openconnect","tag":"vpn-dns","endpoint":"native-vpn","accept_default_resolvers":true,"accept_search_domain":true}],"final":"vpn-dns"},"outbounds":[{"type":"direct","tag":"direct"}]}`)
+	if err := base.Save(db, valid); err != nil {
+		t.Fatal("canonical OpenConnect DNS candidate rejected", err)
+	}
+	config, err := svc.GetConfig("")
+	if err != nil || !bytes.Contains(*config, []byte(secret)) || singboxvalidation.ValidateConfig(*config) != nil {
+		t.Fatal("native endpoint/DNS runtime projection failed", err)
+	}
+	invalid := bytes.ReplaceAll(valid, []byte(`"endpoint":"native-vpn"`), []byte(`"endpoint":"missing-vpn"`))
+	if err := base.Save(db, invalid); err == nil {
+		t.Fatal("missing native DNS endpoint committed")
+	}
+	if _, err := svc.Save("endpoints", "del", json.RawMessage(`"native-vpn"`), "", "admin", "fixture.invalid"); err == nil {
+		t.Fatal("referenced native endpoint was removed")
+	}
+}
 
 func TestNativeOutboundCandidateOwnsCredentialsTransactionally(t *testing.T) {
 	for _, kind := range []string{"mieru", "trusttunnel", "sudoku"} {

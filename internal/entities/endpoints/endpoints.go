@@ -55,6 +55,9 @@ func GetAll(db *gorm.DB) (*[]map[string]interface{}, error) {
 				}
 			}
 		}
+		if err := projectEndpointCredentials(*endpoint, epData); err != nil {
+			return nil, err
+		}
 		data = append(data, epData)
 	}
 	return &data, nil
@@ -71,7 +74,7 @@ func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 		if !runtimeprojection.Included("endpoints", endpoint.Type) {
 			continue
 		}
-		endpointJSON, err := endpoint.MarshalJSON()
+		endpointJSON, err := marshalEndpointRuntime(db, *endpoint)
 		if err != nil {
 			return nil, err
 		}
@@ -132,6 +135,9 @@ func saveCandidate(tx *gorm.DB, act string, endpoint model.Endpoint, warp WarpHo
 		return nil, err
 	}
 	if err := entityidentity.EnsureOutboundTagAvailable(tx, endpoint.Tag, 0, endpoint.Id); err != nil {
+		return nil, err
+	}
+	if err := prepareEndpointCredentials(tx, &endpoint); err != nil {
 		return nil, err
 	}
 
@@ -263,7 +269,7 @@ func Restart(tx *gorm.DB, ids []uint, core Core) error {
 		if eager := tagrefs.Eager(refs); len(eager) > 0 {
 			return &tagrefs.ReloadRejection{Tag: row.Tag, References: eager}
 		}
-		config, err := row.MarshalJSON()
+		config, err := marshalEndpointRuntime(tx, *row)
 		if err != nil {
 			return err
 		}

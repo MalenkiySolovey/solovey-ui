@@ -4,6 +4,7 @@ export const EpTypes = {
   Wireguard: 'wireguard',
   Warp: 'warp',
   Tailscale: 'tailscale',
+  OpenConnect: 'openconnect',
 }
 
 type EpType = typeof EpTypes[keyof typeof EpTypes]
@@ -82,6 +83,7 @@ const defaultValues: Record<EpType, Endpoint> = {
   },
   warp: { type: EpTypes.Warp, address: [], private_key: '', listen_port: 0, mtu: 1420, peers: [{ address: '', port: 0, public_key: ''}] },
   tailscale: { type: EpTypes.Tailscale, domain_resolver: 'local' },
+  openconnect: { type: EpTypes.OpenConnect, server: '', flavor: 'anyconnect' },
 }
 
 export function createEndpoint<T extends Endpoint>(type: string,json?: Partial<T>): Endpoint {

@@ -12,6 +12,20 @@ import (
 
 func TestNativeDNSReferencesUseSelectedProvider(t *testing.T) {
 	for _, test := range []struct{ source, code string }{
+		{`{"dns":{"servers":[{"type":"openconnect","endpoint":"vpn","accept_search_domain":true}]},"endpoints":[{"type":"openconnect","tag":"vpn"}]}`, ""},
+		{`{"dns":{"servers":[{"type":"openconnect"}]},"endpoints":[]}`, "dns_openconnect_endpoint_required"},
+		{`{"dns":{"servers":[{"type":"openconnect","endpoint":"vpn"}]},"endpoints":[{"type":"wireguard","tag":"vpn"}]}`, "dns_openconnect_endpoint_missing"},
+	} {
+		code := test.code
+		if !registry.Resolve("dns", "openconnect").Available() {
+			code = "dns_native_transport_unavailable"
+		}
+		findings := DNSSelectedTransportFindings([]byte(test.source))
+		if code == "" && len(findings) != 0 || code != "" && !hasDNSCode(findings, code) {
+			t.Fatalf("OpenConnect DNS result: %+v", findings)
+		}
+	}
+	for _, test := range []struct{ source, code string }{
 		{`{"dns":{"servers":[{"type":"fallback","servers":["1"]},{"type":"udp","server":"127.0.0.1"}]}}`, ""},
 		{`{"dns":{"servers":[{"type":"fallback","tag":"group","servers":["later"],"strategy":"parallel","timeout":"3s"},{"type":"udp","tag":"later","server":"127.0.0.1"}]}}`, ""},
 		{`{"dns":{"servers":[{"type":"fallback","tag":"group","servers":[]}]}}`, "dns_fallback_servers_required"},

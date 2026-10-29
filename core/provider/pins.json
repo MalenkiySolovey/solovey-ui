@@ -11,7 +11,11 @@
     {
       "id": "shtorm-extended",
       "modFile": "go.extended.mod",
-      "buildTags": ["shtorm_extended"],
+      "buildTags": [
+        "shtorm_extended",
+        "with_gvisor",
+        "with_openconnect"
+      ],
       "sourceRevision": "f8865b4b33f699185e054092ab658a443ffb1678"
     }
   ],
