@@ -1,5 +1,9 @@
 export default {
   "remoteOutbound": {
+    "removeEmojis": "Xóa emoji khỏi tên nhập",
+    "userAgent": "User-Agent của nguồn",
+    "userAgentHint": "Để trống để tự động thu thập các định dạng. Khi đặt nhận dạng máy khách, mỗi lần làm mới chỉ yêu cầu URL gốc một lần.",
+    "removeEmojisHint": "Áp dụng khi làm mới sau khi lọc tên gốc. Cờ được đổi thành mã quốc gia. Giữ nguyên dữ liệu nguồn và thẻ outbound hiện có.",
     "inlineFile": "Tải tệp nguồn cục bộ",
     "inlineFileHint": "Tải cấu hình máy khách hoặc tệp liên kết vào bản nháp thay thế của nguồn này (tối đa 512 KiB). Nội dung được kiểm tra khi lưu.",
     "inlineFileSizeError": "Chọn tệp không rỗng, tối đa 512 KiB.",
