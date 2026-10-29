@@ -27,6 +27,7 @@ export const DnsTypes = {
   Resolved: 'resolved',
   SDNS: 'sdns',
   Fallback: 'fallback',
+  OpenConnect: 'openconnect',
 }
 
 export type DnsType = typeof DnsTypes[keyof typeof DnsTypes]
@@ -56,6 +57,7 @@ const defaultValues: Record<DnsType, DnsServer> = {
   resolved: { type: 'resolved' },
   sdns: { type: 'sdns', stamp: '' },
   fallback: { type: 'fallback', servers: [], strategy: 'sequential' },
+  openconnect: { type: 'openconnect' },
 }
 export function createDnsServer<T extends DnsServer>(type: string, json?: Partial<T>): DnsServer {
   const defaultObject: DnsServer = JSON.parse(JSON.stringify({ ...defaultValues[type], ...(json ?? {}), type }))

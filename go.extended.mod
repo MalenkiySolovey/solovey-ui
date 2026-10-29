@@ -32,6 +32,7 @@ require (
 	github.com/Diniboy1123/connect-ip-go v0.0.0-20260409225322-8d7bb0a858a2 // indirect
 	github.com/ameshkov/dnscrypt/v2 v2.4.0 // indirect
 	github.com/ameshkov/dnsstamps v1.0.3 // indirect
+	github.com/anchore/go-lzo v0.1.0 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/axiomhq/hyperloglog v0.0.0-20240319100328-84253e514e02 // indirect
 	github.com/creack/pty v1.1.24 // indirect
@@ -39,6 +40,7 @@ require (
 	github.com/dunglas/httpsfv v1.1.0 // indirect
 	github.com/enfein/mieru/v3 v3.33.0 // indirect
 	github.com/go4org/hashtriemap v0.0.0-20251130024219-545ba229f689 // indirect
+	github.com/google/certificate-transparency-go v1.3.2 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
@@ -67,13 +69,16 @@ require (
 	github.com/pkg/sftp v1.13.10 // indirect
 	github.com/refraction-networking/utls v1.8.2 // indirect
 	github.com/sagernet/gliderssh v0.3.4-0.20260531100337-2194faca5648 // indirect
+	github.com/sagernet/sing-openconnect v0.1.1-0.20260929151225-cbd68c45de58 // indirect
 	github.com/sagernet/sing-usbip v0.0.0-20260817040617-28bd42667eca // indirect
 	github.com/shtorm-7/go-cache/v2 v2.1.0-extended-1.2.0 // indirect
 	github.com/shtorm-7/rmux v1.0.1 // indirect
+	github.com/smallstep/pkcs7 v0.1.1 // indirect
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/xtaci/kcp-go/v5 v5.6.72 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
+	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 )
 
 require (
@@ -243,7 +248,7 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-replace github.com/sagernet/sing-box => github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261028223229-f8865b4b33f6
+replace github.com/sagernet/sing-box => github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261029092715-8c20a01a2150
 
 replace github.com/anytls/sing-anytls => github.com/MalenkiySolovey/sing-anytls v0.0.12-0.20261011014237-8f440972b353
 

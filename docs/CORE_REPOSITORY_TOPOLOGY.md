@@ -38,7 +38,8 @@ source delta, with the underlying shared/different authority stated explicitly:
 
 | Case | Module / actual authority | Consumers and ownership |
 |---|---|---|
-| D, different authorities (B) | SagerNet/sing-box; shtorm-7/sing-box-extended | Separate engine copies and queues above; four Official and fifty-four Extended source commits |
+| D, different authorities (B) | SagerNet/sing-box; shtorm-7/sing-box-extended | Separate engine copies and queues above; four Official and fifty-six Extended source commits |
+| C | SagerNet/sing-openconnect | Extended endpoint/DNS integration consumes upstream directly at `v0.1.1-0.20260929151225-cbd68c45de58` (pristine commit `cbd68c45de5883a695c844273ed040b0332fd017`); no Solovey source delta, fork or patch queue |
 | D, shared authority (A) | SagerNet/sing-quic | One copy; one accepted Official source commit and two Extended source commits, independently pinned |
 | D, shared authority (A) | anytls/sing-anytls | One copy; one accepted source commit selected by both providers |
 | B | sing, sing-mux, sing-vmess, wireguard-go, tailscale | Official consumes SagerNet directly; Extended consumes the corresponding shtorm-7 repositories directly; no Solovey source delta |

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
+	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/backup"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -21,6 +22,7 @@ import (
 	backupenvelope "github.com/MalenkiySolovey/solovey-ui/internal/backup/envelope"
 	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
+	entityendpoints "github.com/MalenkiySolovey/solovey-ui/internal/entities/endpoints"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
@@ -75,10 +77,11 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 			Clients   []model.Client
 			Inbounds  []model.Inbound
 			Outbounds []model.Outbound
+			Endpoints []model.Endpoint
 			TLS       []model.Tls
 			Settings  []model.Setting
 		}
-		for _, table := range []any{&rows.Clients, &rows.Inbounds, &rows.Outbounds, &rows.TLS, &rows.Settings} {
+		for _, table := range []any{&rows.Clients, &rows.Inbounds, &rows.Outbounds, &rows.Endpoints, &rows.TLS, &rows.Settings} {
 			if err := db.Order("id").Find(table).Error; err != nil {
 				t.Fatal(err)
 			}
@@ -98,6 +101,13 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		return row.Value
 	}
 	db := openFresh(sourceDir)
+	const endpointPassword = "private-openconnect-archive-canary"
+	if registry.Resolve("endpoints", "openconnect").Available() {
+		raw, _ := json.Marshal(map[string]any{"type": "openconnect", "tag": "archive-vpn", "server": "https://192.0.2.1", "password": map[string]string{"intent": "replace", "value": endpointPassword}})
+		if err := db.Transaction(func(tx *gorm.DB) error { _, err := entityendpoints.Save(tx, "new", raw, nil); return err }); err != nil {
+			t.Fatal("endpoint archive fixture failed", err)
+		}
+	}
 	cert, key := makeSelfSignedCertPEM(t, time.Now().Add(24*time.Hour))
 	server, _ := json.Marshal(map[string]any{"enabled": true, "certificate": []string{string(cert)}, "key": []string{string(key)}})
 	profile := model.Tls{Name: "native-archive-tls", Server: server, Client: json.RawMessage(`{}`)}
@@ -256,6 +266,16 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		projection, err := NewSingBoxConfigBuilder(nil).BuildCandidateProjectionFromDB(candidate, "", false)
 		if err != nil || singboxvalidation.ValidateConfig(projection.Config) != nil {
 			t.Fatal("native archived candidate failed the exact provider check", err)
+		}
+		if registry.Resolve("endpoints", "openconnect").Available() {
+			if !bytes.Contains(projection.Config, []byte(endpointPassword)) {
+				t.Fatal("archive lost endpoint secret ownership")
+			}
+			view, err := entityendpoints.GetAll(candidate)
+			masked, _ := json.Marshal(view)
+			if err != nil || bytes.Contains(masked, []byte(endpointPassword)) || bytes.Contains(masked, []byte("sbox:v1:")) {
+				t.Fatal("archive endpoint read disclosed credential", err)
+			}
 		}
 		var root struct {
 			Outbounds []struct {
@@ -430,6 +450,9 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 	archive, err := backup.Export("")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if bytes.Contains(archive, []byte(endpointPassword)) {
+		t.Fatal("private archive persisted endpoint plaintext")
 	}
 	for _, password := range passwords {
 		if bytes.Contains(archive, []byte(password)) {

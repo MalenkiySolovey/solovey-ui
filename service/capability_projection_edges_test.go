@@ -184,6 +184,15 @@ func TestCapabilityOmissionDependenciesIncludeClientServiceAndNestedRules(t *tes
 				}
 			}
 			report, err := runtimeprojection.ValidateReferences(db, base)
+			if example == "dns-endpoint" && !registry.Resolve("dns", "tailscale").Available() ||
+				example == "dns-service" && !registry.Resolve("dns", "resolved").Available() {
+				// A preserved unavailable DNS server has no effective edges. The
+				// unknown endpoint remains recorded as omitted desired state.
+				if err != nil || len(report.References) != 0 || len(report.Omitted) != 1 {
+					t.Fatal("inactive DNS history acquired an effective dependency")
+				}
+				return
+			}
 			var rejected *runtimeprojection.Rejection
 			if !errors.As(err, &rejected) || len(report.References) == 0 {
 				t.Fatalf("dependency escaped projection: %+v %v", report, err)
