@@ -17,7 +17,7 @@ const (
 	CapabilityResolverRevisionV1            = "f376f9b54643079f290ceb40dfc38abf30b82e6ad775b6e360a06f74c67bfdc4"
 	BuildProfileWithUTLSRevision            = "2573ebf675608c4e589ebc062ecf46078f77244489cb5a1578ecb2b649ae0608"
 	BuildProfileWithoutUTLSRevision         = "a55ee5ad8f16d0ab527a612e4a89e2170b2751af200430a90022df99cc33192d"
-	PinnedRuntimeIdentityWithUTLSRevisionV1 = "6b78a9d753f14c89265b9563614e3f905f0a61100014edca9c518aaaeae9d83c"
+	PinnedRuntimeIdentityWithUTLSRevisionV1 = "51eb6f801268e0d391cdc7043109673ab2ee8b67fcbef6c35eb5c37d6de4005b"
 )
 
 type ReasonCode string
