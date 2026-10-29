@@ -108,6 +108,7 @@
           />
         </v-col>
         <v-col v-else cols="12" md="9">
+          <v-file-input :model-value="page.inlineFile" @update:model-value="page.loadInlineFile" :label="$t('remoteOutbound.inlineFile')" :hint="$t('remoteOutbound.inlineFileHint')" :error-messages="page.inlineFileError ? [page.inlineFileError] : []" :loading="page.inlineFileLoading" accept=".json,.yaml,.yml,.txt,.conf" show-size clearable persistent-hint variant="outlined" density="compact" />
           <SecretCredentialField v-model="page.form.content" :available="true" multiline :label="$t('remoteOutbound.inlineContent')" />
           <div class="text-caption">{{ $t('remoteOutbound.inlineContentHint') }}</div>
         </v-col>
@@ -141,7 +142,7 @@
         </v-col>
         <v-col cols="12" class="text-caption">{{ $t('remoteOutbound.sourceFiltersHint') }}</v-col>
         <v-col cols="12" sm="6" md="12" class="remote-outbounds__form-actions">
-          <v-btn color="primary" :loading="page.saving" type="submit">
+          <v-btn color="primary" :loading="page.saving" :disabled="page.inlineFileLoading || !!page.inlineFileError" type="submit">
             {{ page.form.id ? $t('actions.update') : $t('actions.add') }}
           </v-btn>
           <v-btn v-if="page.form.id" variant="text" @click="page.resetForm">

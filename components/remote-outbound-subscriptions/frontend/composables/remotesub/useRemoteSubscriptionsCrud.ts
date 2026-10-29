@@ -1,4 +1,4 @@
-import { computed, nextTick, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import Data from '@/store/modules/data'
 import HttpUtils from '@/plugins/httputil'
 import { secretMutation, type SecretView, type SecretMutation } from '@/features/secretCredentialDraft'
@@ -27,6 +27,10 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
   const loading = ref(false)
   const saving = ref(false)
   const refreshing = reactive<Record<number, boolean>>({})
+  const inlineFile = ref<File | File[] | null>(null)
+  const inlineFileLoading = ref(false)
+  const inlineFileError = ref('')
+  let fileDraftGeneration = 0
 
   const requiredRules = computed(() => [
     (value: unknown) => Boolean(String(value ?? '').trim()) || t('remoteOutbound.requiredField'),
@@ -45,6 +49,42 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     autoUpdate: false,
     updateInterval: 86400,
   })
+
+  const resetInlineFile = () => {
+    fileDraftGeneration++
+    inlineFile.value = null
+    inlineFileLoading.value = false
+    inlineFileError.value = ''
+  }
+  watch(() => form.sourceType, resetInlineFile)
+
+  const loadInlineFile = async (value: File | File[] | null | undefined) => {
+    resetInlineFile()
+    const file = Array.isArray(value) ? value[0] : value
+    if (!file || form.sourceType !== 'inline') return
+    inlineFile.value = file
+    if (file.size === 0 || file.size > (512 << 10)) {
+      inlineFileError.value = t('remoteOutbound.inlineFileSizeError')
+      return
+    }
+    const generation = fileDraftGeneration
+    const ownerID = form.id
+    const previousContent = form.content
+    inlineFileLoading.value = true
+    try {
+      const text = await file.text()
+      // A file read belongs to this editor generation. It must not replace a
+      // different source, a newer file selection or an intervening typed edit.
+      if (fileDraftGeneration === generation && form.id === ownerID &&
+          form.sourceType === 'inline' && form.content === previousContent) {
+        form.content = { intent: 'replace', value: text }
+      }
+    } catch {
+      if (fileDraftGeneration === generation) inlineFileError.value = t('remoteOutbound.inlineFileReadError')
+    } finally {
+      if (fileDraftGeneration === generation) inlineFileLoading.value = false
+    }
+  }
 
   const testableConnections = (subscription: RemoteOutboundSubscription): RemoteOutboundConnection[] => {
     return (subscription.connections ?? []).filter(connection => connection.enabled)
@@ -89,6 +129,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
   }
 
   const saveSubscription = async () => {
+    if (inlineFileLoading.value || inlineFileError.value) return
     const validation = await subscriptionForm.value?.validate()
     if (validation && !validation.valid) return
     saving.value = true
@@ -120,6 +161,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
   }
 
   const resetForm = () => {
+    resetInlineFile()
     form.id = 0
     form.name = ''
     form.url = ''
@@ -135,6 +177,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
   }
 
   const editSubscription = (subscription: RemoteOutboundSubscription) => {
+    resetInlineFile()
     form.id = subscription.id
     form.name = subscription.name
     form.url = subscription.url
@@ -177,6 +220,10 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
   }
 
   return {
+    inlineFile,
+    inlineFileLoading,
+    inlineFileError,
+    loadInlineFile,
     deleteSubscription,
     editSubscription,
     filteredSubscriptions,

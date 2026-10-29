@@ -1,5 +1,9 @@
 export default {
   "remoteOutbound": {
+    "inlineFile": "Load a local source file",
+    "inlineFileHint": "Load a client configuration or share-link file into this source's Replace draft (up to 512 KiB). Save validates the contents.",
+    "inlineFileSizeError": "Choose a non-empty file up to 512 KiB.",
+    "inlineFileReadError": "Could not read this file. Choose it again or paste its contents.",
     "includeNames": "Include names (regular expression)",
     "excludeNames": "Exclude names (regular expression)",
     "sourceFiltersHint": "Filters match original source names when you Refresh. Exclude wins; empty includes all. Keep every member required by a retained group. Saving does not change collected connections until Refresh.",
