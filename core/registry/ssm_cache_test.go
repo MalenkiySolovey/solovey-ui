@@ -45,12 +45,16 @@ func ssmBox(t *testing.T, cache string, port int) *box.Box {
 type ssmListenerObservation struct {
 	mu      sync.Mutex
 	address string
+	prefix  string
 }
 
 func (*ssmListenerObservation) DisableColors() bool { return true }
 
 func (observation *ssmListenerObservation) WriteMessage(_ log.Level, message string) {
-	const prefix = "service/ssm-api[ssm]: tcp server started at "
+	prefix := observation.prefix
+	if prefix == "" {
+		prefix = "service/ssm-api[ssm]: tcp server started at "
+	}
 	if index := strings.Index(message, prefix); index >= 0 {
 		observation.mu.Lock()
 		observation.address = strings.TrimSpace(message[index+len(prefix):])
@@ -62,6 +66,73 @@ func (observation *ssmListenerObservation) Address() string {
 	observation.mu.Lock()
 	defer observation.mu.Unlock()
 	return observation.address
+}
+
+func TestRealmServiceNativeAuthenticationAndClosedGeneration(t *testing.T) {
+	if !registry.Resolve("services", "hysteria-realm").Available() {
+		t.Skip("Realm is absent from this provider/profile")
+	}
+	ctx := registry.Context(context.Background())
+	var options option.Options
+	if err := options.UnmarshalJSONContext(ctx, []byte(`{"log":{"disabled":false},"services":[{"type":"hysteria-realm","tag":"realm","listen":"127.0.0.1","listen_port":0,"users":[{"name":"operator","token":"realm-runtime-canary","max_realms":1}]}]}`)); err != nil {
+		t.Fatal(err)
+	}
+	options.Log.DisableColor = true
+	b, err := box.NewBox(box.Options{Context: ctx, Options: options})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = b.Close() })
+	observed := &ssmListenerObservation{prefix: "service/hysteria-realm[realm]: tcp server started at "}
+	b.LogFactory().AttachPlatformWriter(observed)
+	if err := b.Start(); err != nil {
+		t.Fatal(err)
+	}
+	address := observed.Address()
+	if address == "" {
+		t.Fatal("realm did not publish its listener")
+	}
+	protocols := new(http.Protocols)
+	protocols.SetUnencryptedHTTP2(true)
+	transport := &http.Transport{Protocols: protocols}
+	t.Cleanup(transport.CloseIdleConnections)
+	client := &http.Client{Transport: transport, Timeout: 2 * time.Second}
+	request := func(realm, token string) (int, error) {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+address+"/v1/"+realm+"/", strings.NewReader(`{"addresses":["127.0.0.1:12345"]}`))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		response, err := client.Do(req)
+		if err != nil {
+			return 0, err
+		}
+		defer response.Body.Close()
+		_, _ = io.Copy(io.Discard, response.Body)
+		if response.ProtoMajor != 2 {
+			t.Fatal("realm did not serve HTTP/2")
+		}
+		return response.StatusCode, nil
+	}
+	if status, err := request("denied", "wrong"); err != nil || status != http.StatusUnauthorized {
+		t.Fatal("realm admitted an invalid token", status, err)
+	}
+	if status, err := request("first", "realm-runtime-canary"); err != nil || status != http.StatusOK {
+		t.Fatal("realm registration failed", status, err)
+	}
+	if status, err := request("second", "realm-runtime-canary"); err != nil || status != http.StatusTooManyRequests {
+		t.Fatal("realm lost its identity quota", status, err)
+	}
+	closeErr := b.Close()
+	if _, err := request("retired", "realm-runtime-canary"); err == nil {
+		t.Fatal("closed realm generation still accepts authenticated HTTP/2 requests")
+	}
+	if closeErr != nil {
+		t.Fatal("realm close failed", closeErr)
+	}
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		t.Fatal("realm did not release its port", err)
+	}
+	_ = listener.Close()
 }
 
 func TestSSMBoxCorruptCacheFailClosedWithoutPanicOrPublication(t *testing.T) {

@@ -1,11 +1,12 @@
 import { defineComponent } from 'vue'
-import { SrvTypes, createSrv } from '@/types/services'
+import { SrvTypes, createSrv, realmServiceInvalid, prepareServiceSave } from '@/types/services'
 import RandomUtil from '@/plugins/randomUtil'
 import Listen from '@/components/fields/Listen.vue'
 import Derp from '@/components/services/Derp.vue'
 import OomKiller from '@/components/services/OomKiller.vue'
 import InTLS from '@/components/tls/InTLS.vue'
 import SSMapi from '@/components/services/SSMAPI.vue'
+import HysteriaRealm from '@/components/services/HysteriaRealm.vue'
 import Data from '@/store/modules/data'
 import CapabilitySurface from '@/components/fields/CapabilitySurface.vue'
 import SaveGuardNotice from '@/components/fields/SaveGuardNotice.vue'
@@ -23,7 +24,7 @@ export default defineComponent({
       loading: false,
       snapshot: "",
       srvTypes: SrvTypes,
-      HasTls: [SrvTypes.DERP, SrvTypes.SSMAPI],
+      HasTls: [SrvTypes.DERP, SrvTypes.SSMAPI, SrvTypes.HysteriaRealm],
       NoListen: [SrvTypes.OOMKiller],
     }
   },
@@ -73,7 +74,7 @@ export default defineComponent({
       // save data
       this.loading = true
       try {
-        const success = await Data().save("services", this.$props.id == 0 ? "new" : "edit", this.srv)
+        const success = await Data().save("services", this.$props.id == 0 ? "new" : "edit", prepareServiceSave(this.srv))
         if (success) this.closeModal()
       } finally {
         this.loading = false
@@ -82,7 +83,7 @@ export default defineComponent({
   },
   computed: {
     saveReasons(): SaveReason[] {
-      return entitySaveReasons({ identity: this.srv.tag, port: this.srv.listen_port, requiresPort: !this.NoListen.includes(this.srv.type), pending: this.loading, capability: this.capabilityState })
+      return entitySaveReasons({ identity: this.srv.tag, port: this.srv.listen_port, requiresPort: !this.NoListen.includes(this.srv.type), pending: this.loading, credentialInvalid: realmServiceInvalid(this.srv), capability: this.capabilityState })
     },
     capabilityState(): CapabilityEditState {
       return capabilityEditState(Data().capabilities, "services", this.srv.type, this.storedCapabilityType)
@@ -101,5 +102,5 @@ export default defineComponent({
       }
     },
   },
-  components: { SaveGuardNotice, CapabilitySurface, Listen, InTLS, Derp, OomKiller, SSMapi },
+  components: { SaveGuardNotice, CapabilitySurface, Listen, InTLS, Derp, OomKiller, SSMapi, HysteriaRealm },
 })
