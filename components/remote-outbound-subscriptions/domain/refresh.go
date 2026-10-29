@@ -158,6 +158,7 @@ func upsertRefreshConnection(tx *gorm.DB, subscription *RemoteOutboundSubscripti
 		return RemoteOutboundConnection{}, false, err
 	}
 	normalized.SourceKey = UniqueSourceKey(seen, normalized.SourceKey)
+	normalized.Name = sourceDisplayName(normalized.Name, index, subscription.RemoveEmojis)
 
 	var connection RemoteOutboundConnection
 	var previous *RemoteOutboundConnection

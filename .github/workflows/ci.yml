@@ -52,7 +52,7 @@ jobs:
     env:
       CGO_ENABLED: "1"
       GOFLAGS: -mod=readonly -modfile=go.extended.mod
-      EXTENDED_TAGS: shtorm_extended,with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale,with_openconnect
+      EXTENDED_TAGS: shtorm_extended,with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale,with_openconnect,with_openvpn
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6

@@ -66,8 +66,14 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 		}
 	}
 	var endpointCount int64
-	if entitycapabilities.Resolve("endpoints", "openconnect").Available && tx.Migrator().HasTable(&model.Endpoint{}) {
-		if err := tx.Model(&model.Endpoint{}).Where("type = ?", "openconnect").Count(&endpointCount).Error; err != nil {
+	var endpointKinds []string
+	for _, kind := range []string{"openconnect", "openvpn-client"} {
+		if entitycapabilities.Resolve("endpoints", kind).Available {
+			endpointKinds = append(endpointKinds, kind)
+		}
+	}
+	if len(endpointKinds) > 0 && tx.Migrator().HasTable(&model.Endpoint{}) {
+		if err := tx.Model(&model.Endpoint{}).Where("type IN ?", endpointKinds).Count(&endpointCount).Error; err != nil {
 			return err
 		}
 	}

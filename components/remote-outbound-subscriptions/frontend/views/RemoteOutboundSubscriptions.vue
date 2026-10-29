@@ -141,6 +141,12 @@
           <v-text-field v-model="page.form.exclude" :label="$t('remoteOutbound.excludeNames')" maxlength="4096" variant="outlined" density="compact" />
         </v-col>
         <v-col cols="12" class="text-caption">{{ $t('remoteOutbound.sourceFiltersHint') }}</v-col>
+        <v-col v-if="page.form.sourceType === 'remote'" cols="12">
+          <v-text-field v-model="page.form.userAgent" :label="$t('remoteOutbound.userAgent')" :hint="$t('remoteOutbound.userAgentHint')" persistent-hint maxlength="4096" variant="outlined" density="compact" />
+        </v-col>
+        <v-col cols="12">
+          <v-switch v-model="page.form.removeEmojis" :label="$t('remoteOutbound.removeEmojis')" :hint="$t('remoteOutbound.removeEmojisHint')" persistent-hint color="primary" />
+        </v-col>
         <v-col cols="12" sm="6" md="12" class="remote-outbounds__form-actions">
           <v-btn color="primary" :loading="page.saving" :disabled="page.inlineFileLoading || !!page.inlineFileError" type="submit">
             {{ page.form.id ? $t('actions.update') : $t('actions.add') }}

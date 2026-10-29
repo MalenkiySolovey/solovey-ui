@@ -109,6 +109,13 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		}
 	}
 	cert, key := makeSelfSignedCertPEM(t, time.Now().Add(24*time.Hour))
+	const openVPNPassword = "private-openvpn-archive-canary"
+	if registry.Resolve("endpoints", "openvpn-client").Available() {
+		raw, _ := json.Marshal(map[string]any{"type": "openvpn-client", "tag": "archive-openvpn", "mode": "tls", "servers": []map[string]any{{"server": "192.0.2.2", "server_port": 1194}}, "username": "fixture", "password": map[string]string{"intent": "replace", "value": openVPNPassword}, "tls": map[string]any{"certificate": []string{string(cert)}, "client_certificate": []string{string(cert)}, "client_key": map[string]string{"intent": "replace", "value": string(key)}}})
+		if err := db.Transaction(func(tx *gorm.DB) error { _, err := entityendpoints.Save(tx, "new", raw, nil); return err }); err != nil {
+			t.Fatal("OpenVPN archive fixture failed", err)
+		}
+	}
 	server, _ := json.Marshal(map[string]any{"enabled": true, "certificate": []string{string(cert)}, "key": []string{string(key)}})
 	profile := model.Tls{Name: "native-archive-tls", Server: server, Client: json.RawMessage(`{}`)}
 	if err := db.Create(&profile).Error; err != nil {
@@ -267,14 +274,16 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		if err != nil || singboxvalidation.ValidateConfig(projection.Config) != nil {
 			t.Fatal("native archived candidate failed the exact provider check", err)
 		}
-		if registry.Resolve("endpoints", "openconnect").Available() {
-			if !bytes.Contains(projection.Config, []byte(endpointPassword)) {
-				t.Fatal("archive lost endpoint secret ownership")
-			}
-			view, err := entityendpoints.GetAll(candidate)
-			masked, _ := json.Marshal(view)
-			if err != nil || bytes.Contains(masked, []byte(endpointPassword)) || bytes.Contains(masked, []byte("sbox:v1:")) {
-				t.Fatal("archive endpoint read disclosed credential", err)
+		for kind, password := range map[string]string{"openconnect": endpointPassword, "openvpn-client": openVPNPassword} {
+			if registry.Resolve("endpoints", kind).Available() {
+				if !bytes.Contains(projection.Config, []byte(password)) {
+					t.Fatal("archive lost endpoint secret ownership")
+				}
+				view, err := entityendpoints.GetAll(candidate)
+				masked, _ := json.Marshal(view)
+				if err != nil || bytes.Contains(masked, []byte(password)) || bytes.Contains(masked, []byte("sbox:v1:")) {
+					t.Fatal("archive endpoint read disclosed credential", err)
+				}
 			}
 		}
 		var root struct {
@@ -451,7 +460,7 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(archive, []byte(endpointPassword)) {
+	if bytes.Contains(archive, []byte(endpointPassword)) || bytes.Contains(archive, []byte(openVPNPassword)) {
 		t.Fatal("private archive persisted endpoint plaintext")
 	}
 	for _, password := range passwords {

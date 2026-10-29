@@ -1,5 +1,9 @@
 export default {
   "remoteOutbound": {
+    "removeEmojis": "移除导入名称中的表情符号",
+    "userAgent": "源 User-Agent",
+    "userAgentHint": "留空以自动收集各格式。设置自定义客户端标识后，每次刷新仅请求原始 URL 一次。",
+    "removeEmojisHint": "刷新时在原始名称筛选后应用。旗帜转换为国家代码，保留源观测数据和现有出站标签。",
     "inlineFile": "加载本地源文件",
     "inlineFileHint": "将客户端配置或分享链接文件加载到此源的替换草稿中（最大 512 KiB）。保存时验证内容。",
     "inlineFileSizeError": "请选择非空且不超过 512 KiB 的文件。",

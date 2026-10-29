@@ -153,6 +153,35 @@ func DisplayName(outbound map[string]interface{}, index int) string {
 	return fmt.Sprintf("%s-%d", outboundType, index+1)
 }
 
+// Import presentation belongs to this Component. Flags retain their readable
+// country code; source labels, EndpointIR observations and references stay exact.
+func sourceDisplayName(name string, index int, removeEmojis bool) string {
+	if !removeEmojis {
+		return name
+	}
+	runes := []rune(name)
+	var text strings.Builder
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		if r >= 0x1F1E6 && r <= 0x1F1FF && i+1 < len(runes) && runes[i+1] >= 0x1F1E6 && runes[i+1] <= 0x1F1FF {
+			text.WriteRune('A' + r - 0x1F1E6)
+			text.WriteRune('A' + runes[i+1] - 0x1F1E6)
+			text.WriteByte(' ')
+			i++
+			continue
+		}
+		if r >= 0x1F1E0 && r <= 0x1F1FF || r >= 0x1F300 && r <= 0x1FAFF || r >= 0x2600 && r <= 0x27BF || r >= 0xFE00 && r <= 0xFE0F || r == 0x200D {
+			continue
+		}
+		text.WriteRune(r)
+	}
+	result := strings.Join(strings.Fields(text.String()), " ")
+	if result == "" {
+		return fmt.Sprintf("outbound-%d", index+1)
+	}
+	return result
+}
+
 func PortString(value interface{}) string {
 	switch v := value.(type) {
 	case string:

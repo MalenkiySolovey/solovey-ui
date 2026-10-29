@@ -220,7 +220,11 @@ func remoteConnectionTagMap(connections []RemoteOutboundConnection) map[string]s
 			continue
 		}
 		tagMap[outboundTag] = outboundTag
-		if name := strings.TrimSpace(connection.Name); name != "" {
+		name := connection.Name
+		if captured := canonicalConnection(connection.Canonical); captured != nil && captured.DisplayName != "" {
+			name = captured.DisplayName
+		}
+		if name = strings.TrimSpace(name); name != "" {
 			tagMap[name] = outboundTag
 		}
 		if sourceKey := strings.TrimSpace(connection.SourceKey); sourceKey != "" {

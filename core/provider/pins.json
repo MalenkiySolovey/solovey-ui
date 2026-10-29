@@ -11,10 +11,12 @@
     {
       "id": "shtorm-extended",
       "modFile": "go.extended.mod",
+      "providerTag": "shtorm_extended",
       "buildTags": [
         "shtorm_extended",
         "with_gvisor",
-        "with_openconnect"
+        "with_openconnect",
+        "with_openvpn"
       ],
       "sourceRevision": "f25315984f7702b1185d0e29cde89f21107902da"
     }

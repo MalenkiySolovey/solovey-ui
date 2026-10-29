@@ -52,21 +52,21 @@ func DNSSelectedTransportFindings(config []byte) []diagnostics.Finding {
 	ctx := registry.Context(context.Background())
 	for i, server := range servers {
 		kind := dnsString(server, "type")
-		if kind == "openconnect" && registry.Resolve("dns", kind).Available() {
+		if endpointKind := nativeVPNEndpointType(kind); endpointKind != "" && registry.Resolve("dns", kind).Available() {
 			path := fmt.Sprintf("dns.servers[%d].endpoint", i)
 			reference := dnsString(server, "endpoint")
 			if reference == "" {
-				fail(path, "dns_openconnect_endpoint_required", "Select an existing OpenConnect endpoint in the same core.")
+				fail(path, "dns_"+kind+"_endpoint_required", "Select an existing endpoint of this VPN client type in the same core.")
 			} else if completeEndpoints {
 				matches, valid := 0, false
 				for _, endpoint := range endpoints {
 					if dnsString(endpoint, "tag") == reference {
 						matches++
-						valid = dnsString(endpoint, "type") == "openconnect" && registry.Resolve("endpoints", "openconnect").Available()
+						valid = dnsString(endpoint, "type") == endpointKind && registry.Resolve("endpoints", endpointKind).Available()
 					}
 				}
 				if matches != 1 || !valid {
-					fail(path, "dns_openconnect_endpoint_missing", "The reference must identify one available OpenConnect endpoint; correct missing, ambiguous or differently typed endpoints.")
+					fail(path, "dns_"+kind+"_endpoint_missing", "The reference must identify one available endpoint of this VPN client type; correct missing, ambiguous or differently typed endpoints.")
 				}
 			}
 		}
@@ -180,7 +180,7 @@ func CurrentDNSRuntimeFindings(config []byte) []diagnostics.Finding {
 func HasNativeDNSTransport(config []byte) bool {
 	servers, _ := dnsTransportSections(config)
 	for _, server := range servers {
-		if kind := dnsString(server, "type"); kind == "sdns" || kind == "fallback" || kind == "openconnect" {
+		if kind := dnsString(server, "type"); kind == "sdns" || kind == "fallback" || nativeVPNEndpointType(kind) != "" {
 			return true
 		}
 	}
@@ -191,10 +191,21 @@ func HasSelectedDNSTransport(config []byte) bool {
 	servers, services := dnsTransportSections(config)
 	for _, section := range [][]dnsObject{servers, services} {
 		for _, row := range section {
-			if kind := dnsString(row, "type"); kind == "mdns" || kind == "resolved" || kind == "sdns" || kind == "fallback" || kind == "openconnect" {
+			if kind := dnsString(row, "type"); kind == "mdns" || kind == "resolved" || kind == "sdns" || kind == "fallback" || nativeVPNEndpointType(kind) != "" {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+func nativeVPNEndpointType(kind string) string {
+	switch kind {
+	case "openconnect":
+		return "openconnect"
+	case "openvpn":
+		return "openvpn-client"
+	default:
+		return ""
+	}
 }

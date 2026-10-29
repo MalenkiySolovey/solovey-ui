@@ -58,6 +58,8 @@ var sensitiveExactKeys = []string{
 	"client_key",
 	"mca_key",
 	"form_entries",
+	"static_key",
+	"control_wrap",
 }
 
 var sensitiveValuePatterns = []struct {
