@@ -20,9 +20,10 @@ function mount(data: Record<string, any>, mode: string, native = false) {
     schema: 'solovey-ui/entity-capabilities/v1', componentProfile: 'full', multicastInterfaces: ['fixture0'], facts: [
       { category: 'dns', type: 'mdns', runtimeType: 'mdns', known: true, contextSupported: true, registered: true, compiled: true, available: true, runtimeDependency: 'multicast', runtimeEligible: true, platformDependencyAvailable: true },
       { category: 'dns', type: 'resolved', runtimeType: 'resolved', known: true, contextSupported: true, registered: true, compiled: true, available: false, runtimeDependency: 'resolve1-system-bus', runtimeEligible: false, platformDependencyAvailable: true, reason: 'DNS_RESOLVED_BUS_NAME_OCCUPIED' },
-      ...['sdns', 'fallback'].map(type => ({ category: 'dns', type, runtimeType: type, known: true, contextSupported: true, registered: native, compiled: native, available: native, buildTag: 'shtorm_extended', requiredProvider: 'Shtorm Extended' })),
+      ...['sdns', 'fallback', 'openconnect', 'openvpn'].map(type => ({ category: 'dns', type, runtimeType: type, known: true, contextSupported: true, registered: native, compiled: native, available: native, buildTag: 'shtorm_extended', requiredProvider: 'Shtorm Extended' })),
+      ...['openconnect', 'openvpn-client'].map(type => ({ category: 'endpoints', type, runtimeType: type, known: true, contextSupported: true, registered: native, compiled: native, available: native })),
     ],
-  }) })
+  }), endpoints: [{ type: 'openconnect', tag: 'native-vpn' }, { type: 'openvpn-client', tag: 'native-ovpn' }, { type: 'openvpn-server', tag: 'serving-ovpn' }, { type: 'wireguard', tag: 'wg' }] })
   const saved = vi.fn()
   const app = renderer.createApp(defineComponent({ extends: DnsEditor, render: () => h('div') }), { visible: true, data: JSON.stringify(data), index: 0, rslvdTags: ['resolver'], serverTags: ['later-a', 'later-b', 'group'], onSave: saved })
   app.config.globalProperties.$t = (key: string) => key
@@ -35,6 +36,24 @@ function mount(data: Record<string, any>, mode: string, native = false) {
 
 describe('shared DNS editor for Classic and Nexus', () => {
   for (const mode of ['classic', 'nexus']) {
+    it(`${mode} selects an available native VPN DNS endpoint and retains resolver policy`, () => {
+      for (const [type, endpoint] of [['openconnect', 'native-vpn'], ['openvpn', 'native-ovpn']]) {
+      const source = { type, tag: 'vpn-dns', endpoint, accept_default_resolvers: true, accept_search_domain: true }
+      const { vm, saved } = mount(source, mode, true)
+      expect(vm.nativeEndpointTags).toEqual([endpoint])
+      expect(vm.missingService).toBe(false)
+      expect(vm.WithoutDial).toContain(type)
+      vm.save()
+      expect(saved).toHaveBeenCalledWith(source)
+      const historical = mount(source, mode, false)
+      expect(historical.vm.nativeEndpointTags).toEqual([])
+      expect(historical.vm.dnsTypes.some((item: any) => item.value === type)).toBe(false)
+      expect(historical.vm.dnsServer).toEqual(source)
+      expect(historical.vm.capabilityState.historical).toBe(true)
+      historical.vm.save()
+      expect(historical.saved).not.toHaveBeenCalled()
+      }
+    })
     it(`${mode} offers native DNS only when available and edits one canonical fallback value`, () => {
       const source = { type: 'fallback', tag: 'group', servers: ['later-b', 'later-a'], strategy: 'parallel', timeout: '3s' }
       const { vm, saved } = mount(source, mode, true)

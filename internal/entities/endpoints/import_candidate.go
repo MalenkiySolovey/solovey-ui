@@ -42,6 +42,9 @@ func SaveImportedCandidate(tx *gorm.DB, candidate model.Endpoint, recreate bool)
 	}
 	var saved model.Endpoint
 	err := tx.Transaction(func(view *gorm.DB) error {
+		if err := importEndpointCredentials(view, &candidate, recreate); err != nil {
+			return err
+		}
 		action := "new"
 		if candidate.Id != 0 {
 			action = "edit"

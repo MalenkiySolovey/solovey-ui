@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 )
 
@@ -80,6 +81,12 @@ func projectedBaseReferences(base []byte, category, tag string) ([]TagReference,
 		servers, _ := node["servers"].([]any)
 		for index, value := range servers {
 			server, _ := value.(map[string]any)
+			if kind, _ := server["type"].(string); kind != "" {
+				fact := registry.Resolve("dns", kind)
+				if fact.Known && !fact.Available() {
+					continue // preserved DNS state has no effective runtime edges
+				}
+			}
 			field := ""
 			if category == "endpoints" {
 				field = "endpoint"
