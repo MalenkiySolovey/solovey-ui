@@ -128,7 +128,7 @@
         </v-col>
       </v-row>
     </template>
-    <Hysteria2Realm v-if="direction !== 'in' && realmAvailable" :data="data" :available="realmAvailable" />
+    <Hysteria2Realm v-if="direction === 'out' && realmAvailable" :data="data" :available="realmAvailable" />
     <v-row>
       <v-col v-if="supportedFields.includes('bbr_profile')" cols="12" sm="6">
         <v-select v-model="data.bbr_profile" :items="bbrProfiles" :label="$t('types.hy.bbrProfile')" clearable @click:clear="delete data.bbr_profile" />
