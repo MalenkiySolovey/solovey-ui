@@ -19,6 +19,7 @@ type RemoteOutboundSubscription struct {
 	Include            string          `json:"include,omitempty" form:"include"`
 	Exclude            string          `json:"exclude,omitempty" form:"exclude"`
 	RemoveEmojis       bool            `json:"removeEmojis" form:"removeEmojis" gorm:"default:false;not null"`
+	DialerOverride     json.RawMessage `json:"dialerOverride,omitempty" form:"-"`
 	Enabled            bool            `json:"enabled" form:"enabled" gorm:"not null"`
 	TagPrefix          string          `json:"tagPrefix" form:"tagPrefix"`
 	AutoUpdate         bool            `json:"autoUpdate" form:"autoUpdate" gorm:"column:auto_update;default:false;not null"`

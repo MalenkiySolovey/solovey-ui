@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
 	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"gorm.io/gorm"
@@ -159,6 +160,12 @@ func upsertRefreshConnection(tx *gorm.DB, subscription *RemoteOutboundSubscripti
 	}
 	normalized.SourceKey = UniqueSourceKey(seen, normalized.SourceKey)
 	normalized.Name = sourceDisplayName(normalized.Name, index, subscription.RemoveEmojis)
+	if !remoteConnectionIsGroup(RemoteOutboundConnection{Type: normalized.Type, Options: normalized.Options, Canonical: normalized.Canonical}) {
+		normalized.Options, err = coreruntime.ApplyDialerOverride(normalized.Type, normalized.Options, subscription.DialerOverride)
+		if err != nil {
+			return RemoteOutboundConnection{}, false, err
+		}
+	}
 
 	var connection RemoteOutboundConnection
 	var previous *RemoteOutboundConnection

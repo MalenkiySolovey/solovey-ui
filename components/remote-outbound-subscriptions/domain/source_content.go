@@ -30,7 +30,7 @@ func (s RemoteOutboundSubscription) SourceKind() string {
 // Source identity is captured before I/O and checked again in the committing
 // transaction. A refresh of old content must not replace a newer source.
 func (s RemoteOutboundSubscription) SameSource(other RemoteOutboundSubscription) bool {
-	return s.Id == other.Id && s.SourceKind() == other.SourceKind() && s.Url == other.Url && s.UserAgent == other.UserAgent && s.SourceContent == other.SourceContent && s.Include == other.Include && s.Exclude == other.Exclude && s.RemoveEmojis == other.RemoveEmojis
+	return s.Id == other.Id && s.SourceKind() == other.SourceKind() && s.Url == other.Url && s.UserAgent == other.UserAgent && s.SourceContent == other.SourceContent && s.Include == other.Include && s.Exclude == other.Exclude && s.RemoveEmojis == other.RemoveEmojis && string(s.DialerOverride) == string(other.DialerOverride)
 }
 
 func ProjectSourceContent(s *RemoteOutboundSubscription) error {

@@ -148,6 +148,15 @@
           <v-switch v-model="page.form.removeEmojis" :label="$t('remoteOutbound.removeEmojis')" :hint="$t('remoteOutbound.removeEmojisHint')" persistent-hint color="primary" />
         </v-col>
         <v-col cols="12" sm="6" md="12" class="remote-outbounds__form-actions">
+          <v-expansion-panels class="mb-4">
+            <v-expansion-panel :title="$t('remoteOutbound.dialerOverride')">
+              <v-expansion-panel-text>
+                <p class="text-caption mb-3">{{ $t('remoteOutbound.dialerOverrideHint') }}</p>
+                <Dial :dial="page.form.dialerOverride" />
+                <v-btn variant="text" class="mt-2" @click="page.form.dialerOverride = {}">{{ $t('remoteOutbound.clearDialerOverride') }}</v-btn>
+              </v-expansion-panel-text>
+            </v-expansion-panel>
+          </v-expansion-panels>
           <v-btn color="primary" :loading="page.saving" :disabled="page.inlineFileLoading || !!page.inlineFileError" type="submit">
             {{ page.form.id ? $t('actions.update') : $t('actions.add') }}
           </v-btn>
@@ -168,6 +177,7 @@
 <script lang="ts" setup>
 import { reactive } from 'vue'
 import SecretCredentialField from '@/components/fields/SecretCredentialField.vue'
+import Dial from '@/components/fields/Dial.vue'
 import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
 import RemoteOutboundSubscriptionDialogs from '../components/RemoteOutboundSubscriptionDialogs.vue'

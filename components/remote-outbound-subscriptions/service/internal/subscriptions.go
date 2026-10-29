@@ -9,6 +9,7 @@ import (
 	"time"
 
 	remotesub "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
 	subconversion "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/conversion"
@@ -77,6 +78,11 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 		return nil, err
 	}
 	input.UserAgent = strings.TrimSpace(input.UserAgent)
+	if prepared, err := coreruntime.PrepareDialerOverride(input.DialerOverride); err != nil {
+		return nil, err
+	} else {
+		input.DialerOverride = prepared
+	}
 	input.TagPrefix = remotesub.SanitizeTagPrefix(input.TagPrefix)
 	input.UpdateInterval = remotesub.NormalizeUpdateInterval(input.UpdateInterval)
 	if input.Name == "" {
@@ -152,6 +158,7 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 			saved.Include = input.Include
 			saved.Exclude = input.Exclude
 			saved.RemoveEmojis = input.RemoveEmojis
+			saved.DialerOverride = input.DialerOverride
 			saved.Enabled = input.Enabled
 			saved.TagPrefix = input.TagPrefix
 			saved.AutoUpdate = input.AutoUpdate
@@ -175,6 +182,7 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 				Include:        input.Include,
 				Exclude:        input.Exclude,
 				RemoveEmojis:   input.RemoveEmojis,
+				DialerOverride: input.DialerOverride,
 				Enabled:        input.Enabled,
 				TagPrefix:      input.TagPrefix,
 				AutoUpdate:     input.AutoUpdate,
