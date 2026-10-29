@@ -258,3 +258,13 @@ R7 source download detours keep the two existing unsync mutations unchanged in
 `unsyncConnectionsForDeletedOutbound`. The exported admission wrapper now checks
 canonical source references before delegating. This review moves the two exact
 existing digest entries to the private helper; no mutation allowance is added.
+
+R7 automatic source health reviews the changed existing refresh closure and one
+bounded worker launch in Service.probeSourceTargets. The Component's existing
+Start/Stop owner owns the schedule; each admitted round has a 20-second parent
+context, at most 32 sources, 128 targets per source and eight workers joined
+before return. Per-probe deadlines are at most 15 seconds. Cancellation stops
+admission and waits for workers; restore admission encloses the round. Only
+CoreRuntime owns health truth and generation/target fences. Cursors are bounded
+bookkeeping, not another scheduler or health authority. These two exact launch
+digests are reviewed; ticker and unrelated R1 inventory entries are unchanged.
