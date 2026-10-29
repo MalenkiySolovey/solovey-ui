@@ -44,6 +44,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     sourceType: 'remote' as 'remote' | 'inline' | 'file',
     sourcePath: '',
     content: undefined as SecretView | SecretMutation | undefined,
+    fetchHeaders: undefined as SecretView | SecretMutation | undefined,
     include: '',
     exclude: '',
     removeEmojis: false,
@@ -146,6 +147,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
         sourceType: form.sourceType,
         sourcePath: form.sourceType === 'file' ? form.sourcePath : '',
         content: form.sourceType === 'inline' ? secretMutation(form.content) : undefined,
+        fetchHeaders: form.sourceType === 'remote' ? secretMutation(form.fetchHeaders) : undefined,
         include: form.include,
         exclude: form.exclude,
         removeEmojis: form.removeEmojis,
@@ -177,6 +179,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     form.sourceType = 'remote'
     form.sourcePath = ''
     form.content = undefined
+    form.fetchHeaders = undefined
     form.include = ''
     form.exclude = ''
     form.removeEmojis = false
@@ -197,6 +200,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     form.sourceType = subscription.sourceType ?? 'remote'
     form.sourcePath = subscription.sourcePath ?? ''
     form.content = subscription.content ? JSON.parse(JSON.stringify(subscription.content)) : undefined
+    form.fetchHeaders = subscription.fetchHeaders ? JSON.parse(JSON.stringify(subscription.fetchHeaders)) : undefined
     form.include = subscription.include ?? ''
     form.exclude = subscription.exclude ?? ''
     form.removeEmojis = subscription.removeEmojis === true

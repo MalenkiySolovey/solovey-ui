@@ -59,6 +59,51 @@ for (const mode of ['classic', 'nexus']) {
     expect(JSON.stringify(mutations[1])).not.toContain('inline-secret-fixture')
   })
 
+  test(`${mode} keeps private source headers masked after creation`, async ({ page }) => {
+    await page.addInitScript(selected => window.localStorage.setItem('sui:ui:mode', selected), mode)
+    await login(page)
+    await enableComponent(page, 'remote-outbound-subscriptions')
+    const sources: Record<string, unknown>[] = []
+    const mutations: Record<string, any>[] = []
+    const reference = { owner: 'remote-outbound-subscriptions', id: 'record:1:headers', policy: 'OWNER_USE_AND_PRESENCE', projection: 'MASKED' }
+    await page.route('**/api/remote-outbound-subscriptions', route => route.fulfill({ json: { success: true, msg: '', obj: sources } }))
+    await page.route('**/api/remote-outbound-subscriptions/save', async route => {
+      const payload = JSON.parse(new URLSearchParams(route.request().postData() ?? '').get('data') ?? '{}')
+      mutations.push(payload)
+      const present = payload.fetchHeaders?.intent !== 'clear'
+      sources.splice(0, sources.length, { ...payload, id: 1, fetchHeaders: { reference, present, rotationRevision: present ? 'a'.repeat(64) : '' }, groups: [], connections: [], lastUpdated: 0, lastError: '' })
+      await route.fulfill({ json: { success: true, msg: '', obj: null } })
+    })
+    await page.goto('hosts/local/remote-subscriptions')
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Private header source')
+    await page.getByRole('textbox', { name: 'Subscription URL', exact: true }).fill('https://source.example/subscription')
+    await page.getByRole('textbox', { name: 'Source User-Agent', exact: true }).fill('SelectedClient/1')
+    const selectHeaders = async (choice: string) => {
+      await page.getByRole('combobox', { name: 'Private fetch headers (JSON)', exact: true }).press('Enter')
+      await page.getByRole('option', { name: choice, exact: true }).click()
+    }
+    await selectHeaders('Replace credential')
+    const raw = '{"Authorization":"Bearer synthetic-private-header"}'
+    await page.getByRole('textbox', { name: 'New credential', exact: true }).fill(raw)
+    await page.locator('form').getByRole('button', { name: 'Add', exact: true }).click()
+    await expect.poll(() => mutations.length).toBe(1)
+    expect(mutations[0]).toMatchObject({ userAgent: 'SelectedClient/1', fetchHeaders: { intent: 'replace', value: raw } })
+    await page.getByRole('button', { name: /Private header source/ }).click()
+    await page.getByRole('button', { name: 'Edit', exact: true }).click()
+    await expect(page.getByText('A credential is stored. Its value is hidden.', { exact: true })).toBeVisible()
+    await expect(page.getByRole('textbox', { name: 'New credential', exact: true })).toHaveCount(0)
+    await expect(page.getByText('synthetic-private-header', { exact: false })).toHaveCount(0)
+    await page.locator('form').getByRole('button', { name: 'Update', exact: true }).click()
+    await expect.poll(() => mutations.length).toBe(2)
+    expect(mutations[1].fetchHeaders).toMatchObject({ intent: 'unchanged', reference, rotationRevision: 'a'.repeat(64) })
+    expect(JSON.stringify(mutations[1])).not.toContain('synthetic-private-header')
+    await page.getByRole('button', { name: 'Edit', exact: true }).click()
+    await selectHeaders('Clear stored headers')
+    await page.locator('form').getByRole('button', { name: 'Update', exact: true }).click()
+    await expect.poll(() => mutations.length).toBe(3)
+    expect(mutations[2].fetchHeaders).toEqual({ intent: 'clear' })
+  })
+
   test(`${mode} creates and edits a watched host file source`, async ({ page }) => {
     await page.addInitScript(selected => window.localStorage.setItem('sui:ui:mode', selected), mode)
     await login(page)

@@ -1,5 +1,9 @@
 export default {
   "remoteOutbound": {
+    "clearFetchHeaders": "Clear stored headers",
+    "noFetchHeaders": "No additional headers are stored.",
+    "fetchHeaders": "Private fetch headers (JSON)",
+    "fetchHeadersHint": "Optional JSON object of header names to strings or string arrays, up to 16 KiB. Values are encrypted and later edits use Keep, Replace or Clear. Headers apply only to source downloads and are removed on redirects. Set User-Agent separately; host, framing and proxy headers cannot be overridden.",
     "sourcePath": "Source path on the Panel host",
     "sourcePathHint": "Absolute path to a readable regular file on the Panel host (up to 512 KiB). Auto refresh checks it at the selected interval. Read or parse failures preserve the last collected connections. The Panel does not write or remove this file.",
     "inlineFile": "Load a local source file",
