@@ -160,9 +160,9 @@ func TestSourceDownloadOutboundUsesStableOwnerAndPreservesUnavailableHistory(t *
 	if err := db.Create(&outbound).Error; err != nil {
 		t.Fatal(err)
 	}
-	requests, factories, dials := 0, 0, 0
+	var requests, factories, dials atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests++
+		requests.Add(1)
 		if r.Header.Get("X-Source-Key") != "owned-detour-canary" || r.UserAgent() != "detour-source/1.0" {
 			t.Error("detour displaced private source headers or User-Agent")
 		}
@@ -171,7 +171,7 @@ func TestSourceDownloadOutboundUsesStableOwnerAndPreservesUnavailableHistory(t *
 	defer server.Close()
 	unavailable := false
 	svc.OutboundHTTP = componenthost.OutboundHTTPClientFunc(func(tag string, timeout time.Duration) (*http.Client, error) {
-		factories++
+		factories.Add(1)
 		if tag != outbound.Tag || timeout != 15*time.Second {
 			t.Error("download did not resolve the selected canonical outbound")
 		}
@@ -179,7 +179,7 @@ func TestSourceDownloadOutboundUsesStableOwnerAndPreservesUnavailableHistory(t *
 			return nil, errors.New("runtime stopped")
 		}
 		return &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-			dials++
+			dials.Add(1)
 			return (&net.Dialer{}).DialContext(ctx, network, address)
 		}}}, nil
 	})
@@ -190,8 +190,8 @@ func TestSourceDownloadOutboundUsesStableOwnerAndPreservesUnavailableHistory(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if count, err := svc.RefreshDueSubscriptionsContext(context.Background(), "test"); err != nil || count != 1 || requests != 1 || factories != 1 || dials != 1 {
-		t.Fatal("scheduled source download bypassed the selected runtime port", err, count, requests, factories, dials)
+	if count, err := svc.RefreshDueSubscriptionsContext(context.Background(), "test"); err != nil || count != 1 || requests.Load() != 1 || factories.Load() != 1 || dials.Load() != 1 {
+		t.Fatal("scheduled source download bypassed the selected runtime port", err, count, requests.Load(), factories.Load(), dials.Load())
 	}
 	var original remotesub.RemoteOutboundSubscription
 	if err := db.First(&original, saved.Id).Error; err != nil {
@@ -202,7 +202,7 @@ func TestSourceDownloadOutboundUsesStableOwnerAndPreservesUnavailableHistory(t *
 		t.Fatal(err)
 	}
 	unavailable = true
-	if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err == nil || requests != 1 {
+	if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err == nil || requests.Load() != 1 {
 		t.Fatal("unavailable runtime fell back to host networking", err)
 	}
 	if err := db.First(&connection, connection.Id).Error; err != nil {
@@ -213,7 +213,7 @@ func TestSourceDownloadOutboundUsesStableOwnerAndPreservesUnavailableHistory(t *
 		t.Fatal(err)
 	}
 	unavailable = false
-	if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err != nil || requests != 2 {
+	if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err != nil || requests.Load() != 2 {
 		t.Fatal("outbound rename broke the stable source reference", err)
 	}
 	outbound.Type = "unavailable-future-protocol"
@@ -240,8 +240,8 @@ func TestSourceDownloadOutboundUsesStableOwnerAndPreservesUnavailableHistory(t *
 	if _, err := svc.SaveSubscription(*saved, true, "test"); err != nil {
 		t.Fatal("source edit destroyed a preserved unavailable reference", err)
 	}
-	previousFactories := factories
-	if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err == nil || factories != previousFactories || requests != 2 {
+	previousFactories := factories.Load()
+	if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err == nil || factories.Load() != previousFactories || requests.Load() != 2 {
 		t.Fatal("unavailable capability entered runtime download", err)
 	}
 	var current remotesub.RemoteOutboundSubscription
@@ -257,7 +257,7 @@ func TestSourceDownloadOutboundUsesStableOwnerAndPreservesUnavailableHistory(t *
 	if err := db.Save(&outbound).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err != nil || requests != 3 {
+	if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err != nil || requests.Load() != 3 {
 		t.Fatal("return to supporting runtime did not reactivate the same source", err)
 	}
 	payload, _ := json.Marshal(outbound.Tag)
