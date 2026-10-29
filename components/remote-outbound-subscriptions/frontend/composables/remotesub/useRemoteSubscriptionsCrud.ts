@@ -1,6 +1,7 @@
 import { computed, nextTick, reactive, ref } from 'vue'
 import Data from '@/store/modules/data'
 import HttpUtils from '@/plugins/httputil'
+import { secretMutation, type SecretView, type SecretMutation } from '@/features/secretCredentialDraft'
 import {
   connectionConvertedType,
   connectionSourceType,
@@ -35,6 +36,8 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     id: 0,
     name: '',
     url: '',
+    sourceType: 'remote' as 'remote' | 'inline',
+    content: undefined as SecretView | SecretMutation | undefined,
     tagPrefix: '',
     enabled: true,
     autoUpdate: false,
@@ -91,10 +94,12 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
       const payload = {
         id: form.id,
         name: form.name,
-        url: form.url,
+        url: form.sourceType === 'remote' ? form.url : '',
+        sourceType: form.sourceType,
+        content: form.sourceType === 'inline' ? secretMutation(form.content) : undefined,
         tagPrefix: form.tagPrefix,
         enabled: form.enabled,
-        autoUpdate: form.autoUpdate,
+        autoUpdate: form.sourceType === 'remote' && form.autoUpdate,
         updateInterval: form.updateInterval,
       }
       const msg = await HttpUtils.post('api/remote-outbound-subscriptions/save', {
@@ -114,6 +119,8 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     form.id = 0
     form.name = ''
     form.url = ''
+    form.sourceType = 'remote'
+    form.content = undefined
     form.tagPrefix = ''
     form.enabled = true
     form.autoUpdate = false
@@ -125,6 +132,8 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     form.id = subscription.id
     form.name = subscription.name
     form.url = subscription.url
+    form.sourceType = subscription.sourceType ?? 'remote'
+    form.content = subscription.content ? JSON.parse(JSON.stringify(subscription.content)) : undefined
     form.tagPrefix = subscription.tagPrefix
     form.enabled = subscription.enabled
     form.autoUpdate = Boolean(subscription.autoUpdate)

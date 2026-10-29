@@ -9,7 +9,7 @@
         <div class="remote-outbounds__title">
           <div>
             <strong>{{ subscription.name }}</strong>
-            <span class="remote-outbounds__url">{{ subscription.url }}</span>
+            <span class="remote-outbounds__url">{{ subscription.sourceType === 'inline' ? $t('remoteOutbound.sourceTypes.inline') : subscription.url }}</span>
           </div>
           <div class="remote-outbounds__chips">
             <v-chip density="compact" size="small" :color="subscription.enabled ? 'success' : undefined" variant="flat">
@@ -34,7 +34,7 @@
       <v-expansion-panel-text>
         <div class="remote-outbounds__meta">
           <span>{{ $t('remoteOutbound.tagPrefix') }}: <code>{{ subscription.tagPrefix || '-' }}</code></span>
-          <span>{{ $t('remoteOutbound.updateInterval') }}: {{ page.formatInterval(subscription.updateInterval) }}</span>
+          <span v-if="subscription.sourceType !== 'inline'">{{ $t('remoteOutbound.updateInterval') }}: {{ page.formatInterval(subscription.updateInterval) }}</span>
           <span>{{ $t('remoteOutbound.lastUpdated') }}: {{ page.formatTime(subscription.lastUpdated) }}</span>
           <span v-if="subscription.lastError" class="remote-outbounds__error">{{ subscription.lastError }}</span>
         </div>

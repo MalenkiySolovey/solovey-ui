@@ -1,5 +1,9 @@
 export default {
   "remoteOutbound": {
+    "sourceType": "來源類型",
+    "sourceTypes": { "remote": "遠端 URL", "inline": "內嵌內容" },
+    "inlineContent": "來源內容",
+    "inlineContentHint": "貼上支援的用戶端設定或分享連結（最多 512 KiB）。憑證由來源管理，後續編輯可保留或替換。儲存時驗證來源；重新整理會重新收集連線，再由您選擇並套用。",
     "title": "Remote Subscriptions",
     "summary": "{total} 個訂閱 • {connections} 個連線 • {synced} 個已加入出站",
     "name": "名稱",
