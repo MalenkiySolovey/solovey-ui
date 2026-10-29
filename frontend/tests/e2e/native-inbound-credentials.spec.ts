@@ -1,7 +1,9 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import fs from 'node:fs'
+import path from 'node:path'
 import { generateKeyPairSync, randomBytes } from 'node:crypto'
 import { csrfToken, login, mutationHeaders } from './helpers'
+import { managedE2EResultDir } from './server-lifecycle'
 
 test.use({ actionTimeout: 15_000 })
 
@@ -23,9 +25,8 @@ for (const mode of ['classic', 'nexus']) {
     }
     try {
       if (available) {
-        const certPath = process.env.SUI_E2E_TLS_CERT_PATH
-        const keyPath = process.env.SUI_E2E_TLS_KEY_PATH
-        if (!certPath || !keyPath) throw new Error('Realm inbound qualification requires private synthetic TLS fixture paths')
+        const certPath = process.env.SUI_E2E_TLS_CERT_PATH ?? path.join(managedE2EResultDir, 'e2e-db', 'native-serving-tls.cert.pem')
+        const keyPath = process.env.SUI_E2E_TLS_KEY_PATH ?? path.join(managedE2EResultDir, 'e2e-db', 'native-serving-tls.key.pem')
         const tls = await page.request.post('api/save', {
           headers: mutationHeaders(await csrfToken(page)),
           form: { object: 'tls', action: 'new', data: JSON.stringify({ name: `${tag}-tls`,
