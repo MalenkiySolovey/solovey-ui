@@ -1,5 +1,9 @@
 export default {
   "remoteOutbound": {
+    "removeEmojis": "移除匯入名稱中的表情符號",
+    "userAgent": "來源 User-Agent",
+    "userAgentHint": "留空以自動收集各格式。設定自訂用戶端識別後，每次重新整理僅請求原始 URL 一次。",
+    "removeEmojisHint": "重新整理時於原始名稱篩選後套用。旗幟轉換為國家代碼，保留來源觀測資料及現有出站標籤。",
     "inlineFile": "載入本機來源檔案",
     "inlineFileHint": "將用戶端設定或分享連結檔案載入此來源的替換草稿（最大 512 KiB）。儲存時驗證內容。",
     "inlineFileSizeError": "請選擇非空且不超過 512 KiB 的檔案。",
