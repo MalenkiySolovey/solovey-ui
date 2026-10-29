@@ -32,6 +32,24 @@ func TestDNSServiceReferenceGuardsBeforePersistence(t *testing.T) {
 	if err := db.Create(&model.Setting{Key: "config", Value: `{"dns":{"servers":[{"type":"resolved","service":"resolver"}]}}`}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if !capabilities.Resolve("dns", "resolved").Available {
+		// This host preserves the DNS desired state but has no effective
+		// resolved transport. Its historical service can be removed safely.
+		if err := rejectReferencedService(db, "resolver"); err != nil {
+			t.Fatal("inactive DNS history acquired an effective reference", err)
+		}
+		if _, err := saveUpsert(db, "edit", json.RawMessage(fmt.Sprintf(`{"id":%d,"type":"resolved","tag":"resolver"}`, row.Id))); err == nil {
+			t.Fatal("unavailable service acquired a normal editor")
+		}
+		if _, err := saveDelete(db, json.RawMessage(`"resolver"`)); err != nil {
+			t.Fatal("historical service could not be removed", err)
+		}
+		var settings model.Setting
+		if err := db.Where("key = ?", "config").First(&settings).Error; err != nil || settings.Value != `{"dns":{"servers":[{"type":"resolved","service":"resolver"}]}}` {
+			t.Fatal("historical operation rewrote DNS desired state", err)
+		}
+		return
+	}
 	if err := rejectReferencedService(db, "resolver"); err == nil || !strings.Contains(err.Error(), "dns.servers[0].service") {
 		t.Fatal("reference guard lost its DNS locator")
 	}
