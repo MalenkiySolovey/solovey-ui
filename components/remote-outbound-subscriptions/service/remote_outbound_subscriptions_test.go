@@ -83,6 +83,20 @@ func TestInlineSourceUsesOwnedContentAndExistingRefreshPipeline(t *testing.T) {
 	if err := db.First(&kept, saved.Id).Error; err != nil || !row.SameSource(kept) {
 		t.Fatal("unchanged editor changed captured source identity", err)
 	}
+	invalidFilter := *saved
+	invalidFilter.Include = "[private-pattern"
+	if _, err := svc.SaveSubscription(invalidFilter, true, "test"); !errors.Is(err, remotesub.ErrSourceFilterInvalid) {
+		t.Fatal("invalid filter was accepted or disclosed its expression", err)
+	}
+	saved.Include, saved.Exclude = "^inline", "-test$"
+	saved, err = svc.SaveSubscription(*saved, true, "test")
+	if err != nil {
+		t.Fatal("valid selection could not use the existing source owner", err)
+	}
+	var filtered remotesub.RemoteOutboundSubscription
+	if err := db.First(&filtered, saved.Id).Error; err != nil || filtered.Include != "^inline" || filtered.Exclude != "-test$" || row.SameSource(filtered) || filtered.SourceContent != row.SourceContent {
+		t.Fatal("filter edit lost content or retained stale refresh authority", err)
+	}
 	result, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test")
 	if err != nil || result.Created != 1 {
 		t.Fatal("inline source did not use canonical collection", err)

@@ -1,5 +1,8 @@
 export default {
   "remoteOutbound": {
+    "includeNames": "包含名稱（正規表示式）",
+    "excludeNames": "排除名稱（正規表示式）",
+    "sourceFiltersHint": "重新整理時依來源名稱篩選。排除優先；留空表示全部。保留的群組所需的成員必須全部保留。儲存篩選條件不會修改已收集的連線，重新整理後才會套用。",
     "sourceType": "來源類型",
     "sourceTypes": { "remote": "遠端 URL", "inline": "內嵌內容" },
     "inlineContent": "來源內容",

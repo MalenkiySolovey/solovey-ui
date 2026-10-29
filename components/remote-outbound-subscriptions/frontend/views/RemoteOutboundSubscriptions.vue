@@ -133,6 +133,13 @@
             variant="outlined"
           />
         </v-col>
+        <v-col cols="12" md="6">
+          <v-text-field v-model="page.form.include" :label="$t('remoteOutbound.includeNames')" maxlength="4096" variant="outlined" density="compact" />
+        </v-col>
+        <v-col cols="12" md="6">
+          <v-text-field v-model="page.form.exclude" :label="$t('remoteOutbound.excludeNames')" maxlength="4096" variant="outlined" density="compact" />
+        </v-col>
+        <v-col cols="12" class="text-caption">{{ $t('remoteOutbound.sourceFiltersHint') }}</v-col>
         <v-col cols="12" sm="6" md="12" class="remote-outbounds__form-actions">
           <v-btn color="primary" :loading="page.saving" type="submit">
             {{ page.form.id ? $t('actions.update') : $t('actions.add') }}

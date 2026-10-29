@@ -4,12 +4,39 @@ package remote
 
 import (
 	"encoding/json"
+	"errors"
 	"gorm.io/gorm"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 )
+
+func TestSourceFiltersSelectIRWithoutRewritingCapturedSemantics(t *testing.T) {
+	fetched, err := ParseFetchedSubscription(`{"outbounds":[{"type":"trojan","tag":"DE primary","server":"de.example","server_port":443,"password":"filter-private-fixture"},{"type":"trojan","tag":"US primary","server":"us.example","server_port":443,"password":"other-fixture"},{"type":"trojan","tag":"DE test","server":"test.example","server_port":443,"password":"test-fixture"}]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, err := ApplySourceFilters(RemoteOutboundSubscription{Include: "(?i)^de", Exclude: "test$"}, fetched)
+	if err != nil || len(selected.Outbounds) != 1 || selected.Outbounds[0]["tag"] != "DE primary" {
+		t.Fatal("include/exclude did not select original source names", err)
+	}
+	if selected.Outbounds[0]["password"] != "filter-private-fixture" || selected.Snapshot.Connections[0].EndpointID != fetched.Snapshot.Connections[0].EndpointID || len(fetched.Outbounds) != 3 || len(fetched.Snapshot.Connections) != 3 {
+		t.Fatal("source selection changed endpoint semantics, identity or the captured source")
+	}
+	empty, err := ApplySourceFilters(RemoteOutboundSubscription{Exclude: ".*"}, fetched)
+	if err != nil || len(empty.Outbounds) != 0 || !empty.Complete() {
+		t.Fatal("explicit empty selection was treated as a failed source", err)
+	}
+	if _, err := ApplySourceFilters(RemoteOutboundSubscription{Include: "[private-pattern"}, fetched); !errors.Is(err, ErrSourceFilterInvalid) {
+		t.Fatal("invalid pattern was not rejected with a static diagnostic")
+	}
+	grouped := *fetched
+	grouped.Snapshot.Connections = append(append([]subcanonical.Connection(nil), fetched.Snapshot.Connections...), subcanonical.ObserveOutbound(subcanonical.FormatSingBox, map[string]any{"type": "selector", "tag": "DE group", "outbounds": []string{"DE primary", "US primary"}}, 3))
+	if _, err := ApplySourceFilters(RemoteOutboundSubscription{Include: "^DE"}, &grouped); !errors.Is(err, ErrSourceFilterDependency) {
+		t.Fatal("source filter silently changed a retained group's membership", err)
+	}
+}
 
 func TestRefreshSubscriptionOutboundsCreatesConnectionsAndDefaultGroup(t *testing.T) {
 	db := newRemoteSyncDB(t)

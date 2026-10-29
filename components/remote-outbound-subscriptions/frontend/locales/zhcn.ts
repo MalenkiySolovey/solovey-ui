@@ -1,5 +1,8 @@
 export default {
   "remoteOutbound": {
+    "includeNames": "包含名称（正则表达式）",
+    "excludeNames": "排除名称（正则表达式）",
+    "sourceFiltersHint": "刷新时按源名称筛选。排除优先；留空表示全部。保留的组所需的成员必须全部保留。保存筛选条件不会修改已收集的连接，刷新后才会应用。",
     "sourceType": "来源类型",
     "sourceTypes": { "remote": "远程 URL", "inline": "内联内容" },
     "inlineContent": "来源内容",

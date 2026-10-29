@@ -38,6 +38,8 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     url: '',
     sourceType: 'remote' as 'remote' | 'inline',
     content: undefined as SecretView | SecretMutation | undefined,
+    include: '',
+    exclude: '',
     tagPrefix: '',
     enabled: true,
     autoUpdate: false,
@@ -97,6 +99,8 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
         url: form.sourceType === 'remote' ? form.url : '',
         sourceType: form.sourceType,
         content: form.sourceType === 'inline' ? secretMutation(form.content) : undefined,
+        include: form.include,
+        exclude: form.exclude,
         tagPrefix: form.tagPrefix,
         enabled: form.enabled,
         autoUpdate: form.sourceType === 'remote' && form.autoUpdate,
@@ -121,6 +125,8 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     form.url = ''
     form.sourceType = 'remote'
     form.content = undefined
+    form.include = ''
+    form.exclude = ''
     form.tagPrefix = ''
     form.enabled = true
     form.autoUpdate = false
@@ -134,6 +140,8 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     form.url = subscription.url
     form.sourceType = subscription.sourceType ?? 'remote'
     form.content = subscription.content ? JSON.parse(JSON.stringify(subscription.content)) : undefined
+    form.include = subscription.include ?? ''
+    form.exclude = subscription.exclude ?? ''
     form.tagPrefix = subscription.tagPrefix
     form.enabled = subscription.enabled
     form.autoUpdate = Boolean(subscription.autoUpdate)
