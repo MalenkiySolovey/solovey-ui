@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -148,6 +149,25 @@ func Generate(clientConfig json.RawMessage, i *model.Inbound, hostname string) (
 		links, err = generateEndpointLinks("trojan", userConfig["trojan"], *inbound, Addrs)
 	case "vmess":
 		links, err = generateEndpointLinks("vmess", userConfig["vmess"], *inbound, Addrs)
+	case "mieru":
+		credential := userConfig["mieru"]
+		links, err = generateEndpointLinks("mieru", map[string]any{"username": credential["name"], "password": credential["password"]}, *inbound, Addrs)
+	case "sudoku":
+		keys, _ := userConfig["sudoku"]["keys"].(map[string]any)
+		key, _ := keys[strconv.FormatUint(uint64(i.Id), 10)].(string)
+		if key == "" {
+			return nil, errors.New("CLIENT_CREDENTIAL_DELIVERY_UNAVAILABLE")
+		}
+		links, err = generateEndpointLinks("sudoku", map[string]any{"key": key}, *inbound, Addrs)
+	case "mtproxy":
+		secret := mapString(userConfig["mtproxy"], "secret")
+		if secret == "" {
+			return nil, errors.New("CLIENT_CREDENTIAL_DELIVERY_UNAVAILABLE")
+		}
+		for _, addr := range Addrs {
+			q := url.Values{"server": {mapString(addr, "server")}, "port": {fmt.Sprint(addr["server_port"])}, "secret": {secret}}
+			links = append(links, "tg://proxy?"+q.Encode())
+		}
 	default:
 		return nil, fmt.Errorf("unsupported subscription inbound type %q", i.Type)
 	}
@@ -175,6 +195,15 @@ func validateGeneratedLink(link string) error {
 		return errors.New("malformed generated subscription link")
 	}
 	switch parsed.Scheme {
+	case "tg":
+		if parsed.Host != "proxy" || parsed.Query().Get("secret") == "" {
+			return errors.New("invalid MTProxy share link")
+		}
+		if _, err := codec.NormalizeHost(parsed.Query().Get("server")); err != nil {
+			return err
+		}
+		_, err := parsePortValue(parsed.Query().Get("port"))
+		return err
 	case "socks5", "http", "https":
 		_, _, err := parseStandardProxy(parsed, 0)
 		return err

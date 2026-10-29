@@ -34,6 +34,11 @@ func BuildLinksForInbounds(config json.RawMessage, inbounds []model.Inbound, hos
 		if !clientfacts.CanDeliver(inbounds[i].Type, "uri") {
 			continue
 		}
+		if fact, _ := clientfacts.Resolve(inbounds[i].Type); fact.SecretField != "" {
+			// Managed credentials are borrowed only for private delivery. Never
+			// persist a second plaintext credential inside Client.Links.
+			continue
+		}
 		generated, err := suburi.Generate(config, &inbounds[i], hostname)
 		if err != nil {
 			var unsupported *suburi.UnsupportedProjection
@@ -51,9 +56,18 @@ func BuildLinksForInbounds(config json.RawMessage, inbounds []model.Inbound, hos
 			})
 		}
 	}
+	return NameLinks(links)
+}
+
+// NameLinks shares public-label allocation between stored legacy links and
+// private response-only links. Explicit external URLs retain their ownership.
+func NameLinks(links []Link) ([]Link, error) {
 	var uris []string
 	var indexes []int
 	for index, link := range links {
+		if LinkString(link, "type") != "local" {
+			continue
+		}
 		if value := LinkString(link, "uri"); value != "" {
 			uris = append(uris, value)
 			indexes = append(indexes, index)

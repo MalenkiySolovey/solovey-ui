@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -14,6 +15,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"
+	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
 )
 
 type OutboundSet struct {
@@ -212,6 +214,30 @@ func inboundOutboundConfig(configs map[string]interface{}, inbound *model.Inboun
 	}
 	if protocol == "shadowsocks" {
 		return shadowsocksOutboundConfig(configs, inbound, outbound)
+	}
+	if protocol == "mieru" || protocol == "trusttunnel" || protocol == "ssh" {
+		config, _ := configs[protocol].(map[string]any)
+		username, _ := config["name"].(string)
+		password, _ := config["password"].(string)
+		if username == "" || password == "" || secretbox.IsEncrypted(password) {
+			return nil, fmt.Errorf("CLIENT_CREDENTIAL_DELIVERY_UNAVAILABLE")
+		}
+		userField := "username"
+		if protocol == "ssh" {
+			userField = "user"
+		}
+		outbound[userField], outbound["password"] = username, password
+		return outbound, nil
+	}
+	if protocol == "sudoku" {
+		config, _ := configs["sudoku"].(map[string]any)
+		keys, _ := config["keys"].(map[string]any)
+		key, _ := keys[strconv.FormatUint(uint64(inbound.Id), 10)].(string)
+		if key == "" || secretbox.IsEncrypted(key) {
+			return nil, fmt.Errorf("CLIENT_CREDENTIAL_DELIVERY_UNAVAILABLE")
+		}
+		outbound["key"] = key
+		return outbound, nil
 	}
 	mergeClientProtocolConfig(configs, inbound, outbound, protocol)
 	if protocol == "snell" {

@@ -9,6 +9,7 @@ import (
 
 func TestLinkCriticalFieldsCannotBeIgnoredByAnotherProtocol(t *testing.T) {
 	for _, link := range []string{
+		"mierus://fixture:fixture@example.org?profile=node&port=443&protocol=TCP&unmapped=critical",
 		"trojan://fixture@example.org:443?security=tls&flow=xtls-rprx-vision",
 		"anytls://fixture@example.org:443?type=ws&path=/critical",
 		"vless://00000000-0000-4000-8000-000000000001@example.org:443?type=grpc&service_name=critical",

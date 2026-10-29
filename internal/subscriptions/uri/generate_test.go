@@ -7,7 +7,60 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 )
+
+func TestMieruEndpointSimpleURIRoundTrip(t *testing.T) {
+	raw := map[string]any{"type": "mieru", "tag": "Public node", "server": "2001:db8::1", "server_port": 443, "server_ports": []string{"2443-2445", "3443-3443"}, "transport": "UDP", "username": "synthetic-user", "password": "synthetic-password", "mtu": 1400, "multiplexing": "MULTIPLEXING_LOW", "handshake_mode": "HANDSHAKE_NO_WAIT", "traffic_pattern": "CAE="}
+	before := canonical.ObserveOutbound(canonical.FormatSingBox, raw, 0)
+	links, err := RenderEndpoint(before)
+	if err != nil || len(links) != 1 {
+		t.Fatal("native Mieru projection failed", err)
+	}
+	after, _, err := Parse(links[0], 0)
+	if err != nil {
+		t.Fatal("native Mieru import failed", err)
+	}
+	if canonical.ObserveOutbound(canonical.FormatURI, *after, 0).EndpointID != before.EndpointID {
+		t.Fatal("native Mieru endpoint semantics changed")
+	}
+	if err := canonical.ValidateEndpointProjection(before, canonical.FormatXray); err == nil {
+		t.Fatal("unsupported representation admitted Mieru")
+	}
+	raw["detour"] = "owned-detour"
+	if _, err := RenderEndpoint(canonical.ObserveOutbound(canonical.FormatSingBox, raw, 0)); err == nil {
+		t.Fatal("Mieru URI stripped a critical client option")
+	}
+}
+
+func TestSudokuEndpointCompactURIRoundTrip(t *testing.T) {
+	for _, extras := range []map[string]any{
+		{},
+		{"aead_method": "aes-128-gcm", "table_type": "prefer_ascii", "enable_pure_downlink": false, "custom_table": "xxxp", "custom_tables": []string{"xxxp", "xxpx"}, "http_mask": map[string]any{"enabled": true, "mode": "ws", "path_root": "/public"}},
+	} {
+		raw := map[string]any{"type": "sudoku", "tag": "public", "server": "edge.example", "server_port": 443, "key": "synthetic-split"}
+		for key, value := range extras {
+			raw[key] = value
+		}
+		before := canonical.ObserveOutbound(canonical.FormatSingBox, raw, 0)
+		links, err := RenderEndpoint(before)
+		if err != nil || len(links) != 1 {
+			t.Fatal("native Sudoku projection failed", err)
+		}
+		parsed, _, err := Parse(links[0], 0)
+		if err != nil {
+			t.Fatal("native Sudoku import failed", err)
+		}
+		after := canonical.ObserveOutbound(canonical.FormatURI, *parsed, 0)
+		if before.EndpointID != after.EndpointID {
+			t.Fatal("native Sudoku endpoint semantics changed")
+		}
+		raw["padding_min"] = 11
+		if _, err := RenderEndpoint(canonical.ObserveOutbound(canonical.FormatSingBox, raw, 0)); err == nil {
+			t.Fatal("compact link stripped custom padding")
+		}
+	}
+}
 
 func TestLinkGeneratorTUICIncludesUDPRelayMode(t *testing.T) {
 	link := generateTUICLinkForTest(t, `{"udp_relay_mode":"native"}`)
@@ -107,6 +160,9 @@ func TestLinkGeneratorProducesParseableLinksForEverySupportedType(t *testing.T) 
 		"tuic":{"uuid":"11111111-1111-4111-8111-111111111111","password":"secret"},
 		"vless":{"uuid":"11111111-1111-4111-8111-111111111111"},
 		"trojan":{"password":"secret"},
+		"mieru":{"name":"user","password":"secret"},
+		"mtproxy":{"secret":"ee121212121212121212121212121212126578616d706c652e636f6d"},
+		"sudoku":{"keys":{"0":"synthetic-split"}},
 		"vmess":{"uuid":"11111111-1111-4111-8111-111111111111"}
 	}`)
 	for _, inboundType := range SupportedInboundTypes {
@@ -118,6 +174,9 @@ func TestLinkGeneratorProducesParseableLinksForEverySupportedType(t *testing.T) 
 				`{}`,
 				`[{"server":"node.example.com","server_port":443,"remark":"-node"}]`,
 			)
+			if inboundType == "mieru" {
+				inbound.Options = json.RawMessage(`{"listen_port":443,"transport":"TCP"}`)
+			}
 			links, err := Generate(clientConfig, inbound, "fallback.example.com")
 			if err != nil {
 				t.Fatal(err)

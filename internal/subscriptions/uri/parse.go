@@ -22,6 +22,9 @@ func parseLink(uri string, i int) (*map[string]interface{}, string, error) {
 	if !utf8.ValidString(uri) {
 		return nil, "", common.NewError("Invalid link encoding")
 	}
+	if scheme, _, found := strings.Cut(uri, "://"); found && strings.EqualFold(scheme, "sudoku") {
+		return parseSudoku(uri, i)
+	}
 	if scheme, payload, found := strings.Cut(uri, "://"); found && strings.EqualFold(scheme, "vmess") {
 		if strings.ContainsAny(payload, "?#") {
 			return nil, "", common.NewError("Invalid vmess payload")
@@ -35,7 +38,8 @@ func parseLink(uri string, i int) (*map[string]interface{}, string, error) {
 			return nil, "", common.NewError("Invalid link query")
 		}
 		for key, values := range query {
-			if !utf8.ValidString(key) || len(values) > 1 {
+			repeatedMieruBinding := strings.EqualFold(u.Scheme, "mierus") && (key == "port" || key == "protocol")
+			if !utf8.ValidString(key) || (len(values) > 1 && !repeatedMieruBinding) {
 				return nil, "", common.NewError("Invalid or ambiguous link query")
 			}
 			for _, value := range values {
@@ -46,6 +50,8 @@ func parseLink(uri string, i int) (*map[string]interface{}, string, error) {
 		}
 		u.Scheme = strings.ToLower(u.Scheme)
 		switch u.Scheme {
+		case "mierus":
+			return parseMieru(u, i)
 		case "vmess":
 			return vmess(u.Host, i)
 		case "vless":

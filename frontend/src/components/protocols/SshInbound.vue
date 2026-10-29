@@ -7,6 +7,7 @@
         <v-col cols="12"><SecretCredentialField v-model="data.host_key" :available="available" :label="$t('nativeInbound.sshHostKeys')" multiline /></v-col>
         <v-col cols="12"><v-combobox :model-value="paths" @update:model-value="setPaths" multiple chips clearable :label="$t('nativeInbound.sshHostKeyPaths')" /></v-col>
         <v-col cols="12"><div class="text-caption">{{ $t('nativeInbound.sshKeyDefault') }}</div></v-col>
+        <v-col cols="12"><div class="text-caption">{{ $t('nativeInbound.sshClientDeliveryTrust') }}</div></v-col>
       </v-row>
     </v-card-text>
   </v-card>

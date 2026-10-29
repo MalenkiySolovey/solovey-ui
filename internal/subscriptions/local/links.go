@@ -2,6 +2,7 @@ package local
 
 import (
 	"encoding/json"
+	"net/url"
 	"strings"
 
 	subexternal "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/external"
@@ -69,6 +70,17 @@ func AddClientInfo(uri string, clientInfo string) string {
 		return uri
 	}
 	switch protocol[0] {
+	case "mierus":
+		u, err := url.Parse(uri)
+		if err != nil {
+			return uri
+		}
+		query := u.Query()
+		query.Set("profile", query.Get("profile")+clientInfo)
+		u.RawQuery = query.Encode()
+		return u.String()
+	case "tg", "sudoku":
+		return uri // These client encodings have no display-label field.
 	case "vmess":
 		var vmessJSON map[string]interface{}
 		config, err := uricodec.Decode(protocol[1])

@@ -3,6 +3,8 @@ package entityinbounds
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -25,6 +27,47 @@ func FillOutboundJSONFromDB(db *gorm.DB, i *model.Inbound, hostname string) erro
 		return err
 	}
 	return fillOutboundJSON(i, hostname, legacy)
+}
+
+// OutboundDeliveryCopy also derives templates for native rows created before
+// their serializer was enabled. Published addresses stay the destination owner;
+// an absent historical address is a repair requirement, never a guessed host.
+func OutboundDeliveryCopy(db *gorm.DB, inbound *model.Inbound) (*model.Inbound, error) {
+	copy, err := TransportDeliveryCopy(db, inbound)
+	if err != nil || copy == nil {
+		return copy, err
+	}
+	if (copy.Type != "mieru" && copy.Type != "trusttunnel" && copy.Type != "sudoku" && copy.Type != "ssh") || !clientfacts.CanDeliver(copy.Type, "json") {
+		return copy, nil
+	}
+	var template map[string]any
+	if len(bytes.TrimSpace(copy.OutJson)) != 0 && json.Unmarshal(copy.OutJson, &template) != nil {
+		return nil, errors.New("CLIENT_DELIVERY_TEMPLATE_INVALID")
+	}
+	if len(template) == 0 {
+		var addresses []map[string]any
+		if json.Unmarshal(copy.Addrs, &addresses) != nil || len(addresses) == 0 {
+			return nil, errors.New("CLIENT_PUBLIC_ADDRESS_REQUIRED")
+		}
+		if err := FillOutboundJSONFromDB(db, copy, ""); err != nil {
+			return nil, err
+		}
+	}
+	if copy.Type == "ssh" {
+		keys, err := sshPublicHostKeys(db, copy)
+		if err != nil {
+			return nil, err
+		}
+		if json.Unmarshal(copy.OutJson, &template) != nil {
+			return nil, errors.New("CLIENT_DELIVERY_TEMPLATE_INVALID")
+		}
+		template["host_key"] = keys
+		copy.OutJson, err = json.Marshal(template)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return copy, nil
 }
 
 func fillOutboundJSON(i *model.Inbound, hostname string, legacy bool) error {
@@ -56,10 +99,77 @@ func fillOutboundJSON(i *model.Inbound, hostname string, legacy bool) error {
 
 	switch i.Type {
 	case "http", "socks", "mixed", "anytls":
+	case "ssh":
+		// Password authentication is supplied by the assigned User at delivery.
 	case "naive":
 		naiveOut(&outJson, *inbound)
 	case "snell":
 		snellOut(outJson, *inbound)
+	case "mieru":
+		for _, key := range []string{"transport", "traffic_pattern", "mtu"} {
+			if value, present := (*inbound)[key]; present {
+				outJson[key] = value
+			}
+		}
+		if ports, present := (*inbound)["listen_ports"]; present {
+			var normalized []string
+			values, ok := ports.([]any)
+			if !ok {
+				return errors.New("CLIENT_MIERU_PORTS_INVALID")
+			}
+			for _, value := range values {
+				port, ok := value.(string)
+				if !ok {
+					return errors.New("CLIENT_MIERU_PORTS_INVALID")
+				}
+				port = strings.ReplaceAll(port, ":", "-")
+				if !strings.Contains(port, "-") {
+					port += "-" + port
+				}
+				normalized = append(normalized, port)
+			}
+			outJson["server_ports"] = normalized
+		}
+	case "sudoku":
+		for _, key := range []string{"aead_method", "padding_min", "padding_max", "table_type", "enable_pure_downlink", "custom_table", "custom_tables"} {
+			if value, present := (*inbound)[key]; present {
+				outJson[key] = value
+			}
+		}
+		// The private master belongs to the serving inbound. Only the assigned
+		// Users-owned split key is supplied later by private delivery.
+		delete(outJson, "key")
+		delete(outJson, "master_key")
+		disabled, _ := (*inbound)["disable_http_mask"].(bool)
+		httpMask, _ := outJson["http_mask"].(map[string]any)
+		if httpMask == nil {
+			httpMask = map[string]any{}
+		}
+		httpMask["enabled"] = !disabled
+		if mode, ok := (*inbound)["http_mask_mode"].(string); ok && mode != "" {
+			httpMask["mode"] = mode
+		}
+		if path, ok := (*inbound)["path_root"].(string); ok && path != "" {
+			httpMask["path_root"] = path
+		}
+		outJson["http_mask"] = httpMask
+	case "trusttunnel":
+		for _, key := range []string{"congestion_controller", "cwnd", "disable_path_mtu_discovery"} {
+			if value, present := (*inbound)[key]; present {
+				outJson[key] = value
+			}
+		}
+		// Listener transport is distinct from the outbound destination network.
+		tcp, udp := false, false
+		switch network := (*inbound)["network"].(type) {
+		case string:
+			tcp, udp = network == "tcp", network == "udp"
+		case []any:
+			for _, value := range network {
+				tcp, udp = tcp || value == "tcp", udp || value == "udp"
+			}
+		}
+		outJson["quic"] = udp && !tcp
 	case "shadowsocks":
 		shadowsocksOut(&outJson, *inbound)
 	case "shadowtls":
