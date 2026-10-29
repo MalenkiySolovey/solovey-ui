@@ -62,43 +62,8 @@ func newExternalHTTPClient() *http.Client {
 		// These URLs are untrusted and require target-IP validation at the
 		// actual dial boundary. An environment proxy would move DNS resolution
 		// behind the proxy and bypass that rebinding defense.
-		Proxy: nil,
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			if allowPrivateExternalURLs() {
-				return dialer.DialContext(ctx, network, addr)
-			}
-			host, port, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, err
-			}
-			if addr, err := netip.ParseAddr(host); err == nil {
-				if isBlockedExternalAddr(addr) {
-					return nil, errBlockedExternalAddress
-				}
-				return dialer.DialContext(ctx, network, net.JoinHostPort(addr.String(), port))
-			}
-			ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-			if err != nil {
-				return nil, err
-			}
-			var lastErr error
-			for _, ip := range ips {
-				addr, ok := netip.AddrFromSlice(ip.IP)
-				if !ok || isBlockedExternalAddr(addr) {
-					lastErr = errBlockedExternalAddress
-					continue
-				}
-				conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(addr.String(), port))
-				if err == nil {
-					return conn, nil
-				}
-				lastErr = err
-			}
-			if lastErr == nil {
-				lastErr = errBlockedExternalAddress
-			}
-			return nil, lastErr
-		},
+		Proxy:                 nil,
+		DialContext:           validatedExternalDial(dialer.DialContext),
 		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: 10 * time.Second,
 		IdleConnTimeout:       90 * time.Second,
@@ -109,6 +74,48 @@ func newExternalHTTPClient() *http.Client {
 		Timeout:       15 * time.Second,
 		Transport:     transport,
 		CheckRedirect: externalRedirectPolicy,
+	}
+}
+
+// Validate and pin the destination before handing it to either the host dialer
+// or an explicitly selected runtime outbound. A detour cannot bypass the
+// subscription owner's private-address and DNS-rebinding boundary.
+func validatedExternalDial(dial func(context.Context, string, string) (net.Conn, error)) func(context.Context, string, string) (net.Conn, error) {
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if allowPrivateExternalURLs() {
+			return dial(ctx, network, addr)
+		}
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err
+		}
+		if addr, err := netip.ParseAddr(host); err == nil {
+			if isBlockedExternalAddr(addr) {
+				return nil, errBlockedExternalAddress
+			}
+			return dial(ctx, network, net.JoinHostPort(addr.String(), port))
+		}
+		ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+		if err != nil {
+			return nil, err
+		}
+		var lastErr error
+		for _, ip := range ips {
+			addr, ok := netip.AddrFromSlice(ip.IP)
+			if !ok || isBlockedExternalAddr(addr) {
+				lastErr = errBlockedExternalAddress
+				continue
+			}
+			conn, err := dial(ctx, network, net.JoinHostPort(addr.String(), port))
+			if err == nil {
+				return conn, nil
+			}
+			lastErr = err
+		}
+		if lastErr == nil {
+			lastErr = errBlockedExternalAddress
+		}
+		return nil, lastErr
 	}
 }
 
@@ -152,6 +159,27 @@ func FetchWithUserAgentContext(ctx context.Context, rawURL string, userAgent str
 }
 
 func FetchWithHeadersContext(ctx context.Context, rawURL string, userAgent string, headers http.Header) (string, error) {
+	return fetchWithClientContext(ctx, rawURL, userAgent, headers, getExternalHTTPClient())
+}
+
+// FetchWithOutboundContext borrows only the explicit outbound's dial authority.
+// Its proxy, TLS shortcuts, cookie jar and redirect policy never replace the
+// subscription owner's validation. The caller retains ownership of outbound.
+func FetchWithOutboundContext(ctx context.Context, rawURL, userAgent string, headers http.Header, outbound *http.Client) (string, error) {
+	if outbound == nil {
+		return "", errors.New("SUBSCRIPTION_DOWNLOAD_OUTBOUND_UNAVAILABLE")
+	}
+	transport, ok := outbound.Transport.(*http.Transport)
+	if !ok || transport == nil || transport.DialContext == nil {
+		return "", errors.New("SUBSCRIPTION_DOWNLOAD_OUTBOUND_UNAVAILABLE")
+	}
+	client := newExternalHTTPClient()
+	client.Transport.(*http.Transport).DialContext = validatedExternalDial(transport.DialContext)
+	defer client.CloseIdleConnections()
+	return fetchWithClientContext(ctx, rawURL, userAgent, headers, client)
+}
+
+func fetchWithClientContext(ctx context.Context, rawURL string, userAgent string, headers http.Header, client *http.Client) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -184,7 +212,7 @@ func FetchWithHeadersContext(ctx context.Context, rawURL string, userAgent strin
 	if strings.TrimSpace(userAgent) != "" {
 		req.Header.Set("User-Agent", strings.TrimSpace(userAgent))
 	}
-	response, err := getExternalHTTPClient().Do(req)
+	response, err := client.Do(req)
 	if err != nil {
 		if errors.Is(err, errBlockedExternalAddress) {
 			logger.Warning("sub: external URL resolves to blocked address:", err)

@@ -6,9 +6,11 @@ import (
 	"context"
 	"errors"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	remotedomain "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
 	remotesettings "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/internal/settings"
 	remotesubservice "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/service/internal"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 
 	"gorm.io/gorm"
@@ -17,7 +19,8 @@ import (
 const defaultRemoteOutboundGroupName = remotedomain.DefaultGroupName
 
 type RemoteOutboundService struct {
-	Runtime *coreservice.Runtime
+	Runtime      *coreservice.Runtime
+	OutboundHTTP componenthost.OutboundHTTPClientProvider
 }
 
 func (s *RemoteOutboundService) runtime() *coreservice.Runtime {
@@ -29,8 +32,9 @@ func (s *RemoteOutboundService) runtime() *coreservice.Runtime {
 
 func (s *RemoteOutboundService) implementation() *remotesubservice.Service {
 	return &remotesubservice.Service{
-		Effects:  remoteOutboundEffects{runtime: s.runtime()},
-		Settings: remotesettings.Reader{},
+		Effects:      remoteOutboundEffects{runtime: s.runtime()},
+		Settings:     remotesettings.Reader{},
+		OutboundHTTP: s.OutboundHTTP,
 	}
 }
 
@@ -62,6 +66,10 @@ func (e remoteOutboundEffects) Invalidate(loginUser string, coreRestart bool) {
 
 func (s *RemoteOutboundService) GetAll() (*[]remotedomain.RemoteOutboundSubscription, error) {
 	return s.implementation().GetAll()
+}
+
+func (s *RemoteOutboundService) DownloadOutbounds() ([]remotesubservice.DownloadOutbound, error) {
+	return s.implementation().DownloadOutbounds(dbsqlite.DB())
 }
 
 func (s *RemoteOutboundService) SaveSubscription(input remotedomain.RemoteOutboundSubscription, enabledProvided bool, loginUser string) (*remotedomain.RemoteOutboundSubscription, error) {

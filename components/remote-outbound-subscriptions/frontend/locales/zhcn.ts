@@ -1,5 +1,10 @@
 export default {
   "remoteOutbound": {
+    "downloadOutbound": "下载所用出站",
+    "downloadOutboundHint": "仅通过所选的运行中出站下载此来源。出站不可用时刷新失败并保留已收集的连接，不会回退到主机网络。",
+    "downloadOutboundUnavailable": "保存的出站在当前运行时不可用。引用已保留，恢复可用前无法刷新。请明确清除选择以更改下载路径。",
+    "noDownloadDetour": "主机网络（无 detour）",
+    "clearDownloadDetour": "清除下载 detour",
     "clearFetchHeaders": "清除已保存的标头",
     "noFetchHeaders": "未保存附加标头。",
     "fetchHeaders": "私密下载标头（JSON）",

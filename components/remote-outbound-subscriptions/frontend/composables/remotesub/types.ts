@@ -34,6 +34,7 @@ export interface RemoteOutboundSubscription {
   name: string
   url: string
   userAgent?: string
+  downloadOutboundId?: number
   sourceType?: 'remote' | 'inline' | 'file'
   sourcePath?: string
   content?: SecretView

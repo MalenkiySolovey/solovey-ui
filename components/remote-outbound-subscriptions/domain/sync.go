@@ -20,6 +20,28 @@ func SyncConnectionToOutbound(tx *gorm.DB, connection *RemoteOutboundConnection,
 }
 
 func UnsyncConnectionsForDeletedOutbound(tx *gorm.DB, tag string) error {
+	if err := validateDownloadOutboundDeletion(tx, tag); err != nil {
+		return err
+	}
+	return unsyncConnectionsForDeletedOutbound(tx, tag)
+}
+
+func validateDownloadOutboundDeletion(tx *gorm.DB, tag string) error {
+	if tx.Migrator().HasTable(&RemoteOutboundSubscription{}) {
+		var references int64
+		if err := tx.Model(&RemoteOutboundSubscription{}).
+			Where("download_outbound_id IN (SELECT id FROM outbounds WHERE tag = ?)", tag).
+			Count(&references).Error; err != nil {
+			return err
+		}
+		if references != 0 {
+			return common.NewError("SUBSCRIPTION_DOWNLOAD_OUTBOUND_REFERENCED")
+		}
+	}
+	return nil
+}
+
+func unsyncConnectionsForDeletedOutbound(tx *gorm.DB, tag string) error {
 	if !tx.Migrator().HasTable(&RemoteOutboundConnection{}) {
 		return nil
 	}
@@ -308,6 +330,9 @@ func DeleteSyncedOutboundsForSubscription(tx *gorm.DB, subscriptionID uint) (boo
 func deleteLinkedOutbound(tx *gorm.DB, connection RemoteOutboundConnection) (bool, error) {
 	if connection.OutboundId == nil || *connection.OutboundId == 0 {
 		return false, nil
+	}
+	if err := validateDownloadOutboundDeletion(tx, connection.OutboundTag); err != nil {
+		return false, err
 	}
 	refs, err := tagrefs.Outbound(tx, connection.OutboundTag, *connection.OutboundId, 0)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	remotesub "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
@@ -31,6 +33,131 @@ func initRemoteOutboundTestDB(t *testing.T) {
 
 func newTestRemoteOutboundService() *RemoteOutboundService {
 	return &RemoteOutboundService{Runtime: coreservice.NewRuntimeWithCoreProvider(nil)}
+}
+
+func TestSourceDownloadOutboundUsesStableOwnerAndPreservesUnavailableHistory(t *testing.T) {
+	initRemoteOutboundTestDB(t)
+	t.Setenv("SUI_ALLOW_PRIVATE_SUB_URLS", "true")
+	db := dbsqlite.DB()
+	svc := newTestRemoteOutboundService()
+	outbound := model.Outbound{Tag: "source-download", Type: "direct", Options: json.RawMessage(`{}`)}
+	if err := db.Create(&outbound).Error; err != nil {
+		t.Fatal(err)
+	}
+	requests, factories, dials := 0, 0, 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Header.Get("X-Source-Key") != "owned-detour-canary" || r.UserAgent() != "detour-source/1.0" {
+			t.Error("detour displaced private source headers or User-Agent")
+		}
+		_, _ = w.Write([]byte(`{"outbounds":[{"type":"shadowsocks","tag":"detour-node","server":"192.0.2.1","server_port":443,"method":"aes-128-gcm","password":"synthetic-password"}]}`))
+	}))
+	defer server.Close()
+	unavailable := false
+	svc.OutboundHTTP = componenthost.OutboundHTTPClientFunc(func(tag string, timeout time.Duration) (*http.Client, error) {
+		factories++
+		if tag != outbound.Tag || timeout != 15*time.Second {
+			t.Error("download did not resolve the selected canonical outbound")
+		}
+		if unavailable {
+			return nil, errors.New("runtime stopped")
+		}
+		return &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			dials++
+			return (&net.Dialer{}).DialContext(ctx, network, address)
+		}}}, nil
+	})
+	saved, err := svc.SaveSubscription(remotesub.RemoteOutboundSubscription{
+		Name: "selected download", Url: server.URL, UserAgent: "detour-source/1.0", DownloadOutboundID: outbound.Id,
+		Enabled: true, AutoUpdate: true, FetchHeaders: json.RawMessage(`{"intent":"replace","value":"{\"X-Source-Key\":\"owned-detour-canary\"}"}`),
+	}, true, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count, err := svc.RefreshDueSubscriptionsContext(context.Background(), "test"); err != nil || count != 1 || requests != 1 || factories != 1 || dials != 1 {
+		t.Fatal("scheduled source download bypassed the selected runtime port", err, count, requests, factories, dials)
+	}
+	var original remotesub.RemoteOutboundSubscription
+	if err := db.First(&original, saved.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	var connection remotesub.RemoteOutboundConnection
+	if err := db.Where("subscription_id = ?", saved.Id).First(&connection).Error; err != nil {
+		t.Fatal(err)
+	}
+	unavailable = true
+	if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err == nil || requests != 1 {
+		t.Fatal("unavailable runtime fell back to host networking", err)
+	}
+	if err := db.First(&connection, connection.Id).Error; err != nil {
+		t.Fatal("failed detour removed the last good collection", err)
+	}
+	outbound.Tag = "renamed-download"
+	if err := db.Save(&outbound).Error; err != nil {
+		t.Fatal(err)
+	}
+	unavailable = false
+	if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err != nil || requests != 2 {
+		t.Fatal("outbound rename broke the stable source reference", err)
+	}
+	outbound.Type = "unavailable-future-protocol"
+	if err := db.Save(&outbound).Error; err != nil {
+		t.Fatal(err)
+	}
+	choices, err := svc.DownloadOutbounds()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, choice := range choices {
+		if choice.ID == outbound.Id {
+			found = true
+			if choice.Capability.Available {
+				t.Fatal("historical unavailable outbound advertised as available")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("unavailable reference disappeared from inspection facts")
+	}
+	saved.FetchHeaders = nil // omission retains its row-owned credential
+	if _, err := svc.SaveSubscription(*saved, true, "test"); err != nil {
+		t.Fatal("source edit destroyed a preserved unavailable reference", err)
+	}
+	previousFactories := factories
+	if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err == nil || factories != previousFactories || requests != 2 {
+		t.Fatal("unavailable capability entered runtime download", err)
+	}
+	var current remotesub.RemoteOutboundSubscription
+	if err := db.First(&current, saved.Id).Error; err != nil || !original.SameSource(current) {
+		t.Fatal("provider unavailability changed desired source state", err)
+	}
+	invalid := *saved
+	invalid.Id = 0
+	if _, err := svc.SaveSubscription(invalid, true, "test"); err == nil {
+		t.Fatal("new source selected an unavailable outbound")
+	}
+	outbound.Type = "direct"
+	if err := db.Save(&outbound).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err != nil || requests != 3 {
+		t.Fatal("return to supporting runtime did not reactivate the same source", err)
+	}
+	payload, _ := json.Marshal(outbound.Tag)
+	if err := (&coreservice.OutboundService{}).Save(db, "del", payload); err == nil || !strings.Contains(err.Error(), "SUBSCRIPTION_DOWNLOAD_OUTBOUND_REFERENCED") {
+		t.Fatal("referenced download outbound was deleted", err)
+	}
+	saved.DownloadOutboundID = 0
+	if _, err := svc.SaveSubscription(*saved, true, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.First(&current, saved.Id).Error; err != nil || original.SameSource(current) {
+		t.Fatal("detour removal retained old refresh authority", err)
+	}
+	if err := (&coreservice.OutboundService{}).Save(db, "del", payload); err != nil {
+		t.Fatal("explicitly cleared detour retained an outbound deletion reference", err)
+	}
 }
 
 func TestRemoteSourceHeadersStayRowBoundAndReachOnlyTheFetchOwner(t *testing.T) {

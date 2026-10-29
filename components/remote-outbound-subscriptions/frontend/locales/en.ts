@@ -1,5 +1,10 @@
 export default {
   "remoteOutbound": {
+    "downloadOutbound": "Download through outbound",
+    "downloadOutboundHint": "Uses the selected running outbound only to download this source. An unavailable outbound fails refresh and preserves collected connections. It never falls back to the host network.",
+    "downloadOutboundUnavailable": "The saved outbound is unavailable on the current runtime. The reference is preserved; refresh cannot use it until it is available again. Clear it explicitly to choose another download path.",
+    "noDownloadDetour": "Host network (no detour)",
+    "clearDownloadDetour": "Clear download detour",
     "clearFetchHeaders": "Clear stored headers",
     "noFetchHeaders": "No additional headers are stored.",
     "fetchHeaders": "Private fetch headers (JSON)",
