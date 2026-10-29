@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveeligibility"
@@ -32,9 +33,9 @@ func TestDNSServiceReferenceGuardsBeforePersistence(t *testing.T) {
 	if err := db.Create(&model.Setting{Key: "config", Value: `{"dns":{"servers":[{"type":"resolved","service":"resolver"}]}}`}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if !capabilities.Resolve("dns", "resolved").Available {
-		// This host preserves the DNS desired state but has no effective
-		// resolved transport. Its historical service can be removed safely.
+	if !registry.Resolve("dns", "resolved").Available() {
+		// A missing DNS implementation has no effective reference. A
+		// temporary host dependency outage still retains the compiled edge.
 		if err := rejectReferencedService(db, "resolver"); err != nil {
 			t.Fatal("inactive DNS history acquired an effective reference", err)
 		}
