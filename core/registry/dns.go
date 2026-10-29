@@ -38,5 +38,7 @@ func dnsDeclarations() []declaration[*dns.TransportRegistry] {
 		{typeName: "tailscale", buildTag: tailscaleBuildTag, compiled: supportsTailscale, register: registerTailscaleTransport},
 		{typeName: "mdns", compiled: true, runtimeDependency: DependencyMulticast, register: mdns.RegisterTransport},
 		{typeName: "resolved", platform: "linux", compiled: supportsResolved, runtimeDependency: DependencyResolve1, register: resolved.RegisterTransport},
+		{typeName: "sdns", buildTag: "shtorm_extended", compiled: supportsNativeDNS, register: registerSDNS},
+		{typeName: "fallback", buildTag: "shtorm_extended", compiled: supportsNativeDNS, register: registerFallbackDNS},
 	}
 }

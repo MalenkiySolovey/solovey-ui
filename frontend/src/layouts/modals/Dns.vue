@@ -42,6 +42,22 @@
         <DialVue :dial="dnsServer" v-if="!WithoutDial.includes(dnsServer.type)" />
         <oTlsVue :outbound="dnsServer" v-if="HasTls.includes(dnsServer.type)" />
         <Headers :data="dnsServer" v-if="HasHeaders.includes(dnsServer.type)" />
+        <v-row v-if="dnsServer.type === 'sdns'">
+          <v-col cols="12">
+            <v-text-field v-model="dnsServer.stamp" :label="$t('dns.sdnsStamp')" :hint="$t('dns.sdnsStampHint')" persistent-hint />
+          </v-col>
+        </v-row>
+        <v-row v-if="dnsServer.type === 'fallback'">
+          <v-col cols="12">
+            <v-select v-model="dnsServer.servers" :items="fallbackServers" :label="$t('dns.fallbackServers')" :hint="$t('dns.fallbackServersHint')" multiple chips persistent-hint />
+          </v-col>
+          <v-col cols="12" sm="6">
+            <v-select v-model="dnsServer.strategy" :items="['sequential', 'parallel']" :label="$t('dns.fallbackStrategy')" hide-details />
+          </v-col>
+          <v-col cols="12" sm="6">
+            <v-text-field v-model="dnsServer.timeout" :label="$t('dns.fallbackTimeout')" :hint="$t('dns.fallbackTimeoutHint')" persistent-hint />
+          </v-col>
+        </v-row>
         <template v-if="dnsServer.type == 'hosts'">
           <v-row>
             <v-col cols="12" sm="6">
@@ -125,7 +141,7 @@ import { runtimeCapability } from '@/types/runtimeCapabilities'
 import { availableCreationChoices, capabilityEditState } from '@/types/capabilityEditors'
 import CapabilitySurface from '@/components/fields/CapabilitySurface.vue'
 export default {
-  props: ['visible', 'data', 'index', 'tsTags', 'rslvdTags'],
+  props: ['visible', 'data', 'index', 'tsTags', 'rslvdTags', 'serverTags'],
   emits: ['close', 'save'],
   data() {
     return {
@@ -135,7 +151,7 @@ export default {
       HasServer: [DnsTypes.TCP, DnsTypes.UDP, DnsTypes.TLS, DnsTypes.QUIC, DnsTypes.HTTPS, DnsTypes.HTTP3],
       HasHeaders: [DnsTypes.HTTPS, DnsTypes.HTTP3],
       HasTls: [DnsTypes.TLS, DnsTypes.QUIC, DnsTypes.HTTPS, DnsTypes.HTTP3],
-      WithoutDial: [DnsTypes.Hosts, DnsTypes.MDNS, DnsTypes.Tailscale, DnsTypes.FakeIP, DnsTypes.Resolved],
+      WithoutDial: [DnsTypes.Hosts, DnsTypes.MDNS, DnsTypes.Tailscale, DnsTypes.FakeIP, DnsTypes.Resolved, DnsTypes.Fallback],
     }
   },
   methods: {
@@ -185,6 +201,7 @@ export default {
     selectedCapability() { return runtimeCapability(Data().capabilities, 'dns', this.dnsServer.type) },
     missingService(): boolean { return this.dnsServer.type === 'resolved' && (!this.dnsServer.service || !this.rslvdTags?.includes(this.dnsServer.service)) },
     observedInterfaces(): string[] { return Data().capabilities?.multicastInterfaces ?? [] },
+    fallbackServers(): string[] { return (this.serverTags ?? []).filter((tag: string) => tag !== this.dnsServer.tag) },
     multicastInterfaces: {
       get(): string { const value = this.dnsServer.interface; return Array.isArray(value) ? value.join(',') : value ?? '' },
       set(value: string) { if (value === '') delete this.dnsServer.interface; else this.dnsServer.interface = value.split(',').map(s => s.trim()) },

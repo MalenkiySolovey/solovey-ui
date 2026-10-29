@@ -14,9 +14,11 @@ import { useConfirm } from '@/components/nexus/primitives/useConfirm'
 import { useUiMode } from '@/uiMode/useUiMode'
 import { isPresetManagedItem } from '@/components/presets/routingDnsPresets'
 import { useDnsConfig } from '@/shared/composables/dns/useDnsConfig'
+import { useResourceAvailability } from '@/features/useResourceAvailability'
 
 export const useDnsPage = () => {
   const { confirm } = useConfirm()
+  const { resourceAvailability, canCreate } = useResourceAvailability('dns')
 
   const { mode } = useUiMode()
 
@@ -45,6 +47,10 @@ export const useDnsPage = () => {
     tsTags,
   } = useDnsConfig()
 
+  const availableDnsServerTags = computed((): string[] => (dns.value?.servers ?? [])
+    .filter((server: any) => resourceAvailability(server).allowed)
+    .map((server: any) => server.tag).filter(Boolean))
+
   const search = ref('')
 
   const regionalPresetDrawer = ref(false)
@@ -68,6 +74,7 @@ export const useDnsPage = () => {
   })
 
   const showDnsModal = (index: number) => {
+    if (index === -1 && !canCreate()) return
     dnsModal.value.index = index
     dnsModal.value.data = index == -1 ? '' : JSON.stringify(dns.value.servers[index])
     dnsModal.value.visible = true
@@ -169,7 +176,7 @@ export const useDnsPage = () => {
   const serverActions = (item: any): RowAction[] => [
     { key: 'up', labelKey: 'table.moveUp', icon: 'lucide:arrow-up', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || item._index === 0 },
     { key: 'down', labelKey: 'table.moveDown', icon: 'lucide:arrow-down', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || item._index === (dns.value?.servers?.length ?? 0) - 1 },
-    { key: 'edit', labelKey: 'actions.edit', icon: 'lucide:pencil', inline: true },
+    { key: 'edit', labelKey: resourceAvailability(item).historical ? 'capability.inspect' : 'actions.edit', icon: resourceAvailability(item).historical ? 'lucide:eye' : 'lucide:pencil', inline: true },
     { key: 'del', labelKey: 'actions.del', icon: 'lucide:trash-2', tone: 'error', inline: true },
   ]
 
@@ -329,6 +336,9 @@ export const useDnsPage = () => {
   }
 
   return {
+    availableDnsServerTags,
+    canCreateDns: canCreate,
+    resourceAvailability,
     actionDnsRuleKeys,
     appConfig,
     compatibilityPreview,
