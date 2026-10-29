@@ -1,6 +1,7 @@
-import { computed, nextTick, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import Data from '@/store/modules/data'
 import HttpUtils from '@/plugins/httputil'
+import { secretMutation, type SecretView, type SecretMutation } from '@/features/secretCredentialDraft'
 import {
   connectionConvertedType,
   connectionSourceType,
@@ -26,6 +27,10 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
   const loading = ref(false)
   const saving = ref(false)
   const refreshing = reactive<Record<number, boolean>>({})
+  const inlineFile = ref<File | File[] | null>(null)
+  const inlineFileLoading = ref(false)
+  const inlineFileError = ref('')
+  let fileDraftGeneration = 0
 
   const requiredRules = computed(() => [
     (value: unknown) => Boolean(String(value ?? '').trim()) || t('remoteOutbound.requiredField'),
@@ -35,11 +40,51 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     id: 0,
     name: '',
     url: '',
+    sourceType: 'remote' as 'remote' | 'inline',
+    content: undefined as SecretView | SecretMutation | undefined,
+    include: '',
+    exclude: '',
     tagPrefix: '',
     enabled: true,
     autoUpdate: false,
     updateInterval: 86400,
   })
+
+  const resetInlineFile = () => {
+    fileDraftGeneration++
+    inlineFile.value = null
+    inlineFileLoading.value = false
+    inlineFileError.value = ''
+  }
+  watch(() => form.sourceType, resetInlineFile)
+
+  const loadInlineFile = async (value: File | File[] | null | undefined) => {
+    resetInlineFile()
+    const file = Array.isArray(value) ? value[0] : value
+    if (!file || form.sourceType !== 'inline') return
+    inlineFile.value = file
+    if (file.size === 0 || file.size > (512 << 10)) {
+      inlineFileError.value = t('remoteOutbound.inlineFileSizeError')
+      return
+    }
+    const generation = fileDraftGeneration
+    const ownerID = form.id
+    const previousContent = form.content
+    inlineFileLoading.value = true
+    try {
+      const text = await file.text()
+      // A file read belongs to this editor generation. It must not replace a
+      // different source, a newer file selection or an intervening typed edit.
+      if (fileDraftGeneration === generation && form.id === ownerID &&
+          form.sourceType === 'inline' && form.content === previousContent) {
+        form.content = { intent: 'replace', value: text }
+      }
+    } catch {
+      if (fileDraftGeneration === generation) inlineFileError.value = t('remoteOutbound.inlineFileReadError')
+    } finally {
+      if (fileDraftGeneration === generation) inlineFileLoading.value = false
+    }
+  }
 
   const testableConnections = (subscription: RemoteOutboundSubscription): RemoteOutboundConnection[] => {
     return (subscription.connections ?? []).filter(connection => connection.enabled)
@@ -84,6 +129,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
   }
 
   const saveSubscription = async () => {
+    if (inlineFileLoading.value || inlineFileError.value) return
     const validation = await subscriptionForm.value?.validate()
     if (validation && !validation.valid) return
     saving.value = true
@@ -91,10 +137,14 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
       const payload = {
         id: form.id,
         name: form.name,
-        url: form.url,
+        url: form.sourceType === 'remote' ? form.url : '',
+        sourceType: form.sourceType,
+        content: form.sourceType === 'inline' ? secretMutation(form.content) : undefined,
+        include: form.include,
+        exclude: form.exclude,
         tagPrefix: form.tagPrefix,
         enabled: form.enabled,
-        autoUpdate: form.autoUpdate,
+        autoUpdate: form.sourceType === 'remote' && form.autoUpdate,
         updateInterval: form.updateInterval,
       }
       const msg = await HttpUtils.post('api/remote-outbound-subscriptions/save', {
@@ -111,9 +161,14 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
   }
 
   const resetForm = () => {
+    resetInlineFile()
     form.id = 0
     form.name = ''
     form.url = ''
+    form.sourceType = 'remote'
+    form.content = undefined
+    form.include = ''
+    form.exclude = ''
     form.tagPrefix = ''
     form.enabled = true
     form.autoUpdate = false
@@ -122,9 +177,14 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
   }
 
   const editSubscription = (subscription: RemoteOutboundSubscription) => {
+    resetInlineFile()
     form.id = subscription.id
     form.name = subscription.name
     form.url = subscription.url
+    form.sourceType = subscription.sourceType ?? 'remote'
+    form.content = subscription.content ? JSON.parse(JSON.stringify(subscription.content)) : undefined
+    form.include = subscription.include ?? ''
+    form.exclude = subscription.exclude ?? ''
     form.tagPrefix = subscription.tagPrefix
     form.enabled = subscription.enabled
     form.autoUpdate = Boolean(subscription.autoUpdate)
@@ -160,6 +220,10 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
   }
 
   return {
+    inlineFile,
+    inlineFileLoading,
+    inlineFileError,
+    loadInlineFile,
     deleteSubscription,
     editSubscription,
     filteredSubscriptions,

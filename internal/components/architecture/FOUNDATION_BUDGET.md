@@ -1,5 +1,16 @@
 # Foundation regression budget
 
+R7 inline External Subscriptions adds one reviewed owner-local `tx.Save(&saved)`
+site (`e857ad88...`) in `*Service.SaveSubscription`. The existing source owner
+first reserves its row identity, then seals the inline source with owner/row/field
+AAD and validates it through EndpointIR, before the same transaction saves the
+sealed value and records the Change. Invalid content rolls back the reservation;
+reads expose only its masked reference. The existing component SQLite backup
+contribution retains this column. `TestInlineSourceUsesOwnedContentAndExistingRefreshPipeline`
+covers rollback, binding, masking and refresh/materialization. No foreign owner,
+worker, new table, Runtime or policy authority is admitted. The R1 base and all
+other budget sites remain unchanged.
+
 R7 MASQUE Outbound reviews the existing `core/registry.outboundDeclarations`
 site from `ee279e14...` to `aadf4b88...`. The sole declaration adds the native
 Extended/QUIC registration and an Official unavailable fact. Direct fallback

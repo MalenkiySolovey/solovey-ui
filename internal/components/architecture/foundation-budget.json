@@ -1234,6 +1234,12 @@
     {
       "rule": "component-model-mutation",
       "path": "components/remote-outbound-subscriptions/service/internal/subscriptions.go",
+      "symbol": "*Service.SaveSubscription",
+      "digest": "e857ad8892d92652372cc64afb1ec64c9ec89af4c40b0c941eedafbf66451b92"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/service/internal/subscriptions.go",
       "symbol": "*Service.SyncConnectionToOutbound",
       "digest": "e857ad8892d92652372cc64afb1ec64c9ec89af4c40b0c941eedafbf66451b92"
     },

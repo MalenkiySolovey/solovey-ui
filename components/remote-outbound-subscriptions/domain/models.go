@@ -12,6 +12,11 @@ type RemoteOutboundSubscription struct {
 	SortOrder          int             `json:"sortOrder" form:"sortOrder" gorm:"column:sort_order;default:0;not null;index"`
 	Name               string          `json:"name" form:"name"`
 	Url                string          `json:"url" form:"url" gorm:"column:url"`
+	SourceType         string          `json:"sourceType,omitempty" form:"sourceType" gorm:"column:source_type;default:remote;not null"`
+	SourceContent      string          `json:"-" form:"-" gorm:"column:source_content"`
+	Content            json.RawMessage `json:"content,omitempty" form:"-" gorm:"-"`
+	Include            string          `json:"include,omitempty" form:"include"`
+	Exclude            string          `json:"exclude,omitempty" form:"exclude"`
 	Enabled            bool            `json:"enabled" form:"enabled" gorm:"not null"`
 	TagPrefix          string          `json:"tagPrefix" form:"tagPrefix"`
 	AutoUpdate         bool            `json:"autoUpdate" form:"autoUpdate" gorm:"column:auto_update;default:false;not null"`

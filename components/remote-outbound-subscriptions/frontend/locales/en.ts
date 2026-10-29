@@ -1,6 +1,17 @@
 export default {
   "remoteOutbound": {
-    "title": "Remote Subscriptions",
+    "inlineFile": "Load a local source file",
+    "inlineFileHint": "Load a client configuration or share-link file into this source's Replace draft (up to 512 KiB). Save validates the contents.",
+    "inlineFileSizeError": "Choose a non-empty file up to 512 KiB.",
+    "inlineFileReadError": "Could not read this file. Choose it again or paste its contents.",
+    "includeNames": "Include names (regular expression)",
+    "excludeNames": "Exclude names (regular expression)",
+    "sourceFiltersHint": "Filters match original source names when you Refresh. Exclude wins; empty includes all. Keep every member required by a retained group. Saving does not change collected connections until Refresh.",
+    "title": "External Subscriptions",
+    "sourceType": "Source type",
+    "sourceTypes": { "remote": "Remote URL", "inline": "Inline content" },
+    "inlineContent": "Source content",
+    "inlineContentHint": "Paste a supported client configuration or share links (up to 512 KiB). Credentials are kept in the source owner; later edits use Keep or Replace. Save validates the source. Refresh updates its collected connections before you select and apply them.",
     "summary": "{total} subscriptions • {connections} connections • {synced} in outbounds",
     "name": "Name",
     "url": "Subscription URL",

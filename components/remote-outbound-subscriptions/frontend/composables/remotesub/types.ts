@@ -1,3 +1,6 @@
+import type { ConfirmOptions } from '@/components/nexus/primitives/useConfirm'
+import type { SecretView } from '@/features/secretCredentialDraft'
+
 export interface RemoteOutboundGroup {
   id: number
   subscriptionId: number
@@ -30,6 +33,10 @@ export interface RemoteOutboundSubscription {
   sortOrder: number
   name: string
   url: string
+  sourceType?: 'remote' | 'inline'
+  content?: SecretView
+  include?: string
+  exclude?: string
   enabled: boolean
   tagPrefix: string
   autoUpdate: boolean
@@ -105,4 +112,3 @@ export interface RemoteConversionPolicy {
 export type RemoteTranslate = (key: string, ...args: any[]) => string
 
 export type RemoteConfirm = (options: ConfirmOptions) => Promise<boolean>
-import type { ConfirmOptions } from '@/components/nexus/primitives/useConfirm'
