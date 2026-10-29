@@ -69,7 +69,11 @@ func TestCapabilityTransportHistoryFollowsCurrentProvider(t *testing.T) {
 					// ordinary destructive conversion workflow.
 					err := saveeligibility.Validate(db, "edit", target.id, target.model, target.category, "direct")
 					var rejected *saveeligibility.Rejection
-					if !errors.As(err, &rejected) || rejected.ReasonCode() != reason {
+					expectedReason := reason
+					if base := registry.Resolve(target.category, kind); !base.Available() {
+						expectedReason = base.Reason
+					}
+					if !errors.As(err, &rejected) || rejected.ReasonCode() != expectedReason {
 						t.Fatal("historical edit admitted", err)
 					}
 				}
