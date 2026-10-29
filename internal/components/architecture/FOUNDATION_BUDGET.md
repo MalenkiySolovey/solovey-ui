@@ -213,4 +213,14 @@ adds no Direct routing decision, worker allowance or new R1 inventory.
 
 R7 XHTTP and accepted native outbound groups compose at scanOutboundRowsForTag with reviewed digest df09e05a1c7b9d2ea00ba85c908370985714bd2a9dba79b17737ad2c3d4914f6. The existing reference owner protects transport.download.detour and native group membership during rename/delete and eager reload. Its existing Direct/final policy is unchanged; no source inventory or new fallback site is introduced.
 
+R7 native XHTTP EndpointIR reviews the existing `ValidateEndpointProjection`
+Direct site from `816b6bbc...` to `ec5f5b74...`. The canonical subscription owner
+admits XHTTP only in representations preserving its protocol, path, host and
+mode. Standard padding is explicit; custom padding, headers or unknown critical
+options require a lossless representation or an explicit rejection. The early
+return for explicit Direct/group endpoints and all routing/final decisions are
+unchanged. Existing parser, round-trip and actual activation suites cover this
+boundary. This replaces one exact declaration digest without a new Direct
+site, worker allowance or R1 inventory regeneration.
+
 The accepted Sudoku, native outbound groups and MASQUE consumers compose at the existing outbound registry declaration with reviewed digest 368115e9a46640be0a2505510a26b3e33b63cc6db1021f4eb2446ecbec1f9750. Each selected native constructor keeps its availability gate. This composition adds no Direct routing decision or inventory site.

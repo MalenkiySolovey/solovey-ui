@@ -771,7 +771,7 @@ func TestRefreshFetchedXrayBalancerSyncsRootURLTestWithDependencies(t *testing.T
 	}
 }
 
-func TestRefreshFetchedXHTTPDependencyBlocksWholeActivationWithoutLosingSource(t *testing.T) {
+func TestRefreshFetchedUnmappedXHTTPDependencyBlocksWholeActivationWithoutLosingSource(t *testing.T) {
 	db := newRemoteSyncDB(t)
 	sub := RemoteOutboundSubscription{Name: "Remote", TagPrefix: "ros-"}
 	if err := db.Create(&sub).Error; err != nil {
@@ -789,7 +789,7 @@ func TestRefreshFetchedXHTTPDependencyBlocksWholeActivationWithoutLosingSource(t
       "tag": "proxy-2",
       "protocol": "vless",
       "settings": {"vnext": [{"address": "two.example.com", "port": 443, "users": [{"id": "22222222-2222-2222-2222-222222222222"}]}]},
-      "streamSettings": {"network": "xhttp", "security": "tls", "tlsSettings": {"serverName": "two.example.com"}, "xhttpSettings": {"path": "/", "host": "edge.example.com", "mode": "auto"}}
+      "streamSettings": {"network": "xhttp", "security": "tls", "tlsSettings": {"serverName": "two.example.com"}, "xhttpSettings": {"path": "/", "host": "edge.example.com", "mode": "auto", "extra": {"downloadSettings": {"address": "other.example"}}}}
     },
     {
       "tag": "proxy-3",
@@ -855,8 +855,8 @@ func TestRefreshFetchedXHTTPDependencyBlocksWholeActivationWithoutLosingSource(t
 		t.Fatal("native source snapshot was not retained")
 	}
 	normalized := subcanonical.NormalizeEndpoint(*endpoint)
-	if normalized.Projection != subcanonical.ProjectionUnsupported {
-		t.Fatal("XHTTP has no explicit unsupported state")
+	if normalized.Projection != subcanonical.ProjectionManual {
+		t.Fatal("unmapped XHTTP has no explicit preservation state")
 	}
 	source := normalized.Observations[0].Source["options"].(map[string]any)
 	stream := source["streamSettings"].(map[string]any)

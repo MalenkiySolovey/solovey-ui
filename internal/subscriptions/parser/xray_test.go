@@ -246,13 +246,13 @@ func TestParseXrayOutboundsKeepsCustomConfigWithoutBalancerAsSingleProfile(t *te
 		t.Fatalf("custom profile = %#v", outbounds[0])
 	}
 	transport, _ := outbounds[0]["transport"].(map[string]interface{})
-	if transport["type"] != "httpupgrade" || transport["path"] != "/" || transport["host"] != "edge.example.com" {
+	if transport["type"] != "xhttp" || transport["path"] != "/" || transport["host"] != "edge.example.com" || transport["mode"] != "auto" {
 		t.Fatalf("transport = %#v", transport)
 	}
 	members, _ := outbounds[0]["xray_profile_outbounds"].([]map[string]interface{})
-	metadata, _ := members[0][subcanonical.MetadataKey].(map[string]interface{})
-	if metadata["source_feature"] != "streamSettings" || metadata["source_type"] != "xhttp" || metadata["target_type"] != "httpupgrade" {
-		t.Fatalf("xhttp member metadata = %#v", metadata)
+	endpoint := subcanonical.ObserveOutbound(subcanonical.FormatXray, members[0], 0)
+	if _, err := subcanonical.CheckedEndpointOutbound(endpoint); err != nil {
+		t.Fatal("exact native XHTTP mapping was blocked", err)
 	}
 }
 

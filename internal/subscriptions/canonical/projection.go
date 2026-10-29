@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+
+	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 )
 
 var ErrUnsupportedProjection = errors.New("UNSUPPORTED: endpoint fields cannot be preserved in the requested representation")
@@ -172,6 +174,17 @@ func ValidateEndpointProjection(endpoint EndpointIR, target string) error {
 			keys += " path host"
 		case "grpc":
 			keys += " service_name"
+		case "xhttp":
+			if padding, present := transport["x_padding_bytes"]; present && padding != entityprotocol.XHTTPDefaultPadding {
+				return ErrUnsupportedProjection
+			}
+			if target == FormatClash || (target == FormatURI && protocol != "vless" && protocol != "trojan") {
+				return ErrUnsupportedProjection
+			}
+			keys += " path host mode x_padding_bytes"
+			if target == FormatXray {
+				keys += " headers"
+			}
 		default:
 			return ErrUnsupportedProjection
 		}

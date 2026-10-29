@@ -119,6 +119,14 @@ func xrayStreamTransport(outbound map[string]interface{}) map[string]interface{}
 			"network":             "httpupgrade",
 			"httpupgradeSettings": settings,
 		}
+	case "xhttp":
+		settings := map[string]interface{}{}
+		for _, field := range []string{"path", "host", "mode", "headers"} {
+			if value, present := transport[field]; present {
+				settings[field] = value
+			}
+		}
+		return map[string]interface{}{"network": "xhttp", "xhttpSettings": settings}
 	default:
 		return nil
 	}

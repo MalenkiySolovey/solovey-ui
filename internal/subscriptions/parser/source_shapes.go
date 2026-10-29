@@ -147,6 +147,19 @@ func xraySourceShapes(raw map[string]any) bool {
 			return false
 		}
 	}
+	for _, key := range []string{"xhttpSettings", "splithttpSettings"} {
+		transport := sourceMap(stream[key])
+		if !sourceShapes(transport, "path host mode", "", "") || !sourceHeaders(transport["headers"]) {
+			return false
+		}
+		if headers, ok := transport["headers"].(map[string]any); ok {
+			for _, value := range headers {
+				if _, ok := value.(string); !ok {
+					return false
+				}
+			}
+		}
+	}
 	return true
 }
 

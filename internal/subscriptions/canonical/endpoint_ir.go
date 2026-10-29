@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
+	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 )
 
 const (
@@ -172,6 +173,14 @@ func semanticEndpoint(raw map[string]any) map[string]any {
 		}
 	}
 	transport := mapValue(raw["transport"])
+	if transport["type"] == "xhttp" {
+		if mode := transport["mode"]; mode == nil || mode == "" || mode == "auto" {
+			delete(transport, "mode")
+		}
+		if transport["x_padding_bytes"] == entityprotocol.XHTTPDefaultPadding {
+			delete(transport, "x_padding_bytes")
+		}
+	}
 	if stringValue(transport["type"]) == "ws" && (transport["max_early_data"] == nil || portString(transport["max_early_data"]) == "0") {
 		delete(transport, "early_data_header_name")
 		delete(transport, "max_early_data")

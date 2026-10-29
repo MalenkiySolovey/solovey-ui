@@ -150,6 +150,11 @@ func classifyLinkSource(link string) []canonical.ProjectionDiagnostic {
 	case "naive+https", "naive+quic", "http2":
 		known = "peer insecure alpn tfo"
 	}
+	protocol, transportType := strings.ToLower(parsed.Scheme), strings.ToLower(parsed.Query().Get("type"))
+	nativeXHTTP := (protocol == "vless" || protocol == "trojan") && (transportType == "xhttp" || transportType == "splithttp")
+	if nativeXHTTP {
+		known += " mode"
+	}
 	fields := map[string]bool{}
 	for _, key := range strings.Fields(known) {
 		fields[key] = true
@@ -165,13 +170,15 @@ func classifyLinkSource(link string) []canonical.ProjectionDiagnostic {
 	if encryption := parsed.Query().Get("encryption"); encryption != "" && encryption != "none" {
 		return block("authentication")
 	}
-	if typ := parsed.Query().Get("type"); typ != "" && typ != "tcp" && typ != "ws" && typ != "http" && typ != "h2" && typ != "grpc" && typ != "httpupgrade" {
+	if typ := parsed.Query().Get("type"); typ != "" && typ != "tcp" && typ != "ws" && typ != "http" && typ != "h2" && typ != "grpc" && typ != "httpupgrade" && !nativeXHTTP {
 		if !(typ == "quic" && (parsed.Scheme == "ss" || parsed.Scheme == "shadowsocks")) {
 			return block("transport")
 		}
 	}
 	if mode := parsed.Query().Get("mode"); mode != "" {
-		return block("transport")
+		if !nativeXHTTP || (mode != "auto" && mode != "packet-up" && mode != "stream-up" && mode != "stream-one") {
+			return block("transport")
+		}
 	}
 	if header := parsed.Query().Get("headerType"); header != "" && header != "none" && header != "http" {
 		return block("transport")
