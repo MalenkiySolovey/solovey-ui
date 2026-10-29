@@ -1,5 +1,7 @@
 export default {
   "dns": {
+    "acceptSearchDomain": "Accept VPN search domains",
+    "nativeVpnMissingEndpoint": "Select an available endpoint of this VPN client type in this core before saving this DNS transport.",
     "capabilityUnavailable": "This transport is unavailable. Correct the configuration using the backend capability reason:",
     "mdnsSemantics": "mDNS uses multicast on eligible interfaces for .local and IPv4/IPv6 link-local reverse domains. It does not apply local resolver neighbor-domain or prefer-Go options.",
     "mdnsInterfaces": "Multicast interfaces (comma separated)",

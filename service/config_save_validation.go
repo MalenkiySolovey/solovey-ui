@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// Native inbound/outbound credentials and inbound groups require a complete candidate: their
+// Native credentials, endpoints and inbound groups require a complete candidate: their
 // Users, TLS and member owners supply fields that an isolated inbound draft
 // cannot validate. Construct and close with the serving registry before the existing
 // save transaction commits. Dry validation starts no listener or runtime.
@@ -65,7 +65,19 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 			}
 		}
 	}
-	if count == 0 && outboundCount == 0 && !transportCandidate {
+	var endpointCount int64
+	var endpointKinds []string
+	for _, kind := range []string{"openconnect", "openvpn-client"} {
+		if entitycapabilities.Resolve("endpoints", kind).Available {
+			endpointKinds = append(endpointKinds, kind)
+		}
+	}
+	if len(endpointKinds) > 0 && tx.Migrator().HasTable(&model.Endpoint{}) {
+		if err := tx.Model(&model.Endpoint{}).Where("type IN ?", endpointKinds).Count(&endpointCount).Error; err != nil {
+			return err
+		}
+	}
+	if count == 0 && outboundCount == 0 && endpointCount == 0 && !transportCandidate {
 		return nil
 	}
 	projection, err := s.singBoxConfigBuilder().BuildCandidateProjectionFromDB(tx, "", false)
@@ -75,6 +87,9 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 	if err != nil {
 		// Provider diagnostics may quote configuration values. Return only an
 		// owner code; the rejected candidate and its credential uses roll back.
+		if endpointCount != 0 {
+			return common.NewError("NATIVE_ENDPOINT_CANDIDATE_REJECTED: the complete provider configuration is invalid")
+		}
 		if count == 0 {
 			return common.NewError("NATIVE_OUTBOUND_CANDIDATE_REJECTED: the complete provider configuration is invalid")
 		}

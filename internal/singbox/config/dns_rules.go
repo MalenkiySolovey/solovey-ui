@@ -214,11 +214,10 @@ func analyzeDNSRules(root dnsObject, rules []dnsObject, historical bool) []diagn
 
 // These selected registry transports implement DNSTransportWithPreferredDomain.
 // Availability is checked separately; an uncompiled transport's stored identity
-// does not become a different semantic type. Extended OpenVPN/OpenConnect DNS
-// transports are not registered by the Panel and cannot be inferred from names.
+// does not become a different semantic type.
 func dnsSupportsPreferredDomain(kind string) bool {
 	switch kind {
-	case "hosts", "local", "mdns", "tailscale":
+	case "hosts", "local", "mdns", "tailscale", "openconnect", "openvpn":
 		return true
 	default:
 		return false

@@ -15,6 +15,19 @@ func buildFor(source Source) *debug.BuildInfo {
 	}}}}
 }
 
+func TestRequiredProviderNameIgnoresOptionalComponentTags(t *testing.T) {
+	for _, tags := range []string{"shtorm_extended", "shtorm_extended,with_openconnect,with_gvisor", "shtorm_extended,with_openvpn,with_gvisor"} {
+		if RequiredProviderName(tags) != "Shtorm Extended" {
+			t.Fatal("optional flavor tags erased the provider requirement")
+		}
+	}
+	for _, tags := range []string{"", "with_gvisor", "with_openvpn", "not_shtorm_extended"} {
+		if RequiredProviderName(tags) != "" {
+			t.Fatal("component tags acquired provider identity")
+		}
+	}
+}
+
 func TestIdentityUsesActualReplacementAndSeparatesArtifactTrust(t *testing.T) {
 	for _, source := range pins.Sources {
 		t.Run(source.ID, func(t *testing.T) {

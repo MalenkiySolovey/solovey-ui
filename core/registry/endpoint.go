@@ -19,8 +19,8 @@ func endpointDeclarations() []declaration[*endpoint.Registry] {
 	return []declaration[*endpoint.Registry]{
 		{typeName: "wireguard", buildTag: "", compiled: true, register: wireguard.RegisterEndpoint},
 		{typeName: "tailscale", buildTag: tailscaleBuildTag, compiled: supportsTailscale, register: registerTailscaleEndpoint},
-		{typeName: "openconnect", buildTag: "with_openconnect", productUnavailable: "UNSUPPORTED_BY_PRODUCT"},
-		{typeName: "openvpn-client", buildTag: "with_openvpn", productUnavailable: "UNSUPPORTED_BY_PRODUCT"},
+		{typeName: "openconnect", buildTag: "shtorm_extended,with_openconnect,with_gvisor", compiled: supportsOpenConnect, register: registerOpenConnectEndpoint},
+		{typeName: "openvpn-client", buildTag: "shtorm_extended,with_openvpn,with_gvisor", compiled: supportsOpenVPNClient, register: registerOpenVPNClient},
 		{typeName: "openvpn-server", buildTag: "with_openvpn", productUnavailable: "UNSUPPORTED_BY_PRODUCT"},
 	}
 }
