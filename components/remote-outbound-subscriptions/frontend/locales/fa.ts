@@ -1,5 +1,9 @@
 export default {
   "remoteOutbound": {
+    "sourceType": "نوع منبع",
+    "sourceTypes": { "remote": "نشانی راه دور", "inline": "محتوای درون‌خطی" },
+    "inlineContent": "محتوای منبع",
+    "inlineContentHint": "پیکربندی کارخواه یا پیوندهای پشتیبانی‌شده را تا ۵۱۲ کیبی‌بایت وارد کنید. اطلاعات ورود نزد مالک منبع می‌ماند. ذخیره، منبع را اعتبارسنجی می‌کند؛ تازه‌سازی، اتصال‌ها را پیش از انتخاب و اعمال دوباره گردآوری می‌کند.",
     "title": "Remote Subscriptions",
     "summary": "{total} اشتراک • {connections} اتصال • {synced} در خروجی‌ها",
     "name": "نام",

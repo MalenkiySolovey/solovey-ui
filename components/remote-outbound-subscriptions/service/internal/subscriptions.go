@@ -62,6 +62,11 @@ func (s *Service) GetAll() (*[]remotesub.RemoteOutboundSubscription, error) {
 	}
 	remotesub.FilterVisibleConnections(subscriptions)
 	remotesub.HydrateConnectionTypeInfo(subscriptions)
+	for i := range subscriptions {
+		if err := remotesub.ProjectSourceContent(&subscriptions[i]); err != nil {
+			return nil, err
+		}
+	}
 	return &subscriptions, nil
 }
 func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, enabledProvided bool, loginUser string) (*remotesub.RemoteOutboundSubscription, error) {
@@ -76,20 +81,38 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 	if len([]rune(input.Name)) > 120 {
 		return nil, common.NewError("subscription name is too long")
 	}
-	if input.Url == "" {
-		return nil, common.NewError("subscription url can not be empty")
+	input.SourceType = input.SourceKind()
+	if input.SourceType != remotesub.SourceRemote && input.SourceType != remotesub.SourceInline {
+		return nil, common.NewError("SUBSCRIPTION_SOURCE_TYPE_INVALID")
 	}
-	if len(input.Url) > 8192 {
-		return nil, common.NewError("subscription url is too long")
+	if input.SourceType == remotesub.SourceInline {
+		if input.Url != "" {
+			return nil, common.NewError("INLINE_SUBSCRIPTION_URL_NOT_ALLOWED")
+		}
+		input.AutoUpdate = false
 	}
-	if err := remotesub.ValidateSubscriptionURL(input.Url); err != nil {
-		return nil, common.NewError("subscription url is not allowed: ", err)
+	if input.SourceType == remotesub.SourceRemote {
+		if input.Url == "" {
+			return nil, common.NewError("subscription url can not be empty")
+		}
+		if len(input.Url) > 8192 {
+			return nil, common.NewError("subscription url is too long")
+		}
+		if err := remotesub.ValidateSubscriptionURL(input.Url); err != nil {
+			return nil, common.NewError("subscription url is not allowed: ", err)
+		}
 	}
 	if input.TagPrefix == "" {
 		input.TagPrefix = remotesub.DefaultTagPrefix(input.Name, input.Id)
 	}
 	if !enabledProvided && input.Id == 0 {
 		input.Enabled = true
+	}
+	// Settings reads use the admitted database outside the write transaction.
+	// Do not open a second connection while holding an inline-content save.
+	options := remotesub.FetchOptions{}
+	if input.SourceType == remotesub.SourceInline {
+		options = s.fetchOptions()
 	}
 	db := dbsqlite.DB()
 	var saved remotesub.RemoteOutboundSubscription
@@ -108,6 +131,9 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 		if input.Id != 0 {
 			if err := tx.First(&saved, input.Id).Error; err != nil {
 				return err
+			}
+			if saved.SourceKind() != input.SourceType {
+				return common.NewError("SUBSCRIPTION_SOURCE_TYPE_IMMUTABLE")
 			}
 			oldTagPrefix := saved.TagPrefix
 			saved.Name = input.Name
@@ -130,6 +156,7 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 				SortOrder:      sortOrder,
 				Name:           input.Name,
 				Url:            input.Url,
+				SourceType:     input.SourceType,
 				Enabled:        input.Enabled,
 				TagPrefix:      input.TagPrefix,
 				AutoUpdate:     input.AutoUpdate,
@@ -137,6 +164,12 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 				CreatedAt:      now,
 				UpdatedAt:      now,
 			}
+		}
+		if err := tx.Save(&saved).Error; err != nil {
+			return err
+		}
+		if err := remotesub.ApplySourceContent(tx.Statement.Context, tx, &saved, input.Content, options); err != nil {
+			return err
 		}
 		if err := tx.Save(&saved).Error; err != nil {
 			return err
@@ -182,6 +215,9 @@ func (s *Service) GetSubscription(id uint) (*remotesub.RemoteOutboundSubscriptio
 	remotesub.FilterVisibleConnections(subscriptions)
 	remotesub.HydrateConnectionTypeInfo(subscriptions)
 	subscription = subscriptions[0]
+	if err := remotesub.ProjectSourceContent(&subscription); err != nil {
+		return nil, err
+	}
 	return &subscription, nil
 }
 func (s *Service) DeleteSubscription(id uint, loginUser string) error {
@@ -235,17 +271,38 @@ func (s *Service) refreshSubscription(ctx context.Context, id uint, loginUser st
 	if err := db.First(&subscription, id).Error; err != nil {
 		return nil, err
 	}
-	fetched, fetchErr := remotesub.FetchSubscriptionWithOptionsContext(ctx, subscription.Url, s.fetchOptions())
+	verifySource := func(tx *gorm.DB) error {
+		var current remotesub.RemoteOutboundSubscription
+		if err := tx.First(&current, id).Error; err != nil {
+			return err
+		}
+		if !subscription.SameSource(current) {
+			return common.NewError("SUBSCRIPTION_SOURCE_CHANGED_RETRY")
+		}
+		return nil
+	}
+	fetched, fetchErr := remotesub.FetchSourceContext(ctx, db, subscription, s.fetchOptions())
 	now := time.Now().Unix()
 	if fetchErr != nil {
-		// Best-effort: persist the last error for the UI even if this update
-		// fails; the fetch error itself is what gets returned below.
-		_ = remotesub.MarkRefreshError(db, id, fetchErr.Error(), now)
+		// An old failed fetch has no authority over a replacement source's UI
+		// state, just as an old successful fetch cannot replace its collection.
+		err := db.Transaction(func(tx *gorm.DB) error {
+			if err := verifySource(tx); err != nil {
+				return err
+			}
+			return remotesub.MarkRefreshError(tx, id, fetchErr.Error(), now)
+		})
+		if err != nil {
+			return nil, err
+		}
 		return nil, fetchErr
 	}
 	var result remotesub.RefreshResult
 	syncedChanged := false
 	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := verifySource(tx); err != nil {
+			return err
+		}
 		refreshResult, coreChanged, err := remotesub.RefreshFetchedSubscription(tx, &subscription, fetched, now)
 		if err != nil {
 			return err

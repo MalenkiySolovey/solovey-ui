@@ -1,6 +1,10 @@
 export default {
   "remoteOutbound": {
-    "title": "Remote Subscriptions",
+    "title": "External Subscriptions",
+    "sourceType": "Source type",
+    "sourceTypes": { "remote": "Remote URL", "inline": "Inline content" },
+    "inlineContent": "Source content",
+    "inlineContentHint": "Paste a supported client configuration or share links (up to 512 KiB). Credentials are kept in the source owner; later edits use Keep or Replace. Save validates the source. Refresh updates its collected connections before you select and apply them.",
     "summary": "{total} subscriptions • {connections} connections • {synced} in outbounds",
     "name": "Name",
     "url": "Subscription URL",

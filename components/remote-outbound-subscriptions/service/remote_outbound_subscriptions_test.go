@@ -30,6 +30,93 @@ func newTestRemoteOutboundService() *RemoteOutboundService {
 	return &RemoteOutboundService{Runtime: coreservice.NewRuntimeWithCoreProvider(nil)}
 }
 
+func TestInlineSourceUsesOwnedContentAndExistingRefreshPipeline(t *testing.T) {
+	initRemoteOutboundTestDB(t)
+	db := dbsqlite.DB()
+	svc := newTestRemoteOutboundService()
+	const payload = `{"outbounds":[{"type":"shadowsocks","tag":"inline-ss","server":"192.0.2.1","server_port":443,"method":"aes-128-gcm","password":"private-inline-source-canary"}]}`
+	mutation := func(value string) json.RawMessage {
+		raw, _ := json.Marshal(map[string]string{"intent": "replace", "value": value})
+		return raw
+	}
+	var before int64
+	db.Model(&remotesub.RemoteOutboundSubscription{}).Count(&before)
+	if _, err := svc.SaveSubscription(remotesub.RemoteOutboundSubscription{Name: "invalid-inline", SourceType: remotesub.SourceInline, Content: mutation("private-invalid-source-canary")}, true, "test"); err == nil || strings.Contains(err.Error(), "canary") {
+		t.Fatal("invalid inline content was not privately rejected", err)
+	}
+	var after int64
+	db.Model(&remotesub.RemoteOutboundSubscription{}).Count(&after)
+	if after != before {
+		t.Fatal("rejected source committed a row")
+	}
+	saved, err := svc.SaveSubscription(remotesub.RemoteOutboundSubscription{Name: "inline", SourceType: remotesub.SourceInline, Enabled: true, AutoUpdate: true, Content: mutation(payload)}, true, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.SourceType != remotesub.SourceInline || saved.AutoUpdate || saved.Url != "" {
+		t.Fatal("inline source acquired a network refresh policy")
+	}
+	view, _ := json.Marshal(saved)
+	if strings.Contains(string(view), "canary") || strings.Contains(string(view), "sbox:v1:") {
+		t.Fatal("normal source read disclosed captured content")
+	}
+	var row remotesub.RemoteOutboundSubscription
+	if err := db.First(&row, saved.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(row.SourceContent, "sbox:v1:") || strings.Contains(row.SourceContent, "canary") {
+		t.Fatal("inline content was not sealed in its owner row")
+	}
+	keep := map[string]any{}
+	_ = json.Unmarshal(saved.Content, &keep)
+	keep["intent"] = "unchanged"
+	delete(keep, "correlation")
+	if _, ok := keep["rotationRevision"]; !ok {
+		keep["rotationRevision"] = ""
+	}
+	saved.Content, _ = json.Marshal(keep)
+	saved.Name = "renamed-inline"
+	if _, err := svc.SaveSubscription(*saved, true, "test"); err != nil {
+		t.Fatal("masked edit lost source ownership", err)
+	}
+	var kept remotesub.RemoteOutboundSubscription
+	if err := db.First(&kept, saved.Id).Error; err != nil || !row.SameSource(kept) {
+		t.Fatal("unchanged editor changed captured source identity", err)
+	}
+	result, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test")
+	if err != nil || result.Created != 1 {
+		t.Fatal("inline source did not use canonical collection", err)
+	}
+	all, err := svc.GetAll()
+	if err != nil || all == nil || len(*all) != 1 || len((*all)[0].Connections) != 1 {
+		t.Fatal("inline connection was not collected", err)
+	}
+	loaded := (*all)[0]
+	if _, err := svc.SyncConnectionToOutbound(loaded.Connections[0].Id, "test"); err != nil {
+		t.Fatal("collected inline endpoint could not use canonical outbound sync", err)
+	}
+	var outbound model.Outbound
+	if err := db.Where("tag = ?", loaded.Connections[0].OutboundTag).First(&outbound).Error; err != nil || outbound.Type != "shadowsocks" {
+		t.Fatal("inline source bypassed or lost the existing outbound owner", err)
+	}
+	if _, err := svc.SaveSubscription(remotesub.RemoteOutboundSubscription{Id: saved.Id, Name: "changed-kind", SourceType: remotesub.SourceRemote, Url: "https://example.com/sub"}, true, "test"); err == nil {
+		t.Fatal("source kind changed without a replacement source workflow")
+	}
+	changed := row
+	changed.SourceContent += "changed"
+	if row.SameSource(changed) {
+		t.Fatal("replacement content retained old refresh authority")
+	}
+	foreign, err := svc.SaveSubscription(remotesub.RemoteOutboundSubscription{Name: "other-inline", SourceType: remotesub.SourceInline, Content: mutation(payload)}, true, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign.Content = saved.Content
+	if _, err := svc.SaveSubscription(*foreign, true, "test"); err == nil {
+		t.Fatal("masked source content crossed owner identity")
+	}
+}
+
 func TestRemoteOutboundMutationFailsClosedWithoutRuntime(t *testing.T) {
 	initRemoteOutboundTestDB(t)
 

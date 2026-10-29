@@ -1,5 +1,9 @@
 export default {
   "remoteOutbound": {
+    "sourceType": "Loại nguồn",
+    "sourceTypes": { "remote": "URL từ xa", "inline": "Nội dung trực tiếp" },
+    "inlineContent": "Nội dung nguồn",
+    "inlineContentHint": "Dán cấu hình máy khách hoặc liên kết được hỗ trợ (tối đa 512 KiB). Thông tin đăng nhập do nguồn quản lý; các lần sửa sau có thể giữ hoặc thay thế. Lưu sẽ kiểm tra nguồn. Làm mới thu thập lại kết nối trước khi bạn chọn và áp dụng.",
     "title": "Remote Subscriptions",
     "summary": "{total} gói đăng ký • {connections} kết nối • {synced} trong outbound",
     "name": "Tên",

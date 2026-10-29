@@ -87,6 +87,9 @@
     <v-form ref="subscriptionForm" class="remote-outbounds__form" @submit.prevent="page.saveSubscription">
       <v-row align="center">
         <v-col cols="12" md="3">
+          <v-select v-model="page.form.sourceType" :disabled="page.form.id > 0" :items="[{ value: 'remote', title: $t('remoteOutbound.sourceTypes.remote') }, { value: 'inline', title: $t('remoteOutbound.sourceTypes.inline') }]" :label="$t('remoteOutbound.sourceType')" variant="outlined" density="compact" />
+        </v-col>
+        <v-col cols="12" md="3">
           <v-text-field
             v-model="page.form.name"
             density="compact"
@@ -95,7 +98,7 @@
             variant="outlined"
           />
         </v-col>
-        <v-col cols="12" md="5">
+        <v-col v-if="page.form.sourceType === 'remote'" cols="12" md="5">
           <v-text-field
             v-model="page.form.url"
             density="compact"
@@ -104,16 +107,20 @@
             variant="outlined"
           />
         </v-col>
+        <v-col v-else cols="12" md="9">
+          <SecretCredentialField v-model="page.form.content" :available="true" multiline :label="$t('remoteOutbound.inlineContent')" />
+          <div class="text-caption">{{ $t('remoteOutbound.inlineContentHint') }}</div>
+        </v-col>
         <v-col cols="12" md="2">
           <v-text-field v-model="page.form.tagPrefix" density="compact" :label="$t('remoteOutbound.tagPrefix')" variant="outlined" />
         </v-col>
         <v-col cols="12" sm="6" md="1">
           <v-switch v-model="page.form.enabled" color="primary" density="compact" hide-details :label="$t('enable')" />
         </v-col>
-        <v-col cols="12" sm="6" md="1">
+        <v-col v-if="page.form.sourceType === 'remote'" cols="12" sm="6" md="1">
           <v-switch v-model="page.form.autoUpdate" color="primary" density="compact" hide-details :label="$t('remoteOutbound.autoUpdate')" />
         </v-col>
-        <v-col cols="12" sm="6" md="1">
+        <v-col v-if="page.form.sourceType === 'remote'" cols="12" sm="6" md="1">
           <v-text-field
             v-model.number="page.updateIntervalMinutes"
             density="compact"
@@ -146,6 +153,7 @@
 
 <script lang="ts" setup>
 import { reactive } from 'vue'
+import SecretCredentialField from '@/components/fields/SecretCredentialField.vue'
 import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
 import RemoteOutboundSubscriptionDialogs from '../components/RemoteOutboundSubscriptionDialogs.vue'
