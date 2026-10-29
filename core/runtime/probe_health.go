@@ -11,11 +11,12 @@ import (
 type ProbeSource string
 
 const (
-	ProbeSourceManual     ProbeSource = "manual"
-	ProbeSourceFailover   ProbeSource = "failover"
-	ProbeSourceDiagnostic ProbeSource = "diagnostic"
-	probeHealthMaxAge                 = 10 * time.Minute
-	probeHealthMaxEntries             = 1024
+	ProbeSourceManual       ProbeSource = "manual"
+	ProbeSourceFailover     ProbeSource = "failover"
+	ProbeSourceDiagnostic   ProbeSource = "diagnostic"
+	ProbeSourceSubscription ProbeSource = "subscription"
+	probeHealthMaxAge                   = 10 * time.Minute
+	probeHealthMaxEntries               = 1024
 )
 
 // OutboundHealth is a recent observation of one runtime outbound. TargetID is a
@@ -88,8 +89,12 @@ func (h *recentProbeHealth) begin(tag, target string, source ProbeSource, now ti
 			delete(h.entries, key)
 		}
 	}
+	return probeTicket{entry: entry, sequence: entry.sequence, tag: tag, source: source, targetID: ProbeTargetID(target)}
+}
+
+func ProbeTargetID(target string) string {
 	digest := sha256.Sum256([]byte(target))
-	return probeTicket{entry: entry, sequence: entry.sequence, tag: tag, source: source, targetID: hex.EncodeToString(digest[:])}
+	return hex.EncodeToString(digest[:])
 }
 
 func (h *recentProbeHealth) complete(ticket probeTicket, result CheckOutboundResult, now time.Time) {

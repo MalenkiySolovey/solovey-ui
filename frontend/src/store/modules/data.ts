@@ -25,7 +25,7 @@ export type FailoverStatusMap = Record<string, FailoverStatusEntry>
 
 export interface OutboundHealth {
   tag: string
-  source: 'manual' | 'failover' | 'diagnostic'
+  source: 'manual' | 'failover' | 'diagnostic' | 'subscription'
   targetId: string
   status: 'healthy' | 'down' | 'unknown'
   delayMs?: number

@@ -29,9 +29,10 @@ type Settings interface {
 }
 
 type Service struct {
-	Effects      Effects
-	Settings     Settings
-	OutboundHTTP componenthost.OutboundHTTPClientProvider
+	Effects       Effects
+	Settings      Settings
+	OutboundHTTP  componenthost.OutboundHTTPClientProvider
+	ProbeOutbound func(context.Context, string, string, time.Duration) coreruntime.CheckOutboundResult
 }
 
 func (s *Service) GetAll() (*[]remotesub.RemoteOutboundSubscription, error) {
@@ -81,6 +82,11 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 		return nil, err
 	}
 	input.UserAgent = strings.TrimSpace(input.UserAgent)
+	if policy, err := remotesub.PrepareSourceHealthCheck(input.HealthCheck); err != nil {
+		return nil, err
+	} else {
+		input.HealthCheck = policy
+	}
 	if prepared, err := coreruntime.PrepareDialerOverride(input.DialerOverride); err != nil {
 		return nil, err
 	} else {
@@ -180,6 +186,9 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 			saved.Exclude = input.Exclude
 			saved.RemoveEmojis = input.RemoveEmojis
 			saved.DialerOverride = input.DialerOverride
+			if len(input.HealthCheck) != 0 {
+				saved.HealthCheck = input.HealthCheck
+			}
 			saved.Enabled = input.Enabled
 			saved.TagPrefix = input.TagPrefix
 			saved.AutoUpdate = input.AutoUpdate
@@ -209,6 +218,7 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 				Exclude:            input.Exclude,
 				RemoveEmojis:       input.RemoveEmojis,
 				DialerOverride:     input.DialerOverride,
+				HealthCheck:        input.HealthCheck,
 				Enabled:            input.Enabled,
 				TagPrefix:          input.TagPrefix,
 				AutoUpdate:         input.AutoUpdate,

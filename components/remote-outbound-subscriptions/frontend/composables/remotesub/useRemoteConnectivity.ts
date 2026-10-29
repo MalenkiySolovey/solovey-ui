@@ -1,6 +1,7 @@
-import { nextTick, reactive, ref, type Ref } from 'vue'
+import { nextTick, onMounted, onUnmounted, reactive, ref, watch, type Ref } from 'vue'
 import { push } from 'notivue'
 import HttpUtils from '@/plugins/httputil'
+import Data from '@/store/modules/data'
 import { runWithConcurrency, useAsyncTaskQueue } from '@/shared/composables/useAsyncTaskQueue'
 import type {
   RemoteOutboundConnection,
@@ -29,6 +30,19 @@ export const useRemoteConnectivity = ({
   const connectionCheckQueue = useAsyncTaskQueue(8)
   const testingConnections = connectionCheckQueue.active
   const testResults = reactive<Record<number, TestState>>({})
+  const healthNow = ref(Date.now())
+  watch(() => Data().onlines.outboundHealth, () => { healthNow.value = Date.now() }, { flush: 'sync' })
+  let healthTimer = 0
+  onMounted(() => { healthTimer = window.setInterval(() => { healthNow.value = Date.now() }, 30000) })
+  onUnmounted(() => window.clearInterval(healthTimer))
+
+  const sourceHealth = (subscription: RemoteOutboundSubscription, connection: RemoteOutboundConnection) => {
+    if (!subscription.enabled || !subscription.healthCheck?.enabled || !connection.enabled || !connection.synced) return undefined
+    const health = Data().onlines.outboundHealth?.[connection.outboundTag]
+    if (!health || health.source !== 'subscription' || health.targetId !== subscription.healthTargetId ||
+        health.checkedAt > healthNow.value / 1000 || healthNow.value / 1000 - health.checkedAt >= 600) return undefined
+    return health
+  }
 
   const recordTestFailure = (connectionId: number, error: string) => {
     if (!connectionId) return
@@ -120,6 +134,7 @@ export const useRemoteConnectivity = ({
   }
 
   return {
+    sourceHealth,
     testAll,
     testConnection,
     testGroup,

@@ -1,5 +1,13 @@
 export default {
   "remoteOutbound": {
+    "healthChecks": "Automatic health checks",
+    "healthCheckEnabled": "Probe applied source outbounds",
+    "healthCheckURL": "Health check URL",
+    "healthCheckInterval": "Probe interval (1m–24h)",
+    "healthCheckTimeout": "Probe timeout (100ms–15s)",
+    "healthCheckHint": "Periodically probes enabled connections already applied as Outbounds. Collection-only connections stay inactive. Results use the current runtime Health owner and expire after ten minutes. Source download credentials are never sent to the probe URL.",
+    "healthObservationHint": "Recent automatic runtime observation for this source's probe target. Unknown means there is no matching fresh observation; it does not mean healthy.",
+    "healthStates": { "healthy": "Health: healthy", "down": "Health: down", "unknown": "Health: unknown" },
     "downloadOutbound": "Download through outbound",
     "downloadOutboundHint": "Uses the selected running outbound only to download this source. An unavailable outbound fails refresh and preserves collected connections. It never falls back to the host network.",
     "downloadOutboundUnavailable": "The saved outbound is unavailable on the current runtime. The reference is preserved; refresh cannot use it until it is available again. Clear it explicitly to choose another download path.",
