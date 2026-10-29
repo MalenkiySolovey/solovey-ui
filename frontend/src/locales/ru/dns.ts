@@ -1,7 +1,7 @@
 export default {
   "dns": {
     "acceptSearchDomain": "Использовать поисковые домены VPN",
-    "openconnectMissingEndpoint": "Перед сохранением DNS выберите доступный endpoint OpenConnect в этом ядре.",
+    "nativeVpnMissingEndpoint": "Перед сохранением DNS выберите доступный endpoint этого типа VPN-клиента в данном ядре.",
     "capabilityUnavailable": "Транспорт недоступен. Исправьте конфигурацию с учётом причины от сервера:",
     "mdnsSemantics": "mDNS использует multicast на доступных интерфейсах для .local и обратных доменов link-local IPv4/IPv6. Параметры neighbor-domain и prefer-Go локального резолвера здесь не применяются.",
     "mdnsInterfaces": "Multicast-интерфейсы (через запятую)",

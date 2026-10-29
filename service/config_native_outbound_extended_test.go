@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -15,6 +16,75 @@ import (
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 )
+
+func TestNativeOpenVPNClientCandidateUsesCanonicalOwnerAndDNSReferences(t *testing.T) {
+	if !registry.Resolve("endpoints", "openvpn-client").Available() {
+		t.Skip("OpenVPN client is absent from this profile")
+	}
+	if registry.Resolve("endpoints", "openvpn-server").Available() {
+		t.Fatal("client integration advertised an unowned serving workflow")
+	}
+	for _, mode := range []string{"tls", "static_key"} {
+		t.Run(mode, func(t *testing.T) {
+			initSettingTestDB(t)
+			seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
+			db := dbsqlite.DB()
+			svc, applier, lifecycle := newHotReloadConfigService(t)
+			const password = "private-openvpn-candidate-canary"
+			draft := map[string]any{"type": "openvpn-client", "tag": "native-openvpn", "mode": mode, "network": "udp", "servers": []map[string]any{{"server": "192.0.2.1", "server_port": 1194}}}
+			if mode == "tls" {
+				cert, key := makeSelfSignedCertPEM(t, time.Now().Add(time.Hour))
+				draft["username"] = "fixture"
+				draft["password"] = map[string]string{"intent": "replace", "value": password}
+				draft["tls"] = map[string]any{"certificate": []string{string(cert)}, "client_certificate": []string{string(cert)}, "client_key": map[string]string{"intent": "replace", "value": string(key)}}
+				draft["data_ciphers"] = []string{"AES-256-GCM"}
+			} else {
+				draft["address"] = []string{"10.8.0.2/24"}
+				draft["peer_address"] = "10.8.0.1"
+				draft["cipher"] = "AES-256-CBC"
+				draft["static_key"] = map[string]string{"intent": "replace", "value": "-----BEGIN OpenVPN Static key V1-----\n" + strings.Repeat("01", 256) + "\n-----END OpenVPN Static key V1-----"}
+			}
+			draft["network"] = "private-invalid-network-canary"
+			raw, _ := json.Marshal(draft)
+			if _, err := svc.Save("endpoints", "new", raw, "", "admin", "fixture.invalid"); err == nil || !strings.HasPrefix(err.Error(), "NATIVE_ENDPOINT_CANDIDATE_REJECTED") || strings.Contains(err.Error(), "canary") {
+				t.Fatal("invalid client candidate was not privately rejected", err)
+			}
+			var count int64
+			if err := db.Model(&model.Endpoint{}).Count(&count).Error; err != nil || count != 0 || len(applier.calls) != 0 || len(lifecycle.calls) != 0 {
+				t.Fatal("failed client candidate committed state or runtime effects", err)
+			}
+			draft["network"] = "udp"
+			raw, _ = json.Marshal(draft)
+			if _, err := svc.Save("endpoints", "new", raw, "", "admin", "fixture.invalid"); err != nil {
+				t.Fatal("valid native client rejected", err)
+			}
+			view, err := entityendpoints.GetAll(db)
+			masked, _ := json.Marshal(view)
+			if err != nil || bytes.Contains(masked, []byte(password)) || bytes.Contains(masked, []byte("sbox:v1:")) || bytes.Contains(masked, []byte("BEGIN OpenVPN Static key")) {
+				t.Fatal("endpoint read disclosed credentials", err)
+			}
+			base := NewSingBoxBaseConfigStore(nil)
+			valid := json.RawMessage(`{"log":{"disabled":true},"dns":{"servers":[{"type":"openvpn","tag":"vpn-dns","endpoint":"native-openvpn","accept_default_resolvers":true,"accept_search_domain":true}],"final":"vpn-dns"},"outbounds":[{"type":"direct","tag":"direct"}]}`)
+			if err := base.Save(db, valid); err != nil {
+				t.Fatal("native client DNS reference rejected", err)
+			}
+			config, err := svc.GetConfig("")
+			if err != nil || singboxvalidation.ValidateConfig(*config) != nil {
+				t.Fatal("native client/DNS runtime projection failed", err)
+			}
+			if mode == "tls" && !bytes.Contains(*config, []byte(password)) {
+				t.Fatal("native password lost owner binding")
+			}
+			invalid := bytes.ReplaceAll(valid, []byte(`"endpoint":"native-openvpn"`), []byte(`"endpoint":"missing-vpn"`))
+			if err := base.Save(db, invalid); err == nil {
+				t.Fatal("missing client DNS endpoint committed")
+			}
+			if _, err := svc.Save("endpoints", "del", json.RawMessage(`"native-openvpn"`), "", "admin", "fixture.invalid"); err == nil {
+				t.Fatal("referenced VPN endpoint was removed")
+			}
+		})
+	}
+}
 
 func TestNativeOpenConnectCandidateUsesCanonicalOwnerAndDNSReferences(t *testing.T) {
 	if !registry.Resolve("endpoints", "openconnect").Available() {

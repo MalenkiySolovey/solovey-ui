@@ -30,12 +30,14 @@ require (
 require (
 	github.com/AdguardTeam/golibs v0.32.7 // indirect
 	github.com/Diniboy1123/connect-ip-go v0.0.0-20260409225322-8d7bb0a858a2 // indirect
+	github.com/RyuaNerin/go-krypto v1.3.0 // indirect
 	github.com/ameshkov/dnscrypt/v2 v2.4.0 // indirect
 	github.com/ameshkov/dnsstamps v1.0.3 // indirect
 	github.com/anchore/go-lzo v0.1.0 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/axiomhq/hyperloglog v0.0.0-20240319100328-84253e514e02 // indirect
 	github.com/creack/pty v1.1.24 // indirect
+	github.com/dgryski/go-camellia v0.0.0-20191119043421-69a8a13fb23d // indirect
 	github.com/dgryski/go-metro v0.0.0-20180109044635-280f6062b5bc // indirect
 	github.com/dunglas/httpsfv v1.1.0 // indirect
 	github.com/enfein/mieru/v3 v3.33.0 // indirect
@@ -70,6 +72,7 @@ require (
 	github.com/refraction-networking/utls v1.8.2 // indirect
 	github.com/sagernet/gliderssh v0.3.4-0.20260531100337-2194faca5648 // indirect
 	github.com/sagernet/sing-openconnect v0.1.1-0.20260929151225-cbd68c45de58 // indirect
+	github.com/sagernet/sing-openvpn v0.1.1-0.20260929151220-7c3045dbddce // indirect
 	github.com/sagernet/sing-usbip v0.0.0-20260817040617-28bd42667eca // indirect
 	github.com/shtorm-7/go-cache/v2 v2.1.0-extended-1.2.0 // indirect
 	github.com/shtorm-7/rmux v1.0.1 // indirect
