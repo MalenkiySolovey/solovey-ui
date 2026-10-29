@@ -14,7 +14,7 @@ const (
 	PinnedUTLSModuleSum         = "h1:Cp+yWkNTFkSihETgGWq34hlVFds5HpYWVOR1xovUVTs="
 	PinnedUTLSSourceRevision    = "f7d52c22f3a8d2f510ad1470f75cb6c3fe26aa37"
 
-	CapabilityResolverRevisionV1            = "73c90094b56657ad4018240884576da413aa04376c988e3c3554b04e768f3a42"
+	CapabilityResolverRevisionV1            = "f376f9b54643079f290ceb40dfc38abf30b82e6ad775b6e360a06f74c67bfdc4"
 	BuildProfileWithUTLSRevision            = "2573ebf675608c4e589ebc062ecf46078f77244489cb5a1578ecb2b649ae0608"
 	BuildProfileWithoutUTLSRevision         = "a55ee5ad8f16d0ab527a612e4a89e2170b2751af200430a90022df99cc33192d"
 	PinnedRuntimeIdentityWithUTLSRevisionV1 = "6b78a9d753f14c89265b9563614e3f905f0a61100014edca9c518aaaeae9d83c"
