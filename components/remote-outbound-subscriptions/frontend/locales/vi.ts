@@ -1,5 +1,8 @@
 export default {
   "remoteOutbound": {
+    "includeNames": "Bao gồm tên (biểu thức chính quy)",
+    "excludeNames": "Loại trừ tên (biểu thức chính quy)",
+    "sourceFiltersHint": "Bộ lọc khớp tên gốc khi làm mới. Loại trừ được ưu tiên; để trống để lấy tất cả. Giữ đủ thành viên của nhóm còn lại. Lưu bộ lọc chưa thay đổi kết nối đã thu thập cho đến khi làm mới.",
     "sourceType": "Loại nguồn",
     "sourceTypes": { "remote": "URL từ xa", "inline": "Nội dung trực tiếp" },
     "inlineContent": "Nội dung nguồn",

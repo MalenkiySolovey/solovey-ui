@@ -85,6 +85,9 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 	if input.SourceType != remotesub.SourceRemote && input.SourceType != remotesub.SourceInline {
 		return nil, common.NewError("SUBSCRIPTION_SOURCE_TYPE_INVALID")
 	}
+	if err := input.ValidateSourceFilters(); err != nil {
+		return nil, err
+	}
 	if input.SourceType == remotesub.SourceInline {
 		if input.Url != "" {
 			return nil, common.NewError("INLINE_SUBSCRIPTION_URL_NOT_ALLOWED")
@@ -138,6 +141,8 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 			oldTagPrefix := saved.TagPrefix
 			saved.Name = input.Name
 			saved.Url = input.Url
+			saved.Include = input.Include
+			saved.Exclude = input.Exclude
 			saved.Enabled = input.Enabled
 			saved.TagPrefix = input.TagPrefix
 			saved.AutoUpdate = input.AutoUpdate
@@ -157,6 +162,8 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 				Name:           input.Name,
 				Url:            input.Url,
 				SourceType:     input.SourceType,
+				Include:        input.Include,
+				Exclude:        input.Exclude,
 				Enabled:        input.Enabled,
 				TagPrefix:      input.TagPrefix,
 				AutoUpdate:     input.AutoUpdate,

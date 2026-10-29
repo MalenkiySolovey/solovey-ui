@@ -1,5 +1,8 @@
 export default {
   "remoteOutbound": {
+    "includeNames": "Include names (regular expression)",
+    "excludeNames": "Exclude names (regular expression)",
+    "sourceFiltersHint": "Filters match original source names when you Refresh. Exclude wins; empty includes all. Keep every member required by a retained group. Saving does not change collected connections until Refresh.",
     "title": "External Subscriptions",
     "sourceType": "Source type",
     "sourceTypes": { "remote": "Remote URL", "inline": "Inline content" },

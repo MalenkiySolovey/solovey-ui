@@ -35,6 +35,8 @@ export interface RemoteOutboundSubscription {
   url: string
   sourceType?: 'remote' | 'inline'
   content?: SecretView
+  include?: string
+  exclude?: string
   enabled: boolean
   tagPrefix: string
   autoUpdate: boolean
