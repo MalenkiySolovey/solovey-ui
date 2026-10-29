@@ -1,5 +1,9 @@
 export default {
   "remoteOutbound": {
+    "inlineFile": "Tải tệp nguồn cục bộ",
+    "inlineFileHint": "Tải cấu hình máy khách hoặc tệp liên kết vào bản nháp thay thế của nguồn này (tối đa 512 KiB). Nội dung được kiểm tra khi lưu.",
+    "inlineFileSizeError": "Chọn tệp không rỗng, tối đa 512 KiB.",
+    "inlineFileReadError": "Không đọc được tệp. Chọn lại hoặc dán nội dung.",
     "includeNames": "Bao gồm tên (biểu thức chính quy)",
     "excludeNames": "Loại trừ tên (biểu thức chính quy)",
     "sourceFiltersHint": "Bộ lọc khớp tên gốc khi làm mới. Loại trừ được ưu tiên; để trống để lấy tất cả. Giữ đủ thành viên của nhóm còn lại. Lưu bộ lọc chưa thay đổi kết nối đã thu thập cho đến khi làm mới.",

@@ -1,5 +1,9 @@
 export default {
   "remoteOutbound": {
+    "inlineFile": "載入本機來源檔案",
+    "inlineFileHint": "將用戶端設定或分享連結檔案載入此來源的替換草稿（最大 512 KiB）。儲存時驗證內容。",
+    "inlineFileSizeError": "請選擇非空且不超過 512 KiB 的檔案。",
+    "inlineFileReadError": "無法讀取此檔案。請重新選擇或貼上內容。",
     "includeNames": "包含名稱（正規表示式）",
     "excludeNames": "排除名稱（正規表示式）",
     "sourceFiltersHint": "重新整理時依來源名稱篩選。排除優先；留空表示全部。保留的群組所需的成員必須全部保留。儲存篩選條件不會修改已收集的連線，重新整理後才會套用。",

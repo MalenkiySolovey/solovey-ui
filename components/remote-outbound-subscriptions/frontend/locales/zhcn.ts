@@ -1,5 +1,9 @@
 export default {
   "remoteOutbound": {
+    "inlineFile": "加载本地源文件",
+    "inlineFileHint": "将客户端配置或分享链接文件加载到此源的替换草稿中（最大 512 KiB）。保存时验证内容。",
+    "inlineFileSizeError": "请选择非空且不超过 512 KiB 的文件。",
+    "inlineFileReadError": "无法读取此文件。请重新选择或粘贴内容。",
     "includeNames": "包含名称（正则表达式）",
     "excludeNames": "排除名称（正则表达式）",
     "sourceFiltersHint": "刷新时按源名称筛选。排除优先；留空表示全部。保留的组所需的成员必须全部保留。保存筛选条件不会修改已收集的连接，刷新后才会应用。",
