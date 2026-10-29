@@ -2,12 +2,28 @@ package tagrefs
 
 import (
 	"encoding/json"
+	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 )
+
+func TestProjectedDNSReferencesIgnoreOnlyUnavailableHistory(t *testing.T) {
+	base := []byte(`{"dns":{"servers":[{"type":"openconnect","tag":"vpn-dns","endpoint":"vpn"}]}}`)
+	refs, err := projectedBaseReferences(base, "endpoints", "vpn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := 0
+	if registry.Resolve("dns", "openconnect").Available() {
+		want = 1
+	}
+	if len(refs) != want {
+		t.Fatal("preserved DNS history acquired an effective endpoint edge, or active DNS lost its reference")
+	}
+}
 
 func TestScanServiceRowsForInboundTag(t *testing.T) {
 	rows := []model.Service{
