@@ -98,7 +98,7 @@ func TestRealmServiceNativeAuthenticationAndClosedGeneration(t *testing.T) {
 	t.Cleanup(transport.CloseIdleConnections)
 	client := &http.Client{Transport: transport, Timeout: 2 * time.Second}
 	request := func(realm, token string) (int, error) {
-		req, _ := http.NewRequest(http.MethodPost, "http://"+address+"/v1/"+realm+"/", strings.NewReader(`{"addresses":["127.0.0.1:12345"]}`))
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+address+"/v1/"+realm+"/", strings.NewReader(`{"addresses":["127.0.0.1:12345"]}`))
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Content-Type", "application/json")
 		response, err := client.Do(req)
