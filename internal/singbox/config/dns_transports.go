@@ -32,7 +32,7 @@ func DNSSelectedTransportFindings(config []byte) []diagnostics.Finding {
 	var root dnsObject
 	_ = json.Unmarshal(config, &root)
 	_, completeServices := root["services"]
-	var findings []diagnostics.Finding
+	findings := nativeDNSFindings(servers)
 	fail := func(path, code, message string) {
 		findings = append(findings, dnsFailure(path, code, message, diagnostics.ManualRequired))
 	}
@@ -156,11 +156,21 @@ func CurrentDNSRuntimeFindings(config []byte) []diagnostics.Finding {
 	return nil
 }
 
+func HasNativeDNSTransport(config []byte) bool {
+	servers, _ := dnsTransportSections(config)
+	for _, server := range servers {
+		if kind := dnsString(server, "type"); kind == "sdns" || kind == "fallback" {
+			return true
+		}
+	}
+	return false
+}
+
 func HasSelectedDNSTransport(config []byte) bool {
 	servers, services := dnsTransportSections(config)
 	for _, section := range [][]dnsObject{servers, services} {
 		for _, row := range section {
-			if kind := dnsString(row, "type"); kind == "mdns" || kind == "resolved" {
+			if kind := dnsString(row, "type"); kind == "mdns" || kind == "resolved" || kind == "sdns" || kind == "fallback" {
 				return true
 			}
 		}

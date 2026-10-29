@@ -17,6 +17,7 @@
     </div>
     <v-card-subtitle style="margin-top: -15px;">
       <v-row><v-col>{{ subtitle }}</v-col></v-row>
+      <slot name="availability" />
     </v-card-subtitle>
     <v-card-text>
       <v-row v-for="row in rows" :key="row.label">
@@ -26,8 +27,8 @@
     </v-card-text>
     <v-divider></v-divider>
     <v-card-actions style="padding: 0;">
-      <v-btn icon="mdi-file-edit" :aria-label="$t('actions.edit')" @click="emit('edit')">
-        <v-icon /><v-tooltip activator="parent" location="top" :text="$t('actions.edit')"></v-tooltip>
+      <v-btn :icon="inspect ? 'mdi-eye' : 'mdi-file-edit'" :aria-label="$t(inspect ? 'capability.inspect' : 'actions.edit')" @click="emit('edit')">
+        <v-icon /><v-tooltip activator="parent" location="top" :text="$t(inspect ? 'capability.inspect' : 'actions.edit')"></v-tooltip>
       </v-btn>
       <v-btn icon="mdi-file-remove" :aria-label="$t('actions.del')" style="margin-inline-start:0;" color="warning" @click="emit('update:deleteOpen', true)">
         <v-icon /><v-tooltip activator="parent" location="top" :text="$t('actions.del')"></v-tooltip>
@@ -53,6 +54,7 @@
 
 <script setup lang="ts">
 defineProps<{
+  inspect?: boolean
   deleteOpen?: boolean
   rows: Array<{ label: string; value: unknown }>
   selected?: boolean

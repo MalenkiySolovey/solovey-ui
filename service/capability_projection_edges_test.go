@@ -1,10 +1,12 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
@@ -14,6 +16,73 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
 	entityservices "github.com/MalenkiySolovey/solovey-ui/internal/entities/services"
 )
+
+func TestCapabilityDNSConstructorsRejectBeforeCommit(t *testing.T) {
+	initSettingTestDB(t)
+	for _, source := range []string{
+		`{"dns":{"servers":[{"type":"sdns","tag":"invalid","stamp":"sdns://invalid"}]}}`,
+		`{"dns":{"servers":[{"type":"fallback","tag":"invalid","servers":["active"],"strategy":"invalid"},{"type":"udp","tag":"active","server":"127.0.0.1"}]}}`,
+	} {
+		settings := &SettingService{}
+		before, err := settings.GetConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := settings.SetConfig(source); err == nil {
+			t.Fatal("invalid native DNS candidate committed")
+		}
+		after, err := settings.GetConfig()
+		if err != nil || after != before {
+			t.Fatal("rejected native DNS candidate changed canonical state")
+		}
+	}
+}
+
+func TestCapabilityDNSHistoryStaysStoredAndRuntimeInactive(t *testing.T) {
+	initSettingTestDB(t)
+	db := dbsqlite.DB()
+	source := `{"dns":{"servers":[{"type":"udp","tag":"active","server":"127.0.0.1"},{"type":"fallback","tag":"history","servers":["active"],"strategy":"parallel","timeout":"3s"}],"final":"active"}}`
+	if err := db.Where("key = ?", "config").Delete(&model.Setting{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.Setting{Key: "config", Value: source}).Error; err != nil {
+		t.Fatal(err)
+	}
+	settings := &SettingService{}
+	if err := settings.SetConfig(source); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := settings.GetConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, []byte(stored)); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(compact.Bytes(), []byte(`"history"`)) || !bytes.Contains(compact.Bytes(), []byte(`"timeout":"3s"`)) {
+		t.Fatal("historical desired DNS state was removed or changed")
+	}
+	projection, err := NewSingBoxConfigBuilder(nil).BuildCandidateProjectionFromDB(db, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	available := registry.Resolve("dns", "fallback").Available()
+	if bytes.Contains(projection.Config, []byte(`"history"`)) != available {
+		t.Fatal("effective DNS state did not follow the selected provider")
+	}
+	updated := bytes.ReplaceAll([]byte(stored), []byte("3s"), []byte("5s"))
+	err = settings.SetConfig(string(updated))
+	if (err == nil) != available {
+		t.Fatal("unavailable historical DNS edit admission changed")
+	}
+	if !available {
+		after, err := settings.GetConfig()
+		if err != nil || after != stored {
+			t.Fatal("rejected edit changed stored desired state")
+		}
+	}
+}
 
 func TestCapabilityReloadPreflightsEntireBatchBeforeRemoval(t *testing.T) {
 	for _, category := range []string{"inbounds", "outbounds", "endpoints", "services"} {

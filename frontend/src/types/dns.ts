@@ -25,6 +25,8 @@ export const DnsTypes = {
   FakeIP: 'fakeip',
   Tailscale: 'tailscale',
   Resolved: 'resolved',
+  SDNS: 'sdns',
+  Fallback: 'fallback',
 }
 
 export type DnsType = typeof DnsTypes[keyof typeof DnsTypes]
@@ -52,6 +54,8 @@ const defaultValues: Record<DnsType, DnsServer> = {
   fakeip: { type: 'fakeip', inet4_range: '198.18.0.0/15', inet6_range: 'fc00::/18' },
   tailscale: { type: 'tailscale' },
   resolved: { type: 'resolved' },
+  sdns: { type: 'sdns', stamp: '' },
+  fallback: { type: 'fallback', servers: [], strategy: 'sequential' },
 }
 export function createDnsServer<T extends DnsServer>(type: string, json?: Partial<T>): DnsServer {
   const defaultObject: DnsServer = JSON.parse(JSON.stringify({ ...defaultValues[type], ...(json ?? {}), type }))

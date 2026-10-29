@@ -6,6 +6,7 @@
     :data="dnsModal.data"
     :tsTags="tsTags"
     :rslvdTags="rslvdTags"
+    :serverTags="availableDnsServerTags"
     @close="closeDnsModal"
     @save="saveDnsModal"
   />
@@ -16,7 +17,7 @@
     :data="dnsRuleModal.data"
     :clients="clients"
     :inTags="inboundTags"
-    :serverTags="dnsServerTags"
+    :serverTags="availableDnsServerTags"
     :ruleSets="ruleSets"
     @close="closeDnsRuleModal"
     @save="saveDnsRuleModal"
@@ -38,7 +39,7 @@
 
   <page-toolbar v-if="nexus">
     <template #secondary-actions>
-      <v-btn color="primary" prepend-icon="lucide:plus" variant="flat" @click="showDnsModal(-1)">{{ $t('dns.add') }}</v-btn>
+      <v-btn v-if="canCreateDns()" color="primary" prepend-icon="lucide:plus" variant="flat" @click="showDnsModal(-1)">{{ $t('dns.add') }}</v-btn>
       <v-btn prepend-icon="lucide:plus" variant="text" @click="showDnsRuleModal(-1)">{{ $t('dns.rule.add') }}</v-btn>
       <v-btn prepend-icon="mdi-routes" variant="text" @click="regionalPresetDrawer = true">{{ $t('regionalPresets.open') }}</v-btn>
     </template>
@@ -50,7 +51,7 @@
   </page-toolbar>
   <v-row v-else>
     <v-col cols="12" justify="center" align="center">
-      <v-btn color="primary" @click="showDnsModal(-1)" style="margin: 0 5px;">{{ $t('dns.add') }}</v-btn>
+      <v-btn v-if="canCreateDns()" color="primary" @click="showDnsModal(-1)" style="margin: 0 5px;">{{ $t('dns.add') }}</v-btn>
       <v-btn color="primary" @click="showDnsRuleModal(-1)" style="margin: 0 5px;">{{ $t('dns.rule.add') }}</v-btn>
       <v-btn color="primary" prepend-icon="mdi-routes" @click="regionalPresetDrawer = true" style="margin: 0 5px;">{{ $t('regionalPresets.open') }}</v-btn>
       <v-btn variant="outlined" color="warning" @click="saveConfig" :loading="loading" :disabled="stateChange">
@@ -70,7 +71,7 @@
           <v-select
             hide-details
             :label="$t('dns.final')"
-            :items="[ {title: $t('dns.firstServer'), value: ''}, ...dnsServerTags]"
+            :items="[ {title: $t('dns.firstServer'), value: ''}, ...availableDnsServerTags]"
             v-model="finalDns">
           </v-select>
         </v-col>
@@ -141,6 +142,7 @@
       @rows-drop="(dragged, target, position) => moveDnsServersTo(dragged.map(item => item._index), target._index, position)"
     >
       <template #col.tag="{ item }"><span class="dns-nexus__tag">{{ item.tag }}</span></template>
+      <template #col.type="{ item }">{{ item.type }}<CapabilityBadge :state="resourceAvailability(item)" /></template>
       <template #col.server="{ item }">
         <span v-if="item.server" class="nexus-mono">{{ item.server }}</span>
         <span v-else class="dns-nexus__muted">—</span>
@@ -206,6 +208,7 @@
       @dragend="dnsServerDrag.clear($event)"
     >
       <ClassicConfigCard
+        :inspect="resourceAvailability(item).historical"
         :delete-open="delDnsOverlay[index] ?? false"
         :rows="[
           { label: $t('dns.server'), value: item.server ?? '-' },
@@ -221,7 +224,9 @@
         @edit="showDnsModal(index)"
         @update:delete-open="delDnsOverlay[index] = $event"
         @update:selected="toggleDnsServerSelection(index, Boolean($event))"
-      />
+      >
+        <template #availability><CapabilityBadge :state="resourceAvailability(item)" /></template>
+      </ClassicConfigCard>
     </v-col>
   </v-row>
   <template v-if="nexus">
@@ -327,8 +332,10 @@ import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
 import { useDnsPage } from '@/features/useDnsPage'
 import CompatibilityFindings from '@/components/common/CompatibilityFindings.vue'
+import CapabilityBadge from '@/components/fields/CapabilityBadge.vue'
 
 const dnsPage = useDnsPage()
+const { availableDnsServerTags, canCreateDns, resourceAvailability } = dnsPage
 const { compatibilityPreview, previewCompatibility, applyCompatibilityToDraft } = dnsPage
 
 const { actionDnsRuleKeys, appConfig, applyPresetConfig, clients, closeDnsModal, closeDnsRuleModal, confirm, delDns, delDnsOverlay, delDnsRule, delDnsRuleOverlay, deleteSelectedDnsRules, deleteSelectedDnsServers, dns, dnsModal, dnsRuleDrag, dnsRuleModal, dnsRuleRows, dnsRuleSelectMode, dnsRules, dnsServerDrag, dnsServerRows, dnsServerSelectMode, dnsServerTags, dnsServersExpanded, finalDns, handleRuleAction, handleServerAction, inboundTags, isDnsRuleSelected, isDnsServerSelected, loading, mode, moveDnsRulesTo, moveDnsServersTo, moveDnsRuleTo, moveDnsServerTo, nexus, onDnsRuleDrop, onDnsServerDrop, outboundTags, presetSourceLabel, regionalPresetDrawer, rslvdTags, ruleActions, ruleColumns, ruleSets, saveConfig, saveDnsModal, saveDnsRuleModal, search, selectedDnsRuleIndexes, selectedDnsServerIndexes, serverActions, serverColumns, showDnsModal, showDnsRuleModal, sortDnsServersByName, stateChange, subtitle, t, toggleDnsRuleSelectMode, toggleDnsRuleSelection, toggleDnsServerSelectMode, toggleDnsServerSelection, tsTags } = dnsPage

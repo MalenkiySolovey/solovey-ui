@@ -116,6 +116,13 @@ func BuildCandidateProjectionFromDB(db *gorm.DB, data string, upgrade bool) (Run
 		return projection, err
 	}
 	original := config
+	var dnsAvailability []diagnostics.Finding
+	config, dnsAvailability, err = singboxconfig.ProjectDNSCapabilities(config)
+	projection.DNSCompatibility = append(projection.DNSCompatibility, dnsAvailability...)
+	if err != nil {
+		return projection, err
+	}
+	projection.Config = config
 	if sourceBase != data {
 		original, err = singboxconfig.MergeRuntimeConfig(json.RawMessage(sourceBase), sections)
 		if err != nil {
@@ -170,11 +177,13 @@ func BuildCandidateProjectionFromDB(db *gorm.DB, data string, upgrade bool) (Run
 	config = projection.Config
 	if upgrade {
 		upgraded, upgradeErr := singboxconfig.PrepareDNSUpgrade(config)
-		projection.DNSCompatibility = upgraded.Findings
+		projection.DNSCompatibility = append(projection.DNSCompatibility, upgraded.Findings...)
 		projection.Config = upgraded.Candidate
 		err = upgradeErr
 	} else {
-		projection.DNSCompatibility, err = singboxconfig.ValidateDNSConfig(config)
+		var findings []diagnostics.Finding
+		findings, err = singboxconfig.ValidateDNSConfig(config)
+		projection.DNSCompatibility = append(projection.DNSCompatibility, findings...)
 	}
 	projection.DNSCompatibility = append(projection.DNSCompatibility, entityinbounds.TUNDNSFindings(config)...)
 	projection.DNSCompatibility = append(projection.DNSCompatibility, singboxconfig.CurrentDNSRuntimeFindings(projection.Config)...)

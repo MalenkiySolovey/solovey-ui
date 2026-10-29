@@ -14,16 +14,17 @@ const renderer = createRenderer<any, any>({ createElement: () => ({}), createTex
 const apps: { unmount: () => void }[] = []
 afterEach(() => { apps.splice(0).forEach(app => app.unmount()) })
 
-function mount(data: Record<string, any>, mode: string) {
+function mount(data: Record<string, any>, mode: string, native = false) {
   fixture.mode = ref(mode)
   fixture.store = reactive({ capabilities: readRuntimeCapabilities({
     schema: 'solovey-ui/entity-capabilities/v1', componentProfile: 'full', multicastInterfaces: ['fixture0'], facts: [
       { category: 'dns', type: 'mdns', runtimeType: 'mdns', known: true, contextSupported: true, registered: true, compiled: true, available: true, runtimeDependency: 'multicast', runtimeEligible: true, platformDependencyAvailable: true },
       { category: 'dns', type: 'resolved', runtimeType: 'resolved', known: true, contextSupported: true, registered: true, compiled: true, available: false, runtimeDependency: 'resolve1-system-bus', runtimeEligible: false, platformDependencyAvailable: true, reason: 'DNS_RESOLVED_BUS_NAME_OCCUPIED' },
+      ...['sdns', 'fallback'].map(type => ({ category: 'dns', type, runtimeType: type, known: true, contextSupported: true, registered: native, compiled: native, available: native, buildTag: 'shtorm_extended', requiredProvider: 'Shtorm Extended' })),
     ],
   }) })
   const saved = vi.fn()
-  const app = renderer.createApp(defineComponent({ extends: DnsEditor, render: () => h('div') }), { visible: true, data: JSON.stringify(data), index: 0, rslvdTags: ['resolver'], onSave: saved })
+  const app = renderer.createApp(defineComponent({ extends: DnsEditor, render: () => h('div') }), { visible: true, data: JSON.stringify(data), index: 0, rslvdTags: ['resolver'], serverTags: ['later-a', 'later-b', 'group'], onSave: saved })
   app.config.globalProperties.$t = (key: string) => key
   app.config.warnHandler = () => {}
   apps.push(app)
@@ -34,6 +35,36 @@ function mount(data: Record<string, any>, mode: string) {
 
 describe('shared DNS editor for Classic and Nexus', () => {
   for (const mode of ['classic', 'nexus']) {
+    it(`${mode} offers native DNS only when available and edits one canonical fallback value`, () => {
+      const source = { type: 'fallback', tag: 'group', servers: ['later-b', 'later-a'], strategy: 'parallel', timeout: '3s' }
+      const { vm, saved } = mount(source, mode, true)
+      expect(vm.dnsTypes.map((item: any) => item.value)).toEqual(expect.arrayContaining(['sdns', 'fallback']))
+      expect(vm.fallbackServers).toEqual(['later-a', 'later-b'])
+      expect(vm.WithoutDial).toContain('fallback')
+      expect(vm.WithoutDial).not.toContain('sdns')
+      vm.dnsServer.strategy = 'sequential'
+      vm.save()
+      expect(saved).toHaveBeenCalledWith({ ...source, strategy: 'sequential' })
+      expect(source.strategy).toBe('parallel')
+      expect(createDnsServer('fallback')).toEqual({ type: 'fallback', servers: [], strategy: 'sequential' })
+      expect(createDnsServer('sdns')).toEqual({ type: 'sdns', stamp: '' })
+    })
+    it(`${mode} preserves unavailable native DNS history outside creation choices`, () => {
+      for (const source of [
+        { type: 'sdns', tag: 'private-dns', stamp: 'sdns://preserved' },
+        { type: 'fallback', tag: 'group', servers: ['later-b', 'later-a'], strategy: 'parallel', timeout: '3s' },
+      ]) {
+        const { vm, saved } = mount(source, mode)
+        expect(vm.dnsTypes.some((item: any) => ['sdns', 'fallback'].includes(item.value))).toBe(false)
+        expect(vm.capabilityState).toMatchObject({ allowed: false, historical: true })
+        expect(vm.dnsServer).toEqual(source)
+        vm.save()
+        expect(saved).not.toHaveBeenCalled()
+        fixture.store.capabilities.facts.find((fact: any) => fact.type === source.type).available = true
+        vm.save()
+        expect(saved).toHaveBeenCalledWith(source)
+      }
+    })
     it(`${mode} restores list/scalar interfaces and preserves the source until explicit save`, async () => {
       const source = { type: 'mdns', tag: 'local', interface: 'fixture0' }
       const { vm, saved } = mount(source, mode)

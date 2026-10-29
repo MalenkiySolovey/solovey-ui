@@ -45,12 +45,23 @@ func (s SingBoxBaseConfigStore) Save(tx *gorm.DB, config json.RawMessage) error 
 }
 
 func (s SingBoxBaseConfigStore) save(tx *gorm.DB, config json.RawMessage) error {
+	var previous model.Setting
+	if err := tx.Where("key = ?", "config").Limit(1).Find(&previous).Error; err != nil {
+		return err
+	}
+	if err := singboxconfig.ValidateDNSCapabilityEdits([]byte(previous.Value), config); err != nil {
+		return err
+	}
 	if singboxconfig.HasSelectedDNSTransport(config) {
 		projection, err := NewSingBoxConfigBuilder(nil).BuildCandidateProjectionFromDB(tx, string(config), false)
 		if err != nil {
 			return err
 		}
-		if err := singboxvalidation.ValidateConfigShape(projection.Config); err != nil {
+		validate := singboxvalidation.ValidateConfigShape
+		if singboxconfig.HasNativeDNSTransport(projection.Config) {
+			validate = singboxvalidation.ValidateConfig
+		}
+		if err := validate(projection.Config); err != nil {
 			return err
 		}
 	}
