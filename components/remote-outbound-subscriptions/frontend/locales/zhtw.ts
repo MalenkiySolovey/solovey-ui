@@ -1,5 +1,8 @@
 export default {
   "remoteOutbound": {
+    "dialerOverride": "匯入出站的撥號選項",
+    "dialerOverrideHint": "重新整理時，為支援 Dial 的協定覆寫明確指定的撥號欄位。其他欄位、來源觀測資料及群組行為保持不變。清除後，下次重新整理還原來源值。這些選項不影響來源 URL 的下載方式。",
+    "clearDialerOverride": "使用來源撥號選項",
     "removeEmojis": "移除匯入名稱中的表情符號",
     "userAgent": "來源 User-Agent",
     "userAgentHint": "留空以自動收集各格式。設定自訂用戶端識別後，每次重新整理僅請求原始 URL 一次。",

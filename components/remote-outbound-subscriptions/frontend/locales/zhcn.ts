@@ -1,5 +1,8 @@
 export default {
   "remoteOutbound": {
+    "dialerOverride": "导入出站的拨号选项",
+    "dialerOverrideHint": "刷新时，为支持 Dial 的协议覆盖明确指定的拨号字段。其他字段、源观测数据及组行为保持不变。清除后，下次刷新恢复源值。这些选项不影响源 URL 的下载方式。",
+    "clearDialerOverride": "使用源拨号选项",
     "removeEmojis": "移除导入名称中的表情符号",
     "userAgent": "源 User-Agent",
     "userAgentHint": "留空以自动收集各格式。设置自定义客户端标识后，每次刷新仅请求原始 URL 一次。",
