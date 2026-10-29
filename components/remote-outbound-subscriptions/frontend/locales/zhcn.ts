@@ -1,5 +1,7 @@
 export default {
   "remoteOutbound": {
+    "sourcePath": "面板主机上的源文件路径",
+    "sourcePathHint": "面板主机上可读普通文件的绝对路径（最大 512 KiB）。自动刷新按所选间隔检查文件。读取或解析失败时保留上次收集的连接。面板不会写入或删除此文件。",
     "dialerOverride": "导入出站的拨号选项",
     "dialerOverrideHint": "刷新时，为支持 Dial 的协议覆盖明确指定的拨号字段。其他字段、源观测数据及组行为保持不变。清除后，下次刷新恢复源值。这些选项不影响源 URL 的下载方式。",
     "clearDialerOverride": "使用源拨号选项",
@@ -15,7 +17,7 @@ export default {
     "excludeNames": "排除名称（正则表达式）",
     "sourceFiltersHint": "刷新时按源名称筛选。排除优先；留空表示全部。保留的组所需的成员必须全部保留。保存筛选条件不会修改已收集的连接，刷新后才会应用。",
     "sourceType": "来源类型",
-    "sourceTypes": { "remote": "远程 URL", "inline": "内联内容" },
+    "sourceTypes": { "remote": "远程 URL", "inline": "内联内容", "file": "主机文件" },
     "inlineContent": "来源内容",
     "inlineContentHint": "粘贴支持的客户端配置或分享链接（最多 512 KiB）。凭据由来源管理，后续编辑可保留或替换。保存时验证来源；刷新会重新收集连接，再由您选择并应用。",
     "title": "Remote Subscriptions",
@@ -62,6 +64,6 @@ export default {
     "deleteManagedOutboundWarning": "远程同步将被禁用；selector/urltest 引用将被调整。",
     "syncToOutbounds": "同步到出站",
     "noConnections": "没有连接。请先刷新订阅。",
-    "empty": "添加远程订阅 URL，然后刷新以导入连接。"
+    "empty": "添加远程 URL、内联内容或面板主机上的文件。刷新来源以收集连接，然后选择并应用。"
   }
 }

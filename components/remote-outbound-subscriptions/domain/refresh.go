@@ -341,7 +341,7 @@ func pruneStaleConnections(tx *gorm.DB, subscriptionID uint, seen map[string]str
 func DueSubscriptions(tx *gorm.DB, now int64) ([]RemoteOutboundSubscription, error) {
 	var subscriptions []RemoteOutboundSubscription
 	err := tx.
-		Where("enabled = ? AND auto_update = ? AND update_interval > 0 AND source_type IN ?", true, true, []string{"", SourceRemote}).
+		Where("enabled = ? AND auto_update = ? AND update_interval > 0 AND source_type IN ?", true, true, []string{"", SourceRemote, SourceFile}).
 		Where("last_updated = 0 OR last_updated + update_interval <= ?", now).
 		Order(entityorder.Clause).
 		Find(&subscriptions).Error

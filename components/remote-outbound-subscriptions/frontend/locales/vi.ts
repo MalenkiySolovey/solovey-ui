@@ -1,5 +1,7 @@
 export default {
   "remoteOutbound": {
+    "sourcePath": "Đường dẫn nguồn trên máy chủ Panel",
+    "sourcePathHint": "Đường dẫn tuyệt đối đến tệp thông thường có thể đọc trên máy chủ Panel (tối đa 512 KiB). Tự động làm mới kiểm tra theo khoảng đã chọn. Lỗi đọc hoặc phân tích giữ nguyên các kết nối đã thu thập. Panel không ghi hoặc xóa tệp này.",
     "dialerOverride": "Tùy chọn Dial cho outbound nhập",
     "dialerOverrideHint": "Giá trị đặt rõ sẽ thay thế trường Dial tương ứng khi làm mới đối với giao thức hỗ trợ Dial. Giữ nguyên các trường khác, dữ liệu nguồn và hành vi nhóm. Xóa để khôi phục giá trị nguồn ở lần làm mới sau. Không thay đổi cách tải URL nguồn.",
     "clearDialerOverride": "Dùng tùy chọn Dial của nguồn",
@@ -15,7 +17,7 @@ export default {
     "excludeNames": "Loại trừ tên (biểu thức chính quy)",
     "sourceFiltersHint": "Bộ lọc khớp tên gốc khi làm mới. Loại trừ được ưu tiên; để trống để lấy tất cả. Giữ đủ thành viên của nhóm còn lại. Lưu bộ lọc chưa thay đổi kết nối đã thu thập cho đến khi làm mới.",
     "sourceType": "Loại nguồn",
-    "sourceTypes": { "remote": "URL từ xa", "inline": "Nội dung trực tiếp" },
+    "sourceTypes": { "remote": "URL từ xa", "inline": "Nội dung trực tiếp", "file": "Tệp trên máy chủ" },
     "inlineContent": "Nội dung nguồn",
     "inlineContentHint": "Dán cấu hình máy khách hoặc liên kết được hỗ trợ (tối đa 512 KiB). Thông tin đăng nhập do nguồn quản lý; các lần sửa sau có thể giữ hoặc thay thế. Lưu sẽ kiểm tra nguồn. Làm mới thu thập lại kết nối trước khi bạn chọn và áp dụng.",
     "title": "Remote Subscriptions",
@@ -62,6 +64,6 @@ export default {
     "deleteManagedOutboundWarning": "Đồng bộ từ xa sẽ bị tắt; các tham chiếu selector/urltest sẽ được điều chỉnh.",
     "syncToOutbounds": "Đồng bộ sang outbound",
     "noConnections": "Không có kết nối. Hãy làm mới gói đăng ký trước.",
-    "empty": "Thêm URL gói đăng ký từ xa, sau đó làm mới để nhập kết nối."
+    "empty": "Thêm URL từ xa, nội dung trực tiếp hoặc tệp trên máy chủ Panel. Làm mới nguồn để thu thập kết nối trước khi chọn và áp dụng."
   }
 }

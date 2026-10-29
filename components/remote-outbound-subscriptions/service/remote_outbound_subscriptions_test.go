@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -28,6 +29,108 @@ func initRemoteOutboundTestDB(t *testing.T) {
 
 func newTestRemoteOutboundService() *RemoteOutboundService {
 	return &RemoteOutboundService{Runtime: coreservice.NewRuntimeWithCoreProvider(nil)}
+}
+
+func TestHostFileSourceRefreshPreservesLastGoodCollection(t *testing.T) {
+	initRemoteOutboundTestDB(t)
+	db := dbsqlite.DB()
+	svc := newTestRemoteOutboundService()
+	path := filepath.Join(t.TempDir(), "source.json")
+	const first = `{"outbounds":[{"type":"shadowsocks","tag":"file-ss","server":"192.0.2.1","server_port":443,"method":"aes-128-gcm","password":"private-file-source-canary"}]}`
+	write := func(raw string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(first)
+	for _, invalid := range []string{"relative.json", "https://source.example/config", `\\host\share\source.json`} {
+		if _, err := svc.SaveSubscription(remotesub.RemoteOutboundSubscription{Name: "invalid-file", SourceType: remotesub.SourceFile, SourcePath: invalid}, true, "test"); !errors.Is(err, remotesub.ErrSourceFilePathInvalid) {
+			t.Fatal("file source accepted a relative, URL or network path", err)
+		}
+	}
+	saved, err := svc.SaveSubscription(remotesub.RemoteOutboundSubscription{Name: "host-file", SourceType: remotesub.SourceFile, SourcePath: path, Enabled: true, AutoUpdate: true, UpdateInterval: 300}, true, "test")
+	if err != nil || saved == nil || saved.SourcePath != path || !saved.AutoUpdate || saved.Url != "" || len(saved.Content) != 0 {
+		t.Fatal("host file source did not retain its own refresh policy", err)
+	}
+	for _, field := range []string{"content", "url", "user-agent"} {
+		invalid := *saved
+		switch field {
+		case "content":
+			invalid.Content = json.RawMessage(`{"intent":"replace","value":"private-file-source-canary"}`)
+		case "url":
+			invalid.Url = "https://source.example/sub"
+		case "user-agent":
+			invalid.UserAgent = "private-file-source-canary"
+		}
+		if _, err := svc.SaveSubscription(invalid, true, "test"); err == nil || strings.Contains(err.Error(), "canary") {
+			t.Fatal("host file source accepted another source owner's fields", err)
+		}
+	}
+	if count, err := svc.RefreshDueSubscriptions("test"); err != nil || count != 1 {
+		t.Fatal("existing scheduler did not collect host file", count, err)
+	}
+	all, err := svc.GetAll()
+	if err != nil || all == nil || len(*all) != 1 || len((*all)[0].Connections) != 1 || (*all)[0].Connections[0].Name != "file-ss" {
+		t.Fatal("host file did not reach the canonical collection", err)
+	}
+	loaded := (*all)[0]
+	connectionID := loaded.Connections[0].Id
+	if _, err := svc.SyncConnectionToOutbound(connectionID, "test"); err != nil {
+		t.Fatal("file connection could not use the existing outbound owner", err)
+	}
+	var before remotesub.RemoteOutboundSubscription
+	if err := db.First(&before, saved.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{"private-file-source-canary", "", strings.Repeat("x", remotesub.MaxInlineSourceBytes+1)} {
+		write(raw)
+		if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err == nil || strings.Contains(err.Error(), "canary") || strings.Contains(err.Error(), path) {
+			t.Fatal("invalid file content was accepted or disclosed", err)
+		}
+		var current remotesub.RemoteOutboundSubscription
+		if err := db.First(&current, saved.Id).Error; err != nil || string(current.CanonicalSnapshot) != string(before.CanonicalSnapshot) || current.LastUpdated != before.LastUpdated || current.LastError == "" {
+			t.Fatal("failed file refresh replaced last good source state", err)
+		}
+		var connection remotesub.RemoteOutboundConnection
+		if err := db.First(&connection, connectionID).Error; err != nil || !connection.Synced || connection.OutboundId == nil {
+			t.Fatal("failed file refresh removed an owned runtime resource", err)
+		}
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); !errors.Is(err, remotesub.ErrSourceFileRead) {
+		t.Fatal("missing host file was not a private read failure", err)
+	}
+	write(first)
+	if err := db.Model(&before).Update("last_updated", 0).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count, err := svc.RefreshDueSubscriptions("test"); err != nil || count != 1 {
+		t.Fatal("restored host file could not resume scheduled collection", count, err)
+	}
+	all, err = svc.GetAll()
+	if err != nil || all == nil || len(*all) != 1 || (*all)[0].LastError != "" || len((*all)[0].Connections) != 1 || (*all)[0].Connections[0].Id != connectionID || !(*all)[0].Connections[0].Synced {
+		t.Fatal("recovery changed the stable connection owner", err)
+	}
+	loaded = (*all)[0]
+	replacement := loaded
+	replacement.SourcePath = filepath.Join(filepath.Dir(path), "replacement.json")
+	if replacement.SameSource(loaded) {
+		t.Fatal("old file refresh retained authority over a different path")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := remotesub.FetchSourceContext(ctx, db, loaded, remotesub.FetchOptions{}); !errors.Is(err, context.Canceled) {
+		t.Fatal("file collection ignored owner cancellation", err)
+	}
+	if err := svc.DeleteSubscription(saved.Id, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if raw, err := os.ReadFile(path); err != nil || string(raw) != first {
+		t.Fatal("deleting a file source modified the host file", err)
+	}
 }
 
 func TestInlineSourceUsesOwnedContentAndExistingRefreshPipeline(t *testing.T) {
