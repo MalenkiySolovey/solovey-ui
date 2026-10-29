@@ -73,6 +73,10 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 	now := time.Now().Unix()
 	input.Name = strings.TrimSpace(input.Name)
 	input.Url = strings.TrimSpace(input.Url)
+	if err := remotesub.ValidateSourceUserAgent(input.UserAgent); err != nil {
+		return nil, err
+	}
+	input.UserAgent = strings.TrimSpace(input.UserAgent)
 	input.TagPrefix = remotesub.SanitizeTagPrefix(input.TagPrefix)
 	input.UpdateInterval = remotesub.NormalizeUpdateInterval(input.UpdateInterval)
 	if input.Name == "" {
@@ -89,6 +93,9 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 		return nil, err
 	}
 	if input.SourceType == remotesub.SourceInline {
+		if input.UserAgent != "" {
+			return nil, common.NewError("INLINE_SUBSCRIPTION_FETCH_OPTIONS_NOT_ALLOWED")
+		}
 		if input.Url != "" {
 			return nil, common.NewError("INLINE_SUBSCRIPTION_URL_NOT_ALLOWED")
 		}
@@ -141,8 +148,10 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 			oldTagPrefix := saved.TagPrefix
 			saved.Name = input.Name
 			saved.Url = input.Url
+			saved.UserAgent = input.UserAgent
 			saved.Include = input.Include
 			saved.Exclude = input.Exclude
+			saved.RemoveEmojis = input.RemoveEmojis
 			saved.Enabled = input.Enabled
 			saved.TagPrefix = input.TagPrefix
 			saved.AutoUpdate = input.AutoUpdate
@@ -161,9 +170,11 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 				SortOrder:      sortOrder,
 				Name:           input.Name,
 				Url:            input.Url,
+				UserAgent:      input.UserAgent,
 				SourceType:     input.SourceType,
 				Include:        input.Include,
 				Exclude:        input.Exclude,
+				RemoveEmojis:   input.RemoveEmojis,
 				Enabled:        input.Enabled,
 				TagPrefix:      input.TagPrefix,
 				AutoUpdate:     input.AutoUpdate,

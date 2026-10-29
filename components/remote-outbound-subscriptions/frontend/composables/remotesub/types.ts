@@ -33,10 +33,12 @@ export interface RemoteOutboundSubscription {
   sortOrder: number
   name: string
   url: string
+  userAgent?: string
   sourceType?: 'remote' | 'inline'
   content?: SecretView
   include?: string
   exclude?: string
+  removeEmojis?: boolean
   enabled: boolean
   tagPrefix: string
   autoUpdate: boolean

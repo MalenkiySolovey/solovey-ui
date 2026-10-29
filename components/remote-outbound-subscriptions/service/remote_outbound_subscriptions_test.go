@@ -89,12 +89,13 @@ func TestInlineSourceUsesOwnedContentAndExistingRefreshPipeline(t *testing.T) {
 		t.Fatal("invalid filter was accepted or disclosed its expression", err)
 	}
 	saved.Include, saved.Exclude = "^inline", "-test$"
+	saved.RemoveEmojis = true
 	saved, err = svc.SaveSubscription(*saved, true, "test")
 	if err != nil {
 		t.Fatal("valid selection could not use the existing source owner", err)
 	}
 	var filtered remotesub.RemoteOutboundSubscription
-	if err := db.First(&filtered, saved.Id).Error; err != nil || filtered.Include != "^inline" || filtered.Exclude != "-test$" || row.SameSource(filtered) || filtered.SourceContent != row.SourceContent {
+	if err := db.First(&filtered, saved.Id).Error; err != nil || filtered.Include != "^inline" || filtered.Exclude != "-test$" || !filtered.RemoveEmojis || row.SameSource(filtered) || filtered.SourceContent != row.SourceContent {
 		t.Fatal("filter edit lost content or retained stale refresh authority", err)
 	}
 	result, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test")
@@ -556,11 +557,16 @@ func TestRemoteOutboundRetagKeepsUnicodeAndUpdatesLinkedOutbound(t *testing.T) {
 		Id:        subscription.Id,
 		Name:      subscription.Name,
 		Url:       subscription.Url,
+		UserAgent: "CustomSubscriptionClient/1.0",
 		Enabled:   true,
 		TagPrefix: "РЅРѕРІС‹Р№-",
 	}, true, "test")
 	if err != nil {
 		t.Fatal(err)
+	}
+	var savedSource remotesub.RemoteOutboundSubscription
+	if err := db.First(&savedSource, subscription.Id).Error; err != nil || savedSource.UserAgent != "CustomSubscriptionClient/1.0" {
+		t.Fatal("source owner did not persist its client identity", err)
 	}
 
 	var storedConnection remotesub.RemoteOutboundConnection

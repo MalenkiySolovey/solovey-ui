@@ -3,6 +3,7 @@
 package remote
 
 import (
+	"context"
 	"net/url"
 	"strings"
 	"testing"
@@ -10,6 +11,35 @@ import (
 	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
+
+func TestSourceUserAgentUsesOriginalResourceAndRejectsHeaderInjection(t *testing.T) {
+	original := fetchSubscriptionDataWithUserAgentContext
+	t.Cleanup(func() { fetchSubscriptionDataWithUserAgentContext = original })
+	source := RemoteOutboundSubscription{Url: "https://example.com/subscription?format=uri&token=fixture", UserAgent: "CustomSubscriptionClient/1.0"}
+	calls := 0
+	fetchSubscriptionDataWithUserAgentContext = func(ctx context.Context, rawURL, userAgent string) (string, error) {
+		calls++
+		if rawURL != source.Url || userAgent != source.UserAgent || ctx == nil {
+			t.Fatal("source fetch lost its immutable resource or explicit client identity")
+		}
+		return `{"outbounds":[{"type":"trojan","tag":"node","server":"edge.invalid","server_port":443,"password":"fixture"}]}`, nil
+	}
+	fetched, err := FetchSourceContext(context.Background(), nil, source, FetchOptions{})
+	if err != nil || calls != 1 || len(fetched.Outbounds) != 1 || !fetched.Complete() {
+		t.Fatal("custom client identity did not fetch the original resource once", err)
+	}
+	changed := source
+	changed.UserAgent = "AnotherClient/1.0"
+	if source.SameSource(changed) {
+		t.Fatal("old client identity retained refresh authority")
+	}
+	for _, value := range []string{"client\r\nX-Canary: private-header-canary", "client\x00private-header-canary", strings.Repeat("x", 4097)} {
+		source.UserAgent = value
+		if _, err := FetchSourceContext(context.Background(), nil, source, FetchOptions{}); err == nil || strings.Contains(err.Error(), "canary") || calls != 1 {
+			t.Fatal("invalid header reached a fetch or was disclosed")
+		}
+	}
+}
 
 func TestParseFetchedSubscriptionSupportsClashYAML(t *testing.T) {
 	fetched, err := ParseFetchedSubscription(`

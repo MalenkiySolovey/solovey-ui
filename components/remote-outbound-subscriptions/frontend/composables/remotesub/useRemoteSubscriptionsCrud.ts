@@ -40,10 +40,12 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     id: 0,
     name: '',
     url: '',
+    userAgent: '',
     sourceType: 'remote' as 'remote' | 'inline',
     content: undefined as SecretView | SecretMutation | undefined,
     include: '',
     exclude: '',
+    removeEmojis: false,
     tagPrefix: '',
     enabled: true,
     autoUpdate: false,
@@ -138,10 +140,12 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
         id: form.id,
         name: form.name,
         url: form.sourceType === 'remote' ? form.url : '',
+        userAgent: form.sourceType === 'remote' ? form.userAgent : '',
         sourceType: form.sourceType,
         content: form.sourceType === 'inline' ? secretMutation(form.content) : undefined,
         include: form.include,
         exclude: form.exclude,
+        removeEmojis: form.removeEmojis,
         tagPrefix: form.tagPrefix,
         enabled: form.enabled,
         autoUpdate: form.sourceType === 'remote' && form.autoUpdate,
@@ -165,10 +169,12 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     form.id = 0
     form.name = ''
     form.url = ''
+    form.userAgent = ''
     form.sourceType = 'remote'
     form.content = undefined
     form.include = ''
     form.exclude = ''
+    form.removeEmojis = false
     form.tagPrefix = ''
     form.enabled = true
     form.autoUpdate = false
@@ -181,10 +187,12 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     form.id = subscription.id
     form.name = subscription.name
     form.url = subscription.url
+    form.userAgent = subscription.userAgent ?? ''
     form.sourceType = subscription.sourceType ?? 'remote'
     form.content = subscription.content ? JSON.parse(JSON.stringify(subscription.content)) : undefined
     form.include = subscription.include ?? ''
     form.exclude = subscription.exclude ?? ''
+    form.removeEmojis = subscription.removeEmojis === true
     form.tagPrefix = subscription.tagPrefix
     form.enabled = subscription.enabled
     form.autoUpdate = Boolean(subscription.autoUpdate)
