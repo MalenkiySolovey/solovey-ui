@@ -37,6 +37,7 @@ func StartRemoteOutboundAutoRefresh(runtime *coreservice.Runtime, outboundHTTP c
 		ticker := time.NewTicker(remoteOutboundAutoRefreshTick)
 		defer ticker.Stop()
 		service := &RemoteOutboundService{Runtime: runtime, OutboundHTTP: outboundHTTP}
+		healthSchedule := &SourceHealthSchedule{}
 		for {
 			select {
 			case <-ctx.Done():
@@ -44,6 +45,9 @@ func StartRemoteOutboundAutoRefresh(runtime *coreservice.Runtime, outboundHTTP c
 			case <-ticker.C:
 				if _, err := service.RefreshDueSubscriptionsContext(ctx, "system"); err != nil && ctx.Err() == nil {
 					logger.Warning("remote subscription auto refresh scan failed: ", err)
+				}
+				if _, err := service.ProbeDueSubscriptionsContext(ctx, healthSchedule); err != nil && ctx.Err() == nil {
+					logger.Warning("remote subscription health scan failed: ", err)
 				}
 			}
 		}
