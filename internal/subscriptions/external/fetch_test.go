@@ -74,7 +74,7 @@ func TestFetchRedirectDoesNotLeakSourceCredentialsOrReferer(t *testing.T) {
 	if data == "" {
 		t.Fatal("expected redirected subscription body")
 	}
-	if headers.Get("Authorization") != "" || len(headers["authorization"]) != 1 {
+	if headers.Get("Authorization") != "" || len(map[string][]string(headers)["authorization"]) != 1 {
 		t.Fatal("request normalized headers by mutating the caller's captured values")
 	}
 }
