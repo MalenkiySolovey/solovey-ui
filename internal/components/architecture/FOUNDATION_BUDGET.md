@@ -258,3 +258,5 @@ R7 source download detours keep the two existing unsync mutations unchanged in
 `unsyncConnectionsForDeletedOutbound`. The exported admission wrapper now checks
 canonical source references before delegating. This review moves the two exact
 existing digest entries to the private helper; no mutation allowance is added.
+
+R7 source download detours pass the existing Host-owned OutboundHTTP client port into the existing auto-refresh worker. Its context, ticker, stop/done join and refresh admission are unchanged. The exact closure digest is reviewed for this constructor wiring only; it does not add another worker, scheduler or runtime owner.
