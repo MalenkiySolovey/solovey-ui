@@ -47,17 +47,33 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 		}
 	}
 	transportCandidate := false
+	inboundRealmCandidate := false
 	if registry.ResolveTransport("xhttp").Available() || registry.ResolveTransport("mkcp").Available() || registry.ResolveTransport("quic").Available() {
 		for _, entity := range []any{&model.Inbound{}, &model.Outbound{}} {
 			if !tx.Migrator().HasTable(entity) {
 				continue
 			}
-			var rows []struct{ Options json.RawMessage }
-			if err := tx.Model(entity).Select("options").Find(&rows).Error; err != nil {
+			var rows []struct {
+				Type    string
+				Options json.RawMessage
+			}
+			if err := tx.Model(entity).Select("type", "options").Find(&rows).Error; err != nil {
 				return err
 			}
 			for _, row := range rows {
-				var options struct{ Transport struct{ Type string } }
+				var options struct {
+					Transport struct{ Type string }
+					Realm     json.RawMessage
+				}
+				category := "outbounds"
+				if _, inbound := entity.(*model.Inbound); inbound {
+					category = "inbounds"
+				}
+				if row.Type == "hysteria2" && json.Unmarshal(row.Options, &options) == nil && len(options.Realm) != 0 && string(options.Realm) != "null" && entitycapabilities.ResolveResource(category, row.Type, row.Options).Available {
+					transportCandidate = true
+					inboundRealmCandidate = inboundRealmCandidate || category == "inbounds"
+					break
+				}
 				if json.Unmarshal(row.Options, &options) == nil && (options.Transport.Type == "xhttp" || options.Transport.Type == "mkcp" || options.Transport.Type == "quic") && registry.ResolveTransport(options.Transport.Type).Available() {
 					transportCandidate = true
 					break
@@ -90,7 +106,7 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 		if endpointCount != 0 {
 			return common.NewError("NATIVE_ENDPOINT_CANDIDATE_REJECTED: the complete provider configuration is invalid")
 		}
-		if count == 0 {
+		if count == 0 && !inboundRealmCandidate {
 			return common.NewError("NATIVE_OUTBOUND_CANDIDATE_REJECTED: the complete provider configuration is invalid")
 		}
 		return common.NewError("NATIVE_INBOUND_CANDIDATE_REJECTED: the complete provider configuration is invalid")

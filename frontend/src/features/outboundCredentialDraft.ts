@@ -3,6 +3,7 @@ import { secretMutation } from './secretCredentialDraft'
 type CredentialOutbound = {
   type: string
   profile?: { auth_token?: unknown; license_key?: unknown; private_key?: unknown }
+  realm?: { token?: unknown }
 }
 
 // Normalize masked read views into explicit owner intents at the common
@@ -23,6 +24,11 @@ export function serializeOutboundCredentialDraft<T extends CredentialOutbound>(o
     const profile = { ...outbound.profile }
     normalize(profile, ['auth_token', 'license_key', 'private_key'])
     result.profile = profile
+  }
+  else if (outbound.type === 'hysteria2' && outbound.realm) {
+    const realm = { ...outbound.realm }
+    normalize(realm, ['token'])
+    result.realm = realm
   }
   return result as T
 }
