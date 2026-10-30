@@ -42,6 +42,16 @@ beforeEach(() => {
 afterEach(() => { apps.splice(0).forEach(app => app.unmount()) })
 
 describe('native credential drafts in the existing Users editor', () => {
+  it('keeps inbound Realm tokens with Inbounds while retaining native STUN resolver fields', () => {
+    const token = { ...storedView(), reference: { ...storedView().reference, owner: 'inbounds', id: 'record:9:realm.token' } }
+    const inbound = { type: 'hysteria2', realm: { server_url: 'https://realm.example', realm_id: 'peer', token, stun_servers: ['127.0.0.1:3478'], stun_domain_resolver: { server: 'host-dns', disable_cache: false } } }
+    const before = JSON.stringify(inbound)
+    expect(serializeInboundCredentialDraft(inbound).realm).toEqual({ ...inbound.realm, token: { intent: 'unchanged', reference: token.reference, present: true, rotationRevision: token.rotationRevision } })
+    expect(inboundCredentialDraftInvalid(inbound)).toBe(false)
+    expect(inboundCredentialDraftInvalid({ type: 'hysteria2', realm: { realm_id: 'peer' } })).toBe(true)
+    expect(JSON.stringify(inbound)).toBe(before)
+  })
+
   it('uses explicit owner mutations and retains masked metadata without mutation', () => {
     const input = { mieru: { name: 'alice', password: storedView() } }
     const before = JSON.stringify(input)

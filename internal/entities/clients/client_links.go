@@ -34,6 +34,14 @@ func BuildLinksForInbounds(config json.RawMessage, inbounds []model.Inbound, hos
 		if !clientfacts.CanDeliver(inbounds[i].Type, "uri") {
 			continue
 		}
+		if inbounds[i].Type == "hysteria2" {
+			var fields struct{ Realm json.RawMessage }
+			if json.Unmarshal(inbounds[i].Options, &fields) == nil && len(fields.Realm) != 0 && string(fields.Realm) != "null" {
+				// Realm has a native JSON endpoint, not a portable Hysteria URI.
+				// Keep the assignment; do not persist a misleading direct link.
+				continue
+			}
+		}
 		if fact, _ := clientfacts.Resolve(inbounds[i].Type); fact.SecretField != "" {
 			// Managed credentials are borrowed only for private delivery. Never
 			// persist a second plaintext credential inside Client.Links.

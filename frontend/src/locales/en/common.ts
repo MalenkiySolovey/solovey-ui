@@ -641,6 +641,7 @@ export default {
       "realm": "Realm rendezvous",
       "realmEnable": "Use Realm rendezvous",
       "realmServerUrl": "Realm server URL",
+      "realmStunResolver": "STUN domain resolver",
       "realmToken": "Realm access token",
       "realmId": "Realm ID",
       "realmStun": "STUN servers (one per line)",

@@ -308,6 +308,12 @@ func inboundAddresses(inbound *model.Inbound) ([]map[string]interface{}, error) 
 func appendInboundOutbounds(set *OutboundSet, outbound map[string]interface{}, addrs []map[string]interface{}, publicName bool) {
 	protocol, _ := outbound["type"].(string)
 	tag, _ := outbound["tag"].(string)
+	if protocol == "hysteria2" && outbound["realm"] != nil {
+		// A rendezvous endpoint has no direct public address to substitute.
+		// Its own TLS identity remains in the selected client template.
+		set.Append(outbound, tag)
+		return
+	}
 	if len(addrs) == 0 {
 		if protocol == "mixed" {
 			appendMixedOutbound(set, outbound)

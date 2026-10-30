@@ -10,8 +10,49 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
+	"github.com/MalenkiySolovey/solovey-ui/internal/secrets/ownerdb"
 	"gorm.io/gorm"
 )
+
+func TestOfficialHysteriaRealmInboundUsesSelectedCapabilityAndCredentialOwner(t *testing.T) {
+	db := newInboundDB(t)
+	if err := db.AutoMigrate(&model.Setting{}, &model.AuditEvent{}); err != nil {
+		t.Fatal(err)
+	}
+	ref, _ := ownerdb.Reference("inbounds", 1, "realm.token")
+	sealed, err := ownerdb.Apply(db, ref, "", json.RawMessage(`{"intent":"replace","value":"synthetic-official-realm-token"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	options, _ := json.Marshal(map[string]any{"listen_port": 23456, "realm": map[string]any{"server_url": "https://realm.example", "realm_id": "peer", "token": sealed}})
+	stored := model.Inbound{Id: 1, Type: "hysteria2", Tag: "realm-history", Options: options, Addrs: json.RawMessage(`[]`), OutJson: json.RawMessage(`{ "type":"hysteria2","realm":{"realm_id":"peer"} }`)}
+	if err := db.Create(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	view, err := GetByIDs(db, "1")
+	masked, _ := json.Marshal(view)
+	if err != nil || len(*view) != 1 || bytes.Contains(masked, []byte(sealed)) || bytes.Contains(masked, []byte("synthetic-official-realm-token")) || !bytes.Contains(masked, []byte(`"present":true`)) {
+		t.Fatal("historical Realm resource was hidden or disclosed its captured token", err)
+	}
+	available := entitycapabilities.ResolveResource("inbounds", stored.Type, stored.Options).Available
+	runtime, err := GetAllConfig(db, nil)
+	if err != nil || available && (len(runtime) != 1 || !bytes.Contains(runtime[0], []byte("synthetic-official-realm-token"))) || !available && len(runtime) != 0 {
+		t.Fatal("Realm projection disagreed with the selected SDK capability", err)
+	}
+	if !available {
+		for _, action := range []string{"new", "edit"} {
+			draft := json.RawMessage(`{"id":1,"type":"hysteria2","tag":"realm-history","listen_port":23456,"realm":{"server_url":"https://realm.example","realm_id":"peer"}}`)
+			if _, err := Save(SaveRequest{Tx: db, Action: action, Data: draft}); err == nil {
+				t.Fatal("Official admitted an unavailable Realm resource")
+			}
+		}
+	}
+	var after model.Inbound
+	if err := db.First(&after, stored.Id).Error; err != nil || !bytes.Equal(after.Options, stored.Options) || !bytes.Equal(after.OutJson, stored.OutJson) || after.Id != stored.Id {
+		t.Fatal("Official changed preserved Realm desired state", err)
+	}
+}
 
 func TestOfficialNativeInboundPreservesUnsupportedFieldsAndBlocksChanges(t *testing.T) {
 	for _, kind := range []string{"mieru", "trusttunnel", "ssh", "mtproxy"} {

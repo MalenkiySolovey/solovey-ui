@@ -19,6 +19,42 @@ import (
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 )
 
+func TestHysteriaRealmInboundFullCandidateAdmissionAndPrivateFailure(t *testing.T) {
+	initSettingTestDB(t)
+	seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
+	db := dbsqlite.DB()
+	cert, key := makeSelfSignedCertPEM(t, time.Now().Add(time.Hour))
+	server, _ := json.Marshal(map[string]any{"enabled": true, "certificate": []string{string(cert)}, "key": []string{string(key)}})
+	tls := model.Tls{Name: "realm-serving-tls", Server: server, Client: json.RawMessage(`{"enabled":true,"server_name":"fixture.invalid"}`)}
+	if err := db.Create(&tls).Error; err != nil {
+		t.Fatal(err)
+	}
+	svc, applier, lifecycle := newHotReloadConfigService(t)
+	const token = "private-realm-serving-token-canary"
+	realm := map[string]any{"server_url": "https://127.0.0.1:8443", "realm_id": "serving-peer", "token": map[string]string{"intent": "replace", "value": token}, "stun_servers": []string{"127.0.0.1:3478"}, "ip_version": 6}
+	draft := map[string]any{"type": "hysteria2", "tag": "realm-serving", "listen": "127.0.0.1", "listen_port": 23456, "tls_id": tls.Id, "realm": realm}
+	save := func() error {
+		raw, _ := json.Marshal(draft)
+		_, err := svc.Save("inbounds", "new", raw, "", "admin", "fixture.invalid")
+		return err
+	}
+	if err := save(); err == nil || !strings.HasPrefix(err.Error(), "NATIVE_INBOUND_CANDIDATE_REJECTED") || strings.Contains(err.Error(), "canary") {
+		t.Fatal("invalid serving Realm candidate was not privately rejected", err)
+	}
+	var count int64
+	if err := db.Model(&model.Inbound{}).Count(&count).Error; err != nil || count != 0 || len(applier.calls) != 0 || len(lifecycle.calls) != 0 {
+		t.Fatal("invalid serving Realm candidate committed state or effects", err)
+	}
+	realm["ip_version"] = 4
+	if err := save(); err != nil {
+		t.Fatal("valid serving Realm candidate rejected", err)
+	}
+	runtime, err := svc.GetConfig("")
+	if err != nil || !bytes.Contains(*runtime, []byte(token)) || singboxvalidation.ValidateConfig(*runtime) != nil {
+		t.Fatal("Realm serving config did not pass the exact provider", err)
+	}
+}
+
 func TestNativeSSHCredentialOperationsWaitForConcurrentSQLiteWriter(t *testing.T) {
 	for _, operation := range []string{"clear", "render"} {
 		t.Run(operation, func(t *testing.T) {

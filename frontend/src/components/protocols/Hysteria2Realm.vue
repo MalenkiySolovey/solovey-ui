@@ -9,6 +9,7 @@
           <v-col cols="12" sm="6"><SecretCredentialField v-model="data.realm.token" :available="available" :label="$t('types.hy.realmToken')" /></v-col>
         </v-row>
         <v-textarea :model-value="data.realm.stun_servers?.join('\n') ?? ''" :label="$t('types.hy.realmStun')" rows="2" @update:model-value="setStun" />
+        <DomainResolver v-if="direction === 'in'" :data="data.realm" field="stun_domain_resolver" :label="$t('types.hy.realmStunResolver')" />
         <v-select v-model="data.realm.ip_version" :items="ipVersions" :label="$t('types.hy.realmIpVersion')" />
         <v-switch :model-value="data.realm.port_mapping?.enabled === true" :label="$t('types.hy.realmPortMapping')" color="primary" @update:model-value="setMapping" />
         <v-row v-if="data.realm.port_mapping?.enabled">
@@ -30,8 +31,9 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Hysteria2Realm } from '@/types/outbounds'
 import SecretCredentialField from '@/components/fields/SecretCredentialField.vue'
+import DomainResolver from '@/components/fields/DomainResolver.vue'
 
-const props = defineProps<{ data: { realm?: Hysteria2Realm; server?: string; server_port?: number; server_ports?: string[] }; available: boolean }>()
+const props = defineProps<{ data: { realm?: Hysteria2Realm & { stun_domain_resolver?: import('@/types/dial').DomainResolveOptions }; server?: string; server_port?: number; server_ports?: string[] }; available: boolean; direction?: string }>()
 const { t } = useI18n()
 const confirmDirect = ref(false)
 const ipVersions = [{ title: t('types.hy.realmAuto'), value: 0 }, { title: 'IPv4', value: 4 }, { title: 'IPv6', value: 6 }]
