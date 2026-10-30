@@ -34,8 +34,9 @@
         <Warp v-if="endpoint.type == epTypes.Warp" :data="endpoint" />
         <TailscaleVue v-if="endpoint.type == epTypes.Tailscale" :data="endpoint" />
         <OpenConnectEndpoint v-if="endpoint.type == epTypes.OpenConnect" :data="endpoint" :available="capabilityState.allowed" />
-        <OpenVPNClient v-if="endpoint.type == epTypes.OpenVPNClient" :data="endpoint" :available="capabilityState.allowed" />
-        <Dial :dial="endpoint" />
+        <Listen v-if="endpoint.type == epTypes.OpenVPNServer" :data="endpoint" :in-tags="[]" />
+        <OpenVPNClient v-if="endpoint.type == epTypes.OpenVPNClient || endpoint.type == epTypes.OpenVPNServer" :data="endpoint" :available="capabilityState.allowed" />
+        <Dial v-if="endpoint.type != epTypes.OpenVPNServer" :dial="endpoint" />
     </CapabilitySurface>
   </form-shell>
 </template>
@@ -44,6 +45,7 @@
 import { EpTypes, createEndpoint } from '@/types/endpoints'
 import RandomUtil from '@/plugins/randomUtil'
 import Dial from '@/components/fields/Dial.vue'
+import Listen from '@/components/fields/Listen.vue'
 import Wireguard from '@/components/protocols/Wireguard.vue'
 import Warp from '@/components/protocols/Warp.vue'
 import TailscaleVue from '@/components/protocols/Tailscale.vue'
@@ -233,6 +235,6 @@ export default {
       }
     },
   },
-  components: { CapabilitySurface, FormShell, Dial, Wireguard, Warp, TailscaleVue, OpenConnectEndpoint, OpenVPNClient }
+  components: { CapabilitySurface, FormShell, Dial, Listen, Wireguard, Warp, TailscaleVue, OpenConnectEndpoint, OpenVPNClient }
 }
 </script>

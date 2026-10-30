@@ -15,4 +15,7 @@ const supportsOpenVPNClient = true
 func registerOpenVPNClient(r *endpoint.Registry) {
 	endpoint.Register[option.OpenVPNClientEndpointOptions](r, C.TypeOpenVPNClient, openvpn.NewClientEndpoint)
 }
+func registerOpenVPNServer(r *endpoint.Registry) {
+	endpoint.Register[option.OpenVPNServerEndpointOptions](r, C.TypeOpenVPNServer, openvpn.NewServerEndpoint)
+}
 func registerOpenVPNDNS(r *dns.TransportRegistry) { openvpn.RegisterDNSTransport(r) }
