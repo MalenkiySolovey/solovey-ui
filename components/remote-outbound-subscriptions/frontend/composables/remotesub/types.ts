@@ -34,11 +34,13 @@ export interface RemoteOutboundSubscription {
   name: string
   url: string
   userAgent?: string
-  sourceType?: 'remote' | 'inline'
+  sourceType?: 'remote' | 'inline' | 'file'
+  sourcePath?: string
   content?: SecretView
   include?: string
   exclude?: string
   removeEmojis?: boolean
+  dialerOverride?: import('@/types/dial').Dial
   enabled: boolean
   tagPrefix: string
   autoUpdate: boolean

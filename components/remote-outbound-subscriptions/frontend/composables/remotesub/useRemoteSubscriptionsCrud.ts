@@ -41,11 +41,13 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     name: '',
     url: '',
     userAgent: '',
-    sourceType: 'remote' as 'remote' | 'inline',
+    sourceType: 'remote' as 'remote' | 'inline' | 'file',
+    sourcePath: '',
     content: undefined as SecretView | SecretMutation | undefined,
     include: '',
     exclude: '',
     removeEmojis: false,
+    dialerOverride: {} as import('@/types/dial').Dial,
     tagPrefix: '',
     enabled: true,
     autoUpdate: false,
@@ -104,7 +106,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     const query = search.value.trim().toLowerCase()
     if (!query) return subscriptions.value
     return subscriptions.value.filter((subscription) => {
-      if (subscription.name.toLowerCase().includes(query) || subscription.url.toLowerCase().includes(query)) return true
+      if (subscription.name.toLowerCase().includes(query) || subscription.url.toLowerCase().includes(query) || (subscription.sourcePath ?? '').toLowerCase().includes(query)) return true
       if ((subscription.tagPrefix ?? '').toLowerCase().includes(query)) return true
       if ((subscription.groups ?? []).some(group => group.name.toLowerCase().includes(query))) return true
       return (subscription.connections ?? []).some(connection =>
@@ -142,13 +144,15 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
         url: form.sourceType === 'remote' ? form.url : '',
         userAgent: form.sourceType === 'remote' ? form.userAgent : '',
         sourceType: form.sourceType,
+        sourcePath: form.sourceType === 'file' ? form.sourcePath : '',
         content: form.sourceType === 'inline' ? secretMutation(form.content) : undefined,
         include: form.include,
         exclude: form.exclude,
         removeEmojis: form.removeEmojis,
+        dialerOverride: form.dialerOverride,
         tagPrefix: form.tagPrefix,
         enabled: form.enabled,
-        autoUpdate: form.sourceType === 'remote' && form.autoUpdate,
+        autoUpdate: form.sourceType !== 'inline' && form.autoUpdate,
         updateInterval: form.updateInterval,
       }
       const msg = await HttpUtils.post('api/remote-outbound-subscriptions/save', {
@@ -171,10 +175,12 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     form.url = ''
     form.userAgent = ''
     form.sourceType = 'remote'
+    form.sourcePath = ''
     form.content = undefined
     form.include = ''
     form.exclude = ''
     form.removeEmojis = false
+    form.dialerOverride = {}
     form.tagPrefix = ''
     form.enabled = true
     form.autoUpdate = false
@@ -189,10 +195,12 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     form.url = subscription.url
     form.userAgent = subscription.userAgent ?? ''
     form.sourceType = subscription.sourceType ?? 'remote'
+    form.sourcePath = subscription.sourcePath ?? ''
     form.content = subscription.content ? JSON.parse(JSON.stringify(subscription.content)) : undefined
     form.include = subscription.include ?? ''
     form.exclude = subscription.exclude ?? ''
     form.removeEmojis = subscription.removeEmojis === true
+    form.dialerOverride = JSON.parse(JSON.stringify(subscription.dialerOverride ?? {}))
     form.tagPrefix = subscription.tagPrefix
     form.enabled = subscription.enabled
     form.autoUpdate = Boolean(subscription.autoUpdate)
