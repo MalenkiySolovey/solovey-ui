@@ -7,6 +7,7 @@ import Outbound from './useOutboundEditor'
 import Service from './useServiceEditor'
 import Tls from './useTlsEditor'
 import { entitySaveReasons } from './entitySaveReview'
+import { createSrv } from '@/types/services'
 
 const store = vi.hoisted(() => ({ capabilities: undefined as any, clients: [], checkTag: vi.fn(() => false), save: vi.fn(), applyInboundDraft: vi.fn() }))
 vi.mock('@/store/modules/data', () => ({ default: () => store }))
@@ -32,6 +33,27 @@ beforeEach(() => {
 afterEach(() => { apps.splice(0).forEach(app => app.unmount()) })
 
 describe('shared editor save review', () => {
+  it('realm service uses typed identities, private Keep intents and current capabilities', async () => {
+    store.capabilities.facts.push({ category: 'services', type: 'hysteria-realm', known: true, contextSupported: true, available: true })
+    const vm = mount(Service)
+    vm.srv = createSrv('hysteria-realm', { tag:'realm', listen:'127.0.0.1', listen_port:443 })
+    expect(vm.saveReasons).toContain('secretCredential.required')
+    const token = { reference:{owner:'services',id:'fixture',policy:'OWNER_USE_AND_PRESENCE',projection:'MASKED'},present:true,rotationRevision:'a'.repeat(64) }
+    vm.srv.users.push({name:'operator',token,max_realms:1})
+    expect(vm.saveReasons).toEqual([])
+    const before = JSON.stringify(vm.srv)
+    await vm.saveChanges()
+    expect(store.save.mock.calls[0][2].users[0].token).toEqual({...token,intent:'unchanged'})
+    expect(JSON.stringify(vm.srv)).toBe(before)
+    expect(createSrv('hysteria-realm')).toHaveProperty('users', [])
+    vm.srv.users[0].token = {intent:'clear'}
+    expect(vm.saveReasons).toContain('secretCredential.required')
+    vm.srv.users[0].token = token
+    store.capabilities.facts.at(-1).available = false
+    vm.storedCapabilityType = 'hysteria-realm'
+    expect(vm.saveReasons).toContain('capability.historical')
+    expect(vm.typeChoices.some((choice:any)=>choice.value==='hysteria-realm')).toBe(false)
+  })
   it('projects whitespace identity, absent/invalid port and TLS/pending without mutating input', () => {
     const facts = { identity: '  ', port: '', requiresPort: true, missingRequiredTls: true, pending: true }
     const original = { ...facts }

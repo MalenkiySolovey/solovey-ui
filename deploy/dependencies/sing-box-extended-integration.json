@@ -17,10 +17,10 @@
       },
       "replacement": {
         "module": "github.com/MalenkiySolovey/sing-box-extended",
-        "version": "v0.0.0-20261029092715-8c20a01a2150",
-        "commit": "8c20a01a21506ed3693a859428e01dee7fa6e54e",
+        "version": "v0.0.0-20261029130744-f25315984f77",
+        "commit": "f25315984f7702b1185d0e29cde89f21107902da",
         "repository": "https://github.com/MalenkiySolovey/sing-box-extended",
-        "sum": "h1:xched3F7MrdcOCs0CZ/EOon3MLZHS80hygCV3Jku+YI=",
+        "sum": "h1:xZgwQhHJluAd+cCbeqCpcJ5H1+rfHVWCMh2dBqvbpok=",
         "goModSum": "h1:sg62CEdWhkOVVDDI3fA01dd82eoZuZKSlLY0oKAUHmc="
       },
       "license": "GPL-3.0-or-later",
@@ -70,14 +70,15 @@
         "xhttp-immutable-client-retirement-and-stock-mkcp-compatibility",
         "native-sdns-identity-and-query-lifetime",
         "fallback-dns-declaration-order",
-        "xhttp-scope-owned-listener-close"
+        "xhttp-scope-owned-listener-close",
+        "realm-service-scope"
       ],
       "copyRole": "mirror/cache/development",
       "patchSeries": {
         "format": "linear-git-commits/v1",
         "base": "d9442d14b19ddd02605bf3ee893a171947038e19",
         "upstreamTree": "dae57a05c1392b57f03f03e987ed5807b45e14bc",
-        "patchedTree": "89619d283dd0b868c6b504f85a52a7f68e58aa92",
+        "patchedTree": "76c3f695cbf3e3a6e954b4fa2ff07d0b49dc1311",
         "pristineRef": "refs/heads/mirror/extended",
         "branch": "solovey/extended-patches",
         "commits": [
@@ -173,7 +174,9 @@
           "00192883ae333feaee6a434765299c797a53fc4b",
           "f8865b4b33f699185e054092ab658a443ffb1678",
           "12affd76dac80bf4a5c8c60b20fc4c4a5f4e86a0",
-          "8c20a01a21506ed3693a859428e01dee7fa6e54e"
+          "8c20a01a21506ed3693a859428e01dee7fa6e54e",
+          "3062e178224e30e4f99a143867ba0e6bd1944405",
+          "f25315984f7702b1185d0e29cde89f21107902da"
         ],
         "patchCommits": [
           "dea779ee301772c439a5b58139ed9e081e5db84a",
@@ -232,10 +235,11 @@
           "d61f294edca2f092fec8dfbdecea1c3523262341",
           "4d7d51d089b0633951e0707c536ef48d4383bd7e",
           "b620d1577b8dc784f600536374225022df0aeb8d",
-          "12affd76dac80bf4a5c8c60b20fc4c4a5f4e86a0"
+          "12affd76dac80bf4a5c8c60b20fc4c4a5f4e86a0",
+          "3062e178224e30e4f99a143867ba0e6bd1944405"
         ],
-        "patchCount": 57,
-        "identity": "ffa5ce8c7c57d0f8494eb734e5828d614d7a009d59a551734dbd1f345fe5fee9"
+        "patchCount": 58,
+        "identity": "8f1d9772ceac93a39c2cc895a2e4159f44afff9a2ebf98c6ae417e925ecdf4be"
       }
     },
     {
