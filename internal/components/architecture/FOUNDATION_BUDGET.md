@@ -268,3 +268,5 @@ admission and waits for workers; restore admission encloses the round. Only
 CoreRuntime owns health truth and generation/target fences. Cursors are bounded
 bookkeeping, not another scheduler or health authority. These two exact launch
 digests are reviewed; ticker and unrelated R1 inventory entries are unchanged.
+
+The reviewed source-health refresh closure retains the Host-owned OutboundHTTP port added by download detours. Its lifetime remains the existing Component worker; the port does not introduce another runtime or download scheduler.
