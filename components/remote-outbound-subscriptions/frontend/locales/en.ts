@@ -1,5 +1,7 @@
 export default {
   "remoteOutbound": {
+    "sourcePath": "Source path on the Panel host",
+    "sourcePathHint": "Absolute path to a readable regular file on the Panel host (up to 512 KiB). Auto refresh checks it at the selected interval. Read or parse failures preserve the last collected connections. The Panel does not write or remove this file.",
     "inlineFile": "Load a local source file",
     "inlineFileHint": "Load a client configuration or share-link file into this source's Replace draft (up to 512 KiB). Save validates the contents.",
     "inlineFileSizeError": "Choose a non-empty file up to 512 KiB.",
@@ -16,7 +18,7 @@ export default {
     "sourceFiltersHint": "Filters match original source names when you Refresh. Exclude wins; empty includes all. Keep every member required by a retained group. Saving does not change collected connections until Refresh.",
     "title": "External Subscriptions",
     "sourceType": "Source type",
-    "sourceTypes": { "remote": "Remote URL", "inline": "Inline content" },
+    "sourceTypes": { "remote": "Remote URL", "inline": "Inline content", "file": "Host file" },
     "inlineContent": "Source content",
     "inlineContentHint": "Paste a supported client configuration or share links (up to 512 KiB). Credentials are kept in the source owner; later edits use Keep or Replace. Save validates the source. Refresh updates its collected connections before you select and apply them.",
     "summary": "{total} subscriptions • {connections} connections • {synced} in outbounds",
@@ -62,6 +64,6 @@ export default {
     "deleteManagedOutboundWarning": "Remote sync will be disabled; selector/urltest refs will be adjusted.",
     "syncToOutbounds": "Sync to outbounds",
     "noConnections": "No connections. Refresh the subscription first.",
-    "empty": "Add a remote subscription URL, then refresh it to import connections."
+    "empty": "Add a remote URL, inline content or a file on the Panel host. Refresh the source to collect its connections before selecting and applying them."
   }
 }
