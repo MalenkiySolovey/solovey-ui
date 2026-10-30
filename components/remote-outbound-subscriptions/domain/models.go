@@ -16,6 +16,8 @@ type RemoteOutboundSubscription struct {
 	SourceType         string          `json:"sourceType,omitempty" form:"sourceType" gorm:"column:source_type;default:remote;not null"`
 	SourcePath         string          `json:"sourcePath,omitempty" form:"sourcePath" gorm:"column:source_path"`
 	SourceContent      string          `json:"-" form:"-" gorm:"column:source_content"`
+	SourceHeaders      string          `json:"-" form:"-" gorm:"column:source_headers"`
+	FetchHeaders       json.RawMessage `json:"fetchHeaders,omitempty" form:"-" gorm:"-"`
 	Content            json.RawMessage `json:"content,omitempty" form:"-" gorm:"-"`
 	Include            string          `json:"include,omitempty" form:"include"`
 	Exclude            string          `json:"exclude,omitempty" form:"exclude"`

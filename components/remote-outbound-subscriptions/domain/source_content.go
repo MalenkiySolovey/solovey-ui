@@ -31,11 +31,14 @@ func (s RemoteOutboundSubscription) SourceKind() string {
 // Source identity is captured before I/O and checked again in the committing
 // transaction. A refresh of old content must not replace a newer source.
 func (s RemoteOutboundSubscription) SameSource(other RemoteOutboundSubscription) bool {
-	return s.Id == other.Id && s.SourceKind() == other.SourceKind() && s.Url == other.Url && s.UserAgent == other.UserAgent && s.SourcePath == other.SourcePath && s.SourceContent == other.SourceContent && s.Include == other.Include && s.Exclude == other.Exclude && s.RemoveEmojis == other.RemoveEmojis && string(s.DialerOverride) == string(other.DialerOverride)
+	return s.Id == other.Id && s.SourceKind() == other.SourceKind() && s.Url == other.Url && s.UserAgent == other.UserAgent && s.SourcePath == other.SourcePath && s.SourceContent == other.SourceContent && s.SourceHeaders == other.SourceHeaders && s.Include == other.Include && s.Exclude == other.Exclude && s.RemoveEmojis == other.RemoveEmojis && string(s.DialerOverride) == string(other.DialerOverride)
 }
 
 func ProjectSourceContent(s *RemoteOutboundSubscription) error {
 	s.SourceType = s.SourceKind()
+	if err := projectSourceHeaders(s); err != nil {
+		return err
+	}
 	if s.SourceType != SourceInline {
 		s.Content = nil
 		return nil
@@ -79,6 +82,9 @@ func ApplySourceContent(ctx context.Context, tx *gorm.DB, s *RemoteOutboundSubsc
 }
 
 func FetchSourceContext(ctx context.Context, db *gorm.DB, s RemoteOutboundSubscription, options FetchOptions) (*FetchedSubscription, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if s.SourceKind() == SourceFile {
 		fetched, err := fetchHostFileSource(ctx, s.SourcePath, options)
 		if err != nil {
@@ -88,7 +94,7 @@ func FetchSourceContext(ctx context.Context, db *gorm.DB, s RemoteOutboundSubscr
 	}
 	if s.SourceKind() == SourceRemote {
 		options.UserAgent = s.UserAgent
-		fetched, err := FetchSubscriptionWithOptionsContext(ctx, s.Url, options)
+		fetched, err := fetchRemoteSource(ctx, db, s, options)
 		if err != nil {
 			return nil, err
 		}

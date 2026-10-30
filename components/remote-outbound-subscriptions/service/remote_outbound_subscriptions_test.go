@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -31,6 +33,75 @@ func newTestRemoteOutboundService() *RemoteOutboundService {
 	return &RemoteOutboundService{Runtime: coreservice.NewRuntimeWithCoreProvider(nil)}
 }
 
+func TestRemoteSourceHeadersStayRowBoundAndReachOnlyTheFetchOwner(t *testing.T) {
+	initRemoteOutboundTestDB(t)
+	t.Setenv("SUI_ALLOW_PRIVATE_SUB_URLS", "true")
+	db := dbsqlite.DB()
+	svc := newTestRemoteOutboundService()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer private-header-canary" || strings.Join(r.Header.Values("X-Scopes"), ",") != "one,two" || r.UserAgent() != "source-header-test/1.0" {
+			t.Error("private headers or independent User-Agent lost their request owner")
+		}
+		_, _ = w.Write([]byte(`{"outbounds":[{"type":"shadowsocks","tag":"header-source","server":"192.0.2.1","server_port":443,"method":"aes-128-gcm","password":"synthetic-endpoint-password"}]}`))
+	}))
+	defer server.Close()
+	mutation := func(value string) json.RawMessage {
+		raw, _ := json.Marshal(map[string]string{"intent": "replace", "value": value})
+		return raw
+	}
+	saved, err := svc.SaveSubscription(remotesub.RemoteOutboundSubscription{Name: "private-headers", Url: server.URL, UserAgent: "source-header-test/1.0", FetchHeaders: mutation(`{"Authorization":"Bearer private-header-canary","X-Scopes":["one","two"]}`)}, true, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, _ := json.Marshal(saved)
+	if strings.Contains(string(view), "canary") || strings.Contains(string(view), "sbox:v1:") || !strings.Contains(string(saved.FetchHeaders), `"present":true`) {
+		t.Fatal("normal source read disclosed captured HTTP credentials")
+	}
+	var original remotesub.RemoteOutboundSubscription
+	if err := db.First(&original, saved.Id).Error; err != nil || !strings.HasPrefix(original.SourceHeaders, "sbox:v1:") || strings.Contains(original.SourceHeaders, "canary") {
+		t.Fatal("request headers were not sealed in their source row", err)
+	}
+	if result, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err != nil || result.Fetched != 1 {
+		t.Fatal("credential-bearing source did not use the normal collection owner", err)
+	}
+	var keep map[string]any
+	_ = json.Unmarshal(saved.FetchHeaders, &keep)
+	keep["intent"] = "unchanged"
+	delete(keep, "correlation")
+	saved.FetchHeaders, _ = json.Marshal(keep)
+	saved.Name = "renamed-private-headers"
+	if _, err := svc.SaveSubscription(*saved, true, "test"); err != nil {
+		t.Fatal("masked source edit could not retain private headers", err)
+	}
+	for _, value := range []string{`{"Authorization":"a","authorization":"b"}`, `{"Host":"private-canary"}`, `{"X-Key":"private-canary\r\nHost: other"}`, `{"X-Key":[null]}`, `{"X-Key":123}`} {
+		invalid := *saved
+		invalid.FetchHeaders = mutation(value)
+		if _, err := svc.SaveSubscription(invalid, true, "test"); !errors.Is(err, remotesub.ErrSourceHeadersInvalid) || strings.Contains(err.Error(), "canary") {
+			t.Fatal("malformed private headers were accepted or disclosed", err)
+		}
+	}
+	var kept remotesub.RemoteOutboundSubscription
+	if err := db.First(&kept, saved.Id).Error; err != nil || !original.SameSource(kept) {
+		t.Fatal("masked edit or failed save replaced the source credential identity", err)
+	}
+	other, err := svc.SaveSubscription(remotesub.RemoteOutboundSubscription{Name: "other-source", Url: server.URL}, true, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other.FetchHeaders = saved.FetchHeaders
+	if _, err := svc.SaveSubscription(*other, true, "test"); err == nil {
+		t.Fatal("private headers crossed source row ownership")
+	}
+	saved.FetchHeaders = json.RawMessage(`{"intent":"clear"}`)
+	cleared, err := svc.SaveSubscription(*saved, true, "test")
+	if err != nil || strings.Contains(string(cleared.FetchHeaders), `"present":true`) {
+		t.Fatal("explicit clear did not release source credentials", err)
+	}
+	if err := db.First(&kept, saved.Id).Error; err != nil || kept.SourceHeaders != "" || original.SameSource(kept) {
+		t.Fatal("cleared headers retained old refresh authority", err)
+	}
+}
+
 func TestHostFileSourceRefreshPreservesLastGoodCollection(t *testing.T) {
 	initRemoteOutboundTestDB(t)
 	db := dbsqlite.DB()
@@ -53,7 +124,7 @@ func TestHostFileSourceRefreshPreservesLastGoodCollection(t *testing.T) {
 	if err != nil || saved == nil || saved.SourcePath != path || !saved.AutoUpdate || saved.Url != "" || len(saved.Content) != 0 {
 		t.Fatal("host file source did not retain its own refresh policy", err)
 	}
-	for _, field := range []string{"content", "url", "user-agent"} {
+	for _, field := range []string{"content", "url", "user-agent", "headers"} {
 		invalid := *saved
 		switch field {
 		case "content":
@@ -62,6 +133,8 @@ func TestHostFileSourceRefreshPreservesLastGoodCollection(t *testing.T) {
 			invalid.Url = "https://source.example/sub"
 		case "user-agent":
 			invalid.UserAgent = "private-file-source-canary"
+		case "headers":
+			invalid.FetchHeaders = json.RawMessage(`{"intent":"replace","value":"{}"}`)
 		}
 		if _, err := svc.SaveSubscription(invalid, true, "test"); err == nil || strings.Contains(err.Error(), "canary") {
 			t.Fatal("host file source accepted another source owner's fields", err)
