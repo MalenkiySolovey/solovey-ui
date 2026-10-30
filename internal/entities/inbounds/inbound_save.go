@@ -139,7 +139,7 @@ func DecodeForSave(tx *gorm.DB, data json.RawMessage) (model.Inbound, error) {
 		}
 	}
 	if fact := entitycapabilities.ResolveResource("inbounds", inbound.Type, inbound.Options); !fact.Available {
-		return inbound, common.NewErrorf("%s: inbound capability is unavailable", fact.Reason)
+		return inbound, &saveeligibility.Rejection{Capability: fact}
 	}
 	if err := entityidentity.ValidateTypeTag(inbound.Type, inbound.Tag); err != nil {
 		return inbound, err
