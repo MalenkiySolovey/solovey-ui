@@ -39,6 +39,7 @@ export interface RemoteOutboundSubscription {
   include?: string
   exclude?: string
   removeEmojis?: boolean
+  dialerOverride?: import('@/types/dial').Dial
   enabled: boolean
   tagPrefix: string
   autoUpdate: boolean

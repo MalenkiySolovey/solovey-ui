@@ -90,12 +90,20 @@ func TestInlineSourceUsesOwnedContentAndExistingRefreshPipeline(t *testing.T) {
 	}
 	saved.Include, saved.Exclude = "^inline", "-test$"
 	saved.RemoveEmojis = true
+	for _, raw := range []string{`[]`, `{"server":"private-dial-canary"}`, `{"connect_timeout":"private-dial-canary"}`, `{"domain_resolver":{"server":"dns","private-dial-canary":true}}`} {
+		invalid := *saved
+		invalid.DialerOverride = json.RawMessage(raw)
+		if _, err := svc.SaveSubscription(invalid, true, "test"); err == nil || strings.Contains(err.Error(), "canary") {
+			t.Fatal("invalid dial policy was accepted or disclosed", err)
+		}
+	}
+	saved.DialerOverride = json.RawMessage(`{"connect_timeout":"3s","tcp_fast_open":false}`)
 	saved, err = svc.SaveSubscription(*saved, true, "test")
 	if err != nil {
 		t.Fatal("valid selection could not use the existing source owner", err)
 	}
 	var filtered remotesub.RemoteOutboundSubscription
-	if err := db.First(&filtered, saved.Id).Error; err != nil || filtered.Include != "^inline" || filtered.Exclude != "-test$" || !filtered.RemoveEmojis || row.SameSource(filtered) || filtered.SourceContent != row.SourceContent {
+	if err := db.First(&filtered, saved.Id).Error; err != nil || filtered.Include != "^inline" || filtered.Exclude != "-test$" || !filtered.RemoveEmojis || row.SameSource(filtered) || filtered.SourceContent != row.SourceContent || !remotesub.JSONRawEqual(filtered.DialerOverride, saved.DialerOverride) {
 		t.Fatal("filter edit lost content or retained stale refresh authority", err)
 	}
 	result, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test")

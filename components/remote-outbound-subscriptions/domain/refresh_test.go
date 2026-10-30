@@ -13,6 +13,62 @@ import (
 	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 )
 
+func TestSourceDialOverridePreservesCaptureAndRestoresSourceValues(t *testing.T) {
+	db := newRemoteSyncDB(t)
+	sub := RemoteOutboundSubscription{Name: "Dial", TagPrefix: "dial-"}
+	if err := db.Create(&sub).Error; err != nil {
+		t.Fatal(err)
+	}
+	fetched, err := ParseFetchedSubscription(`{"outbounds":[{"type":"vless","tag":"peer","server":"dial.invalid","server_port":443,"uuid":"00000000-0000-4000-8000-000000000001","tcp_fast_open":true,"connect_timeout":"10s"},{"type":"selector","tag":"Group","outbounds":["peer"]}]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var before []RemoteOutboundConnection
+	for pass, override := range []json.RawMessage{nil, json.RawMessage(`{"tcp_fast_open":false,"connect_timeout":"3s","bind_interface":"fixture0"}`), json.RawMessage(`{}`)} {
+		previous := sub
+		sub.DialerOverride = override
+		if pass > 0 && previous.SameSource(sub) {
+			t.Fatal("old dial policy retained refresh authority")
+		}
+		if _, _, err := RefreshFetchedSubscription(db, &sub, fetched, int64(100+pass)); err != nil {
+			t.Fatal(err)
+		}
+		var rows []RemoteOutboundConnection
+		if err := db.Order("id").Find(&rows).Error; err != nil || len(rows) != 2 {
+			t.Fatal("dial policy lost collected rows", err)
+		}
+		if pass == 0 {
+			before = rows
+		} else {
+			for i, row := range rows {
+				if row.Id != before[i].Id || row.SourceKey != before[i].SourceKey || row.OutboundTag != before[i].OutboundTag || !bytes.Equal(row.Canonical, before[i].Canonical) {
+					t.Fatal("dial policy rewrote source identity or captured observations")
+				}
+			}
+		}
+		var options map[string]any
+		if err := json.Unmarshal(rows[0].Options, &options); err != nil {
+			t.Fatal(err)
+		}
+		if pass == 1 {
+			if options["tcp_fast_open"] != false || options["connect_timeout"] != "3s" || options["bind_interface"] != "fixture0" {
+				t.Fatal("explicit false or dial override was lost")
+			}
+		} else if options["tcp_fast_open"] != true || options["connect_timeout"] != "10s" || options["bind_interface"] != nil {
+			t.Fatal("clearing override did not restore source values")
+		}
+		if !bytes.Equal(rows[1].Options, before[1].Options) {
+			t.Fatal("dial policy changed group behavior")
+		}
+		if err := SyncConnectionToOutbound(db, &rows[0], true); err != nil {
+			t.Fatal("derived dial policy bypassed canonical Outbound validation", err)
+		}
+		if err := db.Save(&rows[0]).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestSourceNameTransformPreservesIdentityGroupsAndCapturedIR(t *testing.T) {
 	db := newRemoteSyncDB(t)
 	sub := RemoteOutboundSubscription{Name: "Names", TagPrefix: "names-"}

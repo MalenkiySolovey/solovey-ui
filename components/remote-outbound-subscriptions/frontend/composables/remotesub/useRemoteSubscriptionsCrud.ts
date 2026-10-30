@@ -46,6 +46,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     include: '',
     exclude: '',
     removeEmojis: false,
+    dialerOverride: {} as import('@/types/dial').Dial,
     tagPrefix: '',
     enabled: true,
     autoUpdate: false,
@@ -146,6 +147,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
         include: form.include,
         exclude: form.exclude,
         removeEmojis: form.removeEmojis,
+        dialerOverride: form.dialerOverride,
         tagPrefix: form.tagPrefix,
         enabled: form.enabled,
         autoUpdate: form.sourceType === 'remote' && form.autoUpdate,
@@ -175,6 +177,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     form.include = ''
     form.exclude = ''
     form.removeEmojis = false
+    form.dialerOverride = {}
     form.tagPrefix = ''
     form.enabled = true
     form.autoUpdate = false
@@ -193,6 +196,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     form.include = subscription.include ?? ''
     form.exclude = subscription.exclude ?? ''
     form.removeEmojis = subscription.removeEmojis === true
+    form.dialerOverride = JSON.parse(JSON.stringify(subscription.dialerOverride ?? {}))
     form.tagPrefix = subscription.tagPrefix
     form.enabled = subscription.enabled
     form.autoUpdate = Boolean(subscription.autoUpdate)

@@ -1,5 +1,8 @@
 export default {
   "remoteOutbound": {
+    "dialerOverride": "Tùy chọn Dial cho outbound nhập",
+    "dialerOverrideHint": "Giá trị đặt rõ sẽ thay thế trường Dial tương ứng khi làm mới đối với giao thức hỗ trợ Dial. Giữ nguyên các trường khác, dữ liệu nguồn và hành vi nhóm. Xóa để khôi phục giá trị nguồn ở lần làm mới sau. Không thay đổi cách tải URL nguồn.",
+    "clearDialerOverride": "Dùng tùy chọn Dial của nguồn",
     "removeEmojis": "Xóa emoji khỏi tên nhập",
     "userAgent": "User-Agent của nguồn",
     "userAgentHint": "Để trống để tự động thu thập các định dạng. Khi đặt nhận dạng máy khách, mỗi lần làm mới chỉ yêu cầu URL gốc một lần.",
