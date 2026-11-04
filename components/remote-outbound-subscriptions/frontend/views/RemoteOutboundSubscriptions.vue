@@ -146,6 +146,8 @@
         <v-col cols="12" class="text-caption">{{ $t('remoteOutbound.sourceFiltersHint') }}</v-col>
         <v-col v-if="page.form.sourceType === 'remote'" cols="12">
           <v-text-field v-model="page.form.userAgent" :label="$t('remoteOutbound.userAgent')" :hint="$t('remoteOutbound.userAgentHint')" persistent-hint maxlength="4096" variant="outlined" density="compact" />
+          <SecretCredentialField v-model="page.form.fetchHeaders" :available="true" multiline :label="$t('remoteOutbound.fetchHeaders')" :clear-label="$t('remoteOutbound.clearFetchHeaders')" :absent-label="$t('remoteOutbound.noFetchHeaders')" />
+          <p class="text-caption">{{ $t('remoteOutbound.fetchHeadersHint') }}</p>
         </v-col>
         <v-col cols="12">
           <v-switch v-model="page.form.removeEmojis" :label="$t('remoteOutbound.removeEmojis')" :hint="$t('remoteOutbound.removeEmojisHint')" persistent-hint color="primary" />

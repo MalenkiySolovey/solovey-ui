@@ -1,5 +1,9 @@
 export default {
   "remoteOutbound": {
+    "clearFetchHeaders": "Xóa tiêu đề đã lưu",
+    "noFetchHeaders": "Chưa lưu tiêu đề bổ sung.",
+    "fetchHeaders": "Tiêu đề tải riêng tư (JSON)",
+    "fetchHeadersHint": "Đối tượng JSON tùy chọn: tên tiêu đề tới chuỗi hoặc mảng chuỗi, tối đa 16 KiB. Giá trị được mã hóa; lần sửa sau có thể giữ, thay hoặc xóa. Chỉ dùng khi tải nguồn và bị xóa khi chuyển hướng. Đặt User-Agent riêng; không ghi đè tiêu đề máy chủ, định khung hoặc proxy.",
     "sourcePath": "Đường dẫn nguồn trên máy chủ Panel",
     "sourcePathHint": "Đường dẫn tuyệt đối đến tệp thông thường có thể đọc trên máy chủ Panel (tối đa 512 KiB). Tự động làm mới kiểm tra theo khoảng đã chọn. Lỗi đọc hoặc phân tích giữ nguyên các kết nối đã thu thập. Panel không ghi hoặc xóa tệp này.",
     "dialerOverride": "Tùy chọn Dial cho outbound nhập",

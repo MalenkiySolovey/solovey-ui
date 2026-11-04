@@ -37,6 +37,7 @@ export interface RemoteOutboundSubscription {
   sourceType?: 'remote' | 'inline' | 'file'
   sourcePath?: string
   content?: SecretView
+  fetchHeaders?: SecretView
   include?: string
   exclude?: string
   removeEmojis?: boolean
