@@ -47,15 +47,23 @@ const quicFixturePassword = "synthetic-loopback-only"
 
 func quicPort(t *testing.T) int {
 	t.Helper()
-	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+	// Native fixtures reuse this port for TCP, UDP or both. On Windows the
+	// excluded ranges differ, so a UDP-only probe can select a forbidden TCP port.
+	for range 32 {
+		tcp, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		port := tcp.Addr().(*net.TCPAddr).Port
+		udp, err := net.ListenPacket("udp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+		_ = tcp.Close()
+		if err == nil {
+			_ = udp.Close()
+			return port
+		}
 	}
-	port := conn.LocalAddr().(*net.UDPAddr).Port
-	if err := conn.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return port
+	t.Fatal("no loopback port available for both TCP and UDP")
+	return 0
 }
 
 func quicBindings(users ...uint) []inboundidentity.Binding {

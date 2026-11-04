@@ -54,8 +54,9 @@ var pins = func() struct {
 	DefaultProvider string   `json:"defaultProvider"`
 	Sources         []Source `json:"sources"`
 	BuildFlavors    []struct {
-		ID        string   `json:"id"`
-		BuildTags []string `json:"buildTags"`
+		ID          string   `json:"id"`
+		ProviderTag string   `json:"providerTag"`
+		BuildTags   []string `json:"buildTags"`
 	} `json:"buildFlavors"`
 } {
 	var value struct {
@@ -63,8 +64,9 @@ var pins = func() struct {
 		DefaultProvider string   `json:"defaultProvider"`
 		Sources         []Source `json:"sources"`
 		BuildFlavors    []struct {
-			ID        string   `json:"id"`
-			BuildTags []string `json:"buildTags"`
+			ID          string   `json:"id"`
+			ProviderTag string   `json:"providerTag"`
+			BuildTags   []string `json:"buildTags"`
 		} `json:"buildFlavors"`
 	}
 	if err := json.Unmarshal(pinsJSON, &value); err != nil {
@@ -75,23 +77,18 @@ var pins = func() struct {
 
 func DefaultID() string { return pins.DefaultProvider }
 
-// RequiredProviderName projects declared flavor requirements for capability
-// explanations. It grants neither install authority nor operational support.
+// RequiredProviderName projects the provider selector into capability
+// explanations. Optional component tags in a build flavor do not change the
+// provider a capability requires. This grants no install or runtime authority.
 func RequiredProviderName(buildTags string) string {
 	tags := "," + buildTags + ","
 	for _, flavor := range pins.BuildFlavors {
-		if len(flavor.BuildTags) == 0 {
+		if flavor.ProviderTag == "" || !strings.Contains(tags, ","+flavor.ProviderTag+",") {
 			continue
 		}
-		matches := true
-		for _, tag := range flavor.BuildTags {
-			matches = matches && strings.Contains(tags, ","+tag+",")
-		}
-		if matches {
-			for _, source := range pins.Sources {
-				if source.ID == flavor.ID {
-					return source.Name
-				}
+		for _, source := range pins.Sources {
+			if source.ID == flavor.ID {
+				return source.Name
 			}
 		}
 	}

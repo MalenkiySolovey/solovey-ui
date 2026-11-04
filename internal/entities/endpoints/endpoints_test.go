@@ -63,6 +63,68 @@ func TestRemoveFromCoreSkipsStoppedCore(t *testing.T) {
 	}
 }
 
+func TestOpenVPNClientOwnsNestedAndStaticCredentials(t *testing.T) {
+	t.Setenv("SUI_SECRETBOX_KEY", "")
+	t.Setenv("SUI_SECRET", "")
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, _ := db.DB()
+	conn.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = conn.Close() })
+	if err := db.AutoMigrate(&model.Endpoint{}, &model.Setting{}, &model.AuditEvent{}); err != nil {
+		t.Fatal(err)
+	}
+	row := model.Endpoint{Type: "openvpn-client", Tag: "owned-openvpn", Options: json.RawMessage(`{"mode":"tls","server":"192.0.2.1","password":"private-password-canary","tls":{"client_key":["private-pem-canary","second-line"],"control_wrap":{"type":"tls_auth","key":["private-wrap-canary","second-line"]}},"future_option":{"retained":true}}`)}
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		if err := importEndpointCredentials(tx, &row, false); err != nil {
+			return err
+		}
+		if err := prepareEndpointCredentials(tx, &row); err != nil {
+			return err
+		}
+		return tx.Save(&row).Error
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(row.Options, []byte("canary")) {
+		t.Fatal("native import persisted endpoint secrets")
+	}
+	view := map[string]interface{}{}
+	if err := projectEndpointCredentials(row, view); err != nil {
+		t.Fatal(err)
+	}
+	masked, _ := json.Marshal(view)
+	if bytes.Contains(masked, []byte("canary")) || bytes.Contains(masked, []byte("sbox:v1:")) {
+		t.Fatal("masked endpoint read disclosed a secret")
+	}
+	runtime, err := marshalEndpointRuntime(db, row)
+	if err != nil || !bytes.Contains(runtime, []byte(`private-wrap-canary\nsecond-line`)) {
+		t.Fatal("native Listable key did not retain its runtime value", err)
+	}
+	foreign := row
+	foreign.Id++
+	if _, err := marshalEndpointRuntime(db, foreign); err == nil {
+		t.Fatal("nested key crossed endpoint identity")
+	}
+	// The explicit editor conversion clears every TLS credential; omission
+	// would retain the old value and leave static mode with invalid TLS state.
+	row.Options = json.RawMessage(`{"mode":"static_key","server":"192.0.2.1","password":{"intent":"clear"},"tls":{"client_key":{"intent":"clear"},"control_wrap":{"key":{"intent":"clear"}}},"static_key":{"intent":"replace","value":"private-static-canary"},"future_option":{"retained":true}}`)
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		if err := prepareEndpointCredentials(tx, &row); err != nil {
+			return err
+		}
+		return tx.Save(&row).Error
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runtime, err = marshalEndpointRuntime(db, row)
+	if err != nil || bytes.Contains(runtime, []byte(`"tls"`)) || bytes.Contains(runtime, []byte(`"password"`)) || !bytes.Contains(runtime, []byte("private-static-canary")) || !bytes.Contains(runtime, []byte(`"retained":true`)) {
+		t.Fatal("mode conversion lost unrelated state or retained TLS credentials", err)
+	}
+}
+
 func TestOpenConnectCredentialsStayOwnedAcrossEditImportAndRuntime(t *testing.T) {
 	t.Setenv("SUI_SECRETBOX_KEY", "")
 	t.Setenv("SUI_SECRET", "")

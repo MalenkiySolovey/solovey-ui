@@ -33,10 +33,15 @@ export interface RemoteOutboundSubscription {
   sortOrder: number
   name: string
   url: string
-  sourceType?: 'remote' | 'inline'
+  userAgent?: string
+  sourceType?: 'remote' | 'inline' | 'file'
+  sourcePath?: string
   content?: SecretView
+  fetchHeaders?: SecretView
   include?: string
   exclude?: string
+  removeEmojis?: boolean
+  dialerOverride?: import('@/types/dial').Dial
   enabled: boolean
   tagPrefix: string
   autoUpdate: boolean

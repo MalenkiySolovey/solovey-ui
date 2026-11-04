@@ -20,6 +20,9 @@ var errEndpointCredential = errors.New("ENDPOINT_CREDENTIAL_INVALID")
 // Fixed owner paths preserve the native options tree. A caller cannot choose a
 // SecretRef lookup path or supply an envelope belonging to a different row.
 func endpointCredentialPaths(kind string) []string {
+	if kind == "openvpn-client" {
+		return []string{"password", "static_key", "tls.client_key", "tls.control_wrap.key"}
+	}
 	if kind != "openconnect" {
 		return nil
 	}
@@ -292,7 +295,7 @@ func importEndpointCredentials(tx *gorm.DB, endpoint *model.Endpoint, recreate b
 		if path == "form_entries" && len(raw) > 0 && raw[0] == '[' {
 			value = string(raw)
 		} else if json.Unmarshal(raw, &value) != nil {
-			if path != "tls.client_key" && path != "tls.mca_key" {
+			if path != "tls.client_key" && path != "tls.mca_key" && path != "static_key" && path != "tls.control_wrap.key" {
 				return errEndpointCredential
 			}
 			var lines []string

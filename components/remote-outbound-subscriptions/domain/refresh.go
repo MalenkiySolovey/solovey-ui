@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
 	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"gorm.io/gorm"
@@ -158,6 +159,13 @@ func upsertRefreshConnection(tx *gorm.DB, subscription *RemoteOutboundSubscripti
 		return RemoteOutboundConnection{}, false, err
 	}
 	normalized.SourceKey = UniqueSourceKey(seen, normalized.SourceKey)
+	normalized.Name = sourceDisplayName(normalized.Name, index, subscription.RemoveEmojis)
+	if !remoteConnectionIsGroup(RemoteOutboundConnection{Type: normalized.Type, Options: normalized.Options, Canonical: normalized.Canonical}) {
+		normalized.Options, err = coreruntime.ApplyDialerOverride(normalized.Type, normalized.Options, subscription.DialerOverride)
+		if err != nil {
+			return RemoteOutboundConnection{}, false, err
+		}
+	}
 
 	var connection RemoteOutboundConnection
 	var previous *RemoteOutboundConnection
@@ -333,7 +341,7 @@ func pruneStaleConnections(tx *gorm.DB, subscriptionID uint, seen map[string]str
 func DueSubscriptions(tx *gorm.DB, now int64) ([]RemoteOutboundSubscription, error) {
 	var subscriptions []RemoteOutboundSubscription
 	err := tx.
-		Where("enabled = ? AND auto_update = ? AND update_interval > 0 AND source_type IN ?", true, true, []string{"", SourceRemote}).
+		Where("enabled = ? AND auto_update = ? AND update_interval > 0 AND source_type IN ?", true, true, []string{"", SourceRemote, SourceFile}).
 		Where("last_updated = 0 OR last_updated + update_interval <= ?", now).
 		Order(entityorder.Clause).
 		Find(&subscriptions).Error

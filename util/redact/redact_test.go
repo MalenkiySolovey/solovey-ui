@@ -12,6 +12,8 @@ func TestValueRedactsSensitiveKeys(t *testing.T) {
 		"user":                    "admin",
 		"token":                   "secret-token",
 		"fixtureBackupPassphrase": "secret-passphrase",
+		"static_key":              "private-static-canary",
+		"control_wrap":            map[string]any{"type": "tls_auth", "key": "private-wrap-canary"},
 		"nested": map[string]any{
 			"password": "secret-password",
 			"port":     2095,
@@ -23,6 +25,9 @@ func TestValueRedactsSensitiveKeys(t *testing.T) {
 	}
 	if redacted["token"] != Marker {
 		t.Fatalf("token was not redacted: %#v", redacted["token"])
+	}
+	if redacted["static_key"] != Marker || redacted["control_wrap"] != Marker {
+		t.Fatal("OpenVPN credential settings were not redacted")
 	}
 	if redacted["fixtureBackupPassphrase"] != Marker {
 		t.Fatalf("passphrase was not redacted: %#v", redacted["fixtureBackupPassphrase"])

@@ -20,6 +20,20 @@ func TestSanitizeTagPrefixKeepsReadableUnicode(t *testing.T) {
 	}
 }
 
+func TestImportedDisplayNameRetainsFlagCountryAndReadableText(t *testing.T) {
+	for _, fixture := range []struct{ source, want string }{
+		{"🇩🇪 Германия 🚀", "DE Германия"}, {"🇫🇷🇬🇧 France-UK", "FR GB France-UK"},
+		{"🇯🇵 Tokyo ⚡ Fast", "JP Tokyo Fast"}, {"节点 Москва e\u0301", "节点 Москва e\u0301"}, {"🌍🚀", "outbound-1"},
+	} {
+		if got := sourceDisplayName(fixture.source, 0, true); got != fixture.want {
+			t.Fatalf("display name = %q, want %q", got, fixture.want)
+		}
+		if sourceDisplayName(fixture.source, 0, false) != fixture.source {
+			t.Fatal("disabled transform changed a source label")
+		}
+	}
+}
+
 func TestDefaultTagPrefixUsesIDPlaceholder(t *testing.T) {
 	got := DefaultTagPrefix("Auto Balance", 0)
 	if got != "ros{id}-Auto-Balance-" {

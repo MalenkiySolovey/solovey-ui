@@ -11,7 +11,7 @@
         <v-alert v-if="!selectedCapability?.available" type="warning" variant="tonal" class="mb-3">
           {{ $t('dns.capabilityUnavailable') }} {{ selectedCapability?.reason ?? $t('capability.waiting') }}
         </v-alert>
-        <v-alert v-if="missingService" type="error" variant="tonal" class="mb-3">{{ $t(dnsServer.type === 'openconnect' ? 'dns.openconnectMissingEndpoint' : 'dns.resolvedMissingService') }}</v-alert>
+        <v-alert v-if="missingService" type="error" variant="tonal" class="mb-3">{{ $t(nativeVPN ? 'dns.nativeVpnMissingEndpoint' : 'dns.resolvedMissingService') }}</v-alert>
         <v-row>
           <v-col cols="12" sm="6" md="4">
             <v-select
@@ -114,20 +114,20 @@
             <v-text-field v-model="dnsServer.inet6_range" :label="$t('dns.rule.inet6Range')" hide-details />
           </v-col>
         </v-row>
-        <v-row v-if="dnsServer.type == 'tailscale' || dnsServer.type == 'resolved' || dnsServer.type === 'openconnect'">
+        <v-row v-if="dnsServer.type == 'tailscale' || dnsServer.type == 'resolved' || nativeVPN">
           <v-col cols="12" sm="6" md="4" v-if="dnsServer.type == 'tailscale'">
             <v-select v-model="dnsServer.endpoint" :label="$t('objects.endpoint')" :items="tsTags" hide-details />
           </v-col>
           <v-col cols="12" sm="6" md="4" v-if="dnsServer.type == 'resolved'">
             <v-select v-model="dnsServer.service" :label="$t('objects.service')" :items="rslvdTags" hide-details />
           </v-col>
-          <v-col cols="12" sm="6" md="4" v-if="dnsServer.type === 'openconnect'">
-            <v-select v-model="dnsServer.endpoint" :label="$t('objects.endpoint')" :items="openConnectEndpointTags" hide-details />
+          <v-col cols="12" sm="6" md="4" v-if="nativeVPN">
+            <v-select v-model="dnsServer.endpoint" :label="$t('objects.endpoint')" :items="nativeEndpointTags" hide-details />
           </v-col>
           <v-col cols="12" sm="6" md="4">
             <v-switch v-model="dnsServer.accept_default_resolvers" :label="$t('dns.rule.acceptDefault')" hide-details></v-switch>
           </v-col>
-          <v-col cols="12" sm="6" md="4" v-if="dnsServer.type === 'openconnect'">
+          <v-col cols="12" sm="6" md="4" v-if="nativeVPN">
             <v-switch v-model="dnsServer.accept_search_domain" :label="$t('dns.acceptSearchDomain')" hide-details />
           </v-col>
         </v-row>
@@ -157,7 +157,7 @@ export default {
       HasServer: [DnsTypes.TCP, DnsTypes.UDP, DnsTypes.TLS, DnsTypes.QUIC, DnsTypes.HTTPS, DnsTypes.HTTP3],
       HasHeaders: [DnsTypes.HTTPS, DnsTypes.HTTP3],
       HasTls: [DnsTypes.TLS, DnsTypes.QUIC, DnsTypes.HTTPS, DnsTypes.HTTP3],
-      WithoutDial: [DnsTypes.Hosts, DnsTypes.MDNS, DnsTypes.Tailscale, DnsTypes.FakeIP, DnsTypes.Resolved, DnsTypes.Fallback, DnsTypes.OpenConnect],
+      WithoutDial: [DnsTypes.Hosts, DnsTypes.MDNS, DnsTypes.Tailscale, DnsTypes.FakeIP, DnsTypes.Resolved, DnsTypes.Fallback, DnsTypes.OpenConnect, DnsTypes.OpenVPN],
     }
   },
   methods: {
@@ -206,13 +206,15 @@ export default {
     capabilityState() { return capabilityEditState(Data().capabilities, 'dns', this.dnsServer.type, this.index >= 0 ? this.dnsServer.type : '') },
     selectedCapability() { return runtimeCapability(Data().capabilities, 'dns', this.dnsServer.type) },
     missingService(): boolean {
-      if (this.dnsServer.type === 'openconnect') return !this.dnsServer.endpoint || !this.openConnectEndpointTags.includes(this.dnsServer.endpoint)
+      if (this.nativeVPN) return !this.dnsServer.endpoint || !this.nativeEndpointTags.includes(this.dnsServer.endpoint)
       return this.dnsServer.type === 'resolved' && (!this.dnsServer.service || !this.rslvdTags?.includes(this.dnsServer.service))
     },
     observedInterfaces(): string[] { return Data().capabilities?.multicastInterfaces ?? [] },
-    openConnectEndpointTags(): string[] {
-      return runtimeCapability(Data().capabilities, 'endpoints', 'openconnect')?.available
-        ? (Data().endpoints ?? []).filter((endpoint: any) => endpoint.type === 'openconnect').map((endpoint: any) => endpoint.tag)
+    nativeVPN(): boolean { return ['openconnect', 'openvpn'].includes(this.dnsServer.type) },
+    nativeEndpointTags(): string[] {
+      const type = this.dnsServer.type === 'openvpn' ? 'openvpn-client' : 'openconnect'
+      return runtimeCapability(Data().capabilities, 'endpoints', type)?.available
+        ? (Data().endpoints ?? []).filter((endpoint: any) => endpoint.type === type).map((endpoint: any) => endpoint.tag)
         : []
     },
     fallbackServers(): string[] { return (this.serverTags ?? []).filter((tag: string) => tag !== this.dnsServer.tag) },
