@@ -253,3 +253,10 @@ Direct/group treatment and routing policy remain unchanged. Only this existing
 digest is replaced; no Direct site or worker allowance is added.
 
 The accepted Sudoku, native outbound groups and MASQUE consumers compose at the existing outbound registry declaration with reviewed digest 368115e9a46640be0a2505510a26b3e33b63cc6db1021f4eb2446ecbec1f9750. Each selected native constructor keeps its availability gate. This composition adds no Direct routing decision or inventory site.
+
+R7 source download detours keep the two existing unsync mutations unchanged in
+`unsyncConnectionsForDeletedOutbound`. The exported admission wrapper now checks
+canonical source references before delegating. This review moves the two exact
+existing digest entries to the private helper; no mutation allowance is added.
+
+R7 source download detours pass the existing Host-owned OutboundHTTP client port into the existing auto-refresh worker. Its context, ticker, stop/done join and refresh admission are unchanged. The exact closure digest is reviewed for this constructor wiring only; it does not add another worker, scheduler or runtime owner.

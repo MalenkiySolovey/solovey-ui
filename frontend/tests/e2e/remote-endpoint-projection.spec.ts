@@ -2,6 +2,52 @@ import { expect, test } from '@playwright/test'
 import { enableComponent, login } from './helpers'
 
 for (const mode of ['classic', 'nexus']) {
+  test(`${mode} filters download outbounds and preserves an unavailable saved detour`, async ({ page }) => {
+    await page.addInitScript(selected => window.localStorage.setItem('sui:ui:mode', selected), mode)
+    await login(page)
+    await enableComponent(page, 'remote-outbound-subscriptions')
+    const sources: Record<string, unknown>[] = []
+    const mutations: Record<string, unknown>[] = []
+    const choices = [
+      { id: 7, tag: 'download-primary', type: 'direct', capability: { available: true } },
+      { id: 9, tag: 'unavailable-download', type: 'ssh', capability: { available: false } },
+      { id: 11, tag: 'unknown-download', type: 'future' },
+    ]
+    await page.route('**/api/remote-outbound-subscriptions', route => route.fulfill({ json: { success: true, msg: '', obj: sources } }))
+    await page.route('**/api/remote-outbound-subscriptions/download-outbounds', route => route.fulfill({ json: { success: true, msg: '', obj: choices } }))
+    await page.route('**/api/remote-outbound-subscriptions/save', async route => {
+      const payload = JSON.parse(new URLSearchParams(route.request().postData() ?? '').get('data') ?? '{}')
+      mutations.push(payload)
+      sources.splice(0, sources.length, { ...payload, id: 1, groups: [], connections: [], lastUpdated: 0, lastError: '' })
+      await route.fulfill({ json: { success: true, msg: '', obj: null } })
+    })
+    await page.goto('hosts/local/remote-subscriptions')
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Owned download source')
+    await page.getByRole('textbox', { name: 'Subscription URL', exact: true }).fill('https://example.com/source')
+    await page.getByRole('combobox', { name: 'Download through outbound', exact: true }).press('ArrowDown')
+    await expect(page.getByRole('option', { name: /unavailable-download|unknown-download/ })).toHaveCount(0)
+    await page.getByRole('option', { name: 'download-primary (direct)', exact: true }).click()
+    await page.locator('form').getByRole('button', { name: 'Add', exact: true }).click()
+    await expect.poll(() => mutations.length).toBe(1)
+    expect(mutations[0].downloadOutboundId).toBe(7)
+    choices[0].capability!.available = false
+    await page.reload()
+    await page.getByRole('button', { name: /Owned download source/ }).click()
+    await page.getByRole('button', { name: 'Edit', exact: true }).click()
+    await expect(page.getByRole('textbox', { name: 'Download through outbound', exact: true })).toHaveValue('download-primary')
+    await expect(page.getByText(/The saved outbound is unavailable on the current runtime/)).toBeVisible()
+    await expect(page.getByRole('combobox', { name: 'Download through outbound', exact: true })).toHaveCount(0)
+    await page.locator('form').getByRole('button', { name: 'Update', exact: true }).click()
+    await expect.poll(() => mutations.length).toBe(2)
+    expect(mutations[1].downloadOutboundId).toBe(7)
+    await page.getByRole('button', { name: 'Edit', exact: true }).click()
+    await page.getByRole('button', { name: 'Clear download detour', exact: true }).click()
+    await expect(page.getByRole('combobox', { name: 'Download through outbound', exact: true })).toBeVisible()
+    await page.locator('form').getByRole('button', { name: 'Update', exact: true }).click()
+    await expect.poll(() => mutations.length).toBe(3)
+    expect(mutations[2].downloadOutboundId).toBe(0)
+  })
+
   test(`${mode} creates an inline source and edits only its masked reference`, async ({ page }) => {
     await page.addInitScript(selected => window.localStorage.setItem('sui:ui:mode', selected), mode)
     await login(page)

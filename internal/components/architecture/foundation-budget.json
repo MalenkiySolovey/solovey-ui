@@ -1150,13 +1150,13 @@
     {
       "rule": "component-model-mutation",
       "path": "components/remote-outbound-subscriptions/domain/sync.go",
-      "symbol": "UnsyncConnectionsForDeletedOutbound",
+      "symbol": "unsyncConnectionsForDeletedOutbound",
       "digest": "7fcafdf879d79c9ff1edf39379857fd5c7a0bdfcf2007461b8b242df3de74cbb"
     },
     {
       "rule": "component-model-mutation",
       "path": "components/remote-outbound-subscriptions/domain/sync.go",
-      "symbol": "UnsyncConnectionsForDeletedOutbound",
+      "symbol": "unsyncConnectionsForDeletedOutbound",
       "digest": "e4801369ca0c8e7d82f485a9a6a2e990a4cf470de226692e43faf3b7b178d739"
     },
     {
@@ -2327,7 +2327,7 @@
       "rule": "worker-lifetime",
       "path": "components/remote-outbound-subscriptions/service/remote_outbound_auto_refresh.go",
       "symbol": "StartRemoteOutboundAutoRefresh",
-      "digest": "23bc2fbef4ce6397de6d30cc8bd8a2c613febb9db349e3ae5b647bb67f5307ba"
+      "digest": "6ad9e26c67fd46fba6e6cf7322e77f1ebf7629235691cb818fe97ac21729642c"
     },
     {
       "rule": "worker-lifetime",

@@ -145,6 +145,12 @@
         </v-col>
         <v-col cols="12" class="text-caption">{{ $t('remoteOutbound.sourceFiltersHint') }}</v-col>
         <v-col v-if="page.form.sourceType === 'remote'" cols="12">
+          <template v-if="page.unavailableDownloadOutbound">
+            <v-text-field :model-value="page.unavailableDownloadOutbound" :label="$t('remoteOutbound.downloadOutbound')" readonly variant="outlined" density="compact" />
+            <v-alert type="warning" variant="tonal" class="mb-2">{{ $t('remoteOutbound.downloadOutboundUnavailable') }}</v-alert>
+            <v-btn variant="text" class="mb-3" @click="page.form.downloadOutboundId = 0">{{ $t('remoteOutbound.clearDownloadDetour') }}</v-btn>
+          </template>
+          <v-select v-else v-model="page.form.downloadOutboundId" :items="page.downloadOutboundChoices" :label="$t('remoteOutbound.downloadOutbound')" :hint="$t('remoteOutbound.downloadOutboundHint')" persistent-hint variant="outlined" density="compact" />
           <v-text-field v-model="page.form.userAgent" :label="$t('remoteOutbound.userAgent')" :hint="$t('remoteOutbound.userAgentHint')" persistent-hint maxlength="4096" variant="outlined" density="compact" />
           <SecretCredentialField v-model="page.form.fetchHeaders" :available="true" multiline :label="$t('remoteOutbound.fetchHeaders')" :clear-label="$t('remoteOutbound.clearFetchHeaders')" :absent-label="$t('remoteOutbound.noFetchHeaders')" />
           <p class="text-caption">{{ $t('remoteOutbound.fetchHeadersHint') }}</p>

@@ -1,6 +1,8 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import Data from '@/store/modules/data'
 import HttpUtils from '@/plugins/httputil'
+import { availableCreationChoices } from '@/types/capabilityEditors'
+import type { RuntimeCapability } from '@/types/runtimeCapabilities'
 import { secretMutation, type SecretView, type SecretMutation } from '@/features/secretCredentialDraft'
 import {
   connectionConvertedType,
@@ -22,6 +24,7 @@ interface UseRemoteSubscriptionsCrudOptions {
 
 export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }: UseRemoteSubscriptionsCrudOptions) => {
   const subscriptions = ref<RemoteOutboundSubscription[]>([])
+  const downloadOutbounds = ref<{ id: number; tag: string; type: string; capability: RuntimeCapability }[]>([])
   const subscriptionForm = ref<SubscriptionFormRef | null>(null)
   const search = ref('')
   const loading = ref(false)
@@ -41,6 +44,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     name: '',
     url: '',
     userAgent: '',
+    downloadOutboundId: 0,
     sourceType: 'remote' as 'remote' | 'inline' | 'file',
     sourcePath: '',
     content: undefined as SecretView | SecretMutation | undefined,
@@ -53,6 +57,16 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     enabled: true,
     autoUpdate: false,
     updateInterval: 86400,
+  })
+
+  const downloadOutboundChoices = computed(() => [
+    { title: t('remoteOutbound.noDownloadDetour'), value: 0 },
+    ...availableCreationChoices(downloadOutbounds.value, row => row.capability?.available)
+      .map(row => ({ title: `${row.tag} (${row.type})`, value: row.id })),
+  ])
+  const unavailableDownloadOutbound = computed(() => {
+    if (!form.downloadOutboundId || downloadOutboundChoices.value.some(row => row.value === form.downloadOutboundId)) return ''
+    return downloadOutbounds.value.find(row => row.id === form.downloadOutboundId)?.tag ?? `#${form.downloadOutboundId}`
   })
 
   const resetInlineFile = () => {
@@ -123,10 +137,14 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
   const load = async () => {
     loading.value = true
     try {
-      const msg = await HttpUtils.get('api/remote-outbound-subscriptions')
+      const [msg, outboundMsg] = await Promise.all([
+        HttpUtils.get('api/remote-outbound-subscriptions'),
+        HttpUtils.get('api/remote-outbound-subscriptions/download-outbounds'),
+      ])
       if (msg.success) {
         subscriptions.value = msg.obj ?? []
       }
+      downloadOutbounds.value = outboundMsg.success && Array.isArray(outboundMsg.obj) ? outboundMsg.obj : []
       await loadConversionPolicy()
     } finally {
       loading.value = false
@@ -144,6 +162,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
         name: form.name,
         url: form.sourceType === 'remote' ? form.url : '',
         userAgent: form.sourceType === 'remote' ? form.userAgent : '',
+        downloadOutboundId: form.sourceType === 'remote' ? form.downloadOutboundId : 0,
         sourceType: form.sourceType,
         sourcePath: form.sourceType === 'file' ? form.sourcePath : '',
         content: form.sourceType === 'inline' ? secretMutation(form.content) : undefined,
@@ -176,6 +195,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     form.name = ''
     form.url = ''
     form.userAgent = ''
+    form.downloadOutboundId = 0
     form.sourceType = 'remote'
     form.sourcePath = ''
     form.content = undefined
@@ -197,6 +217,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     form.name = subscription.name
     form.url = subscription.url
     form.userAgent = subscription.userAgent ?? ''
+    form.downloadOutboundId = subscription.downloadOutboundId ?? 0
     form.sourceType = subscription.sourceType ?? 'remote'
     form.sourcePath = subscription.sourcePath ?? ''
     form.content = subscription.content ? JSON.parse(JSON.stringify(subscription.content)) : undefined
@@ -240,6 +261,8 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
   }
 
   return {
+    downloadOutboundChoices,
+    unavailableDownloadOutbound,
     inlineFile,
     inlineFileLoading,
     inlineFileError,

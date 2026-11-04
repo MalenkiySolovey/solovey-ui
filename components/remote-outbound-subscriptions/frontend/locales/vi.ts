@@ -1,5 +1,10 @@
 export default {
   "remoteOutbound": {
+    "downloadOutbound": "Tải qua outbound",
+    "downloadOutboundHint": "Chỉ dùng outbound đang chạy đã chọn để tải nguồn này. Nếu outbound không khả dụng, làm mới sẽ thất bại và giữ các kết nối đã thu thập, không chuyển sang mạng máy chủ.",
+    "downloadOutboundUnavailable": "Outbound đã lưu không khả dụng trên runtime hiện tại. Tham chiếu được giữ lại; chỉ có thể làm mới khi nó khả dụng trở lại. Hãy xóa lựa chọn để đổi đường tải.",
+    "noDownloadDetour": "Mạng máy chủ (không detour)",
+    "clearDownloadDetour": "Xóa detour tải xuống",
     "clearFetchHeaders": "Xóa tiêu đề đã lưu",
     "noFetchHeaders": "Chưa lưu tiêu đề bổ sung.",
     "fetchHeaders": "Tiêu đề tải riêng tư (JSON)",

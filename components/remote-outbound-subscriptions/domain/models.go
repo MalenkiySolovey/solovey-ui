@@ -13,6 +13,7 @@ type RemoteOutboundSubscription struct {
 	Name               string          `json:"name" form:"name"`
 	Url                string          `json:"url" form:"url" gorm:"column:url"`
 	UserAgent          string          `json:"userAgent,omitempty" form:"userAgent"`
+	DownloadOutboundID uint            `json:"downloadOutboundId,omitempty" form:"downloadOutboundId" gorm:"column:download_outbound_id;index"`
 	SourceType         string          `json:"sourceType,omitempty" form:"sourceType" gorm:"column:source_type;default:remote;not null"`
 	SourcePath         string          `json:"sourcePath,omitempty" form:"sourcePath" gorm:"column:source_path"`
 	SourceContent      string          `json:"-" form:"-" gorm:"column:source_content"`
