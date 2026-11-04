@@ -61,7 +61,7 @@ func (c *Scheduler) Start(loc *time.Location, trafficAge int) error {
 		),
 	)
 	// Start stats job
-	if _, err := cronInstance.AddJob("@every 10s", runtimejobs.NewTrafficStatisticsJob(trafficAge > 0)); err != nil {
+	if _, err := cronInstance.AddJob("@every 10s", runtimejobs.NewTrafficStatisticsJob(trafficAge > 0, runCtx)); err != nil {
 		cancel()
 		return err
 	}

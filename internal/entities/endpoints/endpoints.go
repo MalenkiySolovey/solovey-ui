@@ -130,6 +130,11 @@ func saveCandidate(tx *gorm.DB, act string, endpoint model.Endpoint, warp WarpHo
 		if _, _, err := peerDeliveryPolicy(endpoint.Ext); err != nil {
 			return nil, common.NewError("invalid WireGuard client delivery policy")
 		}
+		if managedDevicesEnabled(endpoint) {
+			if _, err := managedDevicePolicy(endpoint); err != nil {
+				return nil, common.NewError("invalid WireGuard managed device policy")
+			}
+		}
 	}
 	if err := diagnostics.FirstError(HostCapabilityFindings(endpoint.Type, "endpoint.options", endpoint.Options)); err != nil {
 		return nil, err

@@ -105,6 +105,11 @@
     </v-card-actions>
   </v-card>
   <WireGuardNativeOptions :data="data" />
+  <v-card v-if="data.ext && (deviceManagementAvailable || data.ext.managed)" :subtitle="$t('clientDevices.title')">
+    <v-switch v-model="managedDevices" :disabled="!deviceManagementAvailable" :label="$t('clientDevices.managed')" color="primary" />
+    <v-alert v-if="!deviceManagementAvailable" type="warning">{{ $t('clientDevices.states.unavailable') }}</v-alert>
+    <v-text-field v-if="data.ext.managed" :readonly="!deviceManagementAvailable" v-model.number="data.ext.defaultDeviceLimit" type="number" min="1" max="100" :label="$t('clientDevices.limit')" :hint="$t('clientDevices.poolHint')" persistent-hint />
+  </v-card>
   <v-card v-if="data.ext" :subtitle="$t('types.wg.clientDelivery')">
     <v-row>
       <v-col cols="12" sm="8"><v-text-field v-model="data.ext.publicEndpoint" :label="$t('types.wg.publicEndpoint')" :hint="$t('types.wg.publicEndpointHint')" placeholder="vpn.example:51820" clearable @click:clear="delete data.ext.publicEndpoint" persistent-hint /></v-col>
@@ -131,6 +136,7 @@
 <script lang="ts">
 import Peer from '@/components/fields/WgPeer.vue'
 import WireGuardNativeOptions from '@/components/protocols/WireGuardNativeOptions.vue'
+import Data from '@/store/modules/data'
 
 export default {
   props: ['data'],
@@ -160,6 +166,11 @@ export default {
     },
   },
   computed: {
+    deviceManagementAvailable(): boolean { return Data().capabilities?.wireGuardDevices === true },
+    managedDevices: {
+      get(): boolean { return this.$props.data.ext?.managed === true },
+      set(value: boolean) { this.$props.data.ext.managed = value; if (value && !this.$props.data.ext.defaultDeviceLimit) this.$props.data.ext.defaultDeviceLimit = 1 },
+    },
     dns: {
       get(): string { const value = this.$props.data.ext?.dns; return Array.isArray(value) ? value.join(', ') : value ?? '' },
       set(value: string) { this.$props.data.ext.dns = value ? value.split(',').map((item: string) => item.trim()) : [] },

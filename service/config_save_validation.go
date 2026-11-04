@@ -97,12 +97,18 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 	}
 	if tx.Migrator().HasTable(&model.Endpoint{}) {
 		var rows []model.Endpoint
-		if err := tx.Select("type", "options").Where("type IN ?", []string{"wireguard", "warp"}).Find(&rows).Error; err != nil {
+		if err := tx.Select("type", "options", "ext").Where("type IN ?", []string{"wireguard", "warp"}).Find(&rows).Error; err != nil {
 			return err
 		}
 		for _, row := range rows {
 			if !entitycapabilities.ResolveResource("endpoints", row.Type, row.Options).Available {
 				continue
+			}
+			var metadata struct {
+				Managed bool `json:"managed"`
+			}
+			if row.Type == "wireguard" && json.Unmarshal(row.Ext, &metadata) == nil && metadata.Managed {
+				endpointCount++
 			}
 			var fields map[string]json.RawMessage
 			if json.Unmarshal(row.Options, &fields) == nil {

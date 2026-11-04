@@ -105,6 +105,8 @@ func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
 	g.POST("/inboundDrafts/:id/discard", h.DiscardInboundDraft)
 	g.POST("/inbound-call-room", h.DownloadCallRoom)
 	g.POST("/endpoint-peer-config", h.DownloadEndpointPeerConfig)
+	g.GET("/client-devices", h.GetClientDevices)
+	g.POST("/client-device-config", h.DownloadClientDeviceConfig)
 	g.POST("/linkConvert", h.LinkConvert)
 	g.POST("/subConvert", h.SubConvert)
 	g.POST("/checkOutbounds", h.CheckOutbounds)

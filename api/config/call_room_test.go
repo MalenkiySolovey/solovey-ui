@@ -72,3 +72,34 @@ func TestEndpointPeerDeliveryAuthorizesBeforePrivateOwnerAccess(t *testing.T) {
 		t.Fatal("unavailable peer config exposed or cacheable")
 	}
 }
+
+func TestUserDeviceDeliveryAuthorizesBeforePrivateOwnerAccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	allowed := false
+	handler := NewHandler(Deps{RequireScope: func(c *gin.Context, resource string, scopes ...string) bool {
+		if resource != "clientDevices" || len(scopes) != 1 || scopes[0] != "admin" {
+			t.Fatal("device credential delivery broadened its scope")
+		}
+		if !allowed {
+			c.AbortWithStatus(http.StatusForbidden)
+		}
+		return allowed
+	}})
+	request := func(body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/client-device-config", strings.NewReader(body))
+		handler.DownloadClientDeviceConfig(c)
+		return w
+	}
+	if got := request("private-invalid-canary"); got.Code != http.StatusForbidden {
+		t.Fatal("unauthorized device request reached the owner")
+	}
+	allowed = true
+	for _, body := range []string{`{"clientId":1,"deviceId":"bad","host":"private-canary"}`, strings.Repeat(" ", 1025), `{"clientId":1,"deviceId":"0123456789abcdef0123456789abcdef","host":"example.test","extra":"private-canary"}`} {
+		got := request(body)
+		if got.Code != http.StatusBadRequest || strings.Contains(got.Body.String(), "canary") || got.Header().Get("Cache-Control") != "no-store" {
+			t.Fatal("invalid private request was accepted, echoed or cacheable")
+		}
+	}
+}

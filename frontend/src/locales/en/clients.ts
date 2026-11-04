@@ -1,4 +1,18 @@
 export default {
+  "clientDevices": {
+    "title": "WireGuard devices", "managed": "Manage devices through Users", "limit": "Device limit", "defaultLimit": "Endpoint default (0)",
+    "poolHint": "Uses the server IPv4 subnet. The server, network, broadcast and manual peer addresses are reserved.",
+    "grant": "Grant endpoint access", "removeGrant": "Remove grant", "create": "Create device", "name": "Device name", "address": "Address", "state": "Desired access",
+    "download": "Download private .conf", "rotate": "Rotate keys", "revoke": "Revoke", "delete": "Delete device",
+    "confirm": "Change access for {name}? Existing device connections may be interrupted.",
+    "failed": "Device operation is unavailable or could not be applied. Refresh before continuing.",
+    "preserved": "Stored device state is preserved but cannot be edited in this version.",
+    "privateHint": "Device keys are hidden. A private .conf download contains credentials. Desired access does not prove a live connection.",
+    "saveFirst": "Save or discard User edits before managing devices.",
+    "runtime": "Runtime readback", "traffic": "Device traffic", "handshake": "Last handshake",
+    "runtimeStates": { "unobserved": "Readback unavailable", "unavailable": "Inactive on current runtime", "absent": "Peer absent", "pending": "Peer update pending", "applied": "Peer applied (not a connectivity probe)" },
+    "states": { "eligible": "Eligible for runtime", "inactive": "Inactive: User or grant unavailable", "unavailable": "Unavailable on current endpoint/runtime", "revoked": "Revoked", "deleted": "Deleted", "expired": "Expired" }
+  },
   "secretCredential": {
     "unavailable": "This credential is preserved and cannot be changed on the current runtime.",
     "keep": "Keep existing credential",

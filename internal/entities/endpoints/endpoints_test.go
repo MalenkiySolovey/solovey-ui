@@ -13,9 +13,186 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	clientdevices "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients/devices"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
+	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+func TestWireGuardManagedUserDevicesKeepOneCredentialOwner(t *testing.T) {
+	t.Setenv("SUI_SECRETBOX_KEY", "")
+	t.Setenv("SUI_SECRET", "")
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool, _ := db.DB()
+	pool.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = pool.Close() })
+	if err := db.AutoMigrate(&model.Endpoint{}, &model.Client{}, &model.Setting{}, &model.AuditEvent{}); err != nil {
+		t.Fatal(err)
+	}
+	server, _ := ecdh.X25519().GenerateKey(rand.Reader)
+	manual, _ := ecdh.X25519().GenerateKey(rand.Reader)
+	encode := base64.StdEncoding.EncodeToString
+	options, _ := json.Marshal(map[string]any{"private_key": encode(server.Bytes()), "listen_port": 51820, "address": []string{"10.80.0.1/29"}, "peers": []map[string]any{{"public_key": encode(manual.PublicKey().Bytes()), "allowed_ips": []string{"10.80.0.2/32"}}}})
+	endpoint := model.Endpoint{Type: "wireguard", Tag: "user-devices", Options: options, Ext: json.RawMessage(`{"managed":true,"defaultDeviceLimit":2,"publicEndpoint":"vpn.example:51820","dns":[]}`)}
+	if err := db.Create(&endpoint).Error; err != nil {
+		t.Fatal(err)
+	}
+	users := []model.Client{{Name: "alice", Enable: true, Config: json.RawMessage(`{}`)}, {Name: "bob", Enable: true, Config: json.RawMessage(`{}`)}}
+	for i := range users {
+		if err := db.Create(&users[i]).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Exercise the User owner independently of optional host build tags. The
+	// production resolver still admits only the available endpoint capability.
+	resolve := func(tx *gorm.DB, id uint) (clientdevices.Policy, error) {
+		policy, err := ManagedDevicePolicy(tx, id)
+		policy.Available = true
+		return policy, err
+	}
+	mutate := func(request clientdevices.Request) error {
+		return db.Transaction(func(tx *gorm.DB) error { _, err := clientdevices.Mutate(tx, request, resolve, 100); return err })
+	}
+	for _, user := range users {
+		if err := mutate(clientdevices.Request{ClientID: user.Id, EndpointID: endpoint.Id, Operation: "grant"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	request := clientdevices.Request{ClientID: users[0].Id, EndpointID: endpoint.Id, Operation: "create", Name: "phone", RequestKey: "request-create-alice-1"}
+	if err := mutate(request); err != nil {
+		t.Fatal(err)
+	}
+	if err := mutate(request); err != nil {
+		t.Fatal("idempotent create failed", err)
+	}
+	load := func(id uint) (model.Client, clientdevices.State) {
+		t.Helper()
+		client, state, err := clientdevices.Load(db, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return client, state
+	}
+	alice, first := load(users[0].Id)
+	if len(first.Devices) != 1 || first.Devices[0].Address != "10.80.0.3/32" || !secretbox.IsEncrypted(first.Devices[0].PrivateKey) || !secretbox.IsEncrypted(first.Devices[0].PresharedKey) {
+		t.Fatal("device allocation/credential ownership failed")
+	}
+	device := first.Devices[0]
+	view, err := credentials.ProjectClient(alice.Id, alice.Config)
+	if err != nil || bytes.Contains(view, []byte(device.PrivateKey)) || bytes.Contains(view, []byte("privateKey")) || bytes.Contains(view, []byte(device.CreateRequest)) {
+		t.Fatal("ordinary read exposed device credentials")
+	}
+	request.ClientID = users[1].Id
+	request.RequestKey = "request-create-bob-01"
+	if err := mutate(request); err != nil {
+		t.Fatal(err)
+	}
+	_, second := load(users[1].Id)
+	if second.Devices[0].Address != "10.80.0.4/32" {
+		t.Fatal("cross-user allocation collided")
+	}
+	policy, err := resolve(db, endpoint.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peers, err := clientdevices.RuntimePeers(db.Statement.Context, db, policy, 100)
+	if err != nil || len(peers) != 2 {
+		t.Fatal("active runtime projection failed", err)
+	}
+	if _, present := peers[0]["private_key"]; present {
+		t.Fatal("server projection borrowed client private key")
+	}
+	config, err := DevicePeerConfig(db, alice.Id, device.ID, "panel.example")
+	if err != nil || !strings.Contains(config, "Address = 10.80.0.3/32") || !strings.Contains(config, "Endpoint = vpn.example:51820") || strings.Contains(config, "DNS =") {
+		t.Fatal("canonical private config delivery failed", err)
+	}
+	account := func(generation string, samples map[string]clientdevices.Observation) []clientdevices.TrafficDelta {
+		t.Helper()
+		var deltas []clientdevices.TrafficDelta
+		if err := db.Transaction(func(tx *gorm.DB) error {
+			var err error
+			deltas, err = clientdevices.Account(tx, endpoint.Id, generation, 200, samples)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return deltas
+	}
+	samples := map[string]clientdevices.Observation{device.PublicKey: {Received: 100, Sent: 200, LastHandshake: 123}}
+	if deltas := account("runtime:1", samples); len(deltas) != 1 || deltas[0].UserID != alice.VPNUserID() || deltas[0].Up != 100 || deltas[0].Down != 200 {
+		t.Fatal("traffic did not retain stable User identity")
+	}
+	if deltas := account("runtime:1", samples); len(deltas) != 0 {
+		t.Fatal("snapshot traffic was double counted")
+	}
+	afterCounters, _ := load(alice.Id)
+	afterView, _ := credentials.ProjectClient(alice.Id, afterCounters.Config)
+	if !bytes.Equal(view, afterView) {
+		t.Fatal("runtime counters invalidated ordinary User ownership revision")
+	}
+	if deltas := account("runtime:2", samples); len(deltas) != 1 || deltas[0].Up != 100 {
+		t.Fatal("new endpoint incarnation inherited old counters")
+	}
+	rotation := clientdevices.Request{ClientID: alice.Id, EndpointID: endpoint.Id, DeviceID: device.ID, Operation: "rotate", RequestKey: "request-rotate-alice1"}
+	if err := mutate(rotation); err != nil {
+		t.Fatal(err)
+	}
+	if err := mutate(rotation); err != nil {
+		t.Fatal(err)
+	}
+	_, rotated := load(alice.Id)
+	if rotated.Devices[0].ID != device.ID || rotated.Devices[0].Address != device.Address || rotated.Devices[0].Revision != 2 || rotated.Devices[0].PublicKey == device.PublicKey {
+		t.Fatal("rotation changed identity or replayed")
+	}
+	account("runtime:2", samples) // The old immutable key is no longer authority.
+	if deltas := account("runtime:2", map[string]clientdevices.Observation{rotated.Devices[0].PublicKey: {Received: 300, Sent: 400}}); len(deltas) != 1 || deltas[0].Up != 300 {
+		t.Fatal("rotated key inherited an obsolete counter baseline")
+	}
+	rotation.Operation = "revoke"
+	if err := mutate(rotation); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DevicePeerConfig(db, alice.Id, device.ID, "panel.example"); err == nil {
+		t.Fatal("revoked key was delivered")
+	}
+	peers, err = clientdevices.RuntimePeers(db.Statement.Context, db, policy, 100)
+	if err != nil || len(peers) != 1 {
+		t.Fatal("revoked peer remained effective", err)
+	}
+	if err := db.Model(&model.Client{}).Where("id = ?", users[1].Id).Update("enable", false).Error; err != nil {
+		t.Fatal(err)
+	}
+	peers, err = clientdevices.RuntimePeers(db.Statement.Context, db, policy, 100)
+	if err != nil || len(peers) != 0 {
+		t.Fatal("disabled User remained effective", err)
+	}
+	rotation.Operation = "delete"
+	if err := mutate(rotation); err != nil {
+		t.Fatal(err)
+	}
+	request.ClientID = alice.Id
+	request.RequestKey = "request-next-alice-01"
+	if err := mutate(request); err != nil {
+		t.Fatal(err)
+	}
+	_, next := load(alice.Id)
+	if next.Devices[1].Address != "10.80.0.5/32" {
+		t.Fatal("unacknowledged old address was reused")
+	}
+	account("runtime:2", map[string]clientdevices.Observation{})
+	request.RequestKey = "request-after-readback"
+	if err := mutate(request); err != nil {
+		t.Fatal(err)
+	}
+	_, reused := load(alice.Id)
+	if reused.Devices[2].Address != device.Address {
+		t.Fatal("acknowledged deletion did not release the address")
+	}
+}
 
 func TestWireGuardPrivatePeerDeliveryRetainsAmnezia(t *testing.T) {
 	t.Setenv("SUI_SECRETBOX_KEY", "")

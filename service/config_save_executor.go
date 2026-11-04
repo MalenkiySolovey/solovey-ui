@@ -2,7 +2,11 @@ package service
 
 import (
 	"encoding/json"
+	"time"
 
+	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
+	clientdevices "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients/devices"
+	entityendpoints "github.com/MalenkiySolovey/solovey-ui/internal/entities/endpoints"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	"gorm.io/gorm"
 )
@@ -13,6 +17,23 @@ type configSaveExecutor struct {
 
 func (e configSaveExecutor) SaveClients(tx *gorm.DB, action string, data json.RawMessage, hostname string) ([]uint, error) {
 	return e.service.ClientService.Save(tx, action, data, hostname)
+}
+
+func (e configSaveExecutor) SaveClientDevices(tx *gorm.DB, data json.RawMessage) ([]uint, error) {
+	request, err := clientdevices.DecodeRequest(data)
+	if err != nil {
+		return nil, err
+	}
+	return clientdevices.Mutate(tx, request, entityendpoints.ManagedDevicePolicy, time.Now().Unix())
+}
+
+func (e configSaveExecutor) SaveClientsWithDeviceEffects(tx *gorm.DB, action string, data json.RawMessage, hostname string) ([]uint, []uint, error) {
+	endpoints, err := entityclients.DeviceEndpointIDsForSave(tx, action, data)
+	if err != nil {
+		return nil, nil, err
+	}
+	inbounds, err := e.SaveClients(tx, action, data, hostname)
+	return inbounds, endpoints, err
 }
 
 func (e configSaveExecutor) SaveTLS(tx *gorm.DB, action string, data json.RawMessage, hostname string) error {

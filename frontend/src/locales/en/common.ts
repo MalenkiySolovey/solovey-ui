@@ -343,6 +343,7 @@ export default {
     "review": "Review"
   },
   "actions": {
+    "wireguard": "Manage devices",
     "action": "Action",
     "add": "Add",
     "addbulk": "Add Bulk",

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import Client from '@/layouts/modals/Client.logic'
 import Inbound from '@/features/useInboundEditor'
 import { createInbound } from '@/types/inbounds'
-import { updateConfigs } from '@/types/clients'
+import { updateConfigs, clientCredentialKeys } from '@/types/clients'
 import { clientCredentialDraftInvalid, initializeClientCredentialDrafts, serializeClientCredentialDrafts, shuffleManagedClientCredentials } from '@/features/clientCredentialDraft'
 import { inboundCredentialDraftInvalid, serializeInboundCredentialDraft } from '@/features/inboundCredentialDraft'
 
@@ -42,6 +42,13 @@ beforeEach(() => {
 afterEach(() => { apps.splice(0).forEach(app => app.unmount()) })
 
 describe('native credential drafts in the existing Users editor', () => {
+  it('keeps the device owner view out of ordinary credential fields and renames', () => {
+    const wireguard = { owner: 'client-devices', clientId: 7, present: true, revision: 'b'.repeat(64) }
+    const config = { wireguard, mieru: { name: 'alice', password: storedView() } }
+    expect(clientCredentialKeys(config)).toEqual(['mieru'])
+    expect(updateConfigs(config, 'renamed', capabilities(true)).wireguard).toEqual(wireguard)
+    expect(serializeClientCredentialDrafts(config).wireguard).toEqual(wireguard)
+  })
   it('keeps inbound Realm tokens with Inbounds while retaining native STUN resolver fields', () => {
     const token = { ...storedView(), reference: { ...storedView().reference, owner: 'inbounds', id: 'record:9:realm.token' } }
     const inbound = { type: 'hysteria2', realm: { server_url: 'https://realm.example', realm_id: 'peer', token, stun_servers: ['127.0.0.1:3478'], stun_domain_resolver: { server: 'host-dns', disable_cache: false } } }

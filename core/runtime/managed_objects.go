@@ -138,6 +138,10 @@ func (c *Core) AddEndpoint(config []byte) error {
 			endpointConfig.Options); err != nil {
 			return err
 		}
+		if c.endpointRevisions == nil {
+			c.endpointRevisions = make(map[string]uint64)
+		}
+		c.endpointRevisions[endpointConfig.Tag]++
 		return nil
 	})
 }
@@ -149,6 +153,10 @@ func (c *Core) RemoveEndpoint(tag string) error {
 		if err := rt.endpointManager.Remove(tag); err != nil {
 			return err
 		}
+		if c.endpointRevisions == nil {
+			c.endpointRevisions = make(map[string]uint64)
+		}
+		c.endpointRevisions[tag]++
 		return nil
 	})
 }

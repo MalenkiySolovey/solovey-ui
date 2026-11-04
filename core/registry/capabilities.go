@@ -8,11 +8,22 @@ import (
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/util/jsonfields"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-box/protocol/wireguard"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry/facts"
 )
 
 const tailscaleBuildTag = "with_tailscale,with_gvisor"
+
+// Device management needs the selected source's finite peer IPC API. This is
+// a source capability, not a provider-name or OS assumption.
+func WireGuardDeviceManagementAvailable() bool {
+	_, available := any((*wireguard.Endpoint)(nil)).(interface {
+		IpcGet() (string, error)
+		IpcSet(string) error
+	})
+	return available && Resolve("endpoints", "wireguard").Available()
+}
 
 // A declaration keeps implementation eligibility beside its registration.
 // Registered option schemas may exist even when the constructor is a stub.

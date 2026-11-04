@@ -343,6 +343,7 @@ export default {
     "review": "Проверить"
   },
   "actions": {
+    "wireguard": "Управление устройствами",
     "action": "Действие",
     "add": "Добавить",
     "addbulk": "Добавить пакетно",

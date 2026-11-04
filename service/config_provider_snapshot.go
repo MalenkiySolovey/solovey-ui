@@ -14,6 +14,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
+	clientdevices "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients/devices"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/targetcheck"
 	updateservice "github.com/MalenkiySolovey/solovey-ui/service/update"
 	"gorm.io/gorm"
@@ -155,6 +156,14 @@ func hashProviderDesiredRows(sum hash.Hash, query *gorm.DB, remaining *int64) er
 		}
 		typed := make([]providerDesiredValue, len(values))
 		for i, value := range values {
+			if _, client := query.Statement.Model.(*model.Client); client && columns[i] == "config" {
+				switch raw := value.(type) {
+				case []byte:
+					value = clientdevices.DesiredConfig(raw)
+				case string:
+					value = string(clientdevices.DesiredConfig([]byte(raw)))
+				}
+			}
 			typed[i].Value = value
 			switch value.(type) {
 			case nil:

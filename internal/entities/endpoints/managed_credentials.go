@@ -234,7 +234,11 @@ func projectEndpointCredentials(endpoint model.Endpoint, data map[string]interfa
 }
 
 func marshalEndpointRuntime(db *gorm.DB, endpoint model.Endpoint) ([]byte, error) {
-	return marshalEndpointCredentials(db, endpoint, "endpoint-config")
+	raw, err := marshalEndpointCredentials(db, endpoint, "endpoint-config")
+	if err != nil {
+		return nil, err
+	}
+	return appendManagedDevicePeers(db, endpoint, raw)
 }
 
 func marshalEndpointCredentials(db *gorm.DB, endpoint model.Endpoint, intent string) ([]byte, error) {
