@@ -271,7 +271,7 @@ func classify(method, route string) Policy {
 	}
 
 	switch {
-	case strings.HasSuffix(lower, "/inbound-call-room"):
+	case strings.HasSuffix(lower, "/inbound-call-room"), strings.HasSuffix(lower, "/endpoint-peer-config"):
 		policy.ActionScope = "admin"
 		policy.MaxBodyBytes = 1024
 		policy.ConcurrencyClass = "config"

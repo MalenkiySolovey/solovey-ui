@@ -67,7 +67,7 @@
     </v-row>
     <v-row v-if="data.ext">
       <v-col cols="12" sm="8">
-        <v-text-field v-model="data.ext.dns" :label="$t('dns.title') + ' ' + $t('commaSeparated')" hide-details></v-text-field>
+        <v-text-field v-model="dns" :label="$t('dns.title') + ' ' + $t('commaSeparated')" :hint="$t('types.wg.clientDNSHint')" persistent-hint></v-text-field>
       </v-col>
     </v-row>
     <v-row>
@@ -104,15 +104,28 @@
       </v-menu>
     </v-card-actions>
   </v-card>
+  <WireGuardNativeOptions :data="data" />
+  <v-card v-if="data.ext && (deviceManagementAvailable || data.ext.managed)" :subtitle="$t('clientDevices.title')">
+    <v-switch v-model="managedDevices" :disabled="!deviceManagementAvailable" :label="$t('clientDevices.managed')" color="primary" />
+    <v-alert v-if="!deviceManagementAvailable" type="warning">{{ $t('clientDevices.states.unavailable') }}</v-alert>
+    <v-text-field v-if="data.ext.managed" :readonly="!deviceManagementAvailable" v-model.number="data.ext.defaultDeviceLimit" type="number" min="1" max="100" :label="$t('clientDevices.limit')" :hint="$t('clientDevices.poolHint')" persistent-hint />
+  </v-card>
+  <v-card v-if="data.ext" :subtitle="$t('types.wg.clientDelivery')">
+    <v-row>
+      <v-col cols="12" sm="8"><v-text-field v-model="data.ext.publicEndpoint" :label="$t('types.wg.publicEndpoint')" :hint="$t('types.wg.publicEndpointHint')" placeholder="vpn.example:51820" clearable @click:clear="delete data.ext.publicEndpoint" persistent-hint /></v-col>
+      <v-col cols="12" sm="8"><v-textarea v-model="clientAllowedIPs" :label="$t('types.wg.clientAllowedIPs')" :hint="$t('types.wg.clientAllowedIPsHint')" rows="2" auto-grow clearable @click:clear="delete data.ext.clientAllowedIPs" persistent-hint /></v-col>
+      <v-col cols="12" sm="4"><v-text-field v-model="clientKeepalive" :label="$t('types.wg.clientKeepalive')" :hint="$t('types.wg.clientKeepaliveHint')" type="number" min="0" max="3600" clearable persistent-hint /></v-col>
+    </v-row>
+  </v-card>
   <v-card v-if="data.peers != undefined">
     <v-card-subtitle>
       {{ $t('types.wg.peers') }}
-      <v-chip color="primary" density="compact" variant="elevated" @click="addPeer"><v-icon icon="mdi-plus" /></v-chip>
+      <v-btn color="primary" size="small" icon="mdi-plus" variant="tonal" :aria-label="$t('actions.add') + ' ' + $t('types.wg.peer')" @click="addPeer" />
     </v-card-subtitle>
     <template v-for="(p, index) in data.peers">
       <v-card style="margin-top: 1rem;">
         <v-card-subtitle>
-          {{ $t('types.wg.peer') + ' ' + (Number(index)+1) }} <v-icon color="error" icon="mdi-delete" @click="delPeer(Number(index))" />
+          {{ $t('types.wg.peer') + ' ' + (Number(index)+1) }} <v-btn color="error" icon="mdi-delete" size="small" variant="text" :aria-label="$t('actions.del') + ' ' + $t('types.wg.peer') + ' ' + (Number(index)+1)" @click="delPeer(Number(index))" />
         </v-card-subtitle>
         <Peer :data="p" :ext="data.ext" @refreshPeerKey="$emit('refreshPeerKey', index)" />
       </v-card>
@@ -122,6 +135,8 @@
 
 <script lang="ts">
 import Peer from '@/components/fields/WgPeer.vue'
+import WireGuardNativeOptions from '@/components/protocols/WireGuardNativeOptions.vue'
+import Data from '@/store/modules/data'
 
 export default {
   props: ['data'],
@@ -151,6 +166,29 @@ export default {
     },
   },
   computed: {
+    deviceManagementAvailable(): boolean { return Data().capabilities?.wireGuardDevices === true },
+    managedDevices: {
+      get(): boolean { return this.$props.data.ext?.managed === true },
+      set(value: boolean) { this.$props.data.ext.managed = value; if (value && !this.$props.data.ext.defaultDeviceLimit) this.$props.data.ext.defaultDeviceLimit = 1 },
+    },
+    dns: {
+      get(): string { const value = this.$props.data.ext?.dns; return Array.isArray(value) ? value.join(', ') : value ?? '' },
+      set(value: string) { this.$props.data.ext.dns = value ? value.split(',').map((item: string) => item.trim()) : [] },
+    },
+    clientAllowedIPs: {
+      get(): string { return this.$props.data.ext?.clientAllowedIPs?.join('\n') ?? '' },
+      set(value: string) {
+        if (!value) delete this.$props.data.ext.clientAllowedIPs
+        else this.$props.data.ext.clientAllowedIPs = value.split(/[\n,]/).map((item: string) => item.trim())
+      },
+    },
+    clientKeepalive: {
+      get(): number | string { return this.$props.data.ext?.clientKeepalive ?? '' },
+      set(value: string | number | null) {
+        if (value == null || value === '') delete this.$props.data.ext.clientKeepalive
+        else this.$props.data.ext.clientKeepalive = Number(value)
+      },
+    },
     optionUdp: {
       get(): boolean { return this.$props.data.udp_timeout != undefined },
       set(v:boolean) { this.$props.data.udp_timeout = v ? "5m" : undefined }
@@ -195,6 +233,6 @@ export default {
       }
     }
   },
-  components: { Peer }
+  components: { Peer, WireGuardNativeOptions }
 }
 </script>

@@ -8,11 +8,22 @@ import (
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/util/jsonfields"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-box/protocol/wireguard"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry/facts"
 )
 
 const tailscaleBuildTag = "with_tailscale,with_gvisor"
+
+// Device management needs the selected source's finite peer IPC API. This is
+// a source capability, not a provider-name or OS assumption.
+func WireGuardDeviceManagementAvailable() bool {
+	_, available := any((*wireguard.Endpoint)(nil)).(interface {
+		IpcGet() (string, error)
+		IpcSet(string) error
+	})
+	return available && Resolve("endpoints", "wireguard").Available()
+}
 
 // A declaration keeps implementation eligibility beside its registration.
 // Registered option schemas may exist even when the constructor is a stub.
@@ -93,6 +104,13 @@ func CriticalProtocolFields() map[string]map[string]ProtocolFieldCapability {
 	// Users. Keep imported state preserved and inactive without advertising it.
 	for _, kind := range []string{"bandwidth-limiter", "connection-limiter", "rate-limiter", "traffic-limiter"} {
 		result[kind+"/out"] = map[string]ProtocolFieldCapability{"strategy": {Available: supportsNativeLimiters, UnavailableValues: []string{"manager"}}}
+	}
+	wireguardFields := jsonfields.Names(reflect.TypeFor[option.WireGuardEndpointOptions](), false)
+	for _, kind := range []string{"wireguard", "warp"} {
+		result[kind+"/endpoint"] = map[string]ProtocolFieldCapability{}
+		for _, field := range []string{"amnezia", "preallocated_buffers_per_pool", "disable_pauses"} {
+			result[kind+"/endpoint"][field] = ProtocolFieldCapability{Available: slices.Contains(wireguardFields, field), RequiredProvider: coreprovider.RequiredProviderName("shtorm_extended")}
+		}
 	}
 	return result
 }

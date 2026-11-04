@@ -37,6 +37,18 @@ func OutboundDeliveryCopy(db *gorm.DB, inbound *model.Inbound) (*model.Inbound, 
 	if err != nil || copy == nil {
 		return copy, err
 	}
+	if copy.Type == "hysteria2" {
+		_, realm, err := inboundRealmFields(copy.Options)
+		if err != nil {
+			return nil, err
+		}
+		if realm != nil {
+			if err := FillOutboundJSONFromDB(db, copy, ""); err != nil {
+				return nil, err
+			}
+			return realmOutboundDeliveryCopy(db, copy, realm)
+		}
+	}
 	if (copy.Type != "mieru" && copy.Type != "trusttunnel" && copy.Type != "sudoku" && copy.Type != "ssh") || !clientfacts.CanDeliver(copy.Type, "json") {
 		return copy, nil
 	}
@@ -387,6 +399,19 @@ func hysteriaOut(out *map[string]interface{}, inbound map[string]interface{}) {
 }
 
 func hysteria2Out(out *map[string]interface{}, inbound map[string]interface{}, legacy bool) {
+	delete(*out, "realm")
+	if realm, ok := inbound["realm"].(map[string]any); ok && realm != nil {
+		public := map[string]any{}
+		for _, field := range []string{"server_url", "realm_id", "stun_servers", "ip_version", "port_mapping"} {
+			if value, present := realm[field]; present {
+				public[field] = value
+			}
+		}
+		(*out)["realm"] = public
+		for _, field := range []string{"server", "server_port", "server_ports"} {
+			delete(*out, field)
+		}
+	}
 	delete(*out, "down_mbps")
 	delete(*out, "up_mbps")
 	delete(*out, "obfs")

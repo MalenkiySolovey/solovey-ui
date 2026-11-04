@@ -78,7 +78,7 @@ type Config = {
 
 export function updateConfigs(configs: Config, newUserName: string, capabilities?: RuntimeCapabilities): Config {
   for (const key in configs) {
-    if (key === clientSubscriptionMetadataKey) continue
+    if (key === clientSubscriptionMetadataKey || key === 'wireguard') continue
     if (managedClientSecretFields[key] && !managedCredentialAvailable(capabilities, key)) continue
     if (configs.hasOwnProperty(key)) {
       const config = configs[key]
@@ -102,7 +102,7 @@ export function setClientPublicRemark(configs: Config, value: string) {
 }
 
 export function clientCredentialKeys(configs: Config): string[] {
-  return Object.keys(configs).filter(key => key !== clientSubscriptionMetadataKey)
+  return Object.keys(configs).filter(key => key !== clientSubscriptionMetadataKey && key !== 'wireguard')
 }
 
 export function shuffleConfigs(configs: Config, key?: string) {

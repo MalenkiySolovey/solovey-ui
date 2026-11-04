@@ -9,6 +9,7 @@ import (
 	"errors"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/secretref"
+	clientdevices "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients/devices"
 	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	"github.com/MalenkiySolovey/solovey-ui/internal/secrets/ownerdb"
@@ -27,6 +28,9 @@ func ValidateClientConfig(config json.RawMessage) error {
 	}
 	var root map[string]json.RawMessage
 	if json.Unmarshal(config, &root) != nil {
+		return ErrInvalid
+	}
+	if len(root[clientdevices.Field]) > 0 && jsonvalue.StrictObject(config) != nil {
 		return ErrInvalid
 	}
 	for _, fact := range clientfacts.Facts() {
@@ -87,9 +91,13 @@ func ProjectClient(clientID uint, config json.RawMessage) (json.RawMessage, erro
 		changed = true
 	}
 	if !changed {
-		return config, nil
+		return clientdevices.Project(clientID, config)
 	}
-	return json.Marshal(root)
+	encoded, err := json.Marshal(root)
+	if err != nil {
+		return nil, err
+	}
+	return clientdevices.Project(clientID, encoded)
 }
 
 // ApplyClientField validates the explicit owner mutation on a resolved client.

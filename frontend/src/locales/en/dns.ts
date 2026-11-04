@@ -29,9 +29,18 @@ export default {
     "reverseMapping": "Reverse Mapping",
     "domainStrategy": "Domain Strategy",
     "local": {
+      "semantics": "Local DNS follows system configuration and may use multicast for local and link-local names. Choose an explicit unicast server when that is required by your policy.",
+      "neighborDomains": "Preferred neighbor domains",
       "preferGo": "Prefer Go"
     },
     "rule": {
+      "unavailableAction": "This rule is preserved, but its action or action fields are unavailable in the current runtime. Inspect or export it, remove it, or return to a supporting runtime before editing.",
+      "responseContext": "Response context",
+      "earlierEvaluateTag": "Earlier evaluate tag",
+      "response_answer": "Response answers",
+      "response_ns": "Response nameservers",
+      "response_extra": "Additional response records",
+      "responseModes": { "absent": "No response condition", "disabled": "Disabled explicitly", "anonymous": "Anonymous response", "tagged": "Tagged response" },
       "add": "Add Dns Rule",
       "empty": "No DNS rules configured",
       "title": "Dns Rules",
@@ -52,6 +61,13 @@ export default {
       "ipAcceptAny": "Accept Empty IP",
       "rulesetAcceptEmpty": "Ruleset IP CIDR Accept Empty",
       "action": {
+        "evaluate": "evaluate",
+        "respond": "respond",
+        "race": "Race with following rules",
+        "evaluateTag": "Evaluate response tag",
+        "speculative": "Speculative evaluation",
+        "timeout": "Query timeout",
+        "disableOptimisticCache": "Disable optimistic cache",
         "title": "Action",
         "route": "Route",
         "routeOptions": "Route Options",

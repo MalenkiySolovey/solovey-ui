@@ -10,9 +10,65 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entityendpoints "github.com/MalenkiySolovey/solovey-ui/internal/entities/endpoints"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveeligibility"
 )
+
+func TestCapabilityWireGuardHistoryFollowsCurrentProvider(t *testing.T) {
+	for _, field := range []string{"amnezia", "preallocated_buffers_per_pool", "disable_pauses"} {
+		t.Run(field, func(t *testing.T) {
+			initSettingTestDB(t)
+			db := dbsqlite.DB()
+			value := map[string]any{"amnezia": map[string]any{"h1": 123, "h2": "200-300"}, "preallocated_buffers_per_pool": 4, "disable_pauses": false}[field]
+			options, _ := json.Marshal(map[string]any{field: value, "future": json.RawMessage(`{"counter":9007199254740993}`)})
+			row := model.Endpoint{Type: "wireguard", Tag: "preserved-awg", Options: options}
+			if err := db.Create(&row).Error; err != nil {
+				t.Fatal(err)
+			}
+			available := registry.CriticalProtocolFields()["wireguard/endpoint"][field].Available
+			rows, err := runtimeprojection.Stored(db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			matched := false
+			for _, resource := range rows {
+				if resource.Category == "endpoints" && resource.ID == row.Id {
+					matched = true
+					if resource.Capability.Available != available {
+						t.Fatal("endpoint eligibility does not follow actual SDK field", resource)
+					}
+				}
+			}
+			if !matched {
+				t.Fatal("preserved endpoint missing from eligibility")
+			}
+			err = saveeligibility.Validate(db, "edit", row.Id, &model.Endpoint{}, "endpoints", "wireguard")
+			if available {
+				if err != nil {
+					t.Fatal("supporting provider did not reactivate retained endpoint", err)
+				}
+			} else {
+				var rejected *saveeligibility.Rejection
+				if !errors.As(err, &rejected) || rejected.ReasonCode() != "PROTOCOL_FIELD_CAPABILITY_UNAVAILABLE" {
+					t.Fatal("unsupported endpoint admitted ordinary editing", err)
+				}
+				config, err := entityendpoints.GetAllConfig(db)
+				if err != nil || len(config) != 0 {
+					t.Fatal("unsupported endpoint entered runtime", err)
+				}
+				projection, err := NewSingBoxConfigBuilder(NewRuntimeWithCoreProvider(nil)).BuildProjectionFromDB(db, "{}")
+				if err != nil || len(projection.Eligibility.Omitted) != 1 {
+					t.Fatal("inactive endpoint disappeared from runtime explanation", err)
+				}
+			}
+			var preserved model.Endpoint
+			if db.First(&preserved, row.Id).Error != nil || !bytes.Equal(preserved.Options, options) {
+				t.Fatal("provider eligibility changed preserved desired state")
+			}
+		})
+	}
+}
 
 // The same fixture runs in both immutable provider graphs: unsupported state
 // is omitted and cannot be edited; supporting state becomes eligible again.

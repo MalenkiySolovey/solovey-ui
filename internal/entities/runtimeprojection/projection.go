@@ -92,12 +92,13 @@ func Stored(db *gorm.DB) ([]Entity, error) {
 		var rows []struct {
 			ID        uint
 			Type, Tag string
+			Options   []byte
 		}
-		if err := db.Model(entry.model).Select("id", "type", "tag").Order("id").Scan(&rows).Error; err != nil {
+		if err := db.Model(entry.model).Select("id", "type", "tag", "options").Order("id").Scan(&rows).Error; err != nil {
 			return nil, err
 		}
 		for _, row := range rows {
-			result = append(result, Entity{Category: entry.category, ID: row.ID, Type: row.Type, Tag: row.Tag, Capability: entitycapabilities.Resolve(entry.category, row.Type)})
+			result = append(result, Entity{Category: entry.category, ID: row.ID, Type: row.Type, Tag: row.Tag, Capability: entitycapabilities.ResolveResource(entry.category, row.Type, row.Options)})
 		}
 	}
 	if db.Migrator().HasTable(&model.Inbound{}) {

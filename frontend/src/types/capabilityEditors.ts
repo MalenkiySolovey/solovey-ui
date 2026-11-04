@@ -26,12 +26,15 @@ export function capabilityEditState(snapshot: RuntimeCapabilities | undefined, c
  if (!fact?.known) return unavailable('capability.unknown')
  if (!fact.contextSupported) return unavailable('capability.contextUnsupported')
  if (!fact.available) return unavailable('capability.unavailable')
- if (resource && ['inbounds', 'outbounds'].includes(category)) {
-  const side = category === 'inbounds' ? 'in' : 'out'
+ if (resource && ['inbounds', 'outbounds', 'endpoints'].includes(category)) {
+  const side = category === 'inbounds' ? 'in' : category === 'outbounds' ? 'out' : 'endpoint'
   const values = resource as Record<string, unknown>
   const fields = criticalFields?.[`${type}/${side}`]
-  // Realm changes endpoint addressing. Missing facts cannot authorize its use.
-  const critical = new Set([...Object.keys(fields ?? {}), ...(type === 'hysteria2' ? ['realm'] : [])])
+  // Backend field/value facts are authoritative. Identity-sensitive blocks
+  // also fail closed when an older/missing contract supplies no field fact.
+  const fallback = type === 'hysteria2' ? ['realm'] : category === 'endpoints' && ['wireguard', 'warp'].includes(type)
+   ? ['amnezia', 'preallocated_buffers_per_pool', 'disable_pauses'] : []
+  const critical = new Set([...Object.keys(fields ?? {}), ...fallback])
   for (const field of critical) {
    const rule = fields?.[field]
    if (values[field] != null && (rule?.available !== true || typeof values[field] === 'string' && rule.unavailableValues?.includes(values[field]))) {

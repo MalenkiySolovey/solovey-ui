@@ -39,18 +39,32 @@ func TestQUICRejectedFlowsStayOutsideAdmissionAndAccounting(t *testing.T) {
 			observer := &quicAdmissionObserver{rejected: make(chan struct{}, 1)}
 			f := newQUICFixture(t, kind, observer)
 			peer := f.peer(t, 7)
-			// Authentication includes an accepted echo. Observe its retirement
-			// before draining counters, so its asynchronous final write cannot
-			// be mistaken for traffic from the subsequent rejected flow.
+			// Authentication includes a two-byte echo in each direction. Inventory
+			// retirement may precede the final asynchronous counter update, so
+			// observe both bytes and retirement before testing denied traffic.
 			deadline := time.NewTimer(2 * time.Second)
 			defer deadline.Stop()
 			tick := time.NewTicker(5 * time.Millisecond)
 			defer tick.Stop()
-			for len(f.parents(t, 7).Connections) != 0 {
+			var acceptedUpload, acceptedDownload int64
+			for {
+				for _, stat := range f.core.instance.StatsTracker().GetStats() {
+					if stat.Resource != "user" || stat.Tag != "verified-7" {
+						continue
+					}
+					if stat.Direction {
+						acceptedUpload += stat.Traffic
+					} else {
+						acceptedDownload += stat.Traffic
+					}
+				}
+				if acceptedUpload >= 2 && acceptedDownload >= 2 && len(f.parents(t, 7).Connections) == 0 {
+					break
+				}
 				select {
 				case <-tick.C:
 				case <-deadline.C:
-					t.Fatal("accepted authentication probe did not retire")
+					t.Fatalf("accepted authentication probe did not retire and settle accounting: upload=%d download=%d", acceptedUpload, acceptedDownload)
 				case <-t.Context().Done():
 					t.Fatal("authentication probe cleanup interrupted")
 				}
