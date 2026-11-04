@@ -230,29 +230,6 @@ func groupMemberRefs(connection RemoteOutboundConnection) []string {
 	return subcanonical.ObserveOutbound(subcanonical.FormatSingBox, raw, 0).GroupMembers
 }
 
-func stringMemberList(value any) []string {
-	switch typed := value.(type) {
-	case []string:
-		result := make([]string, 0, len(typed))
-		for _, item := range typed {
-			if trimmed := strings.TrimSpace(item); trimmed != "" {
-				result = append(result, trimmed)
-			}
-		}
-		return result
-	case []any:
-		result := make([]string, 0, len(typed))
-		for _, item := range typed {
-			if trimmed := strings.TrimSpace(fmt.Sprint(item)); trimmed != "" && trimmed != "<nil>" {
-				result = append(result, trimmed)
-			}
-		}
-		return result
-	default:
-		return nil
-	}
-}
-
 func connectionMatchesMemberRef(connection RemoteOutboundConnection, ref string) bool {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
