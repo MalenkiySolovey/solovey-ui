@@ -128,7 +128,6 @@ func (c *Core) WireGuardPeers(ctx context.Context, tag string) (WireGuardPeerSna
 			return ErrWireGuardUnavailable
 		}
 		peers, err := readWireGuardPeers(raw)
-		raw = ""
 		if err != nil {
 			return err
 		}
@@ -166,7 +165,6 @@ func (c *Core) ReconcileWireGuardPeers(ctx context.Context, generation, tag stri
 			return ErrWireGuardUnavailable
 		}
 		actual, err := readWireGuardPeers(raw)
-		raw = ""
 		if err != nil {
 			return err
 		}
@@ -219,7 +217,6 @@ func (c *Core) ReconcileWireGuardPeers(ctx context.Context, generation, tag stri
 			return ErrWireGuardUnavailable
 		}
 		actual, err = readWireGuardPeers(raw)
-		raw = ""
 		if err != nil {
 			return err
 		}
