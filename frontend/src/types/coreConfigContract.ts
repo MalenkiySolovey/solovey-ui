@@ -9,6 +9,9 @@ export interface SnellCapability {
   uri: boolean
 }
 
+export interface ProtocolFieldCapability { available: boolean; requiredProvider?: string }
+export type CriticalProtocolFields = Record<string, Record<string, ProtocolFieldCapability>>
+
 export interface CoreConfigContract {
 	compatibilityCatalogue?: { id: string; consumer: string; classification: string; policy: string }[]
   tls?: {
@@ -20,7 +23,7 @@ export interface CoreConfigContract {
     clientAuthentication: string[]
     engines: string[]
   }
-  protocol?: { fields: Record<string, string[]>; enums?: Record<string, Record<string, string[]>>; memoryUnits: Record<string, number>; snell?: Record<'in' | 'out', SnellCapability>; transports?: Record<string, TransportCapability> }
+  protocol?: { fields: Record<string, string[]>; enums?: Record<string, Record<string, string[]>>; memoryUnits: Record<string, number>; snell?: Record<'in' | 'out', SnellCapability>; transports?: Record<string, TransportCapability>; criticalFields?: CriticalProtocolFields }
   dnsActions: Record<string, string[]>
   dnsConditions: string[]
   dnsCacheFields?: string[]
