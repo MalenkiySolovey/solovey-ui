@@ -102,8 +102,8 @@ The separately compiled `shtorm-extended` flavor uses Shtorm
 `v1.14.3-extended-2.7.3`, source
 `d9442d14b19ddd02605bf3ee893a171947038e19`, with runtime semantics v1.14.3.
 Its actual maintained engine is
-`github.com/MalenkiySolovey/sing-box-extended@v0.0.0-20261104110157-90d7dc20c40b`,
-commit `90d7dc20c40b6387c6abf1c4b6612f242ab68c97`. Its maintained QUIC
+`github.com/MalenkiySolovey/sing-box-extended@v0.0.0-20261104205147-493b451cdac6`,
+commit `493b451cdac67dd69c6c9027729e242674ba81e5`. Its maintained QUIC
 integration uses the same `MalenkiySolovey/sing-quic` repository as Official,
 independently pinned at `9034c2c10c6331aca496fd9f2dc3a1546bc6f61b`.
 `deploy/dependencies/sing-box-extended-integration.json` records exact authority
@@ -185,6 +185,11 @@ inventory; it does not imply every listed module is linked into every binary.
 
 The three source integrations above include their original license files,
 authorship, exact public source revisions and separately identifiable Git changes.
+Both provider source graphs select the upstream test dependency
+`github.com/zeebo/assert v1.3.0` at
+`263ed52a87854146eb1cb7bbee9cc7fef2c48e29`, which includes its original
+CC0-1.0 grant. The older v1.1.0 module archive omitted that grant. This source
+selection does not add an assertion package to production executables.
 Source-archive identities and dependency checksums accompany release provenance.
 Keep these notices and the applicable license material when redistributing the
 project, its maintained integrations or bundled third-party assets.
