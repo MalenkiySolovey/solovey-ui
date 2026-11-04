@@ -24,7 +24,8 @@ describe('createEndpoint', () => {
     for (const source of [
       { type: EpTypes.OpenVPNClient, id: 9, tag: 'legacy-vpn', server: '192.0.2.1', server_port: 1194, tls: {}, future_option: { retained: true } },
       { type: EpTypes.OpenVPNClient, id: 10, mode: 'static_key', servers: [{ server: '192.0.2.2', server_port: 1194 }], static_key: { present: true }, address: ['10.8.0.2/24'], peer_address: '10.8.0.1', cipher: 'AES-256-CBC' },
-    ]) expect(createEndpoint<Endpoint>(EpTypes.OpenVPNClient, structuredClone(source))).toEqual(source)
+      { type: EpTypes.OpenVPNServer, id: 11, mode: 'static_key', static_key: { present: true }, address: ['10.8.0.1/24'], peer_address: '10.8.0.2', cipher: 'AES-256-CBC' },
+    ]) expect(createEndpoint<Endpoint>(source.type, structuredClone(source))).toEqual(source)
     const first = createEndpoint(EpTypes.OpenVPNClient)
     first.servers[0].server = 'changed'
     expect(createEndpoint(EpTypes.OpenVPNClient).servers[0].server).toBe('')
@@ -38,6 +39,12 @@ describe('createEndpoint', () => {
     expect(returned).toMatchObject({ mode: 'tls', static_key: { intent: 'clear' }, data_ciphers: ['AES-256-GCM'] })
     for (const key of ['cipher', 'static_key_path', 'key_direction']) expect(returned).not.toHaveProperty(key)
     expect(source.tls.control_wrap.type).toBe('tls_auth')
+    const server = convertOpenVPNModeDraft({ type: EpTypes.OpenVPNServer, users: { present: true }, tls: { key: { present: true } }, push: { dns: ['192.0.2.53'] }, duplicate_cn: true }, 'static_key')
+    expect(server).toMatchObject({ users: { intent: 'clear' }, tls: { key: { intent: 'clear' } } })
+    expect(server).not.toHaveProperty('password')
+    for (const key of ['push', 'duplicate_cn']) expect(server).not.toHaveProperty(key)
+    const tlsServer = convertOpenVPNModeDraft({ ...server, remote: '192.0.2.1', remote_port: 1194, peer_address: '10.8.0.2', peer_address_ipv6: 'fd00::2' }, 'tls')
+    for (const key of ['remote', 'remote_port', 'peer_address', 'peer_address_ipv6']) expect(tlsServer).not.toHaveProperty(key)
     const view = { reference: { owner: 'endpoints', id: 'record:9:tls.control_wrap.key', policy: 'OWNER_USE_AND_PRESENCE', projection: 'MASKED' }, present: true, rotationRevision: 'a'.repeat(64) }
     expect(serializeEndpointCredentialDraft({ type: EpTypes.OpenVPNClient, tls: { control_wrap: { key: view } } }).tls.control_wrap.key).toEqual({ ...view, intent: 'unchanged' })
   })
