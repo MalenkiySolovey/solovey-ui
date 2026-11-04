@@ -10,6 +10,28 @@ const snapshot: RuntimeCapabilities = {
  ],
 }
 describe('capability editor projection',()=>{
+ it('keeps saved Amnezia endpoints inspectable and reactivates only with field capabilities',()=>{
+  const resource = { amnezia: { h1: 123, header_protection_key: { present: true }, future: { retained: true } } }
+  const before = structuredClone(resource)
+  const fields = { 'warp/endpoint': { amnezia: { available: false, requiredProvider: 'Shtorm Extended' } } }
+  expect(capabilityEditState(snapshot, 'endpoints', 'warp', 'warp', undefined, undefined, resource, fields)).toMatchObject({ allowed: false, historical: true, requiredProvider: 'Shtorm Extended' })
+  expect(capabilityEditState(snapshot, 'endpoints', 'warp', 'warp', undefined, undefined, resource)).toMatchObject({ allowed: false, historical: true })
+  fields['warp/endpoint'].amnezia.available = true
+  expect(capabilityEditState(snapshot, 'endpoints', 'warp', 'warp', undefined, undefined, resource, fields)).toEqual({ allowed: true })
+  expect(resource).toEqual(before)
+ })
+ it('preserves critical protocol history and reactivates it only with supporting facts',()=>{
+  const supporting = structuredClone(snapshot)
+  supporting.facts.push({ ...supporting.facts[0], type: 'hysteria2', runtimeType: 'hysteria2' })
+  const resource = { realm: { server_url: 'https://realm.example', token: { present: true }, realm_id: 'room', unknown: { future: 42 } } }
+  const before = structuredClone(resource)
+  const unavailable = { 'hysteria2/out': { realm: { available: false, requiredProvider: 'Shtorm Extended' } } }
+  expect(capabilityEditState(supporting, 'outbounds', 'hysteria2', 'hysteria2', undefined, undefined, resource, unavailable)).toMatchObject({ allowed: false, historical: true, message: 'capability.historical', requiredProvider: 'Shtorm Extended' })
+  expect(capabilityEditState(supporting, 'outbounds', 'hysteria2', 'hysteria2', undefined, undefined, resource)).toMatchObject({ allowed: false, historical: true })
+  unavailable['hysteria2/out'].realm.available = true
+  expect(capabilityEditState(supporting, 'outbounds', 'hysteria2', 'hysteria2', undefined, undefined, resource, unavailable)).toEqual({ allowed: true })
+  expect(resource).toEqual(before)
+ })
  it('fails closed without facts and uses only backend context/availability',()=>{
   expect(capabilityEditState(undefined,'outbounds','direct').allowed).toBe(false)
   expect(capabilityEditState(snapshot,'outbounds','direct').allowed).toBe(true)

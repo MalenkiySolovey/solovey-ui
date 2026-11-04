@@ -255,7 +255,17 @@ export interface TUIC extends OutboundBasics, Dial, QUICTuning {
   tls: oTls
 }
 
+export interface Hysteria2Realm {
+  server_url: string
+  token?: unknown
+  realm_id: string
+  stun_servers?: string[]
+  ip_version?: 0 | 4 | 6
+  port_mapping?: { enabled?: boolean; timeout?: string; lifetime?: string }
+}
+
 export interface Hysteria2 extends OutboundBasics, Dial, QUICTuning {
+  realm?: Hysteria2Realm
   bbr_profile?: string
   hop_interval_max?: string
   disable_chrome_parrot?: boolean

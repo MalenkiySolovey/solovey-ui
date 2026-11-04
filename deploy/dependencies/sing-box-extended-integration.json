@@ -17,10 +17,10 @@
       },
       "replacement": {
         "module": "github.com/MalenkiySolovey/sing-box-extended",
-        "version": "v0.0.0-20261029092715-8c20a01a2150",
-        "commit": "8c20a01a21506ed3693a859428e01dee7fa6e54e",
+        "version": "v0.0.0-20261104110157-90d7dc20c40b",
+        "commit": "90d7dc20c40b6387c6abf1c4b6612f242ab68c97",
         "repository": "https://github.com/MalenkiySolovey/sing-box-extended",
-        "sum": "h1:xched3F7MrdcOCs0CZ/EOon3MLZHS80hygCV3Jku+YI=",
+        "sum": "h1:94Nl15ku6Rt4tlI3F1m6XDjBmHHQ6qFx7usyY1XzTHQ=",
         "goModSum": "h1:sg62CEdWhkOVVDDI3fA01dd82eoZuZKSlLY0oKAUHmc="
       },
       "license": "GPL-3.0-or-later",
@@ -70,14 +70,18 @@
         "xhttp-immutable-client-retirement-and-stock-mkcp-compatibility",
         "native-sdns-identity-and-query-lifetime",
         "fallback-dns-declaration-order",
-        "xhttp-scope-owned-listener-close"
+        "xhttp-scope-owned-listener-close",
+        "wireguard-batched-receive-budget",
+        "realm-service-scope",
+        "openvpn-server-supplied-transport-retirement",
+        "failover-synchronous-scope-retirement"
       ],
       "copyRole": "mirror/cache/development",
       "patchSeries": {
         "format": "linear-git-commits/v1",
         "base": "d9442d14b19ddd02605bf3ee893a171947038e19",
         "upstreamTree": "dae57a05c1392b57f03f03e987ed5807b45e14bc",
-        "patchedTree": "89619d283dd0b868c6b504f85a52a7f68e58aa92",
+        "patchedTree": "fa19b4a60e3f5644b848fc83e0029cdfb39afdb9",
         "pristineRef": "refs/heads/mirror/extended",
         "branch": "solovey/extended-patches",
         "commits": [
@@ -173,7 +177,15 @@
           "00192883ae333feaee6a434765299c797a53fc4b",
           "f8865b4b33f699185e054092ab658a443ffb1678",
           "12affd76dac80bf4a5c8c60b20fc4c4a5f4e86a0",
-          "8c20a01a21506ed3693a859428e01dee7fa6e54e"
+          "8c20a01a21506ed3693a859428e01dee7fa6e54e",
+          "3062e178224e30e4f99a143867ba0e6bd1944405",
+          "f25315984f7702b1185d0e29cde89f21107902da",
+          "e7ad9cd1dc101ff6f0898c76bf0a5a38e9ce37bb",
+          "d2600ec564209f34c603e7b51b9fb6c011467f46",
+          "6d27f67bc6ed8e826993fb4ba2971d92ee5670ce",
+          "442e869e283ca4af288f08d8b61ed580d3ba07bd",
+          "8a72ddf8c43dc06f644462f8f134ef377b250b05",
+          "90d7dc20c40b6387c6abf1c4b6612f242ab68c97"
         ],
         "patchCommits": [
           "dea779ee301772c439a5b58139ed9e081e5db84a",
@@ -232,10 +244,14 @@
           "d61f294edca2f092fec8dfbdecea1c3523262341",
           "4d7d51d089b0633951e0707c536ef48d4383bd7e",
           "b620d1577b8dc784f600536374225022df0aeb8d",
-          "12affd76dac80bf4a5c8c60b20fc4c4a5f4e86a0"
+          "12affd76dac80bf4a5c8c60b20fc4c4a5f4e86a0",
+          "3062e178224e30e4f99a143867ba0e6bd1944405",
+          "e7ad9cd1dc101ff6f0898c76bf0a5a38e9ce37bb",
+          "6d27f67bc6ed8e826993fb4ba2971d92ee5670ce",
+          "8a72ddf8c43dc06f644462f8f134ef377b250b05"
         ],
-        "patchCount": 57,
-        "identity": "ffa5ce8c7c57d0f8494eb734e5828d614d7a009d59a551734dbd1f345fe5fee9"
+        "patchCount": 61,
+        "identity": "49e4712c6931ed631d59451a4e6ef6a67ea513a770f211fbc06dea36cbf82ea4"
       }
     },
     {

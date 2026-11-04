@@ -40,3 +40,35 @@ func TestCallRoomDeliveryAuthorizesBeforePrivateOwnerAccess(t *testing.T) {
 		t.Fatal("unavailable room was exposed or cacheable")
 	}
 }
+
+func TestEndpointPeerDeliveryAuthorizesBeforePrivateOwnerAccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	allowed := false
+	handler := NewHandler(Deps{RequireScope: func(c *gin.Context, resource string, scopes ...string) bool {
+		if resource != "endpointPeerConfig" || len(scopes) != 1 || scopes[0] != "admin" {
+			t.Fatal("peer credential delivery broadened its scope")
+		}
+		if !allowed {
+			c.AbortWithStatus(http.StatusForbidden)
+		}
+		return allowed
+	}})
+	request := func(body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/endpoint-peer-config", strings.NewReader(body))
+		handler.DownloadEndpointPeerConfig(c)
+		return w
+	}
+	if got := request("private-invalid-json-canary"); got.Code != http.StatusForbidden {
+		t.Fatal("unauthorized request reached parsing or the private owner")
+	}
+	allowed = true
+	if got := request(`{"id":1,"host":"example.test","extra":"private-request-canary"}`); got.Code != http.StatusBadRequest || strings.Contains(got.Body.String(), "canary") {
+		t.Fatal("invalid request accepted or echoed")
+	}
+	got := request(`{"id":1,"host":"example.test"}`)
+	if got.Code != http.StatusConflict || strings.Contains(got.Body.String(), "example.test") || got.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("unavailable peer config exposed or cacheable")
+	}
+}

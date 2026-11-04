@@ -20,6 +20,9 @@ var errEndpointCredential = errors.New("ENDPOINT_CREDENTIAL_INVALID")
 // Fixed owner paths preserve the native options tree. A caller cannot choose a
 // SecretRef lookup path or supply an envelope belonging to a different row.
 func endpointCredentialPaths(kind string) []string {
+	if kind == "wireguard" || kind == "warp" {
+		return []string{"amnezia.header_protection_key"}
+	}
 	if kind == "openvpn-client" {
 		return []string{"password", "static_key", "tls.client_key", "tls.control_wrap.key"}
 	}
@@ -199,6 +202,11 @@ func projectEndpointCredentials(endpoint model.Endpoint, data map[string]interfa
 		return err
 	}
 	for _, path := range endpointCredentialPaths(endpoint.Type) {
+		// Absence of this optional protocol block is ordinary WireGuard.
+		// A masked presence view must not enable an unavailable capability.
+		if path == "amnezia.header_protection_key" && len(values["amnezia"]) == 0 {
+			continue
+		}
 		raw, err := endpointCredentialField(values, path, nil)
 		if err != nil {
 			return err
@@ -226,6 +234,10 @@ func projectEndpointCredentials(endpoint model.Endpoint, data map[string]interfa
 }
 
 func marshalEndpointRuntime(db *gorm.DB, endpoint model.Endpoint) ([]byte, error) {
+	return marshalEndpointCredentials(db, endpoint, "endpoint-config")
+}
+
+func marshalEndpointCredentials(db *gorm.DB, endpoint model.Endpoint, intent string) ([]byte, error) {
 	raw, err := endpoint.MarshalJSON()
 	if err != nil || len(endpointCredentialPaths(endpoint.Type)) == 0 {
 		return raw, err
@@ -250,7 +262,7 @@ func marshalEndpointRuntime(db *gorm.DB, endpoint model.Endpoint) ([]byte, error
 		if err != nil {
 			return nil, err
 		}
-		request := secretref.Access{Reference: ref, Actor: secretref.Actor{Component: "endpoints"}, Operation: secretref.UseForOwner, IntentID: "endpoint-config"}
+		request := secretref.Access{Reference: ref, Actor: secretref.Actor{Component: "endpoints"}, Operation: secretref.UseForOwner, IntentID: intent}
 		_, err = ownerdb.Access(db.Statement.Context, db, request, captured, func(value []byte) error {
 			plain, err := endpointCredentialPlain(path, string(value))
 			if err != nil {

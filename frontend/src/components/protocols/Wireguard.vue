@@ -104,15 +104,16 @@
       </v-menu>
     </v-card-actions>
   </v-card>
+  <WireGuardNativeOptions :data="data" />
   <v-card v-if="data.peers != undefined">
     <v-card-subtitle>
       {{ $t('types.wg.peers') }}
-      <v-chip color="primary" density="compact" variant="elevated" @click="addPeer"><v-icon icon="mdi-plus" /></v-chip>
+      <v-btn color="primary" size="small" icon="mdi-plus" variant="tonal" :aria-label="$t('actions.add') + ' ' + $t('types.wg.peer')" @click="addPeer" />
     </v-card-subtitle>
     <template v-for="(p, index) in data.peers">
       <v-card style="margin-top: 1rem;">
         <v-card-subtitle>
-          {{ $t('types.wg.peer') + ' ' + (Number(index)+1) }} <v-icon color="error" icon="mdi-delete" @click="delPeer(Number(index))" />
+          {{ $t('types.wg.peer') + ' ' + (Number(index)+1) }} <v-btn color="error" icon="mdi-delete" size="small" variant="text" :aria-label="$t('actions.del') + ' ' + $t('types.wg.peer') + ' ' + (Number(index)+1)" @click="delPeer(Number(index))" />
         </v-card-subtitle>
         <Peer :data="p" :ext="data.ext" @refreshPeerKey="$emit('refreshPeerKey', index)" />
       </v-card>
@@ -122,6 +123,7 @@
 
 <script lang="ts">
 import Peer from '@/components/fields/WgPeer.vue'
+import WireGuardNativeOptions from '@/components/protocols/WireGuardNativeOptions.vue'
 
 export default {
   props: ['data'],
@@ -195,6 +197,6 @@ export default {
       }
     }
   },
-  components: { Peer }
+  components: { Peer, WireGuardNativeOptions }
 }
 </script>

@@ -131,11 +131,14 @@
       </v-menu>
     </v-card-actions>
   </v-card>
+  <WireGuardNativeOptions :data="data" />
 </template>
 
 <script lang="ts">
+import WireGuardNativeOptions from '@/components/protocols/WireGuardNativeOptions.vue'
 
 export default {
+  components: { WireGuardNativeOptions },
   props: ['data'],
   data() {
     return {

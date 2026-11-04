@@ -10,6 +10,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
@@ -206,12 +207,18 @@ func loadClientData(subID string) (*model.Client, []*model.Inbound, error) {
 	if err := db.Model(model.Inbound{}).Preload("Tls").Where("id in ?", inboundIDs).Find(&inbounds).Error; err != nil {
 		return nil, nil, err
 	}
-	for index, inbound := range inbounds {
-		inbounds[index], err = entityinbounds.OutboundDeliveryCopy(db, inbound)
+	available := inbounds[:0]
+	for _, inbound := range inbounds {
+		if !entitycapabilities.ResolveResource("inbounds", inbound.Type, inbound.Options).Available {
+			continue
+		}
+		copy, err := entityinbounds.OutboundDeliveryCopy(db, inbound)
 		if err != nil {
 			return nil, nil, err
 		}
+		available = append(available, copy)
 	}
+	inbounds = available
 	client, err = entityclients.DeliveryCopy(db, client, inbounds)
 	if err != nil {
 		return nil, nil, err

@@ -7,6 +7,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbschema "github.com/MalenkiySolovey/solovey-ui/database/schema"
+	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
@@ -159,6 +160,9 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 	}
 	if err := saveeligibility.Validate(tx, action, outbound.Id, &model.Outbound{}, "outbounds", outbound.Type); err != nil {
 		return nil, err
+	}
+	if fact := entitycapabilities.ResolveResource("outbounds", outbound.Type, outbound.Options); !fact.Available {
+		return nil, &saveeligibility.Rejection{Capability: fact}
 	}
 	if err := entityidentity.ValidateTypeTag(outbound.Type, outbound.Tag); err != nil {
 		return nil, err

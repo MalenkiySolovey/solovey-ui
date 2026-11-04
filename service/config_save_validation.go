@@ -1,7 +1,9 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
+	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -47,17 +49,33 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 		}
 	}
 	transportCandidate := false
+	inboundRealmCandidate := false
 	if registry.ResolveTransport("xhttp").Available() || registry.ResolveTransport("mkcp").Available() || registry.ResolveTransport("quic").Available() {
 		for _, entity := range []any{&model.Inbound{}, &model.Outbound{}} {
 			if !tx.Migrator().HasTable(entity) {
 				continue
 			}
-			var rows []struct{ Options json.RawMessage }
-			if err := tx.Model(entity).Select("options").Find(&rows).Error; err != nil {
+			var rows []struct {
+				Type    string
+				Options json.RawMessage
+			}
+			if err := tx.Model(entity).Select("type", "options").Find(&rows).Error; err != nil {
 				return err
 			}
 			for _, row := range rows {
-				var options struct{ Transport struct{ Type string } }
+				var options struct {
+					Transport struct{ Type string }
+					Realm     json.RawMessage
+				}
+				category := "outbounds"
+				if _, inbound := entity.(*model.Inbound); inbound {
+					category = "inbounds"
+				}
+				if row.Type == "hysteria2" && json.Unmarshal(row.Options, &options) == nil && len(options.Realm) != 0 && string(options.Realm) != "null" && entitycapabilities.ResolveResource(category, row.Type, row.Options).Available {
+					transportCandidate = true
+					inboundRealmCandidate = inboundRealmCandidate || category == "inbounds"
+					break
+				}
 				if json.Unmarshal(row.Options, &options) == nil && (options.Transport.Type == "xhttp" || options.Transport.Type == "mkcp" || options.Transport.Type == "quic") && registry.ResolveTransport(options.Transport.Type).Available() {
 					transportCandidate = true
 					break
@@ -77,7 +95,35 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 			return err
 		}
 	}
-	if count == 0 && outboundCount == 0 && endpointCount == 0 && !transportCandidate {
+	if tx.Migrator().HasTable(&model.Endpoint{}) {
+		var rows []model.Endpoint
+		if err := tx.Select("type", "options").Where("type IN ?", []string{"wireguard", "warp"}).Find(&rows).Error; err != nil {
+			return err
+		}
+		for _, row := range rows {
+			if !entitycapabilities.ResolveResource("endpoints", row.Type, row.Options).Available {
+				continue
+			}
+			var fields map[string]json.RawMessage
+			if json.Unmarshal(row.Options, &fields) == nil {
+				for key, raw := range fields {
+					for field := range registry.CriticalProtocolFields()[row.Type+"/endpoint"] {
+						if strings.EqualFold(key, field) && len(raw) != 0 && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+							endpointCount++
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+	var serviceCount int64
+	if entitycapabilities.Resolve("services", "hysteria-realm").Available && tx.Migrator().HasTable(&model.Service{}) {
+		if err := tx.Model(&model.Service{}).Where("type = ?", "hysteria-realm").Count(&serviceCount).Error; err != nil {
+			return err
+		}
+	}
+	if count == 0 && outboundCount == 0 && endpointCount == 0 && serviceCount == 0 && !transportCandidate {
 		return nil
 	}
 	projection, err := s.singBoxConfigBuilder().BuildCandidateProjectionFromDB(tx, "", false)
@@ -87,10 +133,13 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 	if err != nil {
 		// Provider diagnostics may quote configuration values. Return only an
 		// owner code; the rejected candidate and its credential uses roll back.
+		if serviceCount != 0 {
+			return common.NewError("NATIVE_SERVICE_CANDIDATE_REJECTED: the complete provider configuration is invalid")
+		}
 		if endpointCount != 0 {
 			return common.NewError("NATIVE_ENDPOINT_CANDIDATE_REJECTED: the complete provider configuration is invalid")
 		}
-		if count == 0 {
+		if count == 0 && !inboundRealmCandidate {
 			return common.NewError("NATIVE_OUTBOUND_CANDIDATE_REJECTED: the complete provider configuration is invalid")
 		}
 		return common.NewError("NATIVE_INBOUND_CANDIDATE_REJECTED: the complete provider configuration is invalid")

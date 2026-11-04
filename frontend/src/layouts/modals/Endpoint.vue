@@ -54,6 +54,7 @@ import { generateKeypair } from '@/shared/composables/useKeypairs'
 import { push } from 'notivue'
 import { i18n } from '@/locales'
 import Data from '@/store/modules/data'
+import { coreConfigContract, loadCoreConfigContract } from '@/types/coreConfigContract'
 import CapabilitySurface from '@/components/fields/CapabilitySurface.vue'
 import { capabilityEditState, capabilityTypeChoices, type CapabilityChoice, type CapabilityEditState } from '@/types/capabilityEditors'
 import FormShell from '@/components/nexus/drawers/FormShell.vue'
@@ -73,7 +74,7 @@ export default {
   },
   computed: {
     capabilityState(): CapabilityEditState {
-      return capabilityEditState(Data().capabilities, "endpoints", this.endpoint.type, this.storedCapabilityType)
+      return capabilityEditState(Data().capabilities, "endpoints", this.endpoint.type, this.storedCapabilityType, undefined, undefined, this.endpoint, coreConfigContract.value?.protocol?.criticalFields)
     },
     typeChoices(): CapabilityChoice[] {
       return capabilityTypeChoices(Data().capabilities, "endpoints", this.epTypes)
@@ -84,6 +85,7 @@ export default {
   },
   methods: {
     async updateData(id: number) {
+      await loadCoreConfigContract()
       if (id > 0) {
         const newData = JSON.parse(this.$props.data)
         this.storedCapabilityType = newData.type

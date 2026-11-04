@@ -1,7 +1,13 @@
 package registry
 
 import (
+	"reflect"
+	"slices"
 	"sync"
+
+	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
+	"github.com/MalenkiySolovey/solovey-ui/util/jsonfields"
+	"github.com/sagernet/sing-box/option"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry/facts"
 )
@@ -68,4 +74,26 @@ func Resolve(category, runtimeType string) Fact {
 		}
 	}
 	return Fact{Category: category, Type: runtimeType, Reason: "UNKNOWN_ENTITY_TYPE"}
+}
+
+type ProtocolFieldCapability struct {
+	Available        bool   `json:"available"`
+	RequiredProvider string `json:"requiredProvider,omitempty"`
+}
+
+// These optional blocks change endpoint identity/routing. An unavailable block
+// makes the preserved resource inactive, rather than stripping it for a provider.
+func CriticalProtocolFields() map[string]map[string]ProtocolFieldCapability {
+	result := map[string]map[string]ProtocolFieldCapability{}
+	for side, typ := range map[string]reflect.Type{"in": reflect.TypeFor[option.Hysteria2InboundOptions](), "out": reflect.TypeFor[option.Hysteria2OutboundOptions]()} {
+		result["hysteria2/"+side] = map[string]ProtocolFieldCapability{"realm": {Available: slices.Contains(jsonfields.Names(typ, false), "realm"), RequiredProvider: coreprovider.RequiredProviderName("shtorm_extended")}}
+	}
+	wireguardFields := jsonfields.Names(reflect.TypeFor[option.WireGuardEndpointOptions](), false)
+	for _, kind := range []string{"wireguard", "warp"} {
+		result[kind+"/endpoint"] = map[string]ProtocolFieldCapability{}
+		for _, field := range []string{"amnezia", "preallocated_buffers_per_pool", "disable_pauses"} {
+			result[kind+"/endpoint"][field] = ProtocolFieldCapability{Available: slices.Contains(wireguardFields, field), RequiredProvider: coreprovider.RequiredProviderName("shtorm_extended")}
+		}
+	}
+	return result
 }

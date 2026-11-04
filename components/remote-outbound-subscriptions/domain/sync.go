@@ -144,6 +144,10 @@ func syncSingleConnectionToOutbound(tx *gorm.DB, connection *RemoteOutboundConne
 	if err != nil {
 		return err
 	}
+	config, err = entityoutbounds.PrepareImportedCredentialDraft(config)
+	if err != nil {
+		return err
+	}
 	candidate := map[string]any{}
 	if err := json.Unmarshal(config, &candidate); err != nil {
 		return err

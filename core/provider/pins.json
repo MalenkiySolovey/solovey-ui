@@ -18,7 +18,7 @@
         "with_openconnect",
         "with_openvpn"
       ],
-      "sourceRevision": "8c20a01a21506ed3693a859428e01dee7fa6e54e"
+      "sourceRevision": "90d7dc20c40b6387c6abf1c4b6612f242ab68c97"
     }
   ],
   "sources": [
@@ -49,12 +49,12 @@
     {
       "id": "shtorm-extended",
       "name": "Shtorm Extended",
-      "providerVersion": "v0.0.0-20261029092715-8c20a01a2150",
+      "providerVersion": "v0.0.0-20261104110157-90d7dc20c40b",
       "runtimeSemanticVersion": "1.14.3",
       "module": "github.com/MalenkiySolovey/sing-box-extended",
-      "moduleSum": "h1:xched3F7MrdcOCs0CZ/EOon3MLZHS80hygCV3Jku+YI=",
+      "moduleSum": "h1:94Nl15ku6Rt4tlI3F1m6XDjBmHHQ6qFx7usyY1XzTHQ=",
       "sourceRepository": "https://github.com/MalenkiySolovey/sing-box-extended",
-      "sourceRevision": "8c20a01a21506ed3693a859428e01dee7fa6e54e",
+      "sourceRevision": "90d7dc20c40b6387c6abf1c4b6612f242ab68c97",
       "upstreamRepository": "https://github.com/shtorm-7/sing-box-extended",
       "upstreamRevision": "d9442d14b19ddd02605bf3ee893a171947038e19"
     }

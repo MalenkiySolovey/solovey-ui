@@ -4,18 +4,77 @@ package service
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityendpoints "github.com/MalenkiySolovey/solovey-ui/internal/entities/endpoints"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
+	entityservices "github.com/MalenkiySolovey/solovey-ui/internal/entities/services"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
+	"github.com/sagernet/sing-tun"
 )
+
+func TestNativeWireGuardAmneziaCandidateAndLifecycle(t *testing.T) {
+	if !tun.WithGVisor {
+		t.Skip("userspace WireGuard requires the gVisor build profile")
+	}
+	initSettingTestDB(t)
+	seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
+	db := dbsqlite.DB()
+	svc, applier, lifecycle := newHotReloadConfigService(t)
+	key := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))
+	draft := map[string]any{"type": "wireguard", "tag": "native-awg", "private_key": ":private-invalid-canary", "address": []string{"10.23.0.1/32"}, "preallocated_buffers_per_pool": 512, "disable_pauses": false,
+		"amnezia": map[string]any{"h1": 123, "h2": "200-300", "h3": 400, "h4": "500-600", "s1": 16, "s2": 16, "s3": 16, "s4": 16, "header_protection_key": map[string]string{"intent": "replace", "value": key}}}
+	raw, _ := json.Marshal(draft)
+	if _, err := svc.Save("endpoints", "new", raw, "", "admin", "fixture.invalid"); err == nil || !strings.HasPrefix(err.Error(), "NATIVE_ENDPOINT_CANDIDATE_REJECTED") || strings.Contains(err.Error(), "canary") {
+		t.Fatal("invalid Amnezia candidate was not privately rejected", err)
+	}
+	var count int64
+	if err := db.Model(&model.Endpoint{}).Count(&count).Error; err != nil || count != 0 || len(applier.calls) != 0 || len(lifecycle.calls) != 0 {
+		t.Fatal("invalid candidate committed state or effects", err)
+	}
+	draft["private_key"] = key
+	draft["preallocated_buffers_per_pool"] = 1
+	raw, _ = json.Marshal(draft)
+	if _, err := svc.Save("endpoints", "new", raw, "", "admin", "fixture.invalid"); err == nil || !strings.HasPrefix(err.Error(), "NATIVE_ENDPOINT_CANDIDATE_REJECTED") {
+		t.Fatal("unsafe native receive budget was admitted", err)
+	}
+	if err := db.Model(&model.Endpoint{}).Count(&count).Error; err != nil || count != 0 || len(applier.calls) != 0 || len(lifecycle.calls) != 0 {
+		t.Fatal("unsafe receive budget committed state or effects", err)
+	}
+	draft["preallocated_buffers_per_pool"] = 512
+	raw, _ = json.Marshal(draft)
+	if _, err := svc.Save("endpoints", "new", raw, "", "admin", "fixture.invalid"); err != nil {
+		t.Fatal("valid Amnezia candidate rejected", err)
+	}
+	view, err := entityendpoints.GetAll(db)
+	masked, _ := json.Marshal(view)
+	var fields []struct{ Amnezia map[string]json.RawMessage }
+	if err != nil || json.Unmarshal(masked, &fields) != nil || len(fields) != 1 || bytes.Contains(fields[0].Amnezia["header_protection_key"], []byte(key)) {
+		t.Fatal("header key disclosed in ordinary read", err)
+	}
+	config, err := svc.GetConfig("")
+	if err != nil || singboxvalidation.ValidateConfig(*config) != nil {
+		t.Fatal("native Amnezia projection invalid", err)
+	}
+	core := coreruntime.NewCore()
+	t.Cleanup(func() { _ = core.Stop() })
+	for i := 0; i < 2; i++ {
+		if err := core.Start(*config); err != nil {
+			t.Fatal("native Amnezia start failed", err)
+		}
+		if err := core.Stop(); err != nil {
+			t.Fatal("native Amnezia stop failed", err)
+		}
+	}
+}
 
 func TestNativeOpenVPNClientCandidateUsesCanonicalOwnerAndDNSReferences(t *testing.T) {
 	if !registry.Resolve("endpoints", "openvpn-client").Available() {
@@ -83,6 +142,123 @@ func TestNativeOpenVPNClientCandidateUsesCanonicalOwnerAndDNSReferences(t *testi
 				t.Fatal("referenced VPN endpoint was removed")
 			}
 		})
+	}
+}
+
+func TestHysteria2RealmOutboundUsesCanonicalCredentialsAndPrivateAdmission(t *testing.T) {
+	initSettingTestDB(t)
+	seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
+	db := dbsqlite.DB()
+	svc, applier, lifecycle := newHotReloadConfigService(t)
+	const token = "private-realm-outbound-token-canary"
+	realm := map[string]any{"server_url": ":private-invalid-url-canary", "realm_id": "native-realm", "token": map[string]string{"intent": "replace", "value": token}, "stun_servers": []string{"127.0.0.1:3478"}, "ip_version": 4}
+	draft := map[string]any{"type": "hysteria2", "tag": "realm-client", "realm": realm, "password": "protocol-authentication", "tls": map[string]any{"enabled": true}}
+	save := func(action string, value any) error {
+		raw, _ := json.Marshal(value)
+		_, err := svc.Save("outbounds", action, raw, "", "admin", "fixture.invalid")
+		return err
+	}
+	if err := save("new", draft); err == nil || !strings.HasPrefix(err.Error(), "NATIVE_OUTBOUND_CANDIDATE_REJECTED") || strings.Contains(err.Error(), "canary") {
+		t.Fatal("invalid Realm candidate was not privately rejected", err)
+	}
+	var count int64
+	if err := db.Model(&model.Outbound{}).Where("tag = ?", "realm-client").Count(&count).Error; err != nil || count != 0 || len(applier.calls) != 0 || len(lifecycle.calls) != 0 {
+		t.Fatal("rejected Realm candidate committed effects", err)
+	}
+	realm["server_url"] = "https://127.0.0.1:8443"
+	if err := save("new", draft); err != nil {
+		t.Fatal(err)
+	}
+	var stored model.Outbound
+	if err := db.Where("tag = ?", "realm-client").First(&stored).Error; err != nil || bytes.Contains(stored.Options, []byte(token)) {
+		t.Fatal("Realm token was not sealed", err)
+	}
+	views, err := entityoutbounds.GetAll(db)
+	masked, _ := json.Marshal(views)
+	if err != nil || bytes.Contains(masked, []byte(token)) || bytes.Contains(masked, []byte("sbox:v1:")) {
+		t.Fatal("Realm read disclosed a credential", err)
+	}
+	var rows []map[string]any
+	_ = json.Unmarshal(masked, &rows)
+	var editable map[string]any
+	for _, row := range rows {
+		if row["tag"] == "realm-client" {
+			editable = row
+		}
+	}
+	if editable == nil {
+		t.Fatal("Realm resource disappeared")
+	}
+	nested := editable["realm"].(map[string]any)
+	view := nested["token"].(map[string]any)
+	if view["present"] != true {
+		t.Fatal("Realm token presence missing")
+	}
+	nested["token"] = map[string]any{"intent": "unchanged", "reference": view["reference"], "present": view["present"], "rotationRevision": view["rotationRevision"]}
+	nested["realm_id"] = "renamed-realm"
+	if err := save("edit", editable); err != nil {
+		t.Fatal("Realm Keep edit failed", err)
+	}
+	config, err := svc.GetConfig("")
+	if err != nil || !bytes.Contains(*config, []byte(token)) || !bytes.Contains(*config, []byte("renamed-realm")) || singboxvalidation.ValidateConfig(*config) != nil {
+		t.Fatal("Realm runtime projection lost owned semantics", err)
+	}
+	foreign := map[string]any{"type": "hysteria2", "tag": "realm-copy", "realm": nested, "tls": map[string]any{"enabled": true}}
+	if err := save("new", foreign); err == nil {
+		t.Fatal("another resource borrowed a Realm token")
+	}
+	if err := db.First(&stored, stored.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	before := append([]byte(nil), stored.Options...)
+	nested["TOKEN"] = map[string]string{"intent": "replace", "value": "private-alias-canary"}
+	if err := save("edit", editable); err == nil {
+		t.Fatal("case alias bypassed Realm ownership")
+	}
+	if err := db.First(&stored, stored.Id).Error; err != nil || !bytes.Equal(before, stored.Options) {
+		t.Fatal("rejected alias rewrote desired state", err)
+	}
+}
+
+func TestNativeRealmServiceCandidatePreservesPrivateTokens(t *testing.T) {
+	initSettingTestDB(t)
+	seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
+	db := dbsqlite.DB()
+	svc, applier, lifecycle := newHotReloadConfigService(t)
+	const token = "private-realm-candidate-canary"
+	draft := map[string]any{"type": "hysteria-realm", "tag": "rendezvous", "listen": "127.0.0.1", "listen_port": 9899,
+		"users":        []any{map[string]any{"name": "operator", "max_realms": 2, "token": map[string]string{"intent": "replace", "value": token}}},
+		"idle_timeout": "invalid-private-canary"}
+	raw, _ := json.Marshal(draft)
+	if _, err := svc.Save("services", "new", raw, "", "admin", "fixture.invalid"); err == nil || !strings.HasPrefix(err.Error(), "NATIVE_SERVICE_CANDIDATE_REJECTED") || strings.Contains(err.Error(), "canary") {
+		t.Fatal("invalid realm candidate was not privately rejected", err)
+	}
+	var count int64
+	if err := db.Model(&model.Service{}).Count(&count).Error; err != nil || count != 0 || len(applier.calls) != 0 || len(lifecycle.calls) != 0 {
+		t.Fatal("rejected realm committed identity or effects", err)
+	}
+	draft["idle_timeout"] = "15s"
+	raw, _ = json.Marshal(draft)
+	if _, err := svc.Save("services", "new", raw, "", "admin", "fixture.invalid"); err != nil {
+		t.Fatal(err)
+	}
+	view, err := entityservices.GetAll(db)
+	masked, _ := json.Marshal(view)
+	if err != nil || bytes.Contains(masked, []byte(token)) || bytes.Contains(masked, []byte("sbox:v1:")) {
+		t.Fatal("realm API disclosed credentials", err)
+	}
+	config, err := svc.GetConfig("")
+	if err != nil || !bytes.Contains(*config, []byte(token)) || singboxvalidation.ValidateConfig(*config) != nil {
+		t.Fatal("realm runtime projection failed", err)
+	}
+	edit, _ := json.Marshal((*view)[0])
+	var fields map[string]any
+	_ = json.Unmarshal(edit, &fields)
+	fields["users"].([]any)[0].(map[string]any)["token"].(map[string]any)["intent"] = "unchanged"
+	delete(fields["users"].([]any)[0].(map[string]any)["token"].(map[string]any), "correlation")
+	edit, _ = json.Marshal(fields)
+	if _, err := svc.Save("services", "edit", edit, "", "admin", "fixture.invalid"); err != nil {
+		t.Fatal("masked realm edit failed", err)
 	}
 }
 

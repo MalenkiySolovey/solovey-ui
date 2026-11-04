@@ -73,6 +73,17 @@ func CurrentFindings(kind, side, path string, source json.RawMessage) []diagnost
 	delete(fields, "users")
 	delete(fields, "type")
 	delete(fields, "tag")
+	if kind == "hysteria2" && side == "inbound" {
+		var realm map[string]json.RawMessage
+		if json.Unmarshal(fields["realm"], &realm) == nil && realm != nil {
+			// Inbounds validates the token mutation and resolves its row-bound
+			// secret before complete-candidate admission. Check the remaining
+			// Realm fields against the provider schema without decoding a DTO
+			// as the engine's plaintext string credential.
+			delete(realm, "token")
+			fields["realm"], _ = json.Marshal(realm)
+		}
+	}
 	// The pinned MemoryBytes decoder converts a negative JSON integer to
 	// uint64. Reject that wrapping input only at real byte-size consumers;
 	// zero, unit strings and unrelated protocol fields retain their semantics.

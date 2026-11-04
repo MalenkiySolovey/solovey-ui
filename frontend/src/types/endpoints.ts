@@ -26,6 +26,34 @@ export interface WgPeer {
   reserved?: number[]
 }
 
+export interface WireGuardAmnezia {
+  jc?: number
+  jmin?: number
+  jmax?: number
+  s1?: number
+  s2?: number
+  s3?: number
+  s4?: number
+  h1?: number | string
+  h2?: number | string
+  h3?: number | string
+  h4?: number | string
+  i1?: string
+  i2?: string
+  i3?: string
+  i4?: string
+  i5?: string
+  header_protection_key?: unknown
+  content_padding_addition?: number | string
+  rekey_after_time?: number | string
+  rekey_timeout?: number | string
+  reject_after_time?: number | string
+  keepalive_timeout?: number | string
+  max_handshake_attempts?: number | string
+  random_trailers?: boolean
+  disable_cookies?: boolean
+}
+
 export interface WireGuard extends EndpointBasics, Dial {
   system?: boolean
   name?: string
@@ -36,6 +64,12 @@ export interface WireGuard extends EndpointBasics, Dial {
   peers: WgPeer[]
   udp_timeout?: string
   workers?: number
+  udp_mapping?: '' | 'endpoint_independent' | 'address_dependent' | 'address_and_port_dependent'
+  udp_filtering?: '' | 'endpoint_independent' | 'address_dependent' | 'address_and_port_dependent'
+  udp_nat_max?: number
+  disable_pauses?: boolean
+  preallocated_buffers_per_pool?: number
+  amnezia?: WireGuardAmnezia
   ext: any
 }
 
@@ -101,6 +135,8 @@ export function createEndpoint<T extends Endpoint>(type: string,json?: Partial<T
       ? { ...endpoint.ext, keys: Array.isArray(endpoint.ext.keys) ? [...endpoint.ext.keys] : [] }
       : { keys: [] }
   }
+
+  if (endpoint.amnezia) endpoint.amnezia = structuredClone(endpoint.amnezia)
 
   return endpoint
 }
