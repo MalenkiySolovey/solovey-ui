@@ -1,5 +1,13 @@
 export default {
   "remoteOutbound": {
+    "healthChecks": "自動健康檢查",
+    "healthCheckEnabled": "探測已套用的來源出站",
+    "healthCheckURL": "健康檢查 URL",
+    "healthCheckInterval": "探測間隔（1m–24h）",
+    "healthCheckTimeout": "探測逾時（100ms–15s）",
+    "healthCheckHint": "定期探測已套用為出站的啟用連線。僅收集的連線保持未啟用。結果由目前執行環境 Health 管理，十分鐘後過期。來源下載憑證不會傳送到探測 URL。",
+    "healthObservationHint": "此來源探測目標的近期自動執行觀測。未知表示沒有相符的新鮮觀測，不表示健康。",
+    "healthStates": { "healthy": "健康：正常", "down": "健康：故障", "unknown": "健康：未知" },
     "downloadOutbound": "下載使用的出站",
     "downloadOutboundHint": "僅透過所選的執行中出站下載此來源。出站無法使用時重新整理失敗並保留已收集的連線，不會改用主機網路。",
     "downloadOutboundUnavailable": "儲存的出站在目前執行環境無法使用。參照已保留，恢復可用前無法重新整理。請明確清除選擇以變更下載路徑。",

@@ -53,6 +53,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     exclude: '',
     removeEmojis: false,
     dialerOverride: {} as import('@/types/dial').Dial,
+    healthCheck: { enabled: false, url: 'https://www.gstatic.com/generate_204', interval: '10m', timeout: '3s' },
     tagPrefix: '',
     enabled: true,
     autoUpdate: false,
@@ -171,6 +172,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
         exclude: form.exclude,
         removeEmojis: form.removeEmojis,
         dialerOverride: form.dialerOverride,
+        healthCheck: form.healthCheck,
         tagPrefix: form.tagPrefix,
         enabled: form.enabled,
         autoUpdate: form.sourceType !== 'inline' && form.autoUpdate,
@@ -204,6 +206,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     form.exclude = ''
     form.removeEmojis = false
     form.dialerOverride = {}
+    form.healthCheck = { enabled: false, url: 'https://www.gstatic.com/generate_204', interval: '10m', timeout: '3s' }
     form.tagPrefix = ''
     form.enabled = true
     form.autoUpdate = false
@@ -226,6 +229,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     form.exclude = subscription.exclude ?? ''
     form.removeEmojis = subscription.removeEmojis === true
     form.dialerOverride = JSON.parse(JSON.stringify(subscription.dialerOverride ?? {}))
+    form.healthCheck = { enabled: false, url: 'https://www.gstatic.com/generate_204', interval: '10m', timeout: '3s', ...JSON.parse(JSON.stringify(subscription.healthCheck ?? {})) }
     form.tagPrefix = subscription.tagPrefix
     form.enabled = subscription.enabled
     form.autoUpdate = Boolean(subscription.autoUpdate)

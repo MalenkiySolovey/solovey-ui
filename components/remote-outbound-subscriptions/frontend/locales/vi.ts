@@ -1,5 +1,13 @@
 export default {
   "remoteOutbound": {
+    "healthChecks": "Kiểm tra sức khỏe tự động",
+    "healthCheckEnabled": "Thăm dò outbound nguồn đã áp dụng",
+    "healthCheckURL": "URL kiểm tra sức khỏe",
+    "healthCheckInterval": "Khoảng thăm dò (1m–24h)",
+    "healthCheckTimeout": "Thời gian chờ (100ms–15s)",
+    "healthCheckHint": "Định kỳ thăm dò kết nối được bật và đã áp dụng thành Outbound. Kết nối chỉ được thu thập vẫn không hoạt động. Kết quả thuộc Health của runtime hiện tại và hết hạn sau mười phút. Thông tin xác thực tải nguồn không được gửi đến URL thăm dò.",
+    "healthObservationHint": "Quan sát runtime tự động gần đây cho mục tiêu thăm dò của nguồn. Không rõ nghĩa là không có quan sát mới phù hợp, không có nghĩa là khỏe mạnh.",
+    "healthStates": { "healthy": "Sức khỏe: tốt", "down": "Sức khỏe: lỗi", "unknown": "Sức khỏe: không rõ" },
     "downloadOutbound": "Tải qua outbound",
     "downloadOutboundHint": "Chỉ dùng outbound đang chạy đã chọn để tải nguồn này. Nếu outbound không khả dụng, làm mới sẽ thất bại và giữ các kết nối đã thu thập, không chuyển sang mạng máy chủ.",
     "downloadOutboundUnavailable": "Outbound đã lưu không khả dụng trên runtime hiện tại. Tham chiếu được giữ lại; chỉ có thể làm mới khi nó khả dụng trở lại. Hãy xóa lựa chọn để đổi đường tải.",

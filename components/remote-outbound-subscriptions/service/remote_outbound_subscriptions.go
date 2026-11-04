@@ -32,9 +32,10 @@ func (s *RemoteOutboundService) runtime() *coreservice.Runtime {
 
 func (s *RemoteOutboundService) implementation() *remotesubservice.Service {
 	return &remotesubservice.Service{
-		Effects:      remoteOutboundEffects{runtime: s.runtime()},
-		Settings:     remotesettings.Reader{},
-		OutboundHTTP: s.OutboundHTTP,
+		Effects:       remoteOutboundEffects{runtime: s.runtime()},
+		Settings:      remotesettings.Reader{},
+		OutboundHTTP:  s.OutboundHTTP,
+		ProbeOutbound: s.probeSourceOutbound,
 	}
 }
 

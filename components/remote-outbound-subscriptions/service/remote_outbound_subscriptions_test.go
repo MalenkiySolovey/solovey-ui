@@ -20,6 +20,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	remotesub "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	outboundentities "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
@@ -34,6 +35,120 @@ func initRemoteOutboundTestDB(t *testing.T) {
 
 func newTestRemoteOutboundService() *RemoteOutboundService {
 	return &RemoteOutboundService{Runtime: coreservice.NewRuntimeWithCoreProvider(nil)}
+}
+
+func TestSourceAutomaticHealthUsesCurrentRuntimeAndPreservesItsPolicy(t *testing.T) {
+	initRemoteOutboundTestDB(t)
+	t.Setenv("SUI_ALLOW_PRIVATE_SUB_URLS", "true")
+	db := dbsqlite.DB()
+	core := coreruntime.NewCore()
+	if err := core.Start([]byte(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"health-source-node"}]}`)); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = core.Stop() })
+	svc := &RemoteOutboundService{Runtime: coreservice.NewRuntime(core)}
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if r.Header.Get("Authorization") != "" || r.Header.Get("X-Source-Key") != "" {
+			t.Error("source download credentials reached its health target")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	health := func(target string) json.RawMessage {
+		value, _ := json.Marshal(remotesub.SourceHealthCheck{Enabled: true, URL: target, Interval: "1m", Timeout: "1s"})
+		return value
+	}
+	saved, err := svc.SaveSubscription(remotesub.RemoteOutboundSubscription{
+		Name: "automatic health", Url: "https://example.com/source", Enabled: true,
+		HealthCheck:  health(server.URL + "/?token=private-health-target"),
+		FetchHeaders: json.RawMessage(`{"intent":"replace","value":"{\"X-Source-Key\":\"private-download-key\"}"}`),
+	}, true, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	outbound := model.Outbound{Tag: "health-source-node", Type: "direct", Options: json.RawMessage(`{}`)}
+	if err := db.Create(&outbound).Error; err != nil {
+		t.Fatal(err)
+	}
+	for index, enabled := range []bool{true, false, true} {
+		connection := remotesub.RemoteOutboundConnection{SubscriptionId: saved.Id, Name: "health member", SourceKey: "health-" + strconv.Itoa(index),
+			Type: "direct", OutboundTag: outbound.Tag + strconv.Itoa(index), Enabled: enabled, Options: json.RawMessage(`{}`)}
+		if index < 2 {
+			connection.OutboundTag, connection.OutboundId, connection.Synced = outbound.Tag, &outbound.Id, true
+		}
+		// Each stored connection has a unique tag. The disabled entry deliberately
+		// has no matching applied outbound and collection-only members never probe.
+		if index == 1 {
+			connection.OutboundTag += "-disabled"
+		}
+		if err := db.Create(&connection).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	schedule := &SourceHealthSchedule{}
+	if checked, err := svc.ProbeDueSubscriptionsContext(context.Background(), schedule); err != nil || checked != 1 || requests.Load() != 1 {
+		t.Fatal("automatic health did not probe only the active canonical binding", checked, requests.Load(), err)
+	}
+	observation := core.OutboundHealthSnapshot()[outbound.Tag]
+	if observation.Source != coreruntime.ProbeSourceSubscription || observation.Status != "healthy" || observation.TargetID != saved.HealthTargetID {
+		t.Fatal("health escaped its canonical runtime owner", observation)
+	}
+	encoded, _ := json.Marshal(core.OutboundHealthSnapshot())
+	if strings.Contains(string(encoded), server.URL) || strings.Contains(string(encoded), "private-health-target") {
+		t.Fatal("health projection disclosed a probe target")
+	}
+	if checked, err := svc.ProbeDueSubscriptionsContext(context.Background(), schedule); err != nil || checked != 0 || requests.Load() != 1 {
+		t.Fatal("source interval was ignored", checked, err)
+	}
+	var original remotesub.RemoteOutboundSubscription
+	if err := db.First(&original, saved.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	saved.FetchHeaders, saved.HealthCheck = nil, nil
+	if kept, err := svc.SaveSubscription(*saved, true, "test"); err != nil || string(kept.HealthCheck) != string(original.HealthCheck) {
+		t.Fatal("omitted policy was silently reset", err)
+	}
+	for _, raw := range []string{`{"enabled":true,"interval":"1s"}`, `{"enabled":true,"timeout":"16s"}`, `{"enabled":null}`, `{"Enabled":true}`, `{"enabled":true,"enabled":false}`, `{"enabled":true,"url":"file:///private-health-canary"}`, `{"enabled":true,"unknown":"private-health-canary"}`} {
+		invalid := *saved
+		invalid.HealthCheck = json.RawMessage(raw)
+		if _, err := svc.SaveSubscription(invalid, true, "test"); !errors.Is(err, remotesub.ErrSourceHealthCheck) || strings.Contains(err.Error(), "canary") {
+			t.Fatal("invalid health policy was accepted or disclosed", err)
+		}
+	}
+	saved.HealthCheck = health(server.URL + "/?token=new-private-target")
+	changed, err := svc.SaveSubscription(*saved, true, "test")
+	if err != nil || changed.HealthTargetID == observation.TargetID {
+		t.Fatal("target change kept old health authority", err)
+	}
+	var current remotesub.RemoteOutboundSubscription
+	if err := db.First(&current, saved.Id).Error; err != nil || !original.SameSource(current) {
+		t.Fatal("health policy replaced source collection authority", err)
+	}
+	if checked, err := svc.ProbeDueSubscriptionsContext(context.Background(), schedule); err != nil || checked != 1 || requests.Load() != 2 {
+		t.Fatal("changed probe policy did not become due", checked, err)
+	}
+	if core.OutboundHealthSnapshot()[outbound.Tag].TargetID != changed.HealthTargetID {
+		t.Fatal("new policy did not own the observed target")
+	}
+	changed.Enabled = false
+	changed.FetchHeaders = nil
+	if _, err := svc.SaveSubscription(*changed, true, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if checked, err := svc.ProbeDueSubscriptionsContext(context.Background(), schedule); err != nil || checked != 0 || requests.Load() != 2 {
+		t.Fatal("disabled source kept probing", checked, err)
+	}
+	if err := core.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	if len(core.OutboundHealthSnapshot()) != 0 {
+		t.Fatal("stopped generation retained health")
+	}
+	if checked, err := newTestRemoteOutboundService().ProbeDueSubscriptionsContext(context.Background(), schedule); err != nil || checked != 0 {
+		t.Fatal("unbound source health used ambient runtime", checked, err)
+	}
 }
 
 func TestSourceDownloadOutboundUsesStableOwnerAndPreservesUnavailableHistory(t *testing.T) {

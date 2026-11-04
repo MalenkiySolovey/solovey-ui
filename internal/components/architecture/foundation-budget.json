@@ -2327,13 +2327,19 @@
       "rule": "worker-lifetime",
       "path": "components/remote-outbound-subscriptions/service/remote_outbound_auto_refresh.go",
       "symbol": "StartRemoteOutboundAutoRefresh",
-      "digest": "6ad9e26c67fd46fba6e6cf7322e77f1ebf7629235691cb818fe97ac21729642c"
+      "digest": "ff80c4b3ee9ef98cecfe254da91a9d66f85cce3d8583451d23e91ddf15360178"
     },
     {
       "rule": "worker-lifetime",
       "path": "components/remote-outbound-subscriptions/service/remote_outbound_auto_refresh.go",
       "symbol": "StartRemoteOutboundAutoRefresh",
       "digest": "4485e3208cad57046e656826486c20ba0a30c292354a2e5945f77adddc68832f"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/remote-outbound-subscriptions/service/internal/source_health.go",
+      "symbol": "*Service.probeSourceTargets",
+      "digest": "c8e74546dff920b64fd40a86e06cee4e43a8c9c56daf611dc24491328e886485"
     },
     {
       "rule": "worker-lifetime",

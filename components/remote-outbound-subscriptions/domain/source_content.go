@@ -39,6 +39,9 @@ func ProjectSourceContent(s *RemoteOutboundSubscription) error {
 	if err := projectSourceHeaders(s); err != nil {
 		return err
 	}
+	if err := projectSourceHealth(s); err != nil {
+		return err
+	}
 	if s.SourceType != SourceInline {
 		s.Content = nil
 		return nil

@@ -1,5 +1,13 @@
 export default {
   "remoteOutbound": {
+    "healthChecks": "自动健康检查",
+    "healthCheckEnabled": "探测已应用的来源出站",
+    "healthCheckURL": "健康检查 URL",
+    "healthCheckInterval": "探测间隔（1m–24h）",
+    "healthCheckTimeout": "探测超时（100ms–15s）",
+    "healthCheckHint": "定期探测已应用为出站的启用连接。仅收集的连接保持不活动。结果由当前运行时 Health 管理，十分钟后过期。来源下载凭据不会发送到探测 URL。",
+    "healthObservationHint": "此来源探测目标的近期自动运行时观测。未知表示没有匹配的新鲜观测，不表示健康。",
+    "healthStates": { "healthy": "健康：正常", "down": "健康：故障", "unknown": "健康：未知" },
     "downloadOutbound": "下载所用出站",
     "downloadOutboundHint": "仅通过所选的运行中出站下载此来源。出站不可用时刷新失败并保留已收集的连接，不会回退到主机网络。",
     "downloadOutboundUnavailable": "保存的出站在当前运行时不可用。引用已保留，恢复可用前无法刷新。请明确清除选择以更改下载路径。",

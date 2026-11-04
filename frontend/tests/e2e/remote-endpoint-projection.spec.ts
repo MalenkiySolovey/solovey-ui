@@ -2,6 +2,52 @@ import { expect, test } from '@playwright/test'
 import { enableComponent, login } from './helpers'
 
 for (const mode of ['classic', 'nexus']) {
+  test(`${mode} saves source health policy and shows only matching runtime observations`, async ({ page }) => {
+    await page.addInitScript(selected => window.localStorage.setItem('sui:ui:mode', selected), mode)
+    await login(page)
+    await enableComponent(page, 'remote-outbound-subscriptions')
+    const sources: Record<string, unknown>[] = []
+    const mutations: Record<string, any>[] = []
+    const target = 'https://www.gstatic.com/generate_204'
+    await page.route('**/api/remote-outbound-subscriptions', route => route.fulfill({ json: { success: true, msg: '', obj: sources } }))
+    await page.route('**/api/remote-outbound-subscriptions/save', async route => {
+      const payload = JSON.parse(new URLSearchParams(route.request().postData() ?? '').get('data') ?? '{}')
+      mutations.push(payload)
+      sources.splice(0, sources.length, { ...payload, id: 1, healthTargetId: payload.healthCheck.url === target ? 'a'.repeat(64) : 'b'.repeat(64), groups: [],
+        connections: [{ id: 1, name: 'Applied health member', type: 'trojan', outboundTag: 'health-member', enabled: true, synced: true }], lastUpdated: 0, lastError: '' })
+      await route.fulfill({ json: { success: true, msg: '', obj: null } })
+    })
+    await page.route('**/api/load**', async route => {
+      const response = await route.fetch()
+      const result = await response.json()
+      if (result.obj) result.obj.onlines = { ...result.obj.onlines, outboundHealth: {
+        'health-member': { tag: 'health-member', source: 'subscription', targetId: 'a'.repeat(64), status: 'healthy', delayMs: 12, checkedAt: Math.floor(Date.now() / 1000) },
+      } }
+      await route.fulfill({ response, json: result })
+    })
+    await page.goto('hosts/local/remote-subscriptions')
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Owned health source')
+    await page.getByRole('textbox', { name: 'Subscription URL', exact: true }).fill('https://example.com/source')
+    await page.getByRole('button', { name: 'Automatic health checks', exact: true }).click()
+    await page.getByLabel('Probe applied source outbounds', { exact: true }).check()
+    await page.getByRole('textbox', { name: 'Probe interval (1m–24h)', exact: true }).fill('1m')
+    await page.getByRole('textbox', { name: 'Probe timeout (100ms–15s)', exact: true }).fill('2s')
+    await page.locator('form').getByRole('button', { name: 'Add', exact: true }).click()
+    await expect.poll(() => mutations.length).toBe(1)
+    expect(mutations[0].healthCheck).toEqual({ enabled: true, url: target, interval: '1m', timeout: '2s' })
+    await page.getByRole('button', { name: /Owned health source/ }).click()
+    await expect(page.getByText('Health: healthy', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Edit', exact: true }).click()
+    const healthPanel = page.getByRole('button', { name: 'Automatic health checks', exact: true })
+    if (await healthPanel.getAttribute('aria-expanded') !== 'true') await healthPanel.click()
+    await expect(page.getByRole('textbox', { name: 'Probe timeout (100ms–15s)', exact: true })).toHaveValue('2s')
+    await page.getByRole('textbox', { name: 'Health check URL', exact: true }).fill('https://example.org/new-probe')
+    await page.locator('form').getByRole('button', { name: 'Update', exact: true }).click()
+    await expect.poll(() => mutations.length).toBe(2)
+    await expect(page.getByText('Health: healthy', { exact: true })).toHaveCount(0)
+    await expect(page.getByText('Health: unknown', { exact: true })).toBeVisible()
+  })
+
   test(`${mode} filters download outbounds and preserves an unavailable saved detour`, async ({ page }) => {
     await page.addInitScript(selected => window.localStorage.setItem('sui:ui:mode', selected), mode)
     await login(page)

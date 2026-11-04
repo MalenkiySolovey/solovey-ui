@@ -160,6 +160,15 @@
         </v-col>
         <v-col cols="12" sm="6" md="12" class="remote-outbounds__form-actions">
           <v-expansion-panels class="mb-4">
+            <v-expansion-panel :title="$t('remoteOutbound.healthChecks')">
+              <v-expansion-panel-text>
+                <p class="text-caption mb-3">{{ $t('remoteOutbound.healthCheckHint') }}</p>
+                <v-switch v-model="page.form.healthCheck.enabled" :label="$t('remoteOutbound.healthCheckEnabled')" color="primary" />
+                <v-text-field v-model="page.form.healthCheck.url" :disabled="!page.form.healthCheck.enabled" :label="$t('remoteOutbound.healthCheckURL')" maxlength="8192" variant="outlined" density="compact" />
+                <v-text-field v-model="page.form.healthCheck.interval" :disabled="!page.form.healthCheck.enabled" :label="$t('remoteOutbound.healthCheckInterval')" variant="outlined" density="compact" />
+                <v-text-field v-model="page.form.healthCheck.timeout" :disabled="!page.form.healthCheck.enabled" :label="$t('remoteOutbound.healthCheckTimeout')" variant="outlined" density="compact" />
+              </v-expansion-panel-text>
+            </v-expansion-panel>
             <v-expansion-panel :title="$t('remoteOutbound.dialerOverride')">
               <v-expansion-panel-text>
                 <p class="text-caption mb-3">{{ $t('remoteOutbound.dialerOverrideHint') }}</p>
