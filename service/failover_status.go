@@ -10,5 +10,9 @@ import (
 // so transport layers can expose failover status without importing the database
 // package directly.
 func FailoverStatusEntries() ([]servicefailover.StatusEntry, error) {
-	return servicefailover.Status(dbsqlite.DB(), DefaultRuntime().Core())
+	var reader servicefailover.GroupReader
+	if core := DefaultRuntime().Core(); core != nil {
+		reader = core
+	}
+	return servicefailover.Status(dbsqlite.DB(), reader)
 }

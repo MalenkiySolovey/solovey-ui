@@ -49,3 +49,21 @@ func TestEndpointProjectionDoesNotInventPolicy(t *testing.T) {
 		})
 	}
 }
+
+func TestEndpointProjectionPreservesManagedAllDownPolicyOrRejects(t *testing.T) {
+	for _, policy := range []string{"hold_current", "block", "direct"} {
+		raw := map[string]any{"type": "failover", "tag": "group", "outbounds": []any{"member"},
+			"failover": map[string]any{"all_down_policy": policy, "probe_target": "https://probe.invalid", "hysteresis": 2}}
+		before, _ := json.Marshal(raw)
+		for _, target := range []string{FormatSingBox, FormatClash, FormatXray, FormatURI} {
+			projected, err := ProjectOutbounds(target, []map[string]any{raw})
+			if err == nil || projected != nil {
+				t.Fatalf("%s silently lost managed %s semantics", target, policy)
+			}
+		}
+		after, _ := json.Marshal(raw)
+		if string(before) != string(after) {
+			t.Fatal("unsupported export changed owned state")
+		}
+	}
+}

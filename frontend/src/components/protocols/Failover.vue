@@ -20,7 +20,7 @@
                   class="failover-live__dot"
                   :class="memberHealthy(member) ? 'failover-live__dot--up' : 'failover-live__dot--down'"
                 >
-                  <v-tooltip activator="parent" location="top" :text="memberHealthy(member) ? $t('online') : $t('overview.status.offline')" />
+                  <v-tooltip activator="parent" location="top" :text="memberHealthy(member) ? $t('online') : $t('nexus.status.offline')" />
                 </span>
                 <v-chip v-if="memberActive(member)" color="primary" density="compact" size="x-small" variant="tonal">
                   {{ $t('overview.protocols.activeShort') }}
@@ -50,6 +50,15 @@
     </v-row>
     <v-row>
       <v-col cols="12">
+        <StrictSelect
+          v-model="allDownPolicy"
+          :items="allDownItems"
+          :label="$t('types.failover.allDownPolicy')"
+          :hint="$t('types.failover.allDownPolicyHint')"
+          persistent-hint
+        />
+      </v-col>
+      <v-col v-if="!allDownPolicy" cols="12">
         <StrictSelect
           v-model="finalOutbound"
           :items="finalItems()"
@@ -123,6 +132,21 @@ export default {
     enabled: {
       get(): boolean { return this.$props.data.failover.enabled !== false },
       set(value: boolean) { this.$props.data.failover.enabled = value },
+    },
+    allDownPolicy: {
+      get(): string { return this.$props.data.failover.all_down_policy ?? '' },
+      set(value: string) {
+        if (value) this.$props.data.failover.all_down_policy = value
+        else delete this.$props.data.failover.all_down_policy
+      },
+    },
+    allDownItems(): { title: string, value: string }[] {
+      return [
+        { title: this.$t('types.failover.holdCurrent'), value: 'hold_current' },
+        { title: this.$t('types.failover.block'), value: 'block' },
+        { title: this.$t('types.failover.direct'), value: 'direct' },
+        { title: this.$t('types.failover.configuredFinal'), value: '' },
+      ]
     },
     finalOutbound: {
       get(): string { return this.$props.data.final || 'direct' },

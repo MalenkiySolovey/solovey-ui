@@ -144,3 +144,23 @@ func TestFailoverJobAllDownEdgeOnlyOnce(t *testing.T) {
 		t.Fatal("second down edge after recovery should alert")
 	}
 }
+
+func TestFailoverJobExplicitAllDownPolicies(t *testing.T) {
+	for _, tc := range []struct{ policy, final, want string }{
+		{"hold_current", "", "b"},
+		{"block", entityoutbounds.FailoverRejectOutboundTag, entityoutbounds.FailoverRejectOutboundTag},
+		{"direct", "direct", "direct"},
+		{"", "b", "b"},
+	} {
+		t.Run(tc.policy+tc.final, func(t *testing.T) {
+			active := "b"
+			var switches []string
+			job := newTestFailoverJob(func() time.Time { return time.Unix(1000, 0) }, func(string) bool { return false }, &active, &switches)
+			group := entityoutbounds.FailoverGroup{Tag: "group", Members: []string{"a", "b"}, FinalTag: tc.final, AllDownPolicy: tc.policy, Interval: time.Minute, Hysteresis: 2, Enabled: true}
+			job.runGroup(nil, group, "direct")
+			if active != tc.want {
+				t.Fatalf("all-down %q selected %q, want %q", tc.policy, active, tc.want)
+			}
+		})
+	}
+}

@@ -15,14 +15,20 @@ func TestSelectMember(t *testing.T) {
 		allDown  bool
 		reason   string
 	}{
-		{"sticky primary", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{"a": health(2, 0)}, "a", 2, "direct"}, "a", false, false, "sticky"},
-		{"failover", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{"a": health(0, 1), "b": health(1, 0)}, "a", 2, "direct"}, "b", true, false, "failover"},
-		{"recovery waits", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{"a": health(1, 0), "b": health(2, 0)}, "b", 2, "direct"}, "b", false, false, "sticky"},
-		{"confirmed failback", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{"a": health(2, 0), "b": health(2, 0)}, "b", 2, "direct"}, "a", true, false, "failback"},
-		{"all down direct", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{}, "a", 2, "direct"}, "direct", true, true, "all_down_direct"},
-		{"all down hold", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{}, "a", 2, ""}, "a", false, true, "all_down_hold"},
-		{"cold start", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{"a": health(1, 0)}, "", 2, "direct"}, "a", true, false, "priority"},
-		{"return from direct", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{"a": health(1, 0)}, "direct", 2, "direct"}, "a", true, false, "failback"},
+		{"sticky primary", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{"a": health(2, 0)}, "a", 2, "direct", ""}, "a", false, false, "sticky"},
+		{"failover", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{"a": health(0, 1), "b": health(1, 0)}, "a", 2, "direct", ""}, "b", true, false, "failover"},
+		{"recovery waits", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{"a": health(1, 0), "b": health(2, 0)}, "b", 2, "direct", ""}, "b", false, false, "sticky"},
+		{"confirmed failback", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{"a": health(2, 0), "b": health(2, 0)}, "b", 2, "direct", ""}, "a", true, false, "failback"},
+		{"all down direct", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{}, "a", 2, "direct", ""}, "direct", true, true, "all_down_direct"},
+		{"all down hold", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{}, "a", 2, "", ""}, "a", false, true, "all_down_hold"},
+		{"explicit hold keeps backup", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{}, "b", 2, "direct", "hold_current"}, "b", false, true, "all_down_hold"},
+		{"explicit hold excludes old direct", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{}, "direct", 2, "direct", "hold_current"}, "a", true, true, "all_down_hold"},
+		{"explicit block", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{}, "b", 2, "direct", "block"}, "__solovey_failover_reject", true, true, "all_down_block"},
+		{"explicit direct", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{}, "b", 2, "direct", "direct"}, "direct", true, true, "all_down_direct"},
+		{"return from block", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{"b": health(1, 0)}, "__solovey_failover_reject", 2, "", "block"}, "b", true, false, "failback"},
+		{"invalid policy fails closed", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{}, "a", 2, "direct", "invalid"}, "", false, true, "invalid_policy"},
+		{"cold start", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{"a": health(1, 0)}, "", 2, "direct", ""}, "a", true, false, "priority"},
+		{"return from direct", DecisionInput{[]string{"a", "b"}, map[string]MemberHealth{"a": health(1, 0)}, "direct", 2, "direct", ""}, "a", true, false, "failback"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

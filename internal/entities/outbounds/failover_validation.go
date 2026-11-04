@@ -72,6 +72,8 @@ func validateFailoverGroup(db *gorm.DB, outbound model.Outbound) error {
 func validateFailoverFinal(groupTag string, opts failoverOptions, typeByTag map[string]string) error {
 	final := opts.finalChoice()
 	switch final {
+	case "":
+		return nil
 	case FailoverFinalDirect:
 		return nil
 	case FailoverFinalReject:

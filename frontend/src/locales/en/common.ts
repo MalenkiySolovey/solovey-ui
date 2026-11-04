@@ -803,6 +803,12 @@ export default {
       "urlTestOptions": "URLTest Options"
     },
     "failover": {
+      "allDownPolicy": "When all members are down",
+      "allDownPolicyHint": "Policy affects new connections. Existing connections are not recovered.",
+      "holdCurrent": "Keep current member",
+      "block": "Block new connections",
+      "direct": "Use direct explicitly",
+      "configuredFinal": "Use configured fallback",
       "title": "Failover Group",
       "members": "Priority Outbounds",
       "primary": "Primary",

@@ -130,18 +130,19 @@ func TestValidateFailoverGroup(t *testing.T) {
 		t.Fatalf("custom final rejected: %v", err)
 	}
 	for name, options := range map[string]string{
-		"empty":          `{"outbounds":[]}`,
-		"missing":        `{"outbounds":["missing"]}`,
-		"group member":   `{"outbounds":["selector"]}`,
-		"missing final":  `{"outbounds":["primary"],"final":"missing"}`,
-		"group final":    `{"outbounds":["primary"],"final":"selector"}`,
-		"self final":     `{"outbounds":["primary"],"final":"group"}`,
-		"self reference": `{"outbounds":["group"]}`,
-		"duplicate":      `{"outbounds":["primary","primary"]}`,
-		"bad scheme":     `{"outbounds":["primary"],"failover":{"probe_target":"ftp://example.com/"}}`,
-		"metadata IP":    `{"outbounds":["primary"],"failover":{"probe_target":"http://169.254.169.254/"}}`,
-		"tiny interval":  `{"outbounds":["primary"],"failover":{"interval":"1s"}}`,
-		"bad hysteresis": `{"outbounds":["primary"],"failover":{"hysteresis":-1}}`,
+		"empty":               `{"outbounds":[]}`,
+		"missing":             `{"outbounds":["missing"]}`,
+		"group member":        `{"outbounds":["selector"]}`,
+		"missing final":       `{"outbounds":["primary"],"final":"missing"}`,
+		"group final":         `{"outbounds":["primary"],"final":"selector"}`,
+		"self final":          `{"outbounds":["primary"],"final":"group"}`,
+		"self reference":      `{"outbounds":["group"]}`,
+		"duplicate":           `{"outbounds":["primary","primary"]}`,
+		"bad scheme":          `{"outbounds":["primary"],"failover":{"probe_target":"ftp://example.com/"}}`,
+		"metadata IP":         `{"outbounds":["primary"],"failover":{"probe_target":"http://169.254.169.254/"}}`,
+		"tiny interval":       `{"outbounds":["primary"],"failover":{"interval":"1s"}}`,
+		"bad all-down policy": `{"outbounds":["primary"],"failover":{"all_down_policy":"unknown"}}`,
+		"bad hysteresis":      `{"outbounds":["primary"],"failover":{"hysteresis":-1}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := validateFailoverGroup(db, group(options)); err == nil {
@@ -243,5 +244,62 @@ func TestLoadFailoverGroupsRejectsMalformedStoredGroup(t *testing.T) {
 	}
 	if _, err := LoadFailoverGroups(db); err == nil {
 		t.Fatal("malformed stored failover group was silently omitted")
+	}
+}
+
+func TestFailoverAllDownPolicyUsesCanonicalRuntimeSupport(t *testing.T) {
+	for _, policy := range []string{AllDownPolicyHoldCurrent, AllDownPolicyBlock, AllDownPolicyDirect} {
+		t.Run(policy, func(t *testing.T) {
+			db := newFailoverDB(t)
+			rows := []model.Outbound{
+				{Type: "direct", Tag: "direct", Options: json.RawMessage("{}")},
+				{Type: "socks", Tag: "primary", Options: json.RawMessage("{}")},
+			}
+			if err := db.Create(&rows).Error; err != nil {
+				t.Fatal(err)
+			}
+			raw, _ := json.Marshal(map[string]any{"outbounds": []string{"primary"}, "final": "historical-inactive", "failover": map[string]any{"all_down_policy": policy}})
+			group := model.Outbound{Type: FailoverType, Tag: "group", Options: raw}
+			if err := validateFailoverGroup(db, group); err != nil {
+				t.Fatal(err)
+			}
+			configs, err := AssembleFailoverOutboundsForCore(group, "direct")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var selector struct {
+				Outbounds []string
+				Failover  any
+			}
+			if err := json.Unmarshal(configs[len(configs)-1], &selector); err != nil {
+				t.Fatal(err)
+			}
+			wantFinal := ""
+			switch policy {
+			case AllDownPolicyBlock:
+				wantFinal = FailoverRejectOutboundTag
+				if len(configs) != 2 || !isFailoverRejectSupportConfig(configs[0]) {
+					t.Fatal("block policy omitted canonical reject support")
+				}
+			case AllDownPolicyDirect:
+				wantFinal = "direct"
+			}
+			if wantFinal == "" && len(selector.Outbounds) != 1 {
+				t.Fatalf("hold policy gained hidden fallback: %v", selector.Outbounds)
+			}
+			if wantFinal != "" && (len(selector.Outbounds) != 2 || selector.Outbounds[1] != wantFinal) {
+				t.Fatalf("wrong policy projection: %v", selector.Outbounds)
+			}
+			if selector.Failover != nil {
+				t.Fatal("Panel policy leaked into core options")
+			}
+			if err := db.Create(&group).Error; err != nil {
+				t.Fatal(err)
+			}
+			groups, err := LoadFailoverGroups(db)
+			if err != nil || len(groups) != 1 || groups[0].AllDownPolicy != policy || groups[0].FinalTag != wantFinal {
+				t.Fatalf("lost selection policy: %+v, %v", groups, err)
+			}
+		})
 	}
 }

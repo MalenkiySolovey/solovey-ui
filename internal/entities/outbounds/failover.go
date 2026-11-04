@@ -22,13 +22,17 @@ const (
 	DefaultInterval           = 30 * time.Second
 	MinInterval               = 5 * time.Second
 	DefaultHysteresis         = 2
+	AllDownPolicyHoldCurrent  = "hold_current"
+	AllDownPolicyBlock        = "block"
+	AllDownPolicyDirect       = "direct"
 )
 
 type failoverProbe struct {
-	Enabled     *bool  `json:"enabled,omitempty"`
-	ProbeTarget string `json:"probe_target,omitempty"`
-	Interval    string `json:"interval,omitempty"`
-	Hysteresis  int    `json:"hysteresis,omitempty"`
+	Enabled       *bool  `json:"enabled,omitempty"`
+	ProbeTarget   string `json:"probe_target,omitempty"`
+	Interval      string `json:"interval,omitempty"`
+	Hysteresis    int    `json:"hysteresis,omitempty"`
+	AllDownPolicy string `json:"all_down_policy,omitempty"`
 }
 
 type failoverOptions struct {
@@ -46,6 +50,11 @@ func parseFailoverOptions(options json.RawMessage) (failoverOptions, error) {
 	}
 	if err := json.Unmarshal(options, &opts); err != nil {
 		return opts, err
+	}
+	switch opts.Failover.AllDownPolicy {
+	case "", AllDownPolicyHoldCurrent, AllDownPolicyBlock, AllDownPolicyDirect:
+	default:
+		return opts, common.NewError("invalid failover all-down policy")
 	}
 	return opts, nil
 }
@@ -80,6 +89,15 @@ func (p failoverProbe) target() string {
 }
 
 func (o failoverOptions) finalChoice() string {
+	switch o.Failover.AllDownPolicy {
+	case AllDownPolicyHoldCurrent:
+		return ""
+	case AllDownPolicyBlock:
+		return FailoverFinalReject
+	case AllDownPolicyDirect:
+		return FailoverFinalDirect
+	}
+	// Omitted policy retains the existing explicit-final/legacy contract.
 	switch strings.TrimSpace(o.Final) {
 	case "", FailoverFinalDirect:
 		return FailoverFinalDirect
@@ -92,6 +110,8 @@ func (o failoverOptions) finalChoice() string {
 
 func (o failoverOptions) finalTag(directTag string) string {
 	switch o.finalChoice() {
+	case "":
+		return ""
 	case FailoverFinalDirect:
 		return directTag
 	case FailoverFinalReject:
@@ -103,13 +123,14 @@ func (o failoverOptions) finalTag(directTag string) string {
 
 // FailoverGroup is the manager-facing view of a persisted failover outbound.
 type FailoverGroup struct {
-	Tag         string
-	Members     []string
-	FinalTag    string
-	ProbeTarget string
-	Interval    time.Duration
-	Hysteresis  int
-	Enabled     bool
+	Tag           string
+	Members       []string
+	FinalTag      string
+	AllDownPolicy string
+	ProbeTarget   string
+	Interval      time.Duration
+	Hysteresis    int
+	Enabled       bool
 }
 
 // LoadFailoverGroups fails closed if persisted failover metadata is malformed;
@@ -130,13 +151,14 @@ func LoadFailoverGroups(db *gorm.DB) ([]FailoverGroup, error) {
 			return nil, fmt.Errorf("stored failover outbound %q has no members", row.Tag)
 		}
 		groups = append(groups, FailoverGroup{
-			Tag:         row.Tag,
-			Members:     append([]string(nil), opts.Outbounds...),
-			FinalTag:    strings.TrimSpace(opts.finalTag(directTag)),
-			ProbeTarget: opts.Failover.target(),
-			Interval:    opts.Failover.interval(),
-			Hysteresis:  opts.Failover.hysteresis(),
-			Enabled:     opts.Failover.enabled(),
+			Tag:           row.Tag,
+			Members:       append([]string(nil), opts.Outbounds...),
+			FinalTag:      strings.TrimSpace(opts.finalTag(directTag)),
+			AllDownPolicy: opts.Failover.AllDownPolicy,
+			ProbeTarget:   opts.Failover.target(),
+			Interval:      opts.Failover.interval(),
+			Hysteresis:    opts.Failover.hysteresis(),
+			Enabled:       opts.Failover.enabled(),
 		})
 	}
 	return groups, nil

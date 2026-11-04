@@ -13,6 +13,7 @@ type DecisionInput struct {
 	Current        string
 	Hysteresis     int
 	DirectFallback string
+	AllDownPolicy  string
 }
 
 type Decision struct {
@@ -55,6 +56,18 @@ func SelectMember(input DecisionInput) Decision {
 		return Decision{Target: target, ShouldSwitch: target != input.Current, AllDown: allDown, Reason: reason}
 	}
 	if bestUp == "" {
+		switch input.AllDownPolicy {
+		case entityoutbounds.AllDownPolicyHoldCurrent:
+			if indexOf(input.Current) >= 0 {
+				return decide(input.Current, "all_down_hold", true)
+			}
+			return decide(input.Members[0], "all_down_hold", true)
+		case entityoutbounds.AllDownPolicyBlock:
+			return decide(entityoutbounds.FailoverRejectOutboundTag, "all_down_block", true)
+		case "", entityoutbounds.AllDownPolicyDirect:
+		default:
+			return Decision{AllDown: true, Reason: "invalid_policy"}
+		}
 		if input.DirectFallback != "" {
 			return decide(input.DirectFallback, "all_down_direct", true)
 		}

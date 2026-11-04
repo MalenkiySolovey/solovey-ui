@@ -3,6 +3,7 @@ package canonical
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
@@ -53,7 +54,14 @@ func ValidateEndpointProjection(endpoint EndpointIR, target string) error {
 	raw := EndpointOutbound(endpoint)
 	protocol := endpoint.Protocol
 	switch protocol {
-	case "selector", "urltest", "failover", "direct", "block":
+	case "failover":
+		if policy, ok := raw["failover"].(map[string]any); ok {
+			if _, declared := policy["all_down_policy"]; declared {
+				return fmt.Errorf("%w: failover.all_down_policy needs Panel-managed probes", ErrUnsupportedProjection)
+			}
+		}
+		return nil
+	case "selector", "urltest", "direct", "block":
 		return nil
 	}
 	if target == FormatSingBox {

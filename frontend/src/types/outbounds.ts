@@ -343,6 +343,7 @@ export interface Failover extends OutboundBasics {
     probe_target?: string
     interval?: string
     hysteresis?: number
+    all_down_policy?: "hold_current" | "block" | "direct"
   }
 }
 
@@ -384,7 +385,7 @@ const defaultValues: Record<OutType, Outbound> = {
   sudoku: { type: OutTypes.Sudoku },
   selector: { type: OutTypes.Selector },
   urltest: { type: OutTypes.URLTest },
-	failover: { type: OutTypes.Failover, outbounds: [], failover: { enabled: true, probe_target: '', interval: '30s', hysteresis: 2 } },
+	failover: { type: OutTypes.Failover, outbounds: [], failover: { enabled: true, probe_target: '', interval: '30s', hysteresis: 2, all_down_policy: 'hold_current' } },
 }
 
 export function createOutbound<T extends Outbound>(type: string,json?: Partial<T>): Outbound {
