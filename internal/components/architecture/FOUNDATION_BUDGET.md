@@ -41,7 +41,7 @@ F4 retires the eight broad Runtime type sites in Telegram's component and settin
 Limits: these checks establish stated AST/import boundaries, not a general Go/SQL/TypeScript dataflow proof. Wrappers, dynamic SQL, indirect function values, arbitrary Node schema names and runtime effective policy still require owner review and behavioral tests. New Root RPC contracts must retain closed typed verbs; preserving a field list cannot prove their implementation safe. R1 observations remain useful review input outside these reliable bounds.
 
 R3 B3 reviews exactly the existing `componenthost/health.Registry.Check` worker
-site, replacing digest `041c73a6РІР‚В¦` with `109e493eРІР‚В¦`; the worker budget count is
+site, replacing digest `041c73a6Р Р†Р вЂљР’В¦` with `109e493eР Р†Р вЂљР’В¦`; the worker budget count is
 unchanged. It retains the five-second caller deadline, buffered result and panic
 closure, adds a fixed registry-wide 256-slot admission bound, releases the slot
 only when the checker actually exits, and rejects a result after registration
@@ -53,7 +53,7 @@ the legacy budget is not regenerated or expanded.
 
 Current B3 CI exposed the existing web serving worker dereferencing a field
 cleared by immediate Stop. Its exact `web.Server.Start` worker is reviewed from
-`d712a8a6РІР‚В¦` to `98ed5edfРІР‚В¦`: it captures the initialized HTTP server and listener,
+`d712a8a6Р Р†Р вЂљР’В¦` to `98ed5edfР Р†Р вЂљР’В¦`: it captures the initialized HTTP server and listener,
 closes an owner completion channel on exit, and clears readiness before closing
 that channel. Stop joins it within its existing 30-second shutdown context
 before clearing/reusing fields. Timeout retains owner state and closes the
@@ -304,3 +304,13 @@ and the generation context until connection Close; caller cancellation bounds
 setup only. Existing runtime TCP/UDP/restart, candidate transactions, IR and
 editor suites prove these changes. No new worker, persistent quota owner or
 privilege is introduced; only changed exact AST sites are reviewed.
+
+R7 native Parser import reviews parseSingBoxConfigOutbounds at 50df18ce.
+The canonical URI parser expands a wrapper before import preview; the tag and
+explicit native DialerOptions are retained, while unknown/invalid wrapper fields
+require explicit mapping with a private constant diagnostic. The existing
+utility Direct/block/DNS filtering remains unchanged. Outbounds/EndpointIR
+and SecretRef keep their existing ownership; there is no runtime Parser
+resource, raw-link credential owner, additional scheduler or default fallback.
+Existing parser/URI/format/source suites cover conversion and rejection. Only
+this changed AST digest replaces its predecessor.

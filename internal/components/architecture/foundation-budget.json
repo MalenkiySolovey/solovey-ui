@@ -2129,7 +2129,7 @@
       "rule": "direct-policy",
       "path": "internal/subscriptions/parser/external.go",
       "symbol": "parseSingBoxConfigOutbounds",
-      "digest": "4ac1f3addff93245a764682dc8ad4b30e27dfc428c9d089fb0f2e953d232038d"
+      "digest": "50df18ce87073af747f27a286e13dd379eab0d3c6d1cb2a1d734cd17cced36d3"
     },
     {
       "rule": "direct-policy",
