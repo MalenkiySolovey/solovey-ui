@@ -9,6 +9,8 @@
   >
         <v-container style="padding: 0;" :hidden="loading">
           <v-alert v-if="credentialDraftInvalid" type="error" variant="tonal">{{ $t('secretCredential.required') }}</v-alert>
+          <v-btn v-if="devicesAvailable" :disabled="dirty || loading" class="mb-3" variant="tonal" @click="devicesVisible = true">{{ $t('clientDevices.title') }}</v-btn>
+          <p v-if="devicesAvailable && dirty" class="text-caption mb-3">{{ $t('clientDevices.saveFirst') }}</p>
           <v-tabs
             v-model="tab"
             align-tabs="center"
@@ -216,6 +218,7 @@
             </v-window-item>
           </v-window>
         </v-container>
+    <ClientDevices v-if="id > 0 && visible" v-model="devicesVisible" :client-id="Number(id)" @changed="updateData(Number(id), true)" />
   </form-shell>
 </template>
 

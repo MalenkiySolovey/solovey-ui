@@ -155,6 +155,7 @@ export interface TUIC extends InboundBasics, QUICTuning {
   heartbeat?: string
 }
 export interface Hysteria2 extends InboundBasics, QUICTuning {
+  realm?: import('./outbounds').Hysteria2Realm & { stun_domain_resolver?: import('./dial').DomainResolveOptions }
   bbr_profile?: string
   up_mbps?: number
   down_mbps?: number

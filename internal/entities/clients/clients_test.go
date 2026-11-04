@@ -8,9 +8,54 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+func TestSavePreservesDeviceOwnerStateAndRejectsForeignEdits(t *testing.T) {
+	db := newClientDB(t)
+	stored := json.RawMessage(`{"wireguard":{"version":99,"privateKey":"preserved-future-secret","future":[1,2]},"futureProduct":{"enabled":false}}`)
+	client := model.Client{Name: "device-user", Enable: true, Config: stored, Inbounds: json.RawMessage(`[]`), Links: json.RawMessage(`[]`)}
+	if err := db.Create(&client).Error; err != nil {
+		t.Fatal(err)
+	}
+	projected, err := credentials.ProjectClient(client.Id, client.Config)
+	if err != nil || strings.Contains(string(projected), "preserved-future-secret") {
+		t.Fatal("device projection failed closed", err)
+	}
+	client.Config = projected
+	payload, _ := json.Marshal(client)
+	if _, err := Save(SaveRequest{Tx: db, Action: "edit", Data: payload}); err != nil {
+		t.Fatal(err)
+	}
+	var saved model.Client
+	if err := db.First(&saved, client.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]json.RawMessage
+	_ = json.Unmarshal(saved.Config, &root)
+	if string(root["wireguard"]) != `{"version":99,"privateKey":"preserved-future-secret","future":[1,2]}` {
+		t.Fatal("historical device state was rewritten")
+	}
+	client.Config = json.RawMessage(`{"wireguard":{"version":1,"grants":[],"devices":[]}}`)
+	payload, _ = json.Marshal(client)
+	if _, err := Save(SaveRequest{Tx: db, Action: "edit", Data: payload}); err == nil || !strings.Contains(err.Error(), "CLIENT_DEVICE_OWNER_REQUIRED") {
+		t.Fatal("ordinary edit acquired device authority", err)
+	}
+	client.Config = json.RawMessage(`{"futureProduct":{"enabled":false}}`)
+	payload, _ = json.Marshal(client)
+	if _, err := Save(SaveRequest{Tx: db, Action: "edit", Data: payload}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.First(&saved, client.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	_ = json.Unmarshal(saved.Config, &root)
+	if len(root["wireguard"]) == 0 {
+		t.Fatal("omitted device state was deleted")
+	}
+}
 
 func newClientDB(t *testing.T) *gorm.DB {
 	t.Helper()

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -26,6 +27,10 @@ func (s *EndpointService) backend() netentitysvc.EndpointService {
 func (s *EndpointService) GetAll() (*[]map[string]interface{}, error) {
 	backend := s.backend()
 	return backend.GetAll()
+}
+func (s *EndpointService) PeerConfigs(ctx context.Context, id uint, host string) ([]netentitysvc.PeerConfig, error) {
+	backend := s.backend()
+	return backend.PeerConfigs(ctx, id, host)
 }
 func (s *EndpointService) GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 	backend := s.backend()

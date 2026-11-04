@@ -26,12 +26,14 @@ export function capabilityEditState(snapshot: RuntimeCapabilities | undefined, c
  if (!fact?.known) return unavailable('capability.unknown')
  if (!fact.contextSupported) return unavailable('capability.contextUnsupported')
  if (!fact.available) return unavailable('capability.unavailable')
- if (resource && ['inbounds', 'outbounds'].includes(category)) {
-  const side = category === 'inbounds' ? 'in' : 'out'
+ if (resource && ['inbounds', 'outbounds', 'endpoints'].includes(category)) {
+  const side = category === 'inbounds' ? 'in' : category === 'outbounds' ? 'out' : 'endpoint'
   const values = resource as Record<string, unknown>
   const fields = criticalFields?.[`${type}/${side}`]
-  // Realm changes endpoint addressing. Missing facts cannot authorize its use.
-  const critical = type === 'hysteria2' ? ['realm'] : []
+  // These blocks change wire identity or serving behavior. Missing facts
+  // cannot authorize their use; the backend owns actual availability.
+  const critical = type === 'hysteria2' ? ['realm'] : category === 'endpoints' && ['wireguard', 'warp'].includes(type)
+   ? ['amnezia', 'preallocated_buffers_per_pool', 'disable_pauses'] : []
   for (const field of critical) {
    if (values[field] != null && fields?.[field]?.available !== true) {
     return { ...unavailable('capability.unavailable', 'PROTOCOL_FIELD_CAPABILITY_UNAVAILABLE'), requiredProvider: fields?.[field]?.requiredProvider }

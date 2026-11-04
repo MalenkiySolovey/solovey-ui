@@ -251,7 +251,7 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-replace github.com/sagernet/sing-box => github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261104100045-442e869e283c
+replace github.com/sagernet/sing-box => github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261104110157-90d7dc20c40b
 
 replace github.com/anytls/sing-anytls => github.com/MalenkiySolovey/sing-anytls v0.0.12-0.20261011014237-8f440972b353
 
@@ -269,7 +269,7 @@ replace github.com/Diniboy1123/connect-ip-go => github.com/shtorm-7/connect-ip-g
 
 replace github.com/shtorm-7/go-cache/v2 => github.com/shtorm-7/go-cache/v2 v2.1.0-extended-1.2.0
 
-replace github.com/sagernet/sing => github.com/shtorm-7/sing v0.9.7-extended-1.2.1
+replace github.com/sagernet/sing => github.com/MalenkiySolovey/sing v0.9.7-extended-1.2.1.0.20261104162557-ee43b0a17793
 
 replace github.com/sagernet/sing-mux => github.com/shtorm-7/sing-mux v0.3.10-extended-1.1.0
 

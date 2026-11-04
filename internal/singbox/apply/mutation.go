@@ -20,6 +20,14 @@ type MutationExecutor interface {
 	SaveSettings(tx *gorm.DB, data json.RawMessage) error
 }
 
+// Device state belongs to Users; its effective peers belong to Endpoints.
+// This optional composition keeps the existing clients mutation and object
+// catalog while carrying both effects through the same admitted transaction.
+type ClientDeviceMutationExecutor interface {
+	SaveClientDevices(tx *gorm.DB, data json.RawMessage) ([]uint, error)
+	SaveClientsWithDeviceEffects(tx *gorm.DB, action string, data json.RawMessage, hostname string) ([]uint, []uint, error)
+}
+
 func NewMutationRouter(executor MutationExecutor) Router {
 	return NewRouter(map[Object]Handler{
 		ObjectClients:   mutationHandler(executor, saveClientsConfigObject),
@@ -52,13 +60,27 @@ func mutationHandler(executor MutationExecutor, handler mutationHandlerFunc) Han
 }
 
 func saveClientsConfigObject(executor MutationExecutor, req MutationRequest, plan *Plan) error {
-	inboundIDs, err := executor.SaveClients(req.Tx, req.Action, req.Data, req.Hostname)
+	var inboundIDs, endpointIDs []uint
+	var err error
+	if devices, ok := executor.(ClientDeviceMutationExecutor); ok {
+		if req.Action == "wireguard" {
+			endpointIDs, err = devices.SaveClientDevices(req.Tx, req.Data)
+		} else {
+			inboundIDs, endpointIDs, err = devices.SaveClientsWithDeviceEffects(req.Tx, req.Action, req.Data, req.Hostname)
+		}
+	} else {
+		inboundIDs, err = executor.SaveClients(req.Tx, req.Action, req.Data, req.Hostname)
+	}
 	if err != nil {
 		return err
 	}
 	if len(inboundIDs) > 0 {
 		plan.IncludeSaveObjects(ObjectInbounds)
 		plan.MergeInboundChange(&Change{ReloadIDs: inboundIDs})
+	}
+	if len(endpointIDs) > 0 {
+		plan.IncludeSaveObjects(ObjectEndpoints)
+		plan.MergeEndpointChange(&Change{ReloadIDs: endpointIDs})
 	}
 	return nil
 }

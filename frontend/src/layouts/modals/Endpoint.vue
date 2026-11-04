@@ -34,8 +34,9 @@
         <Warp v-if="endpoint.type == epTypes.Warp" :data="endpoint" />
         <TailscaleVue v-if="endpoint.type == epTypes.Tailscale" :data="endpoint" />
         <OpenConnectEndpoint v-if="endpoint.type == epTypes.OpenConnect" :data="endpoint" :available="capabilityState.allowed" />
-        <OpenVPNClient v-if="endpoint.type == epTypes.OpenVPNClient" :data="endpoint" :available="capabilityState.allowed" />
-        <Dial :dial="endpoint" />
+        <Listen v-if="endpoint.type == epTypes.OpenVPNServer" :data="endpoint" :in-tags="[]" />
+        <OpenVPNClient v-if="endpoint.type == epTypes.OpenVPNClient || endpoint.type == epTypes.OpenVPNServer" :data="endpoint" :available="capabilityState.allowed" />
+        <Dial v-if="endpoint.type != epTypes.OpenVPNServer" :dial="endpoint" />
     </CapabilitySurface>
   </form-shell>
 </template>
@@ -44,6 +45,7 @@
 import { EpTypes, createEndpoint } from '@/types/endpoints'
 import RandomUtil from '@/plugins/randomUtil'
 import Dial from '@/components/fields/Dial.vue'
+import Listen from '@/components/fields/Listen.vue'
 import Wireguard from '@/components/protocols/Wireguard.vue'
 import Warp from '@/components/protocols/Warp.vue'
 import TailscaleVue from '@/components/protocols/Tailscale.vue'
@@ -54,6 +56,7 @@ import { generateKeypair } from '@/shared/composables/useKeypairs'
 import { push } from 'notivue'
 import { i18n } from '@/locales'
 import Data from '@/store/modules/data'
+import { coreConfigContract, loadCoreConfigContract } from '@/types/coreConfigContract'
 import CapabilitySurface from '@/components/fields/CapabilitySurface.vue'
 import { capabilityEditState, capabilityTypeChoices, type CapabilityChoice, type CapabilityEditState } from '@/types/capabilityEditors'
 import FormShell from '@/components/nexus/drawers/FormShell.vue'
@@ -73,7 +76,7 @@ export default {
   },
   computed: {
     capabilityState(): CapabilityEditState {
-      return capabilityEditState(Data().capabilities, "endpoints", this.endpoint.type, this.storedCapabilityType)
+      return capabilityEditState(Data().capabilities, "endpoints", this.endpoint.type, this.storedCapabilityType, undefined, undefined, this.endpoint, coreConfigContract.value?.protocol?.criticalFields)
     },
     typeChoices(): CapabilityChoice[] {
       return capabilityTypeChoices(Data().capabilities, "endpoints", this.epTypes)
@@ -84,6 +87,7 @@ export default {
   },
   methods: {
     async updateData(id: number) {
+      await loadCoreConfigContract()
       if (id > 0) {
         const newData = JSON.parse(this.$props.data)
         this.storedCapabilityType = newData.type
@@ -233,6 +237,6 @@ export default {
       }
     },
   },
-  components: { CapabilitySurface, FormShell, Dial, Wireguard, Warp, TailscaleVue, OpenConnectEndpoint, OpenVPNClient }
+  components: { CapabilitySurface, FormShell, Dial, Listen, Wireguard, Warp, TailscaleVue, OpenConnectEndpoint, OpenVPNClient }
 }
 </script>

@@ -35,12 +35,14 @@ github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03
 github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.33.0/go.mod h1:pJTkW8hEUIIi3Pf65lPZOnn4Y81yCllX6IWk2jNXdkM=
 github.com/Kodeworks/golang-image-ico v0.0.0-20141118225523-73f0f4cfade9/go.mod h1:7uhhqiBaR4CpN0k9rMjOtjpcfGd6DG2m04zQxKnWQ0I=
+github.com/MalenkiySolovey/sing v0.9.7-extended-1.2.1.0.20261104162557-ee43b0a17793 h1:9h4rzVwYP2DQPaV800zCE6GTXDkKX1jtaklBvdAseZw=
+github.com/MalenkiySolovey/sing v0.9.7-extended-1.2.1.0.20261104162557-ee43b0a17793/go.mod h1:K3Owt3xPhHugvlnlPPxZJ/exXdaJfEPOTNorGk4AXjo=
 github.com/MalenkiySolovey/sing-anytls v0.0.12-0.20261011014237-8f440972b353 h1:Lnjw34ch15qhggeavOMiQIJrk3N8rcsCoJOvciNHyaY=
 github.com/MalenkiySolovey/sing-anytls v0.0.12-0.20261011014237-8f440972b353/go.mod h1:7rjN6IukwysmdusYsrV51Fgu1uW6vsrdd6ctjnEAln8=
 github.com/MalenkiySolovey/sing-box v1.14.3-0.20261012000247-8b914e4be510 h1:RkQg7xe/iBA9+PrEgN8oN0p9LNBNsd2OR65KUEmo4K0=
 github.com/MalenkiySolovey/sing-box v1.14.3-0.20261012000247-8b914e4be510/go.mod h1:O4q0spxb+xwV/p9HYR+Es1cMjK3bBvYl6k08V9rSpwU=
-github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261104100045-442e869e283c h1:vv/ofGYW54a8qoibC3yZM+9rD51/wdMSSdUEbjDGj+U=
-github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261104100045-442e869e283c/go.mod h1:sg62CEdWhkOVVDDI3fA01dd82eoZuZKSlLY0oKAUHmc=
+github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261104110157-90d7dc20c40b h1:94Nl15ku6Rt4tlI3F1m6XDjBmHHQ6qFx7usyY1XzTHQ=
+github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261104110157-90d7dc20c40b/go.mod h1:sg62CEdWhkOVVDDI3fA01dd82eoZuZKSlLY0oKAUHmc=
 github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762 h1:0x0RTO9IyqRHO9rmEpUhCKRBeISM5LwKLsIiIifFbRY=
 github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762/go.mod h1:rJFeVxbEej2iuyeCJ3drKW+p5rOgtLIW3XhZ6ty7Fig=
 github.com/MalenkiySolovey/sing-quic v0.7.2-0.20261025183737-9034c2c10c63 h1:kRQoFAgCMnYrjyyejCWtJd7Sc08t40HMHY4x58Es88c=
