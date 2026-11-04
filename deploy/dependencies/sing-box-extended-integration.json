@@ -296,6 +296,46 @@
         "patchCount": 2,
         "identity": "c4060ee686134bd289f4e6b5910f829d91a9b6f344201d937a9d4f0db87fb62f"
       }
+    },
+    {
+      "id": "sing",
+      "original": {
+        "module": "github.com/sagernet/sing",
+        "version": "v0.9.7-0.20260929150544-0ad23b637bd4",
+        "sourceVersion": "v0.9.7-extended-1.2.1",
+        "commit": "fe045639087fe73d1412b99f09486bbef96433db",
+        "repository": "https://github.com/shtorm-7/sing"
+      },
+      "replacement": {
+        "module": "github.com/MalenkiySolovey/sing",
+        "version": "v0.9.7-extended-1.2.1.0.20261104162557-ee43b0a17793",
+        "commit": "ee43b0a1779396fb4af9c5638d4f58667b53619a",
+        "repository": "https://github.com/MalenkiySolovey/sing",
+        "sum": "h1:9h4rzVwYP2DQPaV800zCE6GTXDkKX1jtaklBvdAseZw=",
+        "goModSum": "h1:K3Owt3xPhHugvlnlPPxZJ/exXdaJfEPOTNorGk4AXjo="
+      },
+      "license": "GPL-3.0-or-later",
+      "scopes": [
+        "cached-packet-ownership"
+      ],
+      "copyRole": "mirror/cache/development",
+      "patchSeries": {
+        "format": "linear-git-commits/v1",
+        "base": "fe045639087fe73d1412b99f09486bbef96433db",
+        "upstreamTree": "1d279758df3775b2e6adaa4b43f524d2015445b3",
+        "patchedTree": "a58670ddc826a0fd9bf885db5b3ac4e2421a7832",
+        "pristineRef": "refs/heads/mirror/extended-v0.9.7-extended-1.2.1",
+        "branch": "solovey/extended-patches",
+        "commits": [
+          "93b0abd3432e8ad239441e9c53ff3fa6a2e2a1d8",
+          "ee43b0a1779396fb4af9c5638d4f58667b53619a"
+        ],
+        "patchCommits": [
+          "93b0abd3432e8ad239441e9c53ff3fa6a2e2a1d8"
+        ],
+        "patchCount": 1,
+        "identity": "24433cfb98702a4289026e42d936a0ad9d4e1c48fde1593280eaa65d85b942eb"
+      }
     }
   ],
   "transport": {
