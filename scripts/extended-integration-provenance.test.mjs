@@ -12,6 +12,9 @@ test('Extended source notice binds native baseline, dedicated copy, checksums an
   assert.equal(lock.sources[1].original.commit,'75c3ac4fa12b4ded2dc01b392ed7d5eaf3ea6876')
   assert.equal(lock.sources[0].replacement.repository,'https://github.com/MalenkiySolovey/sing-box-extended')
   assert.equal(lock.sources[0].patchSeries.patchCount,61)
+  assert.equal(lock.sources[2].original.repository,'https://github.com/shtorm-7/sing')
+  assert.equal(lock.sources[2].original.commit,'fe045639087fe73d1412b99f09486bbef96433db')
+  assert.equal(lock.sources[2].patchSeries.patchCount,1)
   assert.ok(lock.sources.every(source => !Object.hasOwn(source,'patch')))
 })
 
@@ -23,6 +26,9 @@ test('Extended provenance rejects changed authority, copy, checksums, transport 
     value => {value.sources[0].original.commit='0'.repeat(40)},
     value => {value.sources[0].replacement.commit='0'.repeat(40)},
     value => {value.sources[1].replacement.sum='h1:changed'},
+    value => {value.sources[2].original.repository='https://github.com/SagerNet/sing'},
+    value => {value.sources[2].original.module='github.com/shtorm-7/sing'},
+    value => {value.sources[2].replacement.sum='h1:changed'},
     value => {value.sources[0].patchSeries.identity='0'.repeat(64)},
     value => {value.sources[1].patchSeries.commits.reverse()},
     value => {value.sources[0].patchSeries.upstreamTree='unresolved'},

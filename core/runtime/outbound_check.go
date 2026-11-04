@@ -9,6 +9,7 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	urltest "github.com/sagernet/sing-box/common/urltest"
+	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/service"
 )
 
@@ -35,7 +36,18 @@ func (c *Core) CheckOutbound(ctx context.Context, tag string, link string) Check
 }
 
 func (c *Core) CheckOutboundWithSource(ctx context.Context, tag string, link string, source ProbeSource) (result CheckOutboundResult) {
-	return c.checkOutbound(ctx, "", "", tag, link, source)
+	return c.checkOutbound(ctx, "", "", tag, link, source, nil)
+}
+
+type OutboundProbe func(context.Context, func(context.Context, string, string) (net.Conn, error)) (uint16, error)
+
+// The callback borrows the resolved dialer under the same generation lease as
+// its health ticket. It must not acquire another Core lease for network I/O.
+func (c *Core) CheckOutboundWithProbe(ctx context.Context, tag, link string, source ProbeSource, probe OutboundProbe) CheckOutboundResult {
+	if probe == nil {
+		return CheckOutboundResult{Error: CheckOutboundErrorInvalidRequest}
+	}
+	return c.checkOutbound(ctx, "", "", tag, link, source, probe)
 }
 
 // CheckRuntimeOutbound binds a bounded manual probe to an accepted generation.
@@ -67,14 +79,14 @@ func (c *Core) checkRuntimeGroupOutbound(ctx context.Context, generation, group,
 	default:
 		return CheckOutboundResult{Error: "runtime_limit_exceeded"}
 	}
-	return c.checkOutbound(ctx, generation, group, tag, link, ProbeSourceManual)
+	return c.checkOutbound(ctx, generation, group, tag, link, ProbeSourceManual, nil)
 }
 
-func (c *Core) checkOutbound(ctx context.Context, generation, group, tag, link string, source ProbeSource) (result CheckOutboundResult) {
+func (c *Core) checkOutbound(ctx context.Context, generation, group, tag, link string, source ProbeSource, probe OutboundProbe) (result CheckOutboundResult) {
 	if c == nil {
 		return CheckOutboundResult{Error: CheckOutboundErrorCoreUnavailable}
 	}
-	if source != ProbeSourceManual && source != ProbeSourceFailover && source != ProbeSourceDiagnostic {
+	if source != ProbeSourceManual && source != ProbeSourceFailover && source != ProbeSourceDiagnostic && source != ProbeSourceSubscription {
 		return CheckOutboundResult{Error: CheckOutboundErrorInvalidRequest}
 	}
 	var ticket probeTicket
@@ -121,7 +133,15 @@ func (c *Core) checkOutbound(ctx context.Context, generation, group, tag, link s
 		probeCtx, cancel := context.WithTimeout(ctx, checkTimeout)
 		defer cancel()
 
-		delay, probeErr := urltest.URLTest(probeCtx, link, ob)
+		var delay uint16
+		var probeErr error
+		if probe == nil {
+			delay, probeErr = urltest.URLTest(probeCtx, link, ob)
+		} else {
+			delay, probeErr = probe(probeCtx, func(ctx context.Context, network, address string) (net.Conn, error) {
+				return ob.DialContext(ctx, network, M.ParseSocksaddr(address))
+			})
+		}
 		if probeErr != nil {
 			result.Error = ClassifyOutboundCheckError(probeErr)
 			return nil

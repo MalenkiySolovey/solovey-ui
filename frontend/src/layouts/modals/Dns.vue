@@ -40,7 +40,7 @@
           </v-col>
         </v-row>
         <DialVue :dial="dnsServer" v-if="!WithoutDial.includes(dnsServer.type)" />
-        <oTlsVue :outbound="dnsServer" v-if="HasTls.includes(dnsServer.type)" />
+        <oTlsVue :outbound="dnsServer" :mandatory="true" v-if="HasTls.includes(dnsServer.type)" />
         <Headers :data="dnsServer" v-if="HasHeaders.includes(dnsServer.type)" />
         <v-row v-if="dnsServer.type === 'sdns'">
           <v-col cols="12">
@@ -87,8 +87,8 @@
           </v-card>
         </template>
         <v-row v-if="dnsServer.type == 'local'">
-          <v-col cols="12"><v-alert type="info" variant="tonal">Local DNS follows system configuration and may use multicast for local and link-local names. Choose an explicit unicast server when that is required by your policy.</v-alert></v-col>
-          <v-col cols="12" sm="8"><v-text-field :model-value="neighborDomains" @update:model-value="neighborDomains = $event" label="Preferred neighbor domains" hint="Comma separated" persistent-hint /></v-col>
+          <v-col cols="12"><v-alert type="info" variant="tonal">{{ $t('dns.local.semantics') }}</v-alert></v-col>
+          <v-col cols="12" sm="8"><v-text-field :model-value="neighborDomains" @update:model-value="neighborDomains = $event" :label="$t('dns.local.neighborDomains')" :hint="$t('commaSeparated')" persistent-hint /></v-col>
           <v-col cols="12" sm="6" md="4">
             <v-switch v-model="dnsServer.prefer_go" color="primary" :label="$t('dns.local.preferGo')" hide-details></v-switch>
           </v-col>
@@ -170,6 +170,9 @@ export default {
         this.dnsServer = createDnsServer("local",{tag: "dns-" + RandomUtil.randomSeq(3)})
         this.title = 'add'
       }
+      // These transports always enable TLS in the native constructor. Keep
+      // imported TLS options intact while exposing their implicit security.
+      if (this.HasTls.includes(this.dnsServer.type) && this.dnsServer.tls == null) this.dnsServer.tls = {}
       this.snapshot = JSON.stringify(this.dnsServer)
     },
     changeType(dnsType: string) {

@@ -32,7 +32,7 @@ func serviceDeclarations() []declaration[*service.Registry] {
 		{typeName: "api", productUnavailable: "PRODUCT_FEATURE_NOT_ENABLED", register: registerAPISchema},
 		{typeName: "usbip-server", buildTag: "with_usbip", productUnavailable: "UNSUPPORTED_BY_PRODUCT"},
 		{typeName: "usbip-client", buildTag: "with_usbip", productUnavailable: "UNSUPPORTED_BY_PRODUCT"},
-		{typeName: "hysteria-realm", buildTag: "with_quic", productUnavailable: "UNSUPPORTED_BY_PRODUCT"},
+		{typeName: "hysteria-realm", buildTag: "with_quic", compiled: supportsHysteriaRealm, register: registerHysteriaRealmService},
 	}
 }
 

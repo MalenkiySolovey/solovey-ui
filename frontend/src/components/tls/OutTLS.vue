@@ -5,7 +5,7 @@
         <v-switch color="primary" :label="$t('tls.enable')" v-model="tlsEnable" hide-details></v-switch>
       </v-col>
     </v-row>
-    <template v-if="tls.enabled">
+    <template v-if="tlsEnable">
       <v-text-field v-if="contract?.fields.client.includes('handshake_timeout')" v-model="tls.handshake_timeout" label="Handshake timeout" placeholder="10s" clearable @click:clear="delete tls.handshake_timeout" />
       <v-row>
         <v-col cols="12" sm="6" md="4">
@@ -281,7 +281,7 @@
         </v-col>
       </v-row>
     </template>
-    <v-card-actions v-if="tls.enabled">
+    <v-card-actions v-if="tlsEnable">
       <v-spacer></v-spacer>
       <v-menu v-model="menu" :close-on-content-click="false" location="start">
           <template v-slot:activator="{ props }">
