@@ -201,7 +201,35 @@ func TestNaiveHTTP3RetiredEpochRejectsStreamsBeforeAccounting(t *testing.T) {
 	f := newQUICFixture(t, "naive")
 	peer := f.naivePeer(t)
 	peer.nonce(t, f.echo.Addr().String(), 7)
-	_ = f.core.instance.StatsTracker().GetStats()
+	// The peer can read the response before the server's final write counter
+	// is published. Observe both accepted nonce directions before revocation.
+	var acceptedUpload, acceptedDownload int64
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(5 * time.Millisecond)
+	defer tick.Stop()
+	for acceptedUpload < 32 || acceptedDownload < 32 {
+		for _, stat := range f.core.instance.StatsTracker().GetStats() {
+			if stat.Resource != "user" || stat.Tag != "verified-7" {
+				continue
+			}
+			if stat.Direction {
+				acceptedUpload += stat.Traffic
+			} else {
+				acceptedDownload += stat.Traffic
+			}
+		}
+		if acceptedUpload >= 32 && acceptedDownload >= 32 {
+			break
+		}
+		select {
+		case <-tick.C:
+		case <-deadline.C:
+			t.Fatalf("accepted nonce accounting did not settle: upload=%d download=%d", acceptedUpload, acceptedDownload)
+		case <-t.Context().Done():
+			t.Fatal("accepted nonce accounting interrupted")
+		}
+	}
 	// CoreRuntime removal revokes this existing authenticated identity owner
 	// before transport closure. It fences late requests without another parent
 	// authentication/admission authority in the HTTP/3 lifecycle composition.
