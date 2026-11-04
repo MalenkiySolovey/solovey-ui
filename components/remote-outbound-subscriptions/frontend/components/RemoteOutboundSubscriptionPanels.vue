@@ -195,6 +195,11 @@
                   <v-chip v-else density="compact" size="small" variant="tonal">
                     {{ $t('remoteOutbound.notSynced') }}
                   </v-chip>
+                  <v-chip v-if="subscription.enabled && subscription.healthCheck?.enabled && connection.synced && connection.enabled && !projectionBlocked(connection)" density="compact" size="small" variant="tonal"
+                    :color="page.sourceHealth(subscription, connection)?.status === 'healthy' ? 'success' : page.sourceHealth(subscription, connection)?.status === 'down' ? 'error' : undefined">
+                    {{ $t(`remoteOutbound.healthStates.${page.sourceHealth(subscription, connection)?.status ?? 'unknown'}`) }}
+                    <v-tooltip activator="parent" location="top" :text="$t('remoteOutbound.healthObservationHint')" />
+                  </v-chip>
                 </div>
               </td>
               <td>

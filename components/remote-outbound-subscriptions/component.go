@@ -76,7 +76,7 @@ func (component) Start(_ context.Context, ctx lifecycle.Context) error {
 		return errors.New("remote-outbound-subscriptions runtime is unavailable")
 	}
 	registerRuntimeHooks()
-	remotesubservice.StartRemoteOutboundAutoRefresh(ctx.Host.API.Runtime)
+	remotesubservice.StartRemoteOutboundAutoRefresh(ctx.Host.API.Runtime, ctx.Host.API.OutboundHTTP)
 	return nil
 }
 
@@ -193,7 +193,7 @@ func reconcileOutboundLinks(tx *gorm.DB) error {
 
 func remoteOutboundDeps(host componenthost.APIDeps) remotesubhttp.Deps {
 	return remotesubhttp.Deps{
-		Service:        &remotesubservice.RemoteOutboundService{Runtime: host.Runtime},
+		Service:        &remotesubservice.RemoteOutboundService{Runtime: host.Runtime, OutboundHTTP: host.OutboundHTTP},
 		RequireScope:   host.Auth.RequireScope,
 		Actor:          host.Request.Actor,
 		ValidateTarget: host.Request.ValidateTarget,
