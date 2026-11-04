@@ -1985,25 +1985,25 @@
       "rule": "direct-policy",
       "path": "internal/entities/outbounds/failover.go",
       "symbol": "failoverOptions.finalChoice",
-      "digest": "ca33ddc17c9679b7390c7c3e97a0ba34650496790230031ac8538614ea3ddf5c"
+      "digest": "84f158f7ee8a64539d5573feab7a61f17657db76de1e6935704cee0d3e9c2cb9"
     },
     {
       "rule": "direct-policy",
       "path": "internal/entities/outbounds/failover.go",
       "symbol": "failoverOptions.finalChoice",
-      "digest": "ca33ddc17c9679b7390c7c3e97a0ba34650496790230031ac8538614ea3ddf5c"
+      "digest": "84f158f7ee8a64539d5573feab7a61f17657db76de1e6935704cee0d3e9c2cb9"
     },
     {
       "rule": "direct-policy",
       "path": "internal/entities/outbounds/failover.go",
       "symbol": "failoverOptions.finalTag",
-      "digest": "13d558e4f0cdff4a65d71baab54c2fcfcdc01e798d199a88edb60bfe1107b839"
+      "digest": "0d0b84ff984ec550bc9a7acca7041cc3d7df77cc9a4907ca34aa2504ee7a71be"
     },
     {
       "rule": "direct-policy",
       "path": "internal/entities/outbounds/failover_validation.go",
       "symbol": "validateFailoverFinal",
-      "digest": "907e619520f11fb6e845422aa47d3fc3ec7b5adbe7b6884fea346a876b8c544c"
+      "digest": "ef2a180920a8c9f4293ba894f2de5031b2f20783c55173a9701812ddd6ef1544"
     },
     {
       "rule": "direct-policy",
@@ -2051,7 +2051,7 @@
       "rule": "direct-policy",
       "path": "internal/subscriptions/canonical/projection.go",
       "symbol": "ValidateEndpointProjection",
-      "digest": "b20fd020b116fdc30d6429359aab9be02df1815f79a45cd5714092bc78f879a2"
+      "digest": "996e2d05a69b81fc5e6fd9bc51a61fa18a0b31a9162139f678c99422a6bcedcf"
     },
     {
       "rule": "direct-policy",
@@ -2568,6 +2568,18 @@
       "path": "web/web.go",
       "symbol": "*Server.Start",
       "digest": "98ed5edf3302ab99e96dae2cdcb8b2fddf4cf65d87a57927de06813d4916ff9d"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/entities/outbounds/failover.go",
+      "symbol": "AllDownPolicyDirect,",
+      "digest": "a2d83905cac180754cb3fb91828f049eccc9774d5b5ee527dc49f7c768a65555"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/entities/outbounds/failover.go",
+      "symbol": "failoverOptions.finalChoice",
+      "digest": "84f158f7ee8a64539d5573feab7a61f17657db76de1e6935704cee0d3e9c2cb9"
     }
   ]
 }

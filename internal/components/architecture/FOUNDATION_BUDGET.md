@@ -270,3 +270,16 @@ bookkeeping, not another scheduler or health authority. These two exact launch
 digests are reviewed; ticker and unrelated R1 inventory entries are unchanged.
 
 The reviewed source-health refresh closure retains the Host-owned OutboundHTTP port added by download detours. Its lifetime remains the existing Component worker; the port does not introduce another runtime or download scheduler.
+
+R7 explicit all-down policy reviews `AllDownPolicyDirect` and the changed
+`failoverOptions.finalChoice`, `finalTag` and `validateFailoverFinal` sites.
+Outbounds remains the sole persisted policy owner and the existing failover
+manager consumes that view; there is no second selector, worker or Direct
+runtime owner. New UI-created groups explicitly choose hold_current by default.
+Block uses the existing reject support, direct is an explicit operator choice,
+and omitted policy preserves the accepted legacy contract. Focused owner/cron
+and formats suites plus both Classic/Nexus save/edit/generated-policy workflows
+prove these choices and recovery. The exact reviewed AST digests and their
+actual multiplicities replace the changed sites; the R1 base and unrelated
+allowances remain fixed. This admits explicit product policy, not an implicit
+fallback or a regenerated legacy inventory.The same slice reviews ValidateEndpointProjection at 996e2d05...: client formats that cannot represent Panel probe/all-down policy reject it explicitly. Existing Direct/group treatment and route selection remain unchanged; subscription delivery does not silently discard this policy.
