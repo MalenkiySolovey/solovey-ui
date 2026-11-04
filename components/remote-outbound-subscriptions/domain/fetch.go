@@ -4,6 +4,7 @@ package remote
 
 import (
 	"context"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -62,6 +63,8 @@ type CollectionSnapshot struct {
 
 type FetchOptions struct {
 	UserAgent        string
+	Headers          http.Header
+	OutboundClient   *http.Client
 	GroupAdaptation  string
 	ConversionPolicy subconversion.Policy
 }
@@ -107,6 +110,9 @@ func FetchSubscription(rawURL string) (*FetchedSubscription, error) {
 }
 
 func FetchSubscriptionWithOptions(rawURL string, options FetchOptions) (*FetchedSubscription, error) {
+	if len(options.Headers) != 0 || options.OutboundClient != nil {
+		return FetchSubscriptionWithOptionsContext(context.Background(), rawURL, options)
+	}
 	return fetchSubscriptionWithOptions(rawURL, options, fetchCandidateData)
 }
 
@@ -115,6 +121,12 @@ func FetchSubscriptionWithOptionsContext(ctx context.Context, rawURL string, opt
 		ctx = context.Background()
 	}
 	return fetchSubscriptionWithOptions(rawURL, options, func(candidate fetchCandidate) (string, error) {
+		if options.OutboundClient != nil {
+			return subexternal.FetchWithOutboundContext(ctx, candidate.URL, candidate.UserAgent, options.Headers, options.OutboundClient)
+		}
+		if len(options.Headers) != 0 {
+			return subexternal.FetchWithHeadersContext(ctx, candidate.URL, candidate.UserAgent, options.Headers)
+		}
 		return fetchCandidateDataContext(ctx, candidate)
 	})
 }

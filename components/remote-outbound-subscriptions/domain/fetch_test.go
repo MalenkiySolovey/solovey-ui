@@ -13,6 +13,8 @@ import (
 )
 
 func TestSourceUserAgentUsesOriginalResourceAndRejectsHeaderInjection(t *testing.T) {
+	// Fetch is mocked; resource/identity assertions must not depend on public DNS.
+	t.Setenv("SUI_ALLOW_PRIVATE_SUB_URLS", "true")
 	original := fetchSubscriptionDataWithUserAgentContext
 	t.Cleanup(func() { fetchSubscriptionDataWithUserAgentContext = original })
 	source := RemoteOutboundSubscription{Url: "https://example.com/subscription?format=uri&token=fixture", UserAgent: "CustomSubscriptionClient/1.0"}
@@ -335,6 +337,7 @@ func TestParseFetchedSubscriptionUsesGroupAdaptationOptions(t *testing.T) {
 }
 
 func TestSubscriptionFetchCandidatesPreserveOriginalResource(t *testing.T) {
+	t.Setenv("SUI_ALLOW_PRIVATE_SUB_URLS", "true")
 	candidates, err := subscriptionFetchCandidates("https://example.com/sub/secret?token=abc&format=clash")
 	if err != nil {
 		t.Fatal(err)

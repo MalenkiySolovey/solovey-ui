@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import DnsRuleModal from '@/layouts/modals/DnsRule.vue'
 import { createDnsServer } from './dns'
-import { serializeDNSRule, type CoreConfigContract } from './coreConfigContract'
+import { coreConfigContract, serializeDNSRule, type CoreConfigContract } from './coreConfigContract'
 
 const contract: CoreConfigContract = { dnsActions: { route: ['server', 'disable_cache', 'rewrite_ttl', 'race'], evaluate: ['server', 'tag', 'race'], respond: ['race'], reject: ['no_drop', 'race'] }, dnsConditions: ['match_response'], tunDnsModes: ['disabled', 'native', 'hijack'], maxRuleDepth: 64, maxRuleNodes: 4096 }
 
@@ -35,12 +35,38 @@ describe('DNS editor round trips', () => {
   it('factory defaults and imported nested TLS state are isolated across reopen', () => {
     const first = createDnsServer('tls')
     first.tls.insecure = true
-    expect(createDnsServer('tls').tls).toEqual({})
+    expect(createDnsServer('tls').tls).toEqual({ enabled: true })
+    for (const type of ['tls', 'quic', 'https', 'h3']) expect(createDnsServer(type).tls.enabled).toBe(true)
     const source = { type: 'https', tls: { insecure: false }, headers: { empty: [] } }
     const draft = createDnsServer('https', source)
     draft.tls.insecure = true
     expect(source.tls.insecure).toBe(false)
     expect(createDnsServer('https', source).headers.empty).toEqual([])
+  })
+  it('uses backend action choices and keeps unavailable historical fields out of normal saves', () => {
+    const previous = coreConfigContract.value
+    const modal = DnsRuleModal as any
+    const saved: unknown[] = []
+    const source = { action: 'evaluate', server: 'dns', tag: 'preserved', race: false }
+    const state: any = { ...modal.data(), ruleData: { ...source }, snapshot: JSON.stringify(source), $emit: (_: string, value: unknown) => saved.push(value) }
+    try {
+      coreConfigContract.value = undefined
+      expect(modal.computed.actions.call(state)).toEqual([])
+      expect(modal.computed.ruleUnavailable.call(state)).toBe(true)
+      coreConfigContract.value = { ...contract, dnsActions: { route: ['server'] } }
+      expect(modal.computed.actions.call(state).map((item: any) => item.value)).toEqual(['route'])
+      state.ruleUnavailable = modal.computed.ruleUnavailable.call(state)
+      modal.methods.saveChanges.call(state)
+      expect(saved).toEqual([])
+      expect(state.ruleData).toEqual(source)
+      coreConfigContract.value = contract
+      state.ruleUnavailable = modal.computed.ruleUnavailable.call(state)
+      expect(state.ruleUnavailable).toBe(false)
+      modal.methods.saveChanges.call(state)
+      expect(saved).toEqual([source])
+      coreConfigContract.value = { ...contract, dnsActions: { evaluate: ['server', 'tag'] } }
+      expect(modal.computed.ruleUnavailable.call(state)).toBe(true)
+    } finally { coreConfigContract.value = previous }
   })
   it('real modal open/save/close/reopen preserves typed default rules and false presence', () => {
     const modal = DnsRuleModal as any

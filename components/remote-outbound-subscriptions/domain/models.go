@@ -13,14 +13,19 @@ type RemoteOutboundSubscription struct {
 	Name               string          `json:"name" form:"name"`
 	Url                string          `json:"url" form:"url" gorm:"column:url"`
 	UserAgent          string          `json:"userAgent,omitempty" form:"userAgent"`
+	DownloadOutboundID uint            `json:"downloadOutboundId,omitempty" form:"downloadOutboundId" gorm:"column:download_outbound_id;index"`
 	SourceType         string          `json:"sourceType,omitempty" form:"sourceType" gorm:"column:source_type;default:remote;not null"`
 	SourcePath         string          `json:"sourcePath,omitempty" form:"sourcePath" gorm:"column:source_path"`
 	SourceContent      string          `json:"-" form:"-" gorm:"column:source_content"`
+	SourceHeaders      string          `json:"-" form:"-" gorm:"column:source_headers"`
+	FetchHeaders       json.RawMessage `json:"fetchHeaders,omitempty" form:"-" gorm:"-"`
 	Content            json.RawMessage `json:"content,omitempty" form:"-" gorm:"-"`
 	Include            string          `json:"include,omitempty" form:"include"`
 	Exclude            string          `json:"exclude,omitempty" form:"exclude"`
 	RemoveEmojis       bool            `json:"removeEmojis" form:"removeEmojis" gorm:"default:false;not null"`
 	DialerOverride     json.RawMessage `json:"dialerOverride,omitempty" form:"-"`
+	HealthCheck        json.RawMessage `json:"healthCheck,omitempty" form:"-"`
+	HealthTargetID     string          `json:"healthTargetId,omitempty" form:"-" gorm:"-"`
 	Enabled            bool            `json:"enabled" form:"enabled" gorm:"not null"`
 	TagPrefix          string          `json:"tagPrefix" form:"tagPrefix"`
 	AutoUpdate         bool            `json:"autoUpdate" form:"autoUpdate" gorm:"column:auto_update;default:false;not null"`

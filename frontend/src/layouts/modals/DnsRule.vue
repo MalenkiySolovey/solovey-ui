@@ -2,11 +2,13 @@
   <form-shell
     :dirty="dirty"
     :loading="loading"
-    :save-disabled="subnetConflict"
-    :title="$t('actions.' + title) + ' ' + $t('objects.dnsrule')"
+    :save-disabled="subnetConflict || ruleUnavailable"
+    :read-only="index >= 0 && ruleUnavailable"
+    :title="$t(index >= 0 && ruleUnavailable ? 'capability.inspect' : 'actions.' + title) + ' ' + $t('objects.dnsrule')"
     @close="closeModal"
     @save="saveChanges"
   >
+        <v-alert v-if="ruleUnavailable" type="info" role="status" variant="tonal" class="mb-3">{{ $t('dns.rule.unavailableAction') }}</v-alert>
         <v-row>
           <v-col cols="12" sm="6" md="4">
             <v-switch color="primary" v-model="logical" :label="$t('rule.logical')" hide-details></v-switch>
@@ -56,9 +58,9 @@
           </v-col>
         </v-row>
         <v-row>
-          <v-col cols="12" sm="4"><v-switch v-model="ruleData.race" label="Race with following rules" hide-details /></v-col>
-          <v-col v-if="ruleData.action === 'evaluate'" cols="12" sm="4"><v-text-field v-model="ruleData.tag" label="Evaluate response tag" clearable @click:clear="delete ruleData.tag" hide-details /></v-col>
-          <v-col v-if="['route', 'evaluate'].includes(ruleData.action)" cols="12" sm="4"><v-switch v-model="ruleData.speculative" label="Speculative evaluation" hide-details /></v-col>
+          <v-col v-if="actionFieldVisible('race')" cols="12" sm="4"><v-switch v-model="ruleData.race" :disabled="!supportsActionField('race')" :label="$t('dns.rule.action.race')" hide-details /></v-col>
+          <v-col v-if="ruleData.action === 'evaluate' && actionFieldVisible('tag')" cols="12" sm="4"><v-text-field v-model="ruleData.tag" :disabled="!supportsActionField('tag')" :label="$t('dns.rule.action.evaluateTag')" clearable @click:clear="delete ruleData.tag" hide-details /></v-col>
+          <v-col v-if="['route', 'evaluate'].includes(ruleData.action) && actionFieldVisible('speculative')" cols="12" sm="4"><v-switch v-model="ruleData.speculative" :disabled="!supportsActionField('speculative')" :label="$t('dns.rule.action.speculative')" hide-details /></v-col>
         </v-row>
         <v-card :subtitle="$t(ruleData.action == 'route' ? 'dns.rule.action.route' : 'dns.rule.action.routeOptions')" v-if="['route', 'evaluate', 'route-options'].includes(ruleData.action)">
           <v-row v-if="['route', 'evaluate'].includes(ruleData.action)">
@@ -82,8 +84,8 @@
             </v-col>
           </v-row>
           <v-row>
-            <v-col cols="12" sm="4"><v-text-field v-model="ruleData.timeout" label="Query timeout" placeholder="5s" clearable @click:clear="delete ruleData.timeout" hide-details /></v-col>
-            <v-col cols="12" sm="4"><v-switch v-model="ruleData.disable_optimistic_cache" label="Disable optimistic cache" hide-details /></v-col>
+            <v-col v-if="actionFieldVisible('timeout')" cols="12" sm="4"><v-text-field v-model="ruleData.timeout" :disabled="!supportsActionField('timeout')" :label="$t('dns.rule.action.timeout')" placeholder="5s" clearable @click:clear="delete ruleData.timeout" hide-details /></v-col>
+            <v-col v-if="actionFieldVisible('disable_optimistic_cache')" cols="12" sm="4"><v-switch v-model="ruleData.disable_optimistic_cache" :disabled="!supportsActionField('disable_optimistic_cache')" :label="$t('dns.rule.action.disableOptimisticCache')" hide-details /></v-col>
             <v-col cols="12" sm="6" md="4">
               <v-switch v-model="ruleData.disable_cache" :label="$t('dns.disableCache')" hide-details></v-switch>
             </v-col>
@@ -190,6 +192,9 @@ export default {
     supportsActionField(field: string): boolean {
       return coreConfigContract.value?.dnsActions[this.ruleData.action ?? 'route']?.includes(field) === true
     },
+    actionFieldVisible(field: string): boolean {
+      return this.supportsActionField(field) || Object.hasOwn(this.ruleData, field)
+    },
     ruleObjectKey(r: any): number {
       if (r == null || typeof r !== 'object') return -1
       let key = dnsRuleObjectKeys.get(r)
@@ -237,7 +242,7 @@ export default {
       this.$emit('close')
     },
     saveChanges() {
-      if (this.subnetConflict) return
+      if (this.subnetConflict || this.ruleUnavailable) return
       this.loading = true
       const originalAction = this.snapshot ? (JSON.parse(this.snapshot).action ?? 'route') : undefined
       const newRule = serializeDNSRule(this.ruleData, originalAction, coreConfigContract.value)
@@ -249,14 +254,21 @@ export default {
     }
   },
   computed: {
+    ruleUnavailable(): boolean {
+      const allowed = coreConfigContract.value?.dnsActions[this.ruleData.action ?? 'route']
+      if (!allowed) return true
+      // An explicit action conversion is serialized by the existing owner;
+      // unchanged historical action fields must never be silently stripped.
+      const originalAction = this.snapshot ? JSON.parse(this.snapshot).action ?? 'route' : undefined
+      if (originalAction !== undefined && originalAction !== (this.ruleData.action ?? 'route')) return false
+      return actionDnsRuleKeys.some(key => !['action', 'invert'].includes(key) && Object.hasOwn(this.ruleData, key) && !allowed.includes(key))
+    },
     subnetConflict(): boolean {
       return this.ruleData.remove_client_subnet === true && typeof this.ruleData.client_subnet === 'string' && this.ruleData.client_subnet.length > 0
     },
     actions() {
       const actions = Object.keys(coreConfigContract.value?.dnsActions ?? {})
-      const current = this.ruleData.action ?? 'route'
-      if (!actions.includes(current)) actions.push(current)
-      return actions.map(value => ({ title: ['evaluate', 'respond'].includes(value) ? value : i18n.global.t('dns.rule.action.' + (value === 'route-options' ? 'routeOptions' : value)), value }))
+      return actions.map(value => ({ title: i18n.global.t('dns.rule.action.' + (value === 'route-options' ? 'routeOptions' : value)), value }))
     },
     dirty(): boolean {
       return this.snapshot !== '' && JSON.stringify(this.ruleData) !== this.snapshot
