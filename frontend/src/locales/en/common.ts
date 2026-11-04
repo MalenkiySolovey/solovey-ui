@@ -778,6 +778,14 @@ export default {
       "authLen": "Encryptrd Length"
     },
     "wg": {
+      "clientDelivery": "Client configuration policy",
+      "publicEndpoint": "Public endpoint",
+      "publicEndpointHint": "Optional host:port override for client configurations, including a translated public port. Empty uses this panel's hostname and the listener port.",
+      "clientAllowedIPs": "Client routes (AllowedIPs)",
+      "clientAllowedIPsHint": "One CIDR per line. Empty inherits the full-tunnel routes. This does not change the server peer's allowed addresses.",
+      "clientKeepalive": "Client keepalive (seconds)",
+      "clientKeepaliveHint": "Empty inherits the peer value. Zero disables keepalive in the generated client configuration.",
+      "clientDNSHint": "Comma-separated resolvers. Imported lists are preserved. Clearing this field omits DNS from the client configuration.",
       "nativeNetwork": "WireGuard network and buffers",
       "udp_mapping": "UDP mapping behavior",
       "udp_filtering": "UDP filtering behavior",

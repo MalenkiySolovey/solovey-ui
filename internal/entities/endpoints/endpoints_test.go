@@ -69,6 +69,37 @@ func TestWireGuardPrivatePeerDeliveryRetainsAmnezia(t *testing.T) {
 			t.Fatal("private delivery lost a native parameter")
 		}
 	}
+	// Client policy must not inherit the server's public listen port, peer
+	// route authority or keepalive when an explicit delivery override exists.
+	ext["dns"] = []string{"10.0.0.1", "2001:db8::53"}
+	ext["publicEndpoint"] = "[2001:db8::2]:63443"
+	ext["clientAllowedIPs"] = []string{"192.0.2.0/24", "2001:db8:1::/64"}
+	ext["clientKeepalive"] = 0
+	row.Ext, _ = json.Marshal(ext)
+	if err := db.Save(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	configs, err = PeerConfigs(db, row.Id, "panel.example")
+	if err != nil || len(configs) != 1 {
+		t.Fatal("native client policy failed", err)
+	}
+	for _, fragment := range []string{"DNS = 10.0.0.1, 2001:db8::53\n", "Endpoint = [2001:db8::2]:63443\n", "AllowedIPs = 192.0.2.0/24, 2001:db8:1::/64\n", "Address = 10.0.0.2/32\n"} {
+		if !strings.Contains(configs[0].Config, fragment) {
+			t.Fatal("client policy changed or omitted")
+		}
+	}
+	if strings.Contains(configs[0].Config, "PersistentKeepalive") {
+		t.Fatal("explicit zero inherited server peer keepalive")
+	}
+	ext["dns"] = []string{}
+	row.Ext, _ = json.Marshal(ext)
+	if err := db.Save(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	configs, err = PeerConfigs(db, row.Id, "panel.example")
+	if err != nil || len(configs) != 1 || strings.Contains(configs[0].Config, "DNS =") {
+		t.Fatal("explicit empty DNS was replaced", err)
+	}
 	masked, err := GetAll(db)
 	if err != nil {
 		t.Fatal(err)
@@ -109,6 +140,27 @@ func TestWireGuardPrivatePeerDeliveryRetainsAmnezia(t *testing.T) {
 	}
 	if _, err := PeerConfigs(db, row.Id, "example.test"); !errors.Is(err, ErrPeerConfigUnavailable) {
 		t.Fatal("unrelated private key produced a peer config")
+	}
+}
+
+func TestWireGuardClientPolicyRejectsInvalidMetadataBeforeSave(t *testing.T) {
+	for _, metadata := range []string{
+		`{"publicEndpoint":"vpn.example:0"}`, `{"publicEndpoint":"vpn.example:65536"}`,
+		`{"publicEndpoint":"vpn.example:443\nPrivateKey = injected"}`,
+		`{"dns":["1.1.1.1\nPrivateKey = injected"]}`, `{"dns":42}`, `{"dns":[42]}`, `{"dns":[""]}`,
+		`{"clientAllowedIPs":[]}`, `{"clientAllowedIPs":["192.0.2.0/24\nEndpoint = injected"]}`,
+		`{"clientKeepalive":3601}`, `{"clientKeepalive":-1}`, `{"clientKeepalive":0.5}`,
+	} {
+		var candidate map[string]any
+		if err := json.Unmarshal([]byte(metadata), &candidate); err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := json.Marshal(map[string]any{"type": "wireguard", "tag": "invalid-policy", "ext": candidate})
+		// A nil transaction proves no persistence or credential operation was
+		// reached. Valid metadata proceeds to the existing endpoint owner.
+		if _, err := Save(nil, "new", raw, nil); err == nil || err.Error() != "invalid WireGuard client delivery policy" {
+			t.Fatal("invalid delivery metadata reached persistence", err)
+		}
 	}
 }
 

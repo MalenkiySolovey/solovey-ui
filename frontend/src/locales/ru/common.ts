@@ -778,6 +778,14 @@ export default {
       "authLen": "Длина аутентификации"
     },
     "wg": {
+      "clientDelivery": "Параметры клиентской конфигурации",
+      "publicEndpoint": "Публичный адрес Endpoint",
+      "publicEndpointHint": "Необязательный адрес:порт для клиентов, включая внешний порт за NAT. Пустое значение использует имя хоста панели и порт слушателя.",
+      "clientAllowedIPs": "Клиентские маршруты (AllowedIPs)",
+      "clientAllowedIPsHint": "Один CIDR на строку. Пустое значение использует полный туннель. Разрешённые адреса пира на сервере не меняются.",
+      "clientKeepalive": "Клиентский keepalive (секунды)",
+      "clientKeepaliveHint": "Пустое значение наследует настройку пира. Ноль отключает keepalive в клиентской конфигурации.",
+      "clientDNSHint": "Резолверы через запятую. Импортированные списки сохраняются. Очистка поля убирает DNS из клиентской конфигурации.",
       "nativeNetwork": "Сеть и буферы WireGuard",
       "udp_mapping": "Правило UDP mapping",
       "udp_filtering": "Правило UDP filtering",

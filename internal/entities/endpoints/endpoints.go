@@ -126,6 +126,11 @@ func saveUpsert(tx *gorm.DB, act string, data json.RawMessage, warp WarpHooks) (
 }
 
 func saveCandidate(tx *gorm.DB, act string, endpoint model.Endpoint, warp WarpHooks, captured bool) (*singboxapply.Change, error) {
+	if endpoint.Type == "wireguard" {
+		if _, _, err := peerDeliveryPolicy(endpoint.Ext); err != nil {
+			return nil, common.NewError("invalid WireGuard client delivery policy")
+		}
+	}
 	if err := diagnostics.FirstError(HostCapabilityFindings(endpoint.Type, "endpoint.options", endpoint.Options)); err != nil {
 		return nil, err
 	}

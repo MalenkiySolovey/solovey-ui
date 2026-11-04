@@ -34,6 +34,9 @@ for (const mode of ['classic', 'nexus']) {
     }
     const tag = `native-awg-${mode}-${Date.now()}`
     await form.getByRole('textbox', { name: 'Tag', exact: true }).fill(tag)
+    await form.getByRole('textbox', { name: 'Public endpoint', exact: true }).fill('[2001:db8::1]:63443')
+    await form.getByRole('textbox', { name: 'Client routes (AllowedIPs)', exact: true }).fill('192.0.2.0/24\n2001:db8:1::/64')
+    await form.getByRole('spinbutton', { name: 'Client keepalive (seconds)', exact: true }).fill('0')
     await form.getByRole('button', { name: 'Add Peer', exact: true }).click()
     await expect(form.getByRole('textbox', { name: 'Peer Public Key', exact: true })).not.toHaveValue('')
     await form.getByRole('button', { name: 'AmneziaWG 3.1', exact: true }).click()
@@ -52,6 +55,8 @@ for (const mode of ['classic', 'nexus']) {
     const row = mode === 'nexus' ? page.getByRole('row').filter({ hasText: tag }) : page.locator('.endpoints__card').filter({ hasText: tag })
     await row.getByRole('button', { name: 'Edit', exact: true }).click()
     form = page.getByRole('dialog').filter({ hasText: 'Edit Endpoint' })
+    await expect(form.getByRole('textbox', { name: 'Public endpoint', exact: true })).toHaveValue('[2001:db8::1]:63443')
+    await expect(form.getByRole('spinbutton', { name: 'Client keepalive (seconds)', exact: true })).toHaveValue('0')
     await form.getByRole('button', { name: 'AmneziaWG 3.1', exact: true }).click()
     await expect(form.getByRole('textbox', { name: 'Handshake initiation header (H1)', exact: true })).toHaveValue('123')
     await expect(form.getByRole('textbox', { name: 'Handshake response header (H2)', exact: true })).toHaveValue('200-300')
@@ -71,6 +76,9 @@ for (const mode of ['classic', 'nexus']) {
     for await (const chunk of stream!) chunks.push(Buffer.from(chunk))
     const config = Buffer.concat(chunks).toString('utf8')
     expect(config).toContain('H2 = 200-300\n')
+    expect(config).toContain('Endpoint = [2001:db8::1]:63443\n')
+    expect(config).toContain('AllowedIPs = 192.0.2.0/24, 2001:db8:1::/64\n')
+    expect(config).not.toContain('PersistentKeepalive')
     expect(config).toContain(`HeaderProtectionKey = ${Buffer.alloc(32, 7).toString('base64')}\n`)
     expect(config).not.toContain('sbox:v1:')
   })

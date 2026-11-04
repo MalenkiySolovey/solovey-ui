@@ -2,8 +2,23 @@ import { describe, expect, it } from 'vitest'
 
 import { EpTypes, createEndpoint, type Endpoint } from './endpoints'
 import { convertOpenVPNModeDraft, serializeEndpointCredentialDraft, setWireGuardAmneziaEnabled, wireGuardAmneziaEnabled } from '@/features/endpointCredentialDraft'
+import Wireguard from '@/components/protocols/Wireguard.vue'
 
 describe('createEndpoint', () => {
+  it('preserves imported client policy and edits it without changing server peer routes', () => {
+    const source = { type: EpTypes.Wireguard, peers: [{ allowed_ips: ['10.0.0.2/32'] }], ext: { dns: ['10.0.0.1', '2001:db8::53'], publicEndpoint: '[2001:db8::1]:63443', clientAllowedIPs: ['192.0.2.0/24'], clientKeepalive: 0, futurePolicy: { preserved: true } } }
+    const draft = createEndpoint(EpTypes.Wireguard, source)
+    const form = Wireguard as any
+    const state = { $props: { data: draft } }
+    expect(form.computed.dns.get.call(state)).toBe('10.0.0.1, 2001:db8::53')
+    expect(form.computed.clientKeepalive.get.call(state)).toBe(0)
+    form.computed.clientAllowedIPs.set.call(state, '198.51.100.0/24\n2001:db8:1::/64')
+    form.computed.dns.set.call(state, '')
+    form.computed.clientKeepalive.set.call(state, '')
+    expect(draft.ext).toEqual({ ...source.ext, keys: [], dns: [], clientAllowedIPs: ['198.51.100.0/24', '2001:db8:1::/64'], clientKeepalive: undefined })
+    expect(draft.peers).toEqual(source.peers)
+    expect(source.ext.dns).toEqual(['10.0.0.1', '2001:db8::53'])
+  })
   it('preserves native Amnezia ranges and owns the explicit disable credential intent', () => {
     const view = { reference: { owner: 'endpoints', id: 'record:9:amnezia.header_protection_key', policy: 'OWNER_USE_AND_PRESENCE', projection: 'MASKED' }, present: true, rotationRevision: 'a'.repeat(64) }
     const source = { type: EpTypes.Wireguard, amnezia: { h1: 123, h2: '200-300', header_protection_key: view, future_option: { retained: true } }, future_option: { retained: true } }

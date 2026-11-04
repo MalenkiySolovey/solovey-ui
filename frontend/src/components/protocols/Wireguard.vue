@@ -67,7 +67,7 @@
     </v-row>
     <v-row v-if="data.ext">
       <v-col cols="12" sm="8">
-        <v-text-field v-model="data.ext.dns" :label="$t('dns.title') + ' ' + $t('commaSeparated')" hide-details></v-text-field>
+        <v-text-field v-model="dns" :label="$t('dns.title') + ' ' + $t('commaSeparated')" :hint="$t('types.wg.clientDNSHint')" persistent-hint></v-text-field>
       </v-col>
     </v-row>
     <v-row>
@@ -105,6 +105,13 @@
     </v-card-actions>
   </v-card>
   <WireGuardNativeOptions :data="data" />
+  <v-card v-if="data.ext" :subtitle="$t('types.wg.clientDelivery')">
+    <v-row>
+      <v-col cols="12" sm="8"><v-text-field v-model="data.ext.publicEndpoint" :label="$t('types.wg.publicEndpoint')" :hint="$t('types.wg.publicEndpointHint')" placeholder="vpn.example:51820" clearable @click:clear="delete data.ext.publicEndpoint" persistent-hint /></v-col>
+      <v-col cols="12" sm="8"><v-textarea v-model="clientAllowedIPs" :label="$t('types.wg.clientAllowedIPs')" :hint="$t('types.wg.clientAllowedIPsHint')" rows="2" auto-grow clearable @click:clear="delete data.ext.clientAllowedIPs" persistent-hint /></v-col>
+      <v-col cols="12" sm="4"><v-text-field v-model="clientKeepalive" :label="$t('types.wg.clientKeepalive')" :hint="$t('types.wg.clientKeepaliveHint')" type="number" min="0" max="3600" clearable persistent-hint /></v-col>
+    </v-row>
+  </v-card>
   <v-card v-if="data.peers != undefined">
     <v-card-subtitle>
       {{ $t('types.wg.peers') }}
@@ -153,6 +160,24 @@ export default {
     },
   },
   computed: {
+    dns: {
+      get(): string { const value = this.$props.data.ext?.dns; return Array.isArray(value) ? value.join(', ') : value ?? '' },
+      set(value: string) { this.$props.data.ext.dns = value ? value.split(',').map((item: string) => item.trim()) : [] },
+    },
+    clientAllowedIPs: {
+      get(): string { return this.$props.data.ext?.clientAllowedIPs?.join('\n') ?? '' },
+      set(value: string) {
+        if (!value) delete this.$props.data.ext.clientAllowedIPs
+        else this.$props.data.ext.clientAllowedIPs = value.split(/[\n,]/).map((item: string) => item.trim())
+      },
+    },
+    clientKeepalive: {
+      get(): number | string { return this.$props.data.ext?.clientKeepalive ?? '' },
+      set(value: string | number | null) {
+        if (value == null || value === '') delete this.$props.data.ext.clientKeepalive
+        else this.$props.data.ext.clientKeepalive = Number(value)
+      },
+    },
     optionUdp: {
       get(): boolean { return this.$props.data.udp_timeout != undefined },
       set(v:boolean) { this.$props.data.udp_timeout = v ? "5m" : undefined }

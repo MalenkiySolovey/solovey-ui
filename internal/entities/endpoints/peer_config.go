@@ -95,7 +95,6 @@ func renderPeerConfigs(raw, extension []byte, host string) ([]PeerConfig, error)
 		} `json:"peers"`
 	}
 	var ext struct {
-		DNS  string `json:"dns"`
 		Keys []struct {
 			PublicKey  string `json:"public_key"`
 			PrivateKey string `json:"private_key"`
@@ -103,6 +102,10 @@ func renderPeerConfigs(raw, extension []byte, host string) ([]PeerConfig, error)
 	}
 	if json.Unmarshal(raw, &options) != nil || json.Unmarshal(extension, &ext) != nil || options.ListenPort == 0 || len(options.Peers) > 128 || len(ext.Keys) > 128 {
 		return nil, ErrPeerConfigUnavailable
+	}
+	policy, dns, err := peerDeliveryPolicy(extension)
+	if err != nil {
+		return nil, err
 	}
 	serverPublic, err := peerConfigPublicKey(options.PrivateKey)
 	if err != nil {
@@ -112,16 +115,13 @@ func renderPeerConfigs(raw, extension []byte, host string) ([]PeerConfig, error)
 	if err := writePeerAmnezia(&amnezia, options.Amnezia); err != nil {
 		return nil, err
 	}
-	if ext.DNS == "" {
-		ext.DNS = "1.1.1.1, 9.9.9.9"
+	publicEndpoint := policy.PublicEndpoint
+	if publicEndpoint == "" {
+		publicEndpoint = net.JoinHostPort(host, strconv.Itoa(int(options.ListenPort)))
 	}
-	if !peerConfigLine(ext.DNS) {
-		return nil, ErrPeerConfigUnavailable
-	}
-	for _, value := range strings.Split(ext.DNS, ",") {
-		if !peerConfigHost(strings.TrimSpace(value)) {
-			return nil, ErrPeerConfigUnavailable
-		}
+	allowedIPs := policy.ClientAllowedIPs
+	if allowedIPs == nil {
+		allowedIPs = []string{"0.0.0.0/0", "::/0"}
 	}
 	keys := make(map[string]string, len(ext.Keys))
 	for _, key := range ext.Keys {
@@ -150,12 +150,15 @@ func renderPeerConfigs(raw, extension []byte, host string) ([]PeerConfig, error)
 			}
 		}
 		var config strings.Builder
-		config.WriteString("[Interface]\nPrivateKey = " + private + "\nAddress = " + strings.Join(peer.AllowedIPs, ", ") + "\nDNS = " + ext.DNS + "\n")
+		config.WriteString("[Interface]\nPrivateKey = " + private + "\nAddress = " + strings.Join(peer.AllowedIPs, ", ") + "\n")
+		if dns != "" {
+			config.WriteString("DNS = " + dns + "\n")
+		}
 		if options.MTU != 0 {
 			config.WriteString("MTU = " + strconv.FormatUint(uint64(options.MTU), 10) + "\n")
 		}
 		config.WriteString(amnezia.String())
-		config.WriteString("\n[Peer]\nPublicKey = " + serverPublic + "\nAllowedIPs = 0.0.0.0/0, ::/0\nEndpoint = " + net.JoinHostPort(host, strconv.Itoa(int(options.ListenPort))) + "\n")
+		config.WriteString("\n[Peer]\nPublicKey = " + serverPublic + "\nAllowedIPs = " + strings.Join(allowedIPs, ", ") + "\nEndpoint = " + publicEndpoint + "\n")
 		if peer.PresharedKey != "" {
 			key, err := base64.StdEncoding.DecodeString(peer.PresharedKey)
 			if err != nil || len(key) != 32 {
@@ -164,8 +167,12 @@ func renderPeerConfigs(raw, extension []byte, host string) ([]PeerConfig, error)
 			clear(key)
 			config.WriteString("PresharedKey = " + peer.PresharedKey + "\n")
 		}
-		if peer.Keepalive != 0 {
-			config.WriteString("PersistentKeepalive = " + strconv.Itoa(int(peer.Keepalive)) + "\n")
+		keepalive := peer.Keepalive
+		if policy.ClientKeepalive != nil {
+			keepalive = *policy.ClientKeepalive
+		}
+		if keepalive != 0 {
+			config.WriteString("PersistentKeepalive = " + strconv.Itoa(int(keepalive)) + "\n")
 		}
 		total += config.Len()
 		if total > 1<<20 {
