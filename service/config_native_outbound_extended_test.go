@@ -5,11 +5,14 @@ package service
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"net"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityendpoints "github.com/MalenkiySolovey/solovey-ui/internal/entities/endpoints"
@@ -17,6 +20,79 @@ import (
 	entityservices "github.com/MalenkiySolovey/solovey-ui/internal/entities/services"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 )
+
+func TestNativeOpenVPNServerCandidateOwnsServingCredentialsAndLifecycle(t *testing.T) {
+	if !registry.Resolve("endpoints", "openvpn-server").Available() {
+		t.Skip("OpenVPN serving is absent from this profile")
+	}
+	for _, mode := range []string{"tls", "static_key"} {
+		t.Run(mode, func(t *testing.T) {
+			initSettingTestDB(t)
+			seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
+			db := dbsqlite.DB()
+			svc, applier, lifecycle := newHotReloadConfigService(t)
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			port := listener.Addr().(*net.TCPAddr).Port
+			_ = listener.Close()
+			draft := map[string]any{"type": "openvpn-server", "tag": "native-openvpn-server", "mode": mode, "network": "tcp", "listen": "127.0.0.1", "listen_port": port, "address": []string{"10.88.0.1/24"}}
+			if mode == "tls" {
+				cert, key := makeSelfSignedCertPEM(t, time.Now().Add(time.Hour))
+				draft["users"] = map[string]string{"intent": "replace", "value": `[{"username":"fixture","password":"private-serving-canary"}]`}
+				draft["tls"] = map[string]any{"certificate": []string{string(cert)}, "key": map[string]string{"intent": "replace", "value": string(key)}, "client_certificate": []string{string(cert)}}
+				draft["push"] = map[string]any{"dns": []string{"192.0.2.53"}, "routes": []string{"192.0.2.0/24"}}
+			} else {
+				draft["peer_address"] = "10.88.0.2"
+				draft["cipher"] = "AES-256-CBC"
+				draft["static_key"] = map[string]string{"intent": "replace", "value": "-----BEGIN OpenVPN Static key V1-----\n" + strings.Repeat("01", 256) + "\n-----END OpenVPN Static key V1-----"}
+			}
+			draft["network"] = "private-invalid-network-canary"
+			raw, _ := json.Marshal(draft)
+			if _, err := svc.Save("endpoints", "new", raw, "", "admin", "fixture.invalid"); err == nil || !strings.HasPrefix(err.Error(), "NATIVE_ENDPOINT_CANDIDATE_REJECTED") || strings.Contains(err.Error(), "canary") {
+				t.Fatal("serving candidate was not privately rejected", err)
+			}
+			var count int64
+			if err := db.Model(&model.Endpoint{}).Count(&count).Error; err != nil || count != 0 || len(applier.calls) != 0 || len(lifecycle.calls) != 0 {
+				t.Fatal("invalid serving candidate committed state or runtime effects", err)
+			}
+			draft["network"] = "tcp"
+			raw, _ = json.Marshal(draft)
+			if _, err := svc.Save("endpoints", "new", raw, "", "admin", "fixture.invalid"); err != nil {
+				t.Fatal("valid serving candidate rejected", err)
+			}
+			var stored model.Endpoint
+			if err := db.First(&stored).Error; err != nil || bytes.Contains(stored.Options, []byte("private-serving-canary")) || bytes.Contains(stored.Options, []byte("PRIVATE KEY")) || bytes.Contains(stored.Options, []byte("BEGIN OpenVPN Static key")) {
+				t.Fatal("serving credentials escaped their row owner", err)
+			}
+			view, err := entityendpoints.GetAll(db)
+			masked, _ := json.Marshal(view)
+			if err != nil || bytes.Contains(masked, []byte("canary")) || bytes.Contains(masked, []byte("PRIVATE KEY")) || bytes.Contains(masked, []byte("sbox:v1:")) {
+				t.Fatal("normal serving endpoint read disclosed credentials", err)
+			}
+			config, err := svc.GetConfig("")
+			if err != nil || singboxvalidation.ValidateConfig(*config) != nil {
+				t.Fatal("serving runtime projection failed", err)
+			}
+			core := coreruntime.NewCore()
+			t.Cleanup(func() { _ = core.Stop() })
+			for range 2 {
+				if err := core.Start(*config); err != nil {
+					t.Fatal("serving start/restart failed", err)
+				}
+				if err := core.Stop(); err != nil {
+					t.Fatal("serving shutdown failed", err)
+				}
+				listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", fmt.Sprint(port)))
+				if err != nil {
+					t.Fatal("serving shutdown retained the listener", err)
+				}
+				_ = listener.Close()
+			}
+		})
+	}
+}
 
 func TestHysteria2RealmOutboundUsesCanonicalCredentialsAndPrivateAdmission(t *testing.T) {
 	initSettingTestDB(t)
@@ -138,9 +214,6 @@ func TestNativeRealmServiceCandidatePreservesPrivateTokens(t *testing.T) {
 func TestNativeOpenVPNClientCandidateUsesCanonicalOwnerAndDNSReferences(t *testing.T) {
 	if !registry.Resolve("endpoints", "openvpn-client").Available() {
 		t.Skip("OpenVPN client is absent from this profile")
-	}
-	if registry.Resolve("endpoints", "openvpn-server").Available() {
-		t.Fatal("client integration advertised an unowned serving workflow")
 	}
 	for _, mode := range []string{"tls", "static_key"} {
 		t.Run(mode, func(t *testing.T) {
