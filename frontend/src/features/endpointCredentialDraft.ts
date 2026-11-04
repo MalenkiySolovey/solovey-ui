@@ -5,7 +5,8 @@ import { secretMutation } from './secretCredentialDraft'
 export function serializeEndpointCredentialDraft<T extends { type: string }>(endpoint: T): T {
   const paths = endpoint.type === 'openconnect'
     ? ['password', 'cookie', 'token.secret', 'token.pin', 'token.password', 'tls.client_key', 'tls.client_key_password', 'tls.mca_key', 'tls.mca_key_password', 'form_entries']
-    : endpoint.type === 'openvpn-client' ? ['password', 'static_key', 'tls.client_key', 'tls.control_wrap.key'] : []
+    : endpoint.type === 'openvpn-client' ? ['password', 'static_key', 'tls.client_key', 'tls.control_wrap.key']
+      : endpoint.type === 'openvpn-server' ? ['users', 'static_key', 'tls.key', 'tls.control_wrap.key'] : []
   if (paths.length === 0) return endpoint
   const result = JSON.parse(JSON.stringify(endpoint)) as Record<string, any>
   for (const path of paths) {
@@ -26,14 +27,25 @@ export function serializeEndpointCredentialDraft<T extends { type: string }>(end
 export function convertOpenVPNModeDraft(endpoint: Record<string, any>, mode: 'tls' | 'static_key'): Record<string, any> {
   const result = JSON.parse(JSON.stringify(endpoint))
   result.mode = mode
+  const server = endpoint.type === 'openvpn-server'
   if (mode === 'static_key') {
     for (const key of ['username', 'auth_retry', 'static_challenge', 'static_challenge_echo', 'route_no_pull', 'pull_filters', 'renegotiate_interval', 'renegotiate_disabled', 'renegotiate_bytes', 'renegotiate_packets', 'tls_timeout', 'handshake_window', 'data_ciphers', 'data_ciphers_fallback']) delete result[key]
-    result.password = { intent: 'clear' }
-    result.tls = { client_key: { intent: 'clear' }, control_wrap: { key: { intent: 'clear' } } }
+    if (server) {
+      result.users = { intent: 'clear' }
+      delete result.duplicate_cn
+      delete result.push
+    } else result.password = { intent: 'clear' }
+    result.tls = { [server ? 'key' : 'client_key']: { intent: 'clear' }, control_wrap: { key: { intent: 'clear' } } }
   } else {
     delete result.static_key_path
     delete result.key_direction
     delete result.cipher
+    if (server) {
+      delete result.remote
+      delete result.remote_port
+      delete result.peer_address
+      delete result.peer_address_ipv6
+    }
     result.static_key = { intent: 'clear' }
     result.tls ??= {}
     result.data_ciphers ??= ['AES-256-GCM']
