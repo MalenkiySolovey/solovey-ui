@@ -6,6 +6,19 @@ import (
 	"testing"
 )
 
+func TestNativeGroupInlinePeersRequireExplicitMapping(t *testing.T) {
+	for _, body := range []string{
+		`{"outbounds":[{"type":"failover","tag":"native","outbounds":[{"type":"socks","server":"private-peer-value","server_port":1080}]}]}`,
+		`{"outbounds":[{"type":"bond","tag":"native","outbounds":[{"outbound":{"type":"selector","outbounds":["a","b"]},"download_ratio":100,"upload_ratio":100}]}]}`,
+		`{"outbounds":[{"type":"failover","outbounds":["leaf",{"type":"selector","outbounds":["leaf"]}]}]}`,
+	} {
+		rows, err := ParseSingBoxOutbounds(body)
+		if err == nil || rows != nil || strings.Contains(err.Error(), "private-peer-value") {
+			t.Fatal("inline native peer was silently flattened or exposed")
+		}
+	}
+}
+
 func TestParseExternalOutboundsKeepsSingBoxGroupsAndFiltersUtilityOutbounds(t *testing.T) {
 	result, err := ParseExternalOutbounds(`{
 		"outbounds": [

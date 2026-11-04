@@ -11,6 +11,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
+	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
 )
@@ -284,13 +285,21 @@ func rewriteOutboundTagList(value any, tagMap map[string]string) any {
 		}
 		return rewritten
 	case []any:
-		rewritten := make([]string, 0, len(typed))
+		rewritten := make([]any, 0, len(typed))
 		for _, item := range typed {
-			tag, ok := item.(string)
-			if !ok {
-				continue
+			switch value := item.(type) {
+			case string:
+				rewritten = append(rewritten, rewriteOutboundTag(value, tagMap))
+			case map[string]any:
+				leg := subcanonical.CloneOutbound(value)
+				if tag, ok := leg["outbound"].(string); ok {
+					leg["outbound"] = rewriteOutboundTag(tag, tagMap)
+				}
+				rewritten = append(rewritten, leg)
+			default:
+				// Preserve unknown carriers for the canonical owner's rejection.
+				rewritten = append(rewritten, item)
 			}
-			rewritten = append(rewritten, rewriteOutboundTag(tag, tagMap))
 		}
 		return rewritten
 	default:

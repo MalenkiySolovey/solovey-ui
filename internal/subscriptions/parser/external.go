@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds/composition"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
@@ -47,6 +48,14 @@ func parseSingBoxConfigOutbounds(data string) ([]map[string]interface{}, error) 
 		case "direct", "block", "dns":
 			continue
 		default:
+			raw, _ := json.Marshal(outboundMap)
+			canonical, err := composition.CanonicalReferences(outboundType, raw)
+			if err != nil {
+				return nil, err
+			}
+			if err := json.Unmarshal(canonical, &outboundMap); err != nil {
+				return nil, err
+			}
 			result = append(result, outboundMap)
 		}
 	}

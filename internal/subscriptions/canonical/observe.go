@@ -189,6 +189,17 @@ func metadataString(value map[string]any, keys ...string) string {
 
 func outboundGroupMembers(outbound map[string]any) []string {
 	members := stringList(outbound["outbounds"])
+	if outbound["type"] == "bond" {
+		members = nil
+		legs, _ := outbound["outbounds"].([]any)
+		for _, value := range legs {
+			if leg, ok := value.(map[string]any); ok {
+				if tag, ok := leg["outbound"].(string); ok {
+					members = append(members, tag)
+				}
+			}
+		}
+	}
 	if len(members) == 0 {
 		return nil
 	}

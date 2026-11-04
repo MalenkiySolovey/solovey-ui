@@ -78,42 +78,5 @@ func (v runtimeOutboundView) render(db *gorm.DB, row model.Outbound) (json.RawMe
 	if err != nil {
 		return nil, err
 	}
-	if !composition.IsGroup(row.Type) {
-		return raw, nil
-	}
-	var children []json.RawMessage
-	for _, member := range v.groups.Members(row.Tag) {
-		child, err := json.Marshal(struct {
-			Type      string   `json:"type"`
-			Outbounds []string `json:"outbounds"`
-			Default   string   `json:"default"`
-		}{"selector", []string{member.Outbound}, member.Outbound})
-		if err != nil {
-			return nil, err
-		}
-		if row.Type == "bond" {
-			child, err = json.Marshal(struct {
-				Outbound      json.RawMessage `json:"outbound"`
-				DownloadRatio int             `json:"download_ratio"`
-				UploadRatio   int             `json:"upload_ratio"`
-				Count         int             `json:"count,omitempty"`
-			}{child, member.DownloadRatio, member.UploadRatio, member.Count})
-			if err != nil {
-				return nil, err
-			}
-		}
-		children = append(children, child)
-	}
-	var config map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &config); err != nil {
-		return nil, err
-	}
-	if row.Type == "core-failover" {
-		config["type"] = json.RawMessage(`"failover"`)
-	}
-	config["outbounds"], err = json.Marshal(children)
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(config)
+	return v.groups.Render(row.Type, row.Tag, raw)
 }

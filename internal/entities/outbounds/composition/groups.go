@@ -144,3 +144,121 @@ func Build(rows []model.Outbound) (Index, error) {
 }
 
 func (i Index) Members(tag string) []Member { return append([]Member(nil), i.groups[tag]...) }
+
+// Render borrows canonical members through native selectors. Runtime assembly
+// and private client JSON use the same projection, with one credential owner.
+func (i Index) Render(kind, tag string, raw json.RawMessage) (json.RawMessage, error) {
+	if !IsGroup(kind) {
+		return raw, nil
+	}
+	var config map[string]json.RawMessage
+	if json.Unmarshal(raw, &config) != nil {
+		return nil, fmt.Errorf("OUTBOUND_GROUP_OPTIONS_INVALID")
+	}
+	var legs []map[string]json.RawMessage
+	if kind == "bond" && json.Unmarshal(config["outbounds"], &legs) != nil {
+		return nil, fmt.Errorf("OUTBOUND_GROUP_MEMBERS_INVALID")
+	}
+	if kind == "bond" && len(legs) != len(i.Members(tag)) {
+		return nil, fmt.Errorf("OUTBOUND_GROUP_MEMBERS_INVALID")
+	}
+	children := []json.RawMessage{}
+	for position, member := range i.Members(tag) {
+		child, err := json.Marshal(struct {
+			Type      string   `json:"type"`
+			Outbounds []string `json:"outbounds"`
+			Default   string   `json:"default"`
+		}{"selector", []string{member.Outbound}, member.Outbound})
+		if err != nil {
+			return nil, err
+		}
+		if kind == "bond" {
+			legs[position]["outbound"] = child
+			child, err = json.Marshal(legs[position])
+			if err != nil {
+				return nil, err
+			}
+		}
+		children = append(children, child)
+	}
+	if len(children) == 0 {
+		return nil, fmt.Errorf("OUTBOUND_GROUP_MEMBERS_INVALID")
+	}
+	if kind == "core-failover" {
+		config["type"] = json.RawMessage(`"failover"`)
+	}
+	config["outbounds"], _ = json.Marshal(children)
+	return json.Marshal(config)
+}
+
+// CanonicalReferences reverses only the lossless borrowed-selector projection.
+// Other inline native peers require explicit mapping; never drop their data or
+// reinterpret native failover as the Panel's managed health-probe policy.
+func CanonicalReferences(kind string, raw json.RawMessage) (json.RawMessage, error) {
+	if kind != "bond" && kind != "failover" {
+		return raw, nil
+	}
+	var config map[string]json.RawMessage
+	if json.Unmarshal(raw, &config) != nil {
+		return nil, fmt.Errorf("OUTBOUND_GROUP_OPTIONS_INVALID")
+	}
+	var entries []json.RawMessage
+	if json.Unmarshal(config["outbounds"], &entries) != nil {
+		return nil, fmt.Errorf("OUTBOUND_GROUP_MEMBERS_INVALID")
+	}
+	borrowedTag := func(child json.RawMessage) (string, error) {
+		var selector struct {
+			Type      string   `json:"type"`
+			Outbounds []string `json:"outbounds"`
+			Default   string   `json:"default"`
+		}
+		decoder := json.NewDecoder(bytes.NewReader(child))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&selector) != nil || selector.Type != "selector" || len(selector.Outbounds) != 1 || strings.TrimSpace(selector.Outbounds[0]) == "" || selector.Default != "" && selector.Default != selector.Outbounds[0] {
+			return "", fmt.Errorf("OUTBOUND_GROUP_INLINE_MAPPING_REQUIRED")
+		}
+		return selector.Outbounds[0], nil
+	}
+	converted, references := false, false
+	for n, entry := range entries {
+		var tag string
+		if kind == "failover" && json.Unmarshal(entry, &tag) == nil {
+			references = true
+			continue
+		}
+		var leg map[string]json.RawMessage
+		child := entry
+		if kind == "bond" {
+			if json.Unmarshal(entry, &leg) != nil || leg == nil {
+				return nil, fmt.Errorf("OUTBOUND_GROUP_MEMBERS_INVALID")
+			}
+			child = leg["outbound"]
+			if json.Unmarshal(child, &tag) == nil {
+				references = true
+				continue
+			}
+		}
+		tag, err := borrowedTag(child)
+		if err != nil {
+			return nil, err
+		}
+		encoded, _ := json.Marshal(tag)
+		if kind == "bond" {
+			leg["outbound"] = encoded
+			encoded, _ = json.Marshal(leg)
+		}
+		entries[n] = encoded
+		converted = true
+	}
+	if converted && references {
+		return nil, fmt.Errorf("OUTBOUND_GROUP_MEMBERS_INVALID")
+	}
+	if !converted {
+		return raw, nil
+	}
+	if kind == "failover" {
+		config["type"] = json.RawMessage(`"core-failover"`)
+	}
+	config["outbounds"], _ = json.Marshal(entries)
+	return json.Marshal(config)
+}

@@ -122,7 +122,7 @@ func appendGroupCheckConnection(tx *gorm.DB, connection RemoteOutboundConnection
 }
 func remoteConnectionIsGroup(connection RemoteOutboundConnection) bool {
 	switch connection.Type {
-	case "selector", "urltest", entityoutbounds.FailoverType:
+	case "selector", "urltest", entityoutbounds.FailoverType, "bond", "core-failover":
 		return true
 	default:
 		return false
