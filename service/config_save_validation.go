@@ -85,7 +85,7 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 	}
 	var endpointCount int64
 	var endpointKinds []string
-	for _, kind := range []string{"openconnect", "openvpn-client"} {
+	for _, kind := range []string{"openconnect", "openvpn-client", "openvpn-server"} {
 		if entitycapabilities.Resolve("endpoints", kind).Available {
 			endpointKinds = append(endpointKinds, kind)
 		}
