@@ -23,6 +23,9 @@ func endpointCredentialPaths(kind string) []string {
 	if kind == "wireguard" || kind == "warp" {
 		return []string{"amnezia.header_protection_key"}
 	}
+	if kind == "openvpn-server" {
+		return []string{"users", "static_key", "tls.key", "tls.control_wrap.key"}
+	}
 	if kind == "openvpn-client" {
 		return []string{"password", "static_key", "tls.client_key", "tls.control_wrap.key"}
 	}
@@ -39,7 +42,7 @@ func endpointCredentialPlain(path, value string) (json.RawMessage, error) {
 	if len(value) == 0 || len(value) > 1<<20 || strings.ContainsRune(value, 0) {
 		return nil, errEndpointCredential
 	}
-	if path == "form_entries" {
+	if path == "form_entries" || path == "users" {
 		var entries []json.RawMessage
 		if json.Unmarshal([]byte(value), &entries) != nil || entries == nil {
 			return nil, errEndpointCredential
@@ -47,6 +50,17 @@ func endpointCredentialPlain(path, value string) (json.RawMessage, error) {
 		for _, entry := range entries {
 			if jsonvalue.StrictObject(entry) != nil {
 				return nil, errEndpointCredential
+			}
+		}
+		if path == "users" {
+			seen := make(map[string]bool, len(entries))
+			for _, entry := range entries {
+				var fields map[string]json.RawMessage
+				var user struct{ Username, Password string }
+				if json.Unmarshal(entry, &fields) != nil || len(fields) != 2 || fields["username"] == nil || fields["password"] == nil || json.Unmarshal(entry, &user) != nil || user.Username == "" || user.Password == "" || seen[user.Username] {
+					return nil, errEndpointCredential
+				}
+				seen[user.Username] = true
 			}
 		}
 		return json.RawMessage(value), nil
@@ -304,10 +318,10 @@ func importEndpointCredentials(tx *gorm.DB, endpoint *model.Endpoint, recreate b
 			continue
 		}
 		var value string
-		if path == "form_entries" && len(raw) > 0 && raw[0] == '[' {
+		if (path == "form_entries" || path == "users") && len(raw) > 0 && raw[0] == '[' {
 			value = string(raw)
 		} else if json.Unmarshal(raw, &value) != nil {
-			if path != "tls.client_key" && path != "tls.mca_key" && path != "static_key" && path != "tls.control_wrap.key" {
+			if path != "tls.client_key" && path != "tls.key" && path != "tls.mca_key" && path != "static_key" && path != "tls.control_wrap.key" {
 				return errEndpointCredential
 			}
 			var lines []string

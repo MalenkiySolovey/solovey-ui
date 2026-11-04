@@ -21,6 +21,6 @@ func endpointDeclarations() []declaration[*endpoint.Registry] {
 		{typeName: "tailscale", buildTag: tailscaleBuildTag, compiled: supportsTailscale, register: registerTailscaleEndpoint},
 		{typeName: "openconnect", buildTag: "shtorm_extended,with_openconnect,with_gvisor", compiled: supportsOpenConnect, register: registerOpenConnectEndpoint},
 		{typeName: "openvpn-client", buildTag: "shtorm_extended,with_openvpn,with_gvisor", compiled: supportsOpenVPNClient, register: registerOpenVPNClient},
-		{typeName: "openvpn-server", buildTag: "with_openvpn", productUnavailable: "UNSUPPORTED_BY_PRODUCT"},
+		{typeName: "openvpn-server", buildTag: "shtorm_extended,with_openvpn,with_gvisor", compiled: supportsOpenVPNClient, register: registerOpenVPNServer},
 	}
 }
