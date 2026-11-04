@@ -210,6 +210,9 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 		if err := remotesub.ApplySourceContent(tx.Statement.Context, tx, &saved, input.Content, options); err != nil {
 			return err
 		}
+		if err := remotesub.ApplySourceHeaders(tx, &saved, input.FetchHeaders); err != nil {
+			return err
+		}
 		if err := tx.Save(&saved).Error; err != nil {
 			return err
 		}

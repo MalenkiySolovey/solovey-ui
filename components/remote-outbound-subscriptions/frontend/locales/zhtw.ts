@@ -1,5 +1,9 @@
 export default {
   "remoteOutbound": {
+    "clearFetchHeaders": "清除已儲存的標頭",
+    "noFetchHeaders": "未儲存額外標頭。",
+    "fetchHeaders": "私密下載標頭（JSON）",
+    "fetchHeadersHint": "選用 JSON 物件：標頭名稱對應字串或字串陣列，最大 16 KiB。值會加密，編輯時可保留、取代或清除。僅用於來源下載，重新導向時移除。User-Agent 另行設定；不能覆寫主機、訊息分框或代理標頭。",
     "sourcePath": "面板主機上的來源檔案路徑",
     "sourcePathHint": "面板主機上可讀取一般檔案的絕對路徑（最大 512 KiB）。自動重新整理依所選間隔檢查檔案。讀取或解析失敗時保留上次收集的連線。面板不會寫入或刪除此檔案。",
     "dialerOverride": "匯入出站的撥號選項",
