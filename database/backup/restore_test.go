@@ -416,7 +416,7 @@ func TestRehearsalExplicitlyAdaptsOnlySupportedLegacyBackup(t *testing.T) {
 	}
 	if !rehearsal.Possible || rehearsal.ManifestStatus != "LEGACY_EXPLICITLY_ADAPTED" ||
 		rehearsal.Manifest == nil || rehearsal.Manifest.AppVersion != "1.4.1" ||
-		rehearsal.MigrationPlan != "REHEARSED" {
+		rehearsal.ReleaseCompatibility != "OLDER_COMPATIBLE" || rehearsal.MigrationPlan != "REHEARSED" {
 		t.Fatalf("legacy rehearsal=%#v", rehearsal)
 	}
 }
