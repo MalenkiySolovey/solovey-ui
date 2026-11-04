@@ -58,6 +58,7 @@ func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
 	}
 	group := g.Group("/remote-outbound-subscriptions")
 	group.GET("", a.GetRemoteOutboundSubscriptions)
+	group.GET("/download-outbounds", a.GetDownloadOutbounds)
 	group.POST("/save", a.SaveRemoteOutboundSubscription)
 	group.POST("/delete", a.DeleteRemoteOutboundSubscription)
 	group.POST("/refresh", a.RefreshRemoteOutboundSubscription)
@@ -89,6 +90,14 @@ func (a *Handler) GetRemoteOutboundSubscriptions(c *gin.Context) {
 	}
 	subscriptions, err := a.Service.GetAll()
 	a.JSONObj(c, subscriptions, err)
+}
+
+func (a *Handler) GetDownloadOutbounds(c *gin.Context) {
+	if !a.requireScope(c, "remoteOutboundSubscriptions", "admin", "read", "write") {
+		return
+	}
+	choices, err := a.Service.DownloadOutbounds()
+	a.JSONObj(c, choices, err)
 }
 
 func (a *Handler) SaveRemoteOutboundSubscription(c *gin.Context) {

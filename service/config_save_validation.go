@@ -52,12 +52,22 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 			if !tx.Migrator().HasTable(entity) {
 				continue
 			}
-			var rows []struct{ Options json.RawMessage }
-			if err := tx.Model(entity).Select("options").Find(&rows).Error; err != nil {
+			var rows []struct {
+				Type    string
+				Options json.RawMessage
+			}
+			if err := tx.Model(entity).Select("type", "options").Find(&rows).Error; err != nil {
 				return err
 			}
 			for _, row := range rows {
-				var options struct{ Transport struct{ Type string } }
+				var options struct {
+					Transport struct{ Type string }
+					Realm     json.RawMessage
+				}
+				if _, outbound := entity.(*model.Outbound); outbound && row.Type == "hysteria2" && json.Unmarshal(row.Options, &options) == nil && len(options.Realm) != 0 && string(options.Realm) != "null" && entitycapabilities.ResolveResource("outbounds", row.Type, row.Options).Available {
+					transportCandidate = true
+					break
+				}
 				if json.Unmarshal(row.Options, &options) == nil && (options.Transport.Type == "xhttp" || options.Transport.Type == "mkcp" || options.Transport.Type == "quic") && registry.ResolveTransport(options.Transport.Type).Available() {
 					transportCandidate = true
 					break

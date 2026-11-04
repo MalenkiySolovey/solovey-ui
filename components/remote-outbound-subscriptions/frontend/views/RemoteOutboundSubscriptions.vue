@@ -145,6 +145,12 @@
         </v-col>
         <v-col cols="12" class="text-caption">{{ $t('remoteOutbound.sourceFiltersHint') }}</v-col>
         <v-col v-if="page.form.sourceType === 'remote'" cols="12">
+          <template v-if="page.unavailableDownloadOutbound">
+            <v-text-field :model-value="page.unavailableDownloadOutbound" :label="$t('remoteOutbound.downloadOutbound')" readonly variant="outlined" density="compact" />
+            <v-alert type="warning" variant="tonal" class="mb-2">{{ $t('remoteOutbound.downloadOutboundUnavailable') }}</v-alert>
+            <v-btn variant="text" class="mb-3" @click="page.form.downloadOutboundId = 0">{{ $t('remoteOutbound.clearDownloadDetour') }}</v-btn>
+          </template>
+          <v-select v-else v-model="page.form.downloadOutboundId" :items="page.downloadOutboundChoices" :label="$t('remoteOutbound.downloadOutbound')" :hint="$t('remoteOutbound.downloadOutboundHint')" persistent-hint variant="outlined" density="compact" />
           <v-text-field v-model="page.form.userAgent" :label="$t('remoteOutbound.userAgent')" :hint="$t('remoteOutbound.userAgentHint')" persistent-hint maxlength="4096" variant="outlined" density="compact" />
           <SecretCredentialField v-model="page.form.fetchHeaders" :available="true" multiline :label="$t('remoteOutbound.fetchHeaders')" :clear-label="$t('remoteOutbound.clearFetchHeaders')" :absent-label="$t('remoteOutbound.noFetchHeaders')" />
           <p class="text-caption">{{ $t('remoteOutbound.fetchHeadersHint') }}</p>
@@ -154,6 +160,15 @@
         </v-col>
         <v-col cols="12" sm="6" md="12" class="remote-outbounds__form-actions">
           <v-expansion-panels class="mb-4">
+            <v-expansion-panel :title="$t('remoteOutbound.healthChecks')">
+              <v-expansion-panel-text>
+                <p class="text-caption mb-3">{{ $t('remoteOutbound.healthCheckHint') }}</p>
+                <v-switch v-model="page.form.healthCheck.enabled" :label="$t('remoteOutbound.healthCheckEnabled')" color="primary" />
+                <v-text-field v-model="page.form.healthCheck.url" :disabled="!page.form.healthCheck.enabled" :label="$t('remoteOutbound.healthCheckURL')" maxlength="8192" variant="outlined" density="compact" />
+                <v-text-field v-model="page.form.healthCheck.interval" :disabled="!page.form.healthCheck.enabled" :label="$t('remoteOutbound.healthCheckInterval')" variant="outlined" density="compact" />
+                <v-text-field v-model="page.form.healthCheck.timeout" :disabled="!page.form.healthCheck.enabled" :label="$t('remoteOutbound.healthCheckTimeout')" variant="outlined" density="compact" />
+              </v-expansion-panel-text>
+            </v-expansion-panel>
             <v-expansion-panel :title="$t('remoteOutbound.dialerOverride')">
               <v-expansion-panel-text>
                 <p class="text-caption mb-3">{{ $t('remoteOutbound.dialerOverrideHint') }}</p>

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	remotesub "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
@@ -28,8 +29,10 @@ type Settings interface {
 }
 
 type Service struct {
-	Effects  Effects
-	Settings Settings
+	Effects       Effects
+	Settings      Settings
+	OutboundHTTP  componenthost.OutboundHTTPClientProvider
+	ProbeOutbound func(context.Context, string, string, time.Duration) coreruntime.CheckOutboundResult
 }
 
 func (s *Service) GetAll() (*[]remotesub.RemoteOutboundSubscription, error) {
@@ -79,6 +82,11 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 		return nil, err
 	}
 	input.UserAgent = strings.TrimSpace(input.UserAgent)
+	if policy, err := remotesub.PrepareSourceHealthCheck(input.HealthCheck); err != nil {
+		return nil, err
+	} else {
+		input.HealthCheck = policy
+	}
 	if prepared, err := coreruntime.PrepareDialerOverride(input.DialerOverride); err != nil {
 		return nil, err
 	} else {
@@ -98,6 +106,9 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 	}
 	if err := input.ValidateSourceFilters(); err != nil {
 		return nil, err
+	}
+	if input.DownloadOutboundID != 0 && input.SourceType != remotesub.SourceRemote {
+		return nil, common.NewError("SUBSCRIPTION_DOWNLOAD_OUTBOUND_REMOTE_ONLY")
 	}
 	if input.SourceType == remotesub.SourceInline {
 		if input.UserAgent != "" {
@@ -162,15 +173,22 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 			if saved.SourceKind() != input.SourceType {
 				return common.NewError("SUBSCRIPTION_SOURCE_TYPE_IMMUTABLE")
 			}
+			if err := validateDownloadOutbound(tx, input.DownloadOutboundID, saved.DownloadOutboundID); err != nil {
+				return err
+			}
 			oldTagPrefix := saved.TagPrefix
 			saved.Name = input.Name
 			saved.Url = input.Url
 			saved.UserAgent = input.UserAgent
+			saved.DownloadOutboundID = input.DownloadOutboundID
 			saved.SourcePath = input.SourcePath
 			saved.Include = input.Include
 			saved.Exclude = input.Exclude
 			saved.RemoveEmojis = input.RemoveEmojis
 			saved.DialerOverride = input.DialerOverride
+			if len(input.HealthCheck) != 0 {
+				saved.HealthCheck = input.HealthCheck
+			}
 			saved.Enabled = input.Enabled
 			saved.TagPrefix = input.TagPrefix
 			saved.AutoUpdate = input.AutoUpdate
@@ -185,23 +203,28 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 				coreRestart = changed
 			}
 		} else {
+			if err := validateDownloadOutbound(tx, input.DownloadOutboundID, 0); err != nil {
+				return err
+			}
 			saved = remotesub.RemoteOutboundSubscription{
-				SortOrder:      sortOrder,
-				Name:           input.Name,
-				Url:            input.Url,
-				UserAgent:      input.UserAgent,
-				SourceType:     input.SourceType,
-				SourcePath:     input.SourcePath,
-				Include:        input.Include,
-				Exclude:        input.Exclude,
-				RemoveEmojis:   input.RemoveEmojis,
-				DialerOverride: input.DialerOverride,
-				Enabled:        input.Enabled,
-				TagPrefix:      input.TagPrefix,
-				AutoUpdate:     input.AutoUpdate,
-				UpdateInterval: input.UpdateInterval,
-				CreatedAt:      now,
-				UpdatedAt:      now,
+				SortOrder:          sortOrder,
+				Name:               input.Name,
+				Url:                input.Url,
+				UserAgent:          input.UserAgent,
+				DownloadOutboundID: input.DownloadOutboundID,
+				SourceType:         input.SourceType,
+				SourcePath:         input.SourcePath,
+				Include:            input.Include,
+				Exclude:            input.Exclude,
+				RemoveEmojis:       input.RemoveEmojis,
+				DialerOverride:     input.DialerOverride,
+				HealthCheck:        input.HealthCheck,
+				Enabled:            input.Enabled,
+				TagPrefix:          input.TagPrefix,
+				AutoUpdate:         input.AutoUpdate,
+				UpdateInterval:     input.UpdateInterval,
+				CreatedAt:          now,
+				UpdatedAt:          now,
 			}
 		}
 		if err := tx.Save(&saved).Error; err != nil {
@@ -323,7 +346,7 @@ func (s *Service) refreshSubscription(ctx context.Context, id uint, loginUser st
 		}
 		return nil
 	}
-	fetched, fetchErr := remotesub.FetchSourceContext(ctx, db, subscription, s.fetchOptions())
+	fetched, fetchErr := s.fetchSource(ctx, db, subscription)
 	now := time.Now().Unix()
 	if fetchErr != nil {
 		// An old failed fetch has no authority over a replacement source's UI
