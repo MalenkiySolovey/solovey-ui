@@ -7,6 +7,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
+	clientdevices "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients/devices"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
 	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
@@ -35,6 +36,16 @@ func prepareManagedCredentials(tx *gorm.DB, client *model.Client, editing bool) 
 		if len(old.Config) != 0 && json.Unmarshal(old.Config, &stored) != nil {
 			return credentials.ErrInvalid
 		}
+	}
+	if err := clientdevices.Preserve(proposed, stored, client.Id); err != nil {
+		return err
+	}
+	// Preserve the device child owner even when no protocol credential is
+	// assigned to this User. Ordinary edits cannot acquire device authority.
+	var preserveErr error
+	client.Config, preserveErr = json.Marshal(proposed)
+	if preserveErr != nil {
+		return credentials.ErrInvalid
 	}
 	var ids, oldIDs []uint
 	if len(client.Inbounds) > 0 && json.Unmarshal(client.Inbounds, &ids) != nil || len(old.Inbounds) > 0 && json.Unmarshal(old.Inbounds, &oldIDs) != nil {

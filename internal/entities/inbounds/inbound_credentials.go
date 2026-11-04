@@ -109,6 +109,9 @@ func sshPublicHostKeys(db *gorm.DB, inbound *model.Inbound) ([]string, error) {
 }
 
 func prepareInboundCredentials(tx *gorm.DB, inbound *model.Inbound) error {
+	if inbound.Type == "hysteria2" {
+		return prepareRealmCredentials(tx, inbound)
+	}
 	if inbound.Type == "call" {
 		return prepareCallCredentials(tx, inbound)
 	}
@@ -223,6 +226,17 @@ func projectInboundCredentials(inbound model.Inbound, data *map[string]interface
 			return err
 		}
 	}
+	if inbound.Type == "hysteria2" {
+		raw, err := json.Marshal(*data)
+		if err != nil {
+			return err
+		}
+		raw, err = renderRealmCredentials(nil, inbound, raw, true)
+		if err != nil {
+			return err
+		}
+		return json.Unmarshal(raw, data)
+	}
 	if inbound.Type == "call" {
 		return projectCallCredentials(inbound, data)
 	}
@@ -251,6 +265,9 @@ func marshalRuntimeInbound(db *gorm.DB, inbound model.Inbound) ([]byte, error) {
 	raw, err := runtimeInbound.MarshalJSON()
 	if err == nil {
 		raw, err = transportcredentials.Runtime(db, "inbounds", inbound.Id, raw)
+	}
+	if err == nil && inbound.Type == "hysteria2" {
+		return renderRealmCredentials(db, inbound, raw, false)
 	}
 	if err == nil && inbound.Type == "call" {
 		return marshalCallRuntime(db, inbound, raw)

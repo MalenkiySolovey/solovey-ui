@@ -151,13 +151,12 @@
                 </v-card-actions>
               </v-card>
             </v-overlay>
-            <v-icon
-            class="me-2"
-            v-if="item.type == 'wireguard' && item.peers?.length>0"
-            @click="showQrCode(item.id)"
-          >
-            mdi-qrcode
-          </v-icon>
+            <v-btn
+              icon="mdi-qrcode"
+              :aria-label="$t('types.wg.qrCode')"
+              v-if="item.type == 'wireguard' && item.peers?.length>0"
+              @click="showQrCode(item.id)"
+            />
             <v-btn icon="mdi-chart-line" @click="showStats(item.tag)" v-if="Data().enableTraffic">
               <v-icon />
               <v-tooltip activator="parent" location="top" :text="$t('stats.graphTitle')"></v-tooltip>

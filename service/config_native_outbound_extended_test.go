@@ -4,19 +4,324 @@ package service
 
 import (
 	"bytes"
+	"context"
+	"crypto/ecdh"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/netip"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	clientdevices "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients/devices"
 	entityendpoints "github.com/MalenkiySolovey/solovey-ui/internal/entities/endpoints"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	entityservices "github.com/MalenkiySolovey/solovey-ui/internal/entities/services"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
+	"github.com/sagernet/sing-tun"
+	M "github.com/sagernet/sing/common/metadata"
 )
+
+func TestNativeManagedWireGuardDevicesApplyRuntimeTrafficAndQuota(t *testing.T) {
+	if !tun.WithGVisor || !registry.WireGuardDeviceManagementAvailable() {
+		t.Skip("managed native WireGuard is absent from this profile")
+	}
+	initSettingTestDB(t)
+	seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}],"route":{"rules":[{"ip_cidr":["198.18.0.1/32"],"action":"route-options","override_address":"127.0.0.1"}]}}`))
+	db := dbsqlite.DB()
+	core := coreruntime.NewCore()
+	t.Cleanup(func() { _ = core.Stop() })
+	svc := NewConfigServiceWithRuntime(NewRuntime(core))
+	serverKey, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reservation, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := reservation.LocalAddr().(*net.UDPAddr).Port
+	_ = reservation.Close()
+	endpoint := map[string]any{"type": "wireguard", "tag": "managed-wg", "private_key": base64.StdEncoding.EncodeToString(serverKey.Bytes()), "listen_port": port, "address": []string{"10.79.0.1/29"}, "ext": map[string]any{"managed": true, "defaultDeviceLimit": 2, "publicEndpoint": net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), "dns": []string{}}}
+	user := map[string]any{"name": "managed-user", "enable": true, "inbounds": []uint{}, "config": map[string]any{}}
+	for _, item := range []struct {
+		object string
+		data   any
+	}{{"endpoints", endpoint}, {"clients", user}} {
+		raw, _ := json.Marshal(item.data)
+		if _, err := svc.Save(item.object, "new", raw, "", "admin", "fixture.invalid"); err != nil {
+			t.Fatal("managed desired state rejected", err)
+		}
+	}
+	var owner model.Client
+	var ep model.Endpoint
+	if db.Where("name = ?", "managed-user").First(&owner).Error != nil || db.Where("tag = ?", "managed-wg").First(&ep).Error != nil {
+		t.Fatal("canonical identities missing")
+	}
+	for _, command := range []clientdevices.Request{{ClientID: owner.Id, EndpointID: ep.Id, Operation: "grant"}, {ClientID: owner.Id, EndpointID: ep.Id, Operation: "create", Name: "phone", RequestKey: "native-managed-device-create"}} {
+		raw, _ := json.Marshal(command)
+		if _, err := svc.Save("clients", "wireguard", raw, "", "admin", "fixture.invalid"); err != nil {
+			t.Fatal("User device command rejected", err)
+		}
+	}
+	_, state, err := clientdevices.Load(db, owner.Id)
+	if err != nil || len(state.Devices) != 1 {
+		t.Fatal("device owner missing", err)
+	}
+	device := state.Devices[0]
+	private, err := svc.ClientService.WireGuardDeviceConfig(t.Context(), owner.Id, device.ID, "fixture.invalid")
+	if err != nil {
+		t.Fatal("private client delivery unavailable", err)
+	}
+	fields := map[string]string{}
+	for line := range strings.SplitSeq(private, "\n") {
+		if key, value, ok := strings.Cut(line, " = "); ok {
+			fields[key] = value
+		}
+	}
+	if fields["Address"] != device.Address || fields["Endpoint"] != net.JoinHostPort("127.0.0.1", strconv.Itoa(port)) {
+		t.Fatal("delivered client identity differs from canonical device")
+	}
+	if err := svc.RestartCore(); err != nil {
+		t.Fatal("managed runtime start failed", err)
+	}
+	peer := coreruntime.NewCore()
+	t.Cleanup(func() { _ = peer.Stop() })
+	peerConfig, _ := json.Marshal(map[string]any{"log": map[string]any{"disabled": true}, "endpoints": []map[string]any{{"type": "wireguard", "tag": "managed-client", "address": []string{fields["Address"]}, "private_key": fields["PrivateKey"], "peers": []map[string]any{{"address": "127.0.0.1", "port": port, "public_key": fields["PublicKey"], "pre_shared_key": fields["PresharedKey"], "allowed_ips": []string{"0.0.0.0/0"}}}}}})
+	if err := peer.Start(peerConfig); err != nil {
+		t.Fatal("delivered peer start failed", err)
+	}
+	echo, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = echo.Close() })
+	go func() {
+		conn, err := echo.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_, _ = io.Copy(conn, conn)
+	}()
+	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
+	defer cancel()
+	stream, err := peer.DialOutbound(ctx, "managed-client", "tcp", M.Socksaddr{Addr: netip.MustParseAddr("198.18.0.1"), Port: uint16(echo.Addr().(*net.TCPAddr).Port)})
+	if err != nil {
+		t.Fatal("managed device could not carry runtime traffic", err)
+	}
+	defer stream.Close()
+	_ = stream.SetDeadline(time.Now().Add(5 * time.Second))
+	payload := []byte("managed-device-runtime-traffic")
+	if _, err := stream.Write(payload); err != nil {
+		t.Fatal(err)
+	}
+	response := make([]byte, len(payload))
+	if _, err := io.ReadFull(stream, response); err != nil || !bytes.Equal(response, payload) {
+		t.Fatal("managed device runtime payload changed", err)
+	}
+	before, err := providerDesiredRevision(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.ReconcileWireGuardDevices(t.Context()); err != nil {
+		t.Fatal("managed readback/accounting failed", err)
+	}
+	if db.First(&owner, owner.Id).Error != nil || owner.Up <= 0 || owner.Down <= 0 {
+		t.Fatal("device traffic did not reach canonical User counters")
+	}
+	_, state, err = clientdevices.Load(db, owner.Id)
+	if err != nil || state.Devices[0].Up <= 0 || state.Devices[0].Down <= 0 || !state.Devices[0].Observation.Present || state.Devices[0].Observation.LastHandshake == 0 {
+		t.Fatal("device accounting/handshake readback missing", err)
+	}
+	after, err := providerDesiredRevision(db)
+	if err != nil || before != after {
+		t.Fatal("runtime observation changed provider desired-state checkpoint", err)
+	}
+	if err := db.Model(&owner).Update("volume", 1).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.ReconcileWireGuardDevices(t.Context()); err != nil {
+		t.Fatal("User quota reconciliation failed", err)
+	}
+	snapshot, err := core.WireGuardPeers(t.Context(), ep.Tag)
+	if err != nil || len(snapshot.Peers) != 0 {
+		t.Fatal("over-quota User retained a live peer", err)
+	}
+}
+
+func TestNativeWireGuardAmneziaCandidateAndLifecycle(t *testing.T) {
+	if !tun.WithGVisor {
+		t.Skip("userspace WireGuard requires the gVisor build profile")
+	}
+	initSettingTestDB(t)
+	seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
+	db := dbsqlite.DB()
+	svc, applier, lifecycle := newHotReloadConfigService(t)
+	key := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))
+	draft := map[string]any{"type": "wireguard", "tag": "native-awg", "private_key": ":private-invalid-canary", "address": []string{"10.23.0.1/32"}, "preallocated_buffers_per_pool": 512, "disable_pauses": false,
+		"amnezia": map[string]any{"h1": 123, "h2": "200-300", "h3": 400, "h4": "500-600", "s1": 16, "s2": 16, "s3": 16, "s4": 16, "header_protection_key": map[string]string{"intent": "replace", "value": key}}}
+	raw, _ := json.Marshal(draft)
+	if _, err := svc.Save("endpoints", "new", raw, "", "admin", "fixture.invalid"); err == nil || !strings.HasPrefix(err.Error(), "NATIVE_ENDPOINT_CANDIDATE_REJECTED") || strings.Contains(err.Error(), "canary") {
+		t.Fatal("invalid Amnezia candidate was not privately rejected", err)
+	}
+	var count int64
+	if err := db.Model(&model.Endpoint{}).Count(&count).Error; err != nil || count != 0 || len(applier.calls) != 0 || len(lifecycle.calls) != 0 {
+		t.Fatal("invalid candidate committed state or effects", err)
+	}
+	draft["private_key"] = key
+	draft["preallocated_buffers_per_pool"] = 1
+	raw, _ = json.Marshal(draft)
+	if _, err := svc.Save("endpoints", "new", raw, "", "admin", "fixture.invalid"); err == nil || !strings.HasPrefix(err.Error(), "NATIVE_ENDPOINT_CANDIDATE_REJECTED") {
+		t.Fatal("unsafe native receive budget was admitted", err)
+	}
+	if err := db.Model(&model.Endpoint{}).Count(&count).Error; err != nil || count != 0 || len(applier.calls) != 0 || len(lifecycle.calls) != 0 {
+		t.Fatal("unsafe receive budget committed state or effects", err)
+	}
+	draft["preallocated_buffers_per_pool"] = 512
+	raw, _ = json.Marshal(draft)
+	if _, err := svc.Save("endpoints", "new", raw, "", "admin", "fixture.invalid"); err != nil {
+		t.Fatal("valid Amnezia candidate rejected", err)
+	}
+	view, err := entityendpoints.GetAll(db)
+	masked, _ := json.Marshal(view)
+	var fields []struct{ Amnezia map[string]json.RawMessage }
+	if err != nil || json.Unmarshal(masked, &fields) != nil || len(fields) != 1 || bytes.Contains(fields[0].Amnezia["header_protection_key"], []byte(key)) {
+		t.Fatal("header key disclosed in ordinary read", err)
+	}
+	config, err := svc.GetConfig("")
+	if err != nil || singboxvalidation.ValidateConfig(*config) != nil {
+		t.Fatal("native Amnezia projection invalid", err)
+	}
+	core := coreruntime.NewCore()
+	t.Cleanup(func() { _ = core.Stop() })
+	for i := 0; i < 2; i++ {
+		if err := core.Start(*config); err != nil {
+			t.Fatal("native Amnezia start failed", err)
+		}
+		if registry.WireGuardDeviceManagementAvailable() {
+			snapshot, err := core.WireGuardPeers(t.Context(), "native-awg")
+			if err != nil || snapshot.Generation == "" || len(snapshot.Peers) != 0 {
+				t.Fatal("native peer readback unavailable", err)
+			}
+			peer := coreruntime.WireGuardPeer{PublicKey: base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{8}, 32)), PresharedKey: key, Address: "10.23.0.2/32"}
+			applied, err := core.ReconcileWireGuardPeers(t.Context(), snapshot.Generation, "native-awg", []coreruntime.WireGuardPeer{peer}, nil)
+			if err != nil || len(applied.Peers) != 1 || applied.Peers[0].PublicKey != peer.PublicKey {
+				t.Fatal("native peer mutation/readback failed", err)
+			}
+			public, _ := json.Marshal(applied)
+			if bytes.Contains(public, []byte(key)) {
+				t.Fatal("public peer readback exposed a private key")
+			}
+			removed, err := core.ReconcileWireGuardPeers(t.Context(), snapshot.Generation, "native-awg", nil, nil)
+			if err != nil || len(removed.Peers) != 0 {
+				t.Fatal("native peer revocation was not confirmed", err)
+			}
+			var candidate struct {
+				Endpoints []json.RawMessage `json:"endpoints"`
+			}
+			if json.Unmarshal(*config, &candidate) != nil || len(candidate.Endpoints) != 1 {
+				t.Fatal("missing native candidate")
+			}
+			if err := core.RemoveEndpoint("native-awg"); err != nil {
+				t.Fatal(err)
+			}
+			if err := core.AddEndpoint(candidate.Endpoints[0]); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := core.ReconcileWireGuardPeers(t.Context(), snapshot.Generation, "native-awg", nil, nil); !errors.Is(err, coreruntime.ErrStaleGeneration) {
+				t.Fatal("obsolete endpoint incarnation remained authoritative", err)
+			}
+		}
+		if err := core.Stop(); err != nil {
+			t.Fatal("native Amnezia stop failed", err)
+		}
+	}
+}
+
+func TestNativeOpenVPNServerCandidateOwnsServingCredentialsAndLifecycle(t *testing.T) {
+	if !registry.Resolve("endpoints", "openvpn-server").Available() {
+		t.Skip("OpenVPN serving is absent from this profile")
+	}
+	for _, mode := range []string{"tls", "static_key"} {
+		t.Run(mode, func(t *testing.T) {
+			initSettingTestDB(t)
+			seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
+			db := dbsqlite.DB()
+			svc, applier, lifecycle := newHotReloadConfigService(t)
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			port := listener.Addr().(*net.TCPAddr).Port
+			_ = listener.Close()
+			draft := map[string]any{"type": "openvpn-server", "tag": "native-openvpn-server", "mode": mode, "network": "tcp", "listen": "127.0.0.1", "listen_port": port, "address": []string{"10.88.0.1/24"}}
+			if mode == "tls" {
+				cert, key := makeSelfSignedCertPEM(t, time.Now().Add(time.Hour))
+				draft["users"] = map[string]string{"intent": "replace", "value": `[{"username":"fixture","password":"private-serving-canary"}]`}
+				draft["tls"] = map[string]any{"certificate": []string{string(cert)}, "key": map[string]string{"intent": "replace", "value": string(key)}, "client_certificate": []string{string(cert)}}
+				draft["push"] = map[string]any{"dns": []string{"192.0.2.53"}, "routes": []string{"192.0.2.0/24"}}
+			} else {
+				draft["peer_address"] = "10.88.0.2"
+				draft["cipher"] = "AES-256-CBC"
+				draft["static_key"] = map[string]string{"intent": "replace", "value": "-----BEGIN OpenVPN Static key V1-----\n" + strings.Repeat("01", 256) + "\n-----END OpenVPN Static key V1-----"}
+			}
+			draft["network"] = "private-invalid-network-canary"
+			raw, _ := json.Marshal(draft)
+			if _, err := svc.Save("endpoints", "new", raw, "", "admin", "fixture.invalid"); err == nil || !strings.HasPrefix(err.Error(), "NATIVE_ENDPOINT_CANDIDATE_REJECTED") || strings.Contains(err.Error(), "canary") {
+				t.Fatal("serving candidate was not privately rejected", err)
+			}
+			var count int64
+			if err := db.Model(&model.Endpoint{}).Count(&count).Error; err != nil || count != 0 || len(applier.calls) != 0 || len(lifecycle.calls) != 0 {
+				t.Fatal("invalid serving candidate committed state or runtime effects", err)
+			}
+			draft["network"] = "tcp"
+			raw, _ = json.Marshal(draft)
+			if _, err := svc.Save("endpoints", "new", raw, "", "admin", "fixture.invalid"); err != nil {
+				t.Fatal("valid serving candidate rejected", err)
+			}
+			var stored model.Endpoint
+			if err := db.First(&stored).Error; err != nil || bytes.Contains(stored.Options, []byte("private-serving-canary")) || bytes.Contains(stored.Options, []byte("PRIVATE KEY")) || bytes.Contains(stored.Options, []byte("BEGIN OpenVPN Static key")) {
+				t.Fatal("serving credentials escaped their row owner", err)
+			}
+			view, err := entityendpoints.GetAll(db)
+			masked, _ := json.Marshal(view)
+			if err != nil || bytes.Contains(masked, []byte("canary")) || bytes.Contains(masked, []byte("PRIVATE KEY")) || bytes.Contains(masked, []byte("sbox:v1:")) {
+				t.Fatal("normal serving endpoint read disclosed credentials", err)
+			}
+			config, err := svc.GetConfig("")
+			if err != nil || singboxvalidation.ValidateConfig(*config) != nil {
+				t.Fatal("serving runtime projection failed", err)
+			}
+			core := coreruntime.NewCore()
+			t.Cleanup(func() { _ = core.Stop() })
+			for range 2 {
+				if err := core.Start(*config); err != nil {
+					t.Fatal("serving start/restart failed", err)
+				}
+				if err := core.Stop(); err != nil {
+					t.Fatal("serving shutdown failed", err)
+				}
+				listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", fmt.Sprint(port)))
+				if err != nil {
+					t.Fatal("serving shutdown retained the listener", err)
+				}
+				_ = listener.Close()
+			}
+		})
+	}
+}
 
 func TestHysteria2RealmOutboundUsesCanonicalCredentialsAndPrivateAdmission(t *testing.T) {
 	initSettingTestDB(t)
@@ -138,9 +443,6 @@ func TestNativeRealmServiceCandidatePreservesPrivateTokens(t *testing.T) {
 func TestNativeOpenVPNClientCandidateUsesCanonicalOwnerAndDNSReferences(t *testing.T) {
 	if !registry.Resolve("endpoints", "openvpn-client").Available() {
 		t.Skip("OpenVPN client is absent from this profile")
-	}
-	if registry.Resolve("endpoints", "openvpn-server").Available() {
-		t.Fatal("client integration advertised an unowned serving workflow")
 	}
 	for _, mode := range []string{"tls", "static_key"} {
 		t.Run(mode, func(t *testing.T) {

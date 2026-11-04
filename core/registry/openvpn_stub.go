@@ -10,4 +10,5 @@ import (
 const supportsOpenVPNClient = false
 
 func registerOpenVPNClient(*endpoint.Registry)  {}
+func registerOpenVPNServer(*endpoint.Registry)  {}
 func registerOpenVPNDNS(*dns.TransportRegistry) {}

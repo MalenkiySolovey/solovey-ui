@@ -5,14 +5,17 @@
         <v-row>
           <v-col>{{ $t('types.wg.qrCode') }}</v-col>
           <v-spacer></v-spacer>
-          <v-col cols="auto"><v-icon icon="mdi-close-box" @click="$emit('close')" /></v-col>
+          <v-col cols="auto"><v-btn icon="mdi-close" variant="text" :aria-label="$t('actions.close')" @click="$emit('close')" /></v-col>
         </v-row>
       </v-card-title>
       <v-divider></v-divider>
-      <v-row v-for="l, i in wgLinks">
-        <v-col style="text-align: center;" v-if="l.length>0">
-          <v-chip>{{ $t('types.wg.peer') + ' ' + (i+1) }}</v-chip> <v-icon icon="mdi-download" @click="download(l,i)" /><br />
-          <QrcodeVue :value="l" :size="size" @click="copyToClipboard(l)" :margin="1" style="border-radius: .5rem; cursor: copy;" />
+      <v-alert v-if="failed" type="warning" role="alert">{{ $t('types.wg.deliveryUnavailable') }}</v-alert>
+      <v-row v-for="link in wgLinks" :key="link.peer">
+        <v-col style="text-align: center;">
+          <v-chip>{{ $t('types.wg.peer') + ' ' + link.peer }}</v-chip>
+          <v-btn icon="mdi-download" variant="text" :aria-label="$t('types.wg.downloadPeer') + ' ' + link.peer" @click="download(link.config, link.peer)" /><br />
+          <QrcodeVue v-if="fitsQR(link.config)" :value="link.config" level="L" :size="size" @click="copyToClipboard(link.config)" :margin="1" style="border-radius: .5rem; cursor: copy;" />
+          <v-alert v-else type="info">{{ $t('types.wg.qrTooLarge') }}</v-alert>
         </v-col>
       </v-row>
     </v-card>
@@ -24,48 +27,45 @@ import QrcodeVue from 'qrcode.vue'
 import Clipboard from 'clipboard'
 import { i18n } from '@/locales'
 import { push } from 'notivue'
+import api from '@/plugins/api'
+
+interface PeerConfig { peer: number; config: string }
 
 export default {
   props: ['data', 'visible'],
   data() {
     return {
-      wgData: <any>{},
-      wgLinks: <string[]>[],
+      wgLinks: <PeerConfig[]>[],
       loading: false,
+      failed: false,
+      request: 0,
+      controller: undefined as AbortController | undefined,
     }
   },
   methods: {
     async load() {
-      this.wgData = this.$props.data
+      this.controller?.abort()
+      const request = ++this.request
+      const controller = new AbortController()
+      this.controller = controller
       this.wgLinks = []
-      const address = location.hostname
-      this.wgData.peers.forEach((_: any, index: number) => {
-        this.wgLinks.push(this.getWireguardLink(index, address))
-      })
+      this.failed = false
+      this.loading = true
+      try {
+        const response = await api.post('api/endpoint-peer-config', {
+          id: this.$props.data.id, host: location.hostname.replace(/^\[|\]$/g, ''),
+        }, { signal: controller.signal, headers: { 'Content-Type': 'application/json' }, timeout: 15_000 })
+        if (request !== this.request || !this.$props.visible) return
+        if (response.data.success !== true || !Array.isArray(response.data.obj)) throw new Error('unavailable')
+        this.wgLinks = response.data.obj
+      } catch {
+        if (request === this.request && this.$props.visible) this.failed = true
+      } finally {
+        if (request === this.request) this.loading = false
+      }
     },
-    getWireguardLink(peerId: number, address: string) {
-      const peerData = this.wgData.peers[peerId]
-      const keys = this.wgData.ext?.keys?.find((key: any) => key.public_key == peerData.public_key)
-      if (!keys || !this.wgData.ext?.public_key) return ''
-      let txt = `[Interface]\n`
-      txt += `PrivateKey = ${keys.private_key}\n`
-      txt += `Address = ${peerData.allowed_ips.join(',')}\n`
-      txt += `DNS = ${this.wgData.ext?.dns?.length>0 ? this.wgData.ext.dns : '1.1.1.1, 9.9.9.9'}\n`
-      if (this.wgData.mtu) {
-          txt += `MTU = ${this.wgData.mtu}\n`
-      }
-      txt += `\n# ${this.wgData.tag} - ${peerId}\n`
-      txt += `[Peer]\n`
-      txt += `PublicKey = ${this.wgData.ext.public_key}\n`
-      txt += `AllowedIPs = 0.0.0.0/0, ::/0\n`
-      txt += `Endpoint = ${address}:${this.wgData.listen_port}\n`
-      if (peerData.pre_shared_key) {
-          txt += `\nPresharedKey = ${peerData.pre_shared_key}`
-      }
-      if (peerData.persistent_keepalive_interval) {
-          txt += `\nPersistentKeepalive = ${peerData.persistent_keepalive_interval}\n`
-      }
-      return txt;
+    fitsQR(config: string) {
+      return new TextEncoder().encode(config).length <= 2953
     },
     copyToClipboard(txt:string) {
       const hiddenButton = document.createElement('button')
@@ -98,9 +98,9 @@ export default {
       document.body.removeChild(hiddenButton)
     },
     download(text: string, i: number) {
-      let filename = this.wgData.tag + '_peer_' + (i+1) + '.conf';
+      let filename = 'endpoint_' + this.$props.data.id + '_peer_' + i + '.conf';
       let element = document.createElement('a');
-      element.setAttribute('href', 'data:application/json;charset=utf-8,' + encodeURIComponent(text));
+      element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
       element.setAttribute('download', filename);
 
       element.style.display = 'none';
@@ -120,9 +120,19 @@ export default {
   watch: {
     visible(v) {
       if (v) {
-        this.load()
+        void this.load()
+      } else {
+        ++this.request
+        this.controller?.abort()
+        this.wgLinks = []
+        this.loading = false
       }
     },
+  },
+  beforeUnmount() {
+    ++this.request
+    this.controller?.abort()
+    this.wgLinks = []
   },
   components: { QrcodeVue }
 }
