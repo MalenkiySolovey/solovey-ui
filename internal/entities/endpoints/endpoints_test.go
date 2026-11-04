@@ -2,16 +2,115 @@ package endpoints
 
 import (
 	"bytes"
+	"crypto/ecdh"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+func TestWireGuardPrivatePeerDeliveryRetainsAmnezia(t *testing.T) {
+	t.Setenv("SUI_SECRETBOX_KEY", "")
+	t.Setenv("SUI_SECRET", "")
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, _ := db.DB()
+	conn.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = conn.Close() })
+	if err := db.AutoMigrate(&model.Endpoint{}, &model.Setting{}, &model.AuditEvent{}); err != nil {
+		t.Fatal(err)
+	}
+	server, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encode := base64.StdEncoding.EncodeToString
+	headerKey := encode(bytes.Repeat([]byte{7}, 32))
+	options := map[string]any{
+		"private_key": encode(server.Bytes()), "listen_port": 51820, "mtu": 1420,
+		"peers":   []any{map[string]any{"public_key": encode(peer.PublicKey().Bytes()), "allowed_ips": []string{"10.0.0.2/32"}, "pre_shared_key": encode(bytes.Repeat([]byte{8}, 32)), "persistent_keepalive_interval": 25}},
+		"amnezia": map[string]any{"s1": 16, "h1": 123, "h2": "200-300", "i1": "<b 0x1234>", "header_protection_key": headerKey, "content_padding_addition": "1-8", "rekey_timeout": 0, "random_trailers": false, "disable_cookies": true},
+	}
+	ext := map[string]any{"public_key": "stale-derived-display-value", "dns": "10.0.0.1", "keys": []any{map[string]any{"public_key": encode(peer.PublicKey().Bytes()), "private_key": encode(peer.Bytes())}}}
+	raw, _ := json.Marshal(options)
+	extRaw, _ := json.Marshal(ext)
+	row := model.Endpoint{Type: "wireguard", Tag: "private-peer-delivery", Options: raw, Ext: extRaw}
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		if err := importEndpointCredentials(tx, &row, false); err != nil {
+			return err
+		}
+		if err := prepareEndpointCredentials(tx, &row); err != nil {
+			return err
+		}
+		return tx.Save(&row).Error
+	}); err != nil {
+		t.Fatal(err)
+	}
+	configs, err := PeerConfigs(db, row.Id, "2001:db8::1")
+	if err != nil || len(configs) != 1 || configs[0].Peer != 1 {
+		t.Fatal("owned peer delivery failed")
+	}
+	for _, fragment := range []string{"HeaderProtectionKey = " + headerKey, "H2 = 200-300\n", "I1 = <b 0x1234>\n", "ContentPaddingAddition = 1-8\n", "RekeyTimeout = 0\n", "RandomTrailers = false\n", "DisableCookies = true\n", "Endpoint = [2001:db8::1]:51820\n", "PublicKey = " + encode(server.PublicKey().Bytes())} {
+		if !strings.Contains(configs[0].Config, fragment) {
+			t.Fatal("private delivery lost a native parameter")
+		}
+	}
+	masked, err := GetAll(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, _ := json.Marshal(masked)
+	if bytes.Contains(view, []byte(headerKey)) || bytes.Contains(row.Options, []byte(headerKey)) {
+		t.Fatal("ordinary read or storage exposed the managed key")
+	}
+	if _, err := PeerConfigs(db, row.Id, "example.test\nPrivateKey = injected"); !errors.Is(err, ErrPeerConfigUnavailable) {
+		t.Fatal("host injection accepted")
+	}
+	var captured map[string]json.RawMessage
+	_ = json.Unmarshal(row.Options, &captured)
+	var amnezia map[string]json.RawMessage
+	_ = json.Unmarshal(captured["amnezia"], &amnezia)
+	amnezia["future_wire_option"] = json.RawMessage(`true`)
+	captured["amnezia"], _ = json.Marshal(amnezia)
+	row.Options, _ = json.Marshal(captured)
+	if err := db.Save(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	before := append([]byte(nil), row.Options...)
+	if _, err := PeerConfigs(db, row.Id, "example.test"); !errors.Is(err, ErrPeerConfigUnavailable) {
+		t.Fatal("unknown wire option was silently stripped")
+	}
+	if err := db.First(&row, row.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, row.Options) {
+		t.Fatal("unavailable delivery mutated preserved desired state")
+	}
+	delete(captured, "amnezia")
+	row.Options, _ = json.Marshal(captured)
+	ext["keys"] = []any{map[string]any{"public_key": encode(peer.PublicKey().Bytes()), "private_key": encode(server.Bytes())}}
+	row.Ext, _ = json.Marshal(ext)
+	if err := db.Save(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PeerConfigs(db, row.Id, "example.test"); !errors.Is(err, ErrPeerConfigUnavailable) {
+		t.Fatal("unrelated private key produced a peer config")
+	}
+}
 
 type fakeEndpointCore struct {
 	running bool
@@ -60,6 +159,77 @@ func TestRemoveFromCoreSkipsStoppedCore(t *testing.T) {
 	}
 	if len(core.calls) != 0 {
 		t.Fatalf("stopped core should not be called: %#v", core.calls)
+	}
+}
+
+func TestWireGuardAmneziaHeaderKeyIsOwnedAndExplicitlyRemovable(t *testing.T) {
+	for _, kind := range []string{"wireguard", "warp"} {
+		t.Run(kind, func(t *testing.T) {
+			t.Setenv("SUI_SECRETBOX_KEY", "")
+			t.Setenv("SUI_SECRET", "")
+			db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			conn, _ := db.DB()
+			conn.SetMaxOpenConns(1)
+			t.Cleanup(func() { _ = conn.Close() })
+			if err := db.AutoMigrate(&model.Endpoint{}, &model.Setting{}, &model.AuditEvent{}); err != nil {
+				t.Fatal(err)
+			}
+			plain := map[string]interface{}{}
+			if err := projectEndpointCredentials(model.Endpoint{Id: 1, Type: kind, Options: json.RawMessage(`{}`)}, plain); err != nil {
+				t.Fatal(err)
+			}
+			if _, exists := plain["amnezia"]; exists {
+				t.Fatal("masked read enabled Amnezia for ordinary WireGuard")
+			}
+			row := model.Endpoint{Type: kind, Tag: "owned-awg", Options: json.RawMessage(`{"amnezia":{"h1":123,"h2":"200-300","header_protection_key":"private-header-canary","future":{"retained":true}},"future":{"counter":9007199254740993}}`)}
+			if err := db.Transaction(func(tx *gorm.DB) error {
+				if err := importEndpointCredentials(tx, &row, false); err != nil {
+					return err
+				}
+				if err := prepareEndpointCredentials(tx, &row); err != nil {
+					return err
+				}
+				return tx.Save(&row).Error
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if bytes.Contains(row.Options, []byte("canary")) {
+				t.Fatal("import persisted plaintext header key")
+			}
+			view := map[string]interface{}{}
+			if err := projectEndpointCredentials(row, view); err != nil {
+				t.Fatal(err)
+			}
+			masked, _ := json.Marshal(view)
+			if bytes.Contains(masked, []byte("canary")) || bytes.Contains(masked, []byte("sbox:v1:")) || !bytes.Contains(masked, []byte("amnezia.header_protection_key")) {
+				t.Fatal("header key view lost its fixed masked owner")
+			}
+			runtime, err := marshalEndpointRuntime(db, row)
+			if err != nil || !bytes.Contains(runtime, []byte("private-header-canary")) || !bytes.Contains(runtime, []byte(`"h2":"200-300"`)) || !bytes.Contains(runtime, []byte("9007199254740993")) {
+				t.Fatal("runtime lost native key, range or unknown fields", err)
+			}
+			foreign := row
+			foreign.Id++
+			if _, err := marshalEndpointRuntime(db, foreign); err == nil {
+				t.Fatal("header key crossed endpoint identity")
+			}
+			row.Options = json.RawMessage(`{"amnezia":{"header_protection_key":{"intent":"clear"}},"future":{"counter":9007199254740993}}`)
+			if err := db.Transaction(func(tx *gorm.DB) error {
+				if err := prepareEndpointCredentials(tx, &row); err != nil {
+					return err
+				}
+				return tx.Save(&row).Error
+			}); err != nil {
+				t.Fatal(err)
+			}
+			runtime, err = marshalEndpointRuntime(db, row)
+			if err != nil || bytes.Contains(runtime, []byte("amnezia")) || !bytes.Contains(runtime, []byte("9007199254740993")) {
+				t.Fatal("explicit disable retained Amnezia or lost unrelated state", err)
+			}
+		})
 	}
 }
 

@@ -1,7 +1,9 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
+	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -91,6 +93,28 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 	if len(endpointKinds) > 0 && tx.Migrator().HasTable(&model.Endpoint{}) {
 		if err := tx.Model(&model.Endpoint{}).Where("type IN ?", endpointKinds).Count(&endpointCount).Error; err != nil {
 			return err
+		}
+	}
+	if tx.Migrator().HasTable(&model.Endpoint{}) {
+		var rows []model.Endpoint
+		if err := tx.Select("type", "options").Where("type IN ?", []string{"wireguard", "warp"}).Find(&rows).Error; err != nil {
+			return err
+		}
+		for _, row := range rows {
+			if !entitycapabilities.ResolveResource("endpoints", row.Type, row.Options).Available {
+				continue
+			}
+			var fields map[string]json.RawMessage
+			if json.Unmarshal(row.Options, &fields) == nil {
+				for key, raw := range fields {
+					for field := range registry.CriticalProtocolFields()[row.Type+"/endpoint"] {
+						if strings.EqualFold(key, field) && len(raw) != 0 && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+							endpointCount++
+							break
+						}
+					}
+				}
+			}
 		}
 	}
 	if count == 0 && outboundCount == 0 && endpointCount == 0 && !transportCandidate {

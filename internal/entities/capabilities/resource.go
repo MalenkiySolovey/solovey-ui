@@ -13,12 +13,14 @@ import (
 // responsibility of the existing candidate/native validator.
 func ResolveResource(category, panelType string, options []byte) Fact {
 	fact := Resolve(category, panelType)
-	if !fact.Available || (category != "inbounds" && category != "outbounds") {
+	if !fact.Available || (category != "inbounds" && category != "outbounds" && category != "endpoints") {
 		return fact
 	}
 	side := "in"
 	if category == "outbounds" {
 		side = "out"
+	} else if category == "endpoints" {
+		side = "endpoint"
 	}
 	if fields := registry.CriticalProtocolFields()[panelType+"/"+side]; len(fields) != 0 {
 		var values map[string]json.RawMessage

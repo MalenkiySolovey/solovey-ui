@@ -1,6 +1,6 @@
 <template>
   <v-row>
-    <v-col cols="12" sm="8">
+    <v-col v-if="ext" cols="12" sm="8">
       <v-text-field
         v-model="privateKey"
         :label="$t('types.wg.privKey')"
@@ -96,15 +96,18 @@ export default {
         return indexKeys > -1 ? this.$props.ext.keys[indexKeys].private_key : ''
       },
       set(v:string) {
-        const indexKeys = this.$props.ext?.keys.findIndex((key: any) => key.public_key == this.$props.data.public_key)?? -1
-        this.$props.ext.keys[indexKeys].private_key = v
+        if (!this.$props.ext) return
+        if (!Array.isArray(this.$props.ext.keys)) this.$props.ext.keys = []
+        const indexKeys = this.$props.ext.keys.findIndex((key: any) => key.public_key == this.$props.data.public_key)
+        if (indexKeys < 0) this.$props.ext.keys.push({ public_key: this.$props.data.public_key, private_key: v })
+        else this.$props.ext.keys[indexKeys].private_key = v
       }
     },
     publicKey: {
       get() { return this.$props.data.public_key },
       set(v:string) {
-        const indexKeys = this.$props.ext?.keys.findIndex((key: any) => key.public_key == this.$props.data.public_key)?? -1
-        this.$props.ext.keys[indexKeys].public_key = v
+        const indexKeys = this.$props.ext?.keys?.findIndex((key: any) => key.public_key == this.$props.data.public_key)?? -1
+        if (indexKeys >= 0) this.$props.ext.keys[indexKeys].public_key = v
         this.$props.data.public_key = v
       }
     }

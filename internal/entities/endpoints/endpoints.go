@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
@@ -71,7 +72,7 @@ func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 		return nil, err
 	}
 	for _, endpoint := range rows {
-		if !runtimeprojection.Included("endpoints", endpoint.Type) {
+		if !entitycapabilities.ResolveResource("endpoints", endpoint.Type, endpoint.Options).Available {
 			continue
 		}
 		endpointJSON, err := marshalEndpointRuntime(db, *endpoint)
@@ -130,6 +131,9 @@ func saveCandidate(tx *gorm.DB, act string, endpoint model.Endpoint, warp WarpHo
 	}
 	if err := saveeligibility.Validate(tx, act, endpoint.Id, &model.Endpoint{}, "endpoints", endpoint.Type); err != nil {
 		return nil, err
+	}
+	if fact := entitycapabilities.ResolveResource("endpoints", endpoint.Type, endpoint.Options); !fact.Available {
+		return nil, &saveeligibility.Rejection{Capability: fact}
 	}
 	if err := entityidentity.ValidateTypeTag(endpoint.Type, endpoint.Tag); err != nil {
 		return nil, err
@@ -259,7 +263,7 @@ func Restart(tx *gorm.DB, ids []uint, core Core) error {
 	// Complete capability/serialization preflight for the whole batch before
 	// the first removal. Unavailable historical rows do not mutate live state.
 	for _, row := range rows {
-		if !runtimeprojection.Included("endpoints", row.Type) {
+		if !entitycapabilities.ResolveResource("endpoints", row.Type, row.Options).Available {
 			continue
 		}
 		refs, err := tagrefs.Endpoint(tx, row.Tag, row.Id)

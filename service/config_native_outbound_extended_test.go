@@ -4,18 +4,76 @@ package service
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityendpoints "github.com/MalenkiySolovey/solovey-ui/internal/entities/endpoints"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
+	"github.com/sagernet/sing-tun"
 )
+
+func TestNativeWireGuardAmneziaCandidateAndLifecycle(t *testing.T) {
+	if !tun.WithGVisor {
+		t.Skip("userspace WireGuard requires the gVisor build profile")
+	}
+	initSettingTestDB(t)
+	seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
+	db := dbsqlite.DB()
+	svc, applier, lifecycle := newHotReloadConfigService(t)
+	key := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))
+	draft := map[string]any{"type": "wireguard", "tag": "native-awg", "private_key": ":private-invalid-canary", "address": []string{"10.23.0.1/32"}, "preallocated_buffers_per_pool": 512, "disable_pauses": false,
+		"amnezia": map[string]any{"h1": 123, "h2": "200-300", "h3": 400, "h4": "500-600", "s1": 16, "s2": 16, "s3": 16, "s4": 16, "header_protection_key": map[string]string{"intent": "replace", "value": key}}}
+	raw, _ := json.Marshal(draft)
+	if _, err := svc.Save("endpoints", "new", raw, "", "admin", "fixture.invalid"); err == nil || !strings.HasPrefix(err.Error(), "NATIVE_ENDPOINT_CANDIDATE_REJECTED") || strings.Contains(err.Error(), "canary") {
+		t.Fatal("invalid Amnezia candidate was not privately rejected", err)
+	}
+	var count int64
+	if err := db.Model(&model.Endpoint{}).Count(&count).Error; err != nil || count != 0 || len(applier.calls) != 0 || len(lifecycle.calls) != 0 {
+		t.Fatal("invalid candidate committed state or effects", err)
+	}
+	draft["private_key"] = key
+	draft["preallocated_buffers_per_pool"] = 1
+	raw, _ = json.Marshal(draft)
+	if _, err := svc.Save("endpoints", "new", raw, "", "admin", "fixture.invalid"); err == nil || !strings.HasPrefix(err.Error(), "NATIVE_ENDPOINT_CANDIDATE_REJECTED") {
+		t.Fatal("unsafe native receive budget was admitted", err)
+	}
+	if err := db.Model(&model.Endpoint{}).Count(&count).Error; err != nil || count != 0 || len(applier.calls) != 0 || len(lifecycle.calls) != 0 {
+		t.Fatal("unsafe receive budget committed state or effects", err)
+	}
+	draft["preallocated_buffers_per_pool"] = 512
+	raw, _ = json.Marshal(draft)
+	if _, err := svc.Save("endpoints", "new", raw, "", "admin", "fixture.invalid"); err != nil {
+		t.Fatal("valid Amnezia candidate rejected", err)
+	}
+	view, err := entityendpoints.GetAll(db)
+	masked, _ := json.Marshal(view)
+	var fields []struct{ Amnezia map[string]json.RawMessage }
+	if err != nil || json.Unmarshal(masked, &fields) != nil || len(fields) != 1 || bytes.Contains(fields[0].Amnezia["header_protection_key"], []byte(key)) {
+		t.Fatal("header key disclosed in ordinary read", err)
+	}
+	config, err := svc.GetConfig("")
+	if err != nil || singboxvalidation.ValidateConfig(*config) != nil {
+		t.Fatal("native Amnezia projection invalid", err)
+	}
+	core := coreruntime.NewCore()
+	t.Cleanup(func() { _ = core.Stop() })
+	for i := 0; i < 2; i++ {
+		if err := core.Start(*config); err != nil {
+			t.Fatal("native Amnezia start failed", err)
+		}
+		if err := core.Stop(); err != nil {
+			t.Fatal("native Amnezia stop failed", err)
+		}
+	}
+}
 
 func TestNativeOpenVPNClientCandidateUsesCanonicalOwnerAndDNSReferences(t *testing.T) {
 	if !registry.Resolve("endpoints", "openvpn-client").Available() {

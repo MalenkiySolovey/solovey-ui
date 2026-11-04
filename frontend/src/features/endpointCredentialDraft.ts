@@ -5,7 +5,8 @@ import { secretMutation } from './secretCredentialDraft'
 export function serializeEndpointCredentialDraft<T extends { type: string }>(endpoint: T): T {
   const paths = endpoint.type === 'openconnect'
     ? ['password', 'cookie', 'token.secret', 'token.pin', 'token.password', 'tls.client_key', 'tls.client_key_password', 'tls.mca_key', 'tls.mca_key_password', 'form_entries']
-    : endpoint.type === 'openvpn-client' ? ['password', 'static_key', 'tls.client_key', 'tls.control_wrap.key'] : []
+    : endpoint.type === 'openvpn-client' ? ['password', 'static_key', 'tls.client_key', 'tls.control_wrap.key']
+    : ['wireguard', 'warp'].includes(endpoint.type) ? ['amnezia.header_protection_key'] : []
   if (paths.length === 0) return endpoint
   const result = JSON.parse(JSON.stringify(endpoint)) as Record<string, any>
   for (const path of paths) {
@@ -19,6 +20,17 @@ export function serializeEndpointCredentialDraft<T extends { type: string }>(end
     else owner[key] = mutation
   }
   return result as T
+}
+
+export function wireGuardAmneziaEnabled(endpoint: Record<string, any>): boolean {
+  const options = endpoint.amnezia
+  return !!options && !(Object.keys(options).length === 1 && options.header_protection_key?.intent === 'clear')
+}
+
+// Explicitly removing the block must also clear its owner-bound credential.
+// Omission means Keep to the owner and would otherwise resurrect the block.
+export function setWireGuardAmneziaEnabled(endpoint: Record<string, any>, enabled: boolean) {
+  endpoint.amnezia = enabled ? (wireGuardAmneziaEnabled(endpoint) ? endpoint.amnezia : {}) : { header_protection_key: { intent: 'clear' } }
 }
 
 // Called only after explicit mode-conversion confirmation. Clear owner fields

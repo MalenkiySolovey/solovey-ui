@@ -1,9 +1,25 @@
 import { describe, expect, it } from 'vitest'
 
 import { EpTypes, createEndpoint, type Endpoint } from './endpoints'
-import { convertOpenVPNModeDraft, serializeEndpointCredentialDraft } from '@/features/endpointCredentialDraft'
+import { convertOpenVPNModeDraft, serializeEndpointCredentialDraft, setWireGuardAmneziaEnabled, wireGuardAmneziaEnabled } from '@/features/endpointCredentialDraft'
 
 describe('createEndpoint', () => {
+  it('preserves native Amnezia ranges and owns the explicit disable credential intent', () => {
+    const view = { reference: { owner: 'endpoints', id: 'record:9:amnezia.header_protection_key', policy: 'OWNER_USE_AND_PRESENCE', projection: 'MASKED' }, present: true, rotationRevision: 'a'.repeat(64) }
+    const source = { type: EpTypes.Wireguard, amnezia: { h1: 123, h2: '200-300', header_protection_key: view, future_option: { retained: true } }, future_option: { retained: true } }
+    const draft = createEndpoint(EpTypes.Wireguard, source)
+    const submitted = serializeEndpointCredentialDraft(draft)
+    expect(submitted.amnezia).toEqual({ ...source.amnezia, header_protection_key: { ...view, intent: 'unchanged' } })
+    draft.amnezia.h1 = 124
+    expect(source.amnezia.h1).toBe(123)
+    setWireGuardAmneziaEnabled(draft, false)
+    expect(wireGuardAmneziaEnabled(draft)).toBe(false)
+    expect(serializeEndpointCredentialDraft(draft)).toMatchObject({ amnezia: { header_protection_key: { intent: 'clear' } }, future_option: source.future_option })
+    setWireGuardAmneziaEnabled(draft, true)
+    expect(draft.amnezia).toEqual({})
+    expect(wireGuardAmneziaEnabled(draft)).toBe(true)
+    expect(createEndpoint(EpTypes.Wireguard).amnezia).toBeUndefined()
+  })
   it('restores native TLS and static-key options without injecting incompatible creation defaults', () => {
     for (const source of [
       { type: EpTypes.OpenVPNClient, id: 9, tag: 'legacy-vpn', server: '192.0.2.1', server_port: 1194, tls: {}, future_option: { retained: true } },
