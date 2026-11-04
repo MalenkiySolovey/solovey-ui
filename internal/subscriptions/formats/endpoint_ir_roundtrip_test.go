@@ -12,14 +12,26 @@ import (
 )
 
 func TestEndpointIRNativeGroupsUseCanonicalMembersInClientJSON(t *testing.T) {
-	for _, kind := range []string{"bond", "core-failover"} {
+	for _, kind := range []string{"bond", "core-failover", "bandwidth-limiter", "connection-limiter", "rate-limiter", "traffic-limiter"} {
 		t.Run(kind, func(t *testing.T) {
 			leaf := map[string]any{"type": "socks", "tag": "leaf", "server": "edge.example", "server_port": 1080, "username": "fixture", "password": "private-group-fixture"}
 			group := map[string]any{"type": kind, "tag": "proxy"}
 			if kind == "bond" {
 				group["outbounds"] = []any{map[string]any{"outbound": "leaf", "download_ratio": 100, "upload_ratio": 100, "count": 0}}
-			} else {
+			} else if kind == "core-failover" {
 				group["outbounds"], group["strategy"], group["delay"] = []string{"leaf"}, "cycle", "25ms"
+			} else {
+				group["route"] = map[string]any{"final": "leaf"}
+				switch kind {
+				case "bandwidth-limiter":
+					group["strategy"], group["mode"], group["speed"] = "global", "bidirectional", "10MB"
+				case "traffic-limiter":
+					group["strategy"], group["mode"], group["total"] = "global", "bidirectional", "1MB"
+				case "connection-limiter":
+					group["strategy"], group["count"] = "connection", 4
+				case "rate-limiter":
+					group["strategy"], group["count"], group["interval"] = "token-bucket", 10, "1s"
+				}
 			}
 			before := canonical.ObserveOutbound(canonical.FormatSingBox, group, 0)
 			if before.Kind != canonical.KindGroup || len(before.GroupMembers) != 1 || before.GroupMembers[0] != "leaf" {

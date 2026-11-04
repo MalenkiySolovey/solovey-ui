@@ -77,8 +77,9 @@ func Resolve(category, runtimeType string) Fact {
 }
 
 type ProtocolFieldCapability struct {
-	Available        bool   `json:"available"`
-	RequiredProvider string `json:"requiredProvider,omitempty"`
+	Available         bool     `json:"available"`
+	RequiredProvider  string   `json:"requiredProvider,omitempty"`
+	UnavailableValues []string `json:"unavailableValues,omitempty"`
 }
 
 // These optional blocks change endpoint identity/routing. An unavailable block
@@ -87,6 +88,11 @@ func CriticalProtocolFields() map[string]map[string]ProtocolFieldCapability {
 	result := map[string]map[string]ProtocolFieldCapability{}
 	for side, typ := range map[string]reflect.Type{"in": reflect.TypeFor[option.Hysteria2InboundOptions](), "out": reflect.TypeFor[option.Hysteria2OutboundOptions]()} {
 		result["hysteria2/"+side] = map[string]ProtocolFieldCapability{"realm": {Available: slices.Contains(jsonfields.Names(typ, false), "realm"), RequiredProvider: coreprovider.RequiredProviderName("shtorm_extended")}}
+	}
+	// The foreign manager is a separate upstream control plane, not Solovey
+	// Users. Keep imported state preserved and inactive without advertising it.
+	for _, kind := range []string{"bandwidth-limiter", "connection-limiter", "rate-limiter", "traffic-limiter"} {
+		result[kind+"/out"] = map[string]ProtocolFieldCapability{"strategy": {Available: supportsNativeLimiters, UnavailableValues: []string{"manager"}}}
 	}
 	return result
 }

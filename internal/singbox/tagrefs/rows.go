@@ -71,6 +71,18 @@ func scanOutboundRowsForTag(rows []model.Outbound, tag string, excludeID uint) [
 		if opts == nil {
 			continue
 		}
+		if outboundcomposition.IsLimiter(row.Type) {
+			nested, _ := scanConfigBlobForOutboundTag(row.Options, tag)
+			for _, ref := range nested {
+				// The limiter captures its final adapter when it starts.
+				if ref.Kind == "route final" {
+					ref.Lazy = false
+				}
+				ref.Kind = "native limiter " + ref.Kind
+				ref.Locator = fmt.Sprintf("%s %q (%s)", row.Type, row.Tag, ref.Locator)
+				refs = append(refs, ref)
+			}
+		}
 		if outboundcomposition.IsGroup(row.Type) {
 			members, err := outboundcomposition.Members(row.Type, row.Options)
 			if err == nil {

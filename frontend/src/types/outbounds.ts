@@ -28,6 +28,10 @@ export const OutTypes = {
   Bond: 'bond',
   CoreFailover: 'core-failover',
   Sudoku: 'sudoku',
+  BandwidthLimiter: 'bandwidth-limiter',
+  ConnectionLimiter: 'connection-limiter',
+  RateLimiter: 'rate-limiter',
+  TrafficLimiter: 'traffic-limiter',
   Selector: 'selector',
   URLTest: 'urltest',
 	Failover: 'failover',
@@ -383,6 +387,10 @@ const defaultValues: Record<OutType, Outbound> = {
   bond: { type: OutTypes.Bond, outbounds: [] },
   'core-failover': { type: OutTypes.CoreFailover, outbounds: [], strategy: 'sequential' },
   sudoku: { type: OutTypes.Sudoku },
+  'bandwidth-limiter': { type: OutTypes.BandwidthLimiter, strategy: 'global', mode: 'bidirectional', speed: '10MB', route: {} },
+  'connection-limiter': { type: OutTypes.ConnectionLimiter, strategy: 'connection', connection_type: 'default', count: 10, route: {} },
+  'rate-limiter': { type: OutTypes.RateLimiter, strategy: 'token-bucket', count: 10, interval: '1s', route: {} },
+  'traffic-limiter': { type: OutTypes.TrafficLimiter, strategy: 'global', mode: 'bidirectional', total: '10GB', route: {} },
   selector: { type: OutTypes.Selector },
   urltest: { type: OutTypes.URLTest },
 	failover: { type: OutTypes.Failover, outbounds: [], failover: { enabled: true, probe_target: '', interval: '30s', hysteresis: 2, all_down_policy: 'hold_current' } },
@@ -391,6 +399,36 @@ const defaultValues: Record<OutType, Outbound> = {
 export function createOutbound<T extends Outbound>(type: string,json?: Partial<T>): Outbound {
   const defaultObject: Outbound = { ...JSON.parse(JSON.stringify(defaultValues[type] ?? {})), ...(json || {}) }
   return defaultObject
+}
+
+export const NativeLimiterTypes = [OutTypes.BandwidthLimiter, OutTypes.ConnectionLimiter, OutTypes.RateLimiter, OutTypes.TrafficLimiter]
+
+export function nativeLimiterValid(data: Outbound): boolean {
+  if (!NativeLimiterTypes.includes(data.type)) return true
+  if (!data.route?.final?.trim() || !data.strategy || data.strategy === 'manager') return false
+  const rows = data.strategy === 'users' ? data.users : [data]
+  if (!Array.isArray(rows) || rows.length === 0) return false
+  const names = new Set<string>()
+  const strategies = data.type === OutTypes.RateLimiter
+    ? ['leaky-bucket', 'token-bucket', 'sliding-window', 'fixed-window', 'bypass']
+    : data.type === OutTypes.ConnectionLimiter ? ['connection', 'bypass']
+    : data.type === OutTypes.TrafficLimiter ? ['global', 'bypass'] : ['global', 'connection', 'bypass']
+  return rows.every(row => {
+    if (!row || !strategies.includes(row.strategy)) return false
+    if (row.connection_type && !['default', 'hwid', 'mux', 'source_ip'].includes(row.connection_type)) return false
+    if (data.strategy === 'users') {
+      if (!row.name?.trim() || names.has(row.name)) return false
+      names.add(row.name)
+    }
+    if (row.strategy === 'bypass') return true
+    if ([OutTypes.BandwidthLimiter, OutTypes.TrafficLimiter].includes(data.type)) {
+      const quantity = row[data.type === OutTypes.BandwidthLimiter ? 'speed' : 'total']
+      return ['download', 'upload', 'bidirectional'].includes(row.mode) &&
+        (typeof quantity === 'string' && quantity.trim() !== '' || typeof quantity === 'number' && Number.isSafeInteger(quantity) && quantity >= 0)
+    }
+    return Number.isInteger(row.count) && row.count >= 0 && row.count <= 0xffffffff &&
+      (data.type !== OutTypes.RateLimiter || typeof row.interval === 'string' && row.interval.trim() !== '')
+  })
 }
 
 // Review the editable native group shape without copying member options.

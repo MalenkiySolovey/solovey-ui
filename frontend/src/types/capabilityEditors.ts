@@ -31,9 +31,10 @@ export function capabilityEditState(snapshot: RuntimeCapabilities | undefined, c
   const values = resource as Record<string, unknown>
   const fields = criticalFields?.[`${type}/${side}`]
   // Realm changes endpoint addressing. Missing facts cannot authorize its use.
-  const critical = type === 'hysteria2' ? ['realm'] : []
+  const critical = new Set([...Object.keys(fields ?? {}), ...(type === 'hysteria2' ? ['realm'] : [])])
   for (const field of critical) {
-   if (values[field] != null && fields?.[field]?.available !== true) {
+   const rule = fields?.[field]
+   if (values[field] != null && (rule?.available !== true || typeof values[field] === 'string' && rule.unavailableValues?.includes(values[field]))) {
     return { ...unavailable('capability.unavailable', 'PROTOCOL_FIELD_CAPABILITY_UNAVAILABLE'), requiredProvider: fields?.[field]?.requiredProvider }
    }
   }

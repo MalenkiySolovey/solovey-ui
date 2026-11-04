@@ -1,4 +1,12 @@
 export default {
+  nativeLimiter: {
+    strategy: 'Limit strategy', mode: 'Traffic direction', connectionType: 'Connection identity',
+    speed: 'Bandwidth per second', total: 'Traffic budget', count: 'Connection/request limit', interval: 'Rate window',
+    user: 'Existing User name', flowKeys: 'Fair queue flow keys', final: 'Final outbound', rules: 'Route rules (JSON array)',
+    rulesInvalid: 'Use a JSON array. The saved rules remain unchanged until a valid value is applied.',
+    invalid: 'Select a final outbound and complete the limit fields and unique User rules. Fix invalid route JSON before saving.',
+    ownerHint: 'These limits wrap canonical outbounds. User rules use existing authenticated names, which may differ from display names. Traffic budgets reset when this runtime instance is replaced. Persistent User quotas remain owned by Users; the separate upstream manager strategy is unavailable.',
+  },
   hostContext: {"label": "Host", "local": "Local", "unavailable": "Unavailable", "localOnly": "This Host is unavailable. Only Local is supported.", "featureUnavailable": "This feature is unavailable on this Host. Check the installed Components in Settings."},
   capability: {
     inspect: "Inspect preserved resource", requires: "Requires: {provider}", inactive: "Inactive on current runtime",

@@ -10,6 +10,16 @@ const snapshot: RuntimeCapabilities = {
  ],
 }
 describe('capability editor projection',()=>{
+ it('uses backend value facts to preserve unavailable manager state as history',()=>{
+  const supporting=structuredClone(snapshot)
+  supporting.facts.push({...supporting.facts[0],type:'traffic-limiter',runtimeType:'traffic-limiter'})
+  const fields={'traffic-limiter/out':{strategy:{available:true,unavailableValues:['manager']}}}
+  const resource={strategy:'manager',future:{value:'9007199254740993'}}
+  const before=JSON.stringify(resource)
+  expect(capabilityEditState(supporting,'outbounds','traffic-limiter','traffic-limiter',undefined,undefined,resource,fields)).toMatchObject({allowed:false,historical:true,message:'capability.historical'})
+  expect(capabilityEditState(supporting,'outbounds','traffic-limiter','',undefined,undefined,{strategy:'global'},fields)).toEqual({allowed:true})
+  expect(JSON.stringify(resource)).toBe(before)
+ })
  it('preserves critical protocol history and reactivates it only with supporting facts',()=>{
   const supporting = structuredClone(snapshot)
   supporting.facts.push({ ...supporting.facts[0], type: 'hysteria2', runtimeType: 'hysteria2' })

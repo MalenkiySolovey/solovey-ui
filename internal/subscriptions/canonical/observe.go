@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds/composition"
 )
 
 func ObserveOutbounds(format string, outbounds []map[string]any) Snapshot {
@@ -189,6 +191,10 @@ func metadataString(value map[string]any, keys ...string) string {
 
 func outboundGroupMembers(outbound map[string]any) []string {
 	members := stringList(outbound["outbounds"])
+	if kind, _ := outbound["type"].(string); composition.IsLimiter(kind) {
+		raw, _ := json.Marshal(outbound)
+		members, _ = composition.LimiterReferences(raw)
+	}
 	if outbound["type"] == "bond" {
 		members = nil
 		legs, _ := outbound["outbounds"].([]any)

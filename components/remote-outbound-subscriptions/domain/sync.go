@@ -270,6 +270,36 @@ func rewriteOutboundTagReferences(raw map[string]any, tagMap map[string]string) 
 	if value, ok := raw["outbounds"]; ok {
 		raw["outbounds"] = rewriteOutboundTagList(value, tagMap)
 	}
+	if route, ok := raw["route"].(map[string]any); ok {
+		if tag, ok := route["final"].(string); ok {
+			route["final"] = rewriteOutboundTag(tag, tagMap)
+		}
+		var rewriteRules func([]any)
+		rewriteRules = func(rules []any) {
+			for _, item := range rules {
+				if rule, ok := item.(map[string]any); ok {
+					if tag, ok := rule["outbound"].(string); ok {
+						rule["outbound"] = rewriteOutboundTag(tag, tagMap)
+					}
+					if children, ok := rule["rules"].([]any); ok {
+						rewriteRules(children)
+					}
+				}
+			}
+		}
+		if rules, ok := route["rules"].([]any); ok {
+			rewriteRules(rules)
+		}
+		if sets, ok := route["rule_set"].([]any); ok {
+			for _, item := range sets {
+				if set, ok := item.(map[string]any); ok {
+					if tag, ok := set["download_detour"].(string); ok {
+						set["download_detour"] = rewriteOutboundTag(tag, tagMap)
+					}
+				}
+			}
+		}
+	}
 	if value, ok := raw["default"].(string); ok {
 		if rewritten := tagMap[strings.TrimSpace(value)]; rewritten != "" {
 			raw["default"] = rewritten

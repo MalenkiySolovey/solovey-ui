@@ -8,10 +8,12 @@ import (
 	"net"
 	"reflect"
 	"slices"
+	"sync"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/util/jsonfields"
 	"github.com/sagernet/sing-box/adapter"
+	corelog "github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	M "github.com/sagernet/sing/common/metadata"
 )
@@ -109,11 +111,31 @@ func (c *Core) DialOutbound(ctx context.Context, tag, network string, destinatio
 
 	// Network I/O must not hold the lease that Stop needs to retire the Box.
 	// Keep caller cancellation and bind the admitted dial to its generation.
-	dialContext, cancel := context.WithCancel(ctx)
+	// Like net.Dialer, caller cancellation governs setup, not a successfully
+	// returned connection. Policy adapters retain the generation-owned context
+	// until full Close, including across HTTP connection reuse.
+	dialContext, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	stopCallerCancellation := context.AfterFunc(ctx, cancel)
 	stopCancellation := context.AfterFunc(generation, cancel)
-	defer func() { stopCancellation(); cancel() }()
+	release := func() { stopCancellation(); cancel() }
+	defer func() {
+		stopCallerCancellation()
+		if err != nil || connection == nil {
+			release()
+		}
+	}()
 	if generation.Err() != nil {
 		return nil, ErrCoreUnavailable
+	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	// Native policy adapters consume the same destination/network metadata as
+	// routed inbound traffic. Caller-owned metadata must not be mutated.
+	dialContext, metadata := adapter.ExtendContext(dialContext)
+	metadata.Destination, metadata.Network = destination, network
+	if _, ok := corelog.IDFromContext(dialContext); !ok {
+		dialContext = corelog.ContextWithNewID(dialContext)
 	}
 	connection, err = selected.DialContext(dialContext, network, destination)
 	if generation.Err() != nil {
@@ -122,5 +144,44 @@ func (c *Core) DialOutbound(ctx context.Context, tag, network string, destinatio
 		}
 		return nil, ErrCoreUnavailable
 	}
+	if !stopCallerCancellation() && ctx.Err() != nil && err == nil {
+		if connection != nil {
+			_ = connection.Close()
+		}
+		return nil, ctx.Err()
+	}
+	if err == nil && connection != nil {
+		connection = &outboundDialConnection{Conn: connection, release: release}
+	}
 	return connection, err
+}
+
+// The caller owns the returned connection; policy adapters may still use the
+// admitted context while transferring bytes. Release it on full Close rather
+// than on successful dial return, retaining generation cancellation.
+type outboundDialConnection struct {
+	net.Conn
+	release func()
+	once    sync.Once
+}
+
+func (c *outboundDialConnection) Close() error {
+	c.once.Do(c.release)
+	return c.Conn.Close()
+}
+
+func (c *outboundDialConnection) Upstream() any { return c.Conn }
+
+func (c *outboundDialConnection) CloseRead() error {
+	if conn, ok := c.Conn.(interface{ CloseRead() error }); ok {
+		return conn.CloseRead()
+	}
+	return errors.ErrUnsupported
+}
+
+func (c *outboundDialConnection) CloseWrite() error {
+	if conn, ok := c.Conn.(interface{ CloseWrite() error }); ok {
+		return conn.CloseWrite()
+	}
+	return errors.ErrUnsupported
 }

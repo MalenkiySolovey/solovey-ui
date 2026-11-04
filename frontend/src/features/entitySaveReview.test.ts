@@ -8,6 +8,7 @@ import Service from './useServiceEditor'
 import Tls from './useTlsEditor'
 import { entitySaveReasons } from './entitySaveReview'
 import { createSrv } from '@/types/services'
+import { createOutbound, NativeLimiterTypes } from '@/types/outbounds'
 
 const store = vi.hoisted(() => ({ capabilities: undefined as any, clients: [], checkTag: vi.fn(() => false), save: vi.fn(), applyInboundDraft: vi.fn() }))
 vi.mock('@/store/modules/data', () => ({ default: () => store }))
@@ -33,6 +34,37 @@ beforeEach(() => {
 afterEach(() => { apps.splice(0).forEach(app => app.unmount()) })
 
 describe('shared editor save review', () => {
+  it('projects the native limiter capability surface and blocks invalid owner drafts', async () => {
+    const vm = mount(Outbound)
+    for (const kind of NativeLimiterTypes) {
+      expect(vm.typeChoices.some((choice: any) => choice.value === kind)).toBe(false)
+      const fact = { category: 'outbounds', type: kind, known: true, contextSupported: true, registered: true, compiled: true, available: true }
+      store.capabilities.facts.push(fact)
+      expect(vm.typeChoices.some((choice: any) => choice.value === kind)).toBe(true)
+      vm.outbound = createOutbound(kind, { tag: 'limit', route: { final: 'direct' } })
+      expect(vm.saveReasons).toEqual([])
+      vm.limiterEditorValid = false
+      expect(vm.saveReasons).toContain('nativeLimiter.invalid')
+      vm.limiterEditorValid = true
+      vm.outbound.strategy = 'manager'
+      expect(vm.saveReasons).toContain('nativeLimiter.invalid')
+      vm.outbound.strategy = 'users'
+      vm.outbound.users = [{ ...createOutbound(kind), name: 'alice' }]
+      expect(vm.saveReasons).toEqual([])
+      vm.outbound.users.push({ ...vm.outbound.users[0] })
+      expect(vm.saveReasons).toContain('nativeLimiter.invalid')
+      vm.outbound.users.pop()
+      const preserved = JSON.stringify(vm.outbound)
+      store.capabilities.facts.at(-1).available = false
+      vm.storedCapabilityType = kind
+      expect(vm.saveReasons).toContain('capability.historical')
+      expect(vm.typeChoices.some((choice: any) => choice.value === kind)).toBe(false)
+      expect(JSON.stringify(vm.outbound)).toBe(preserved)
+      store.capabilities.facts.at(-1).available = true
+      expect(vm.saveReasons).toEqual([])
+      vm.storedCapabilityType = undefined
+    }
+  })
   it('realm service uses typed identities, private Keep intents and current capabilities', async () => {
     store.capabilities.facts.push({ category: 'services', type: 'hysteria-realm', known: true, contextSupported: true, available: true })
     const vm = mount(Service)

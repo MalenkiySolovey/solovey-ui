@@ -3,12 +3,64 @@
 package runtime
 
 import (
+	"context"
 	"encoding/json"
 	"strconv"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/inboundidentity"
+	"github.com/sagernet/sing-box/adapter"
+	corelog "github.com/sagernet/sing-box/log"
+	M "github.com/sagernet/sing/common/metadata"
 )
+
+func TestNativeLimiterOutboundsTrafficAndRestart(t *testing.T) {
+	echo := nativeTCPWitness(t)
+	for _, kind := range []string{"bandwidth-limiter", "connection-limiter", "rate-limiter", "traffic-limiter"} {
+		t.Run(kind, func(t *testing.T) {
+			client := NewCore()
+			t.Cleanup(func() { _ = client.Stop() })
+			limit := map[string]any{"type": kind, "tag": "limit", "route": map[string]any{"final": "direct"}, "strategy": "global", "mode": "bidirectional"}
+			switch kind {
+			case "bandwidth-limiter":
+				limit["speed"] = "10MB"
+			case "traffic-limiter":
+				limit["total"] = "1MB"
+			case "connection-limiter":
+				limit["strategy"], limit["count"] = "connection", 2
+				delete(limit, "mode")
+			case "rate-limiter":
+				limit["strategy"], limit["count"], limit["interval"] = "token-bucket", 10, "1s"
+				delete(limit, "mode")
+			}
+			raw, _ := json.Marshal(map[string]any{"log": map[string]any{"disabled": true}, "outbounds": []any{map[string]any{"type": "direct", "tag": "direct"}, limit}})
+			for generation := 0; generation < 2; generation++ {
+				if err := client.Start(raw); err != nil {
+					t.Fatal("native limiter startup", err)
+				}
+				dialContext, cancel := context.WithCancel(t.Context())
+				conn, err := client.DialOutbound(dialContext, "limit", "tcp", M.ParseSocksaddr(echo.Addr().String()))
+				cancel()
+				if err != nil {
+					t.Fatal("native limiter dial", err)
+				}
+				if err := nativeEcho(conn); err != nil {
+					t.Fatal("ordinary TCP echo through native limiter", err)
+				}
+				_ = conn.Close()
+				peer, _ := client.instance.Outbound().Outbound("limit")
+				// ListenPacket is the native adapter API; it receives normal
+				// routed metadata, as the production Core dial port now does.
+				ctx, metadata := adapter.ExtendContext(corelog.ContextWithNewID(t.Context()))
+				metadata.Network = "udp"
+				nativeUDPWitness(t, peer, ctx)
+				if err := client.Stop(); err != nil {
+					t.Fatal("native limiter stop", err)
+				}
+			}
+		})
+	}
+}
 
 func TestNativeOutboundGroupsRegisteredTrafficAndRestart(t *testing.T) {
 	for _, kind := range []string{"bond", "failover"} {

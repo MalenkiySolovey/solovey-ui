@@ -9,7 +9,7 @@ export interface SnellCapability {
   uri: boolean
 }
 
-export interface ProtocolFieldCapability { available: boolean; requiredProvider?: string }
+export interface ProtocolFieldCapability { available: boolean; requiredProvider?: string; unavailableValues?: string[] }
 export type CriticalProtocolFields = Record<string, Record<string, ProtocolFieldCapability>>
 
 export interface CoreConfigContract {

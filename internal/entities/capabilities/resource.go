@@ -3,6 +3,7 @@ package capabilities
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
@@ -25,7 +26,9 @@ func ResolveResource(category, panelType string, options []byte) Fact {
 		if json.Unmarshal(options, &values) == nil {
 			for key, raw := range values {
 				for field, capability := range fields {
-					if strings.EqualFold(key, field) && len(raw) != 0 && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) && !capability.Available {
+					var value string
+					_ = json.Unmarshal(raw, &value)
+					if strings.EqualFold(key, field) && len(raw) != 0 && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) && (!capability.Available || slices.Contains(capability.UnavailableValues, value)) {
 						fact.Available = false
 						fact.Reason = "PROTOCOL_FIELD_CAPABILITY_UNAVAILABLE"
 						fact.RequiredProvider = capability.RequiredProvider

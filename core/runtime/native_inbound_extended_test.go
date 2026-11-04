@@ -166,7 +166,7 @@ func nativeStream(t *testing.T, peer adapter.Outbound, f *quicFixture) net.Conn 
 	return conn
 }
 
-func nativeUDPWitness(t *testing.T, peer adapter.Outbound) {
+func nativeUDPWitness(t *testing.T, peer adapter.Outbound, contexts ...context.Context) {
 	t.Helper()
 	echo, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
@@ -182,7 +182,11 @@ func nativeUDPWitness(t *testing.T, peer adapter.Outbound) {
 		}
 	}()
 	t.Cleanup(func() { _ = echo.Close(); <-done })
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	parent := t.Context()
+	if len(contexts) != 0 {
+		parent = contexts[0]
+	}
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	packet, err := peer.ListenPacket(ctx, M.ParseSocksaddr(echo.LocalAddr().String()))
 	if err != nil {

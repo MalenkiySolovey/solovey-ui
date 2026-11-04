@@ -42,6 +42,12 @@ func TestCapabilityRegistrationsAndCompiledImplementations(t *testing.T) {
 			t.Fatalf("native outbound serving capability: %+v", fact)
 		}
 	}
+	for _, kind := range []string{"bandwidth-limiter", "connection-limiter", "rate-limiter", "traffic-limiter"} {
+		fact := Resolve("outbounds", kind)
+		if !fact.Known || fact.Available() != supportsNativeLimiters || fact.Compiled != supportsNativeLimiters || fact.Registered != supportsNativeLimiters {
+			t.Fatalf("native limiter capability: %+v", fact)
+		}
+	}
 	for kind, compiled := range map[string]bool{"mieru": supportsMieruInbound, "trusttunnel": supportsTrustTunnelInbound} {
 		fact := Resolve("inbounds", kind)
 		if !fact.Known || fact.Compiled != compiled || fact.Registered != compiled || !fact.AuthenticatedUsers || fact.BuildTag == "" {

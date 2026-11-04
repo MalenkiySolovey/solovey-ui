@@ -18,6 +18,71 @@ import (
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 )
 
+func TestNativeLimitersUseCanonicalRoutesAndTransactionalCandidates(t *testing.T) {
+	for _, kind := range []string{"bandwidth-limiter", "connection-limiter", "rate-limiter", "traffic-limiter"} {
+		t.Run(kind, func(t *testing.T) {
+			initSettingTestDB(t)
+			seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
+			svc, _, _ := newHotReloadConfigService(t)
+			draft := map[string]any{"type": kind, "tag": "limit", "route": map[string]any{"final": "direct"}, "strategy": "global", "mode": "bidirectional", "speed": "10MB", "total": "1MB", "count": 4, "interval": "1s"}
+			switch kind {
+			case "bandwidth-limiter":
+				delete(draft, "total")
+				delete(draft, "count")
+				delete(draft, "interval")
+			case "traffic-limiter":
+				delete(draft, "speed")
+				delete(draft, "count")
+				delete(draft, "interval")
+			default:
+				delete(draft, "speed")
+				delete(draft, "total")
+				delete(draft, "mode")
+				if kind == "connection-limiter" {
+					draft["strategy"] = "connection"
+					delete(draft, "interval")
+				} else {
+					draft["strategy"] = "token-bucket"
+				}
+			}
+			save := func(action string) error {
+				raw, _ := json.Marshal(draft)
+				_, err := svc.Save("outbounds", action, raw, "", "admin", "fixture.invalid")
+				return err
+			}
+			for _, invalid := range []string{"absent", "limit"} {
+				draft["route"] = map[string]any{"final": invalid}
+				if err := save("new"); err == nil {
+					t.Fatal("missing/self final was admitted")
+				}
+			}
+			draft["route"] = map[string]any{"final": "direct"}
+			if err := save("new"); err != nil {
+				t.Fatal("valid native limiter", err)
+			}
+			config, err := svc.GetConfig("")
+			if err != nil || singboxvalidation.ValidateConfig(*config) != nil || !bytes.Contains(*config, []byte(kind)) {
+				t.Fatal("native limiter missing from validated runtime candidate", err)
+			}
+			var row model.Outbound
+			if err := dbsqlite.DB().Where("tag = ?", "limit").First(&row).Error; err != nil {
+				t.Fatal(err)
+			}
+			before := string(row.Options)
+			draft["id"], draft["strategy"] = row.Id, "manager"
+			if err := save("edit"); err == nil {
+				t.Fatal("foreign manager became a live User authority")
+			}
+			if err := dbsqlite.DB().First(&row, row.Id).Error; err != nil || string(row.Options) != before {
+				t.Fatal("rejected edit changed desired state", err)
+			}
+			if _, err := svc.Save("outbounds", "edit", json.RawMessage(`{"id":1,"type":"direct","tag":"renamed"}`), "", "admin", "fixture.invalid"); err == nil {
+				t.Fatal("referenced final outbound was renamed")
+			}
+		})
+	}
+}
+
 func TestHysteria2RealmOutboundUsesCanonicalCredentialsAndPrivateAdmission(t *testing.T) {
 	initSettingTestDB(t)
 	seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
