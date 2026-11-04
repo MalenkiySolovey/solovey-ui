@@ -6,6 +6,7 @@ export interface CapabilityEditState {
  historical?: boolean
  message?: 'capability.waiting' | 'capability.unavailable' | 'capability.historical' | 'capability.unknown' | 'capability.contextUnsupported'
  reason?: string
+ reasonMessage?: 'capability.networkPlannerRequired'
  requiredProvider?: string
 }
 export interface CapabilityChoice { title: string; value: string }
@@ -22,7 +23,8 @@ export function capabilityEditState(snapshot: RuntimeCapabilities | undefined, c
  if (!snapshot) return { allowed: false, historical, message: 'capability.waiting' }
  const fact = runtimeCapability(snapshot, category, type)
  const unavailable = (message: CapabilityEditState['message'], reason = fact?.reason): CapabilityEditState =>
-  ({ allowed: false, historical, message: historical ? 'capability.historical' : message, reason, requiredProvider: fact?.requiredProvider })
+  ({ allowed: false, historical, message: historical ? 'capability.historical' : message, reason, requiredProvider: fact?.requiredProvider,
+   ...(reason === 'NETWORK_PLANNER_BROKER_INTEGRATION_REQUIRED' ? { reasonMessage: 'capability.networkPlannerRequired' as const } : {}) })
  if (!fact?.known) return unavailable('capability.unknown')
  if (!fact.contextSupported) return unavailable('capability.contextUnsupported')
  if (!fact.available) return unavailable('capability.unavailable')

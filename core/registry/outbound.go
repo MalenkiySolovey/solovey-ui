@@ -62,7 +62,9 @@ func outboundDeclarations() []declaration[*outbound.Registry] {
 		{typeName: "vless", buildTag: "", compiled: true, register: vless.RegisterOutbound},
 		{typeName: "anytls", buildTag: "", compiled: true, register: anytls.RegisterOutbound},
 		{typeName: C.TypeSnell, compiled: true, register: snell.RegisterOutbound},
-		{typeName: C.TypeBridge, productUnavailable: "UNSUPPORTED_BY_PRODUCT"},
+		// Its native backend mutates TUN/nft/routes; only Network Planner's
+		// broker may own those changes. No Bridge operation is available yet.
+		{typeName: C.TypeBridge, productUnavailable: "NETWORK_PLANNER_BROKER_INTEGRATION_REQUIRED"},
 		{typeName: "hysteria", buildTag: "with_quic", compiled: C.WithQUIC, register: hysteria.RegisterOutbound},
 		{typeName: "tuic", buildTag: "with_quic", compiled: C.WithQUIC, register: tuic.RegisterOutbound},
 		{typeName: "hysteria2", buildTag: "with_quic", compiled: C.WithQUIC, register: hysteria2.RegisterOutbound},

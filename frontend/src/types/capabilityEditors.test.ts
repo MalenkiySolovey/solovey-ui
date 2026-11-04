@@ -10,6 +10,15 @@ const snapshot: RuntimeCapabilities = {
  ],
 }
 describe('capability editor projection',()=>{
+ it('keeps Bridge inactive and inspectable until canonical network integration exists',()=>{
+  const current=structuredClone(snapshot)
+  current.facts.push({category:'outbounds',type:'bridge',runtimeType:'bridge',known:true,contextSupported:true,registered:false,compiled:false,available:false,reason:'NETWORK_PLANNER_BROKER_INTEGRATION_REQUIRED'})
+  const resource={interface:'br-preserved',iproute2_table_index:123,future:{retained:true}}
+  const before=structuredClone(resource)
+  expect(capabilityTypeChoices(current,'outbounds',{Direct:'direct',Bridge:'bridge'}).map(choice=>choice.value)).toEqual(['direct'])
+  expect(capabilityEditState(current,'outbounds','bridge','bridge',undefined,undefined,resource)).toMatchObject({allowed:false,historical:true,message:'capability.historical',reasonMessage:'capability.networkPlannerRequired'})
+  expect(resource).toEqual(before)
+ })
  it('uses backend value facts to preserve unavailable manager state as history',()=>{
   const supporting=structuredClone(snapshot)
   supporting.facts.push({...supporting.facts[0],type:'traffic-limiter',runtimeType:'traffic-limiter'})

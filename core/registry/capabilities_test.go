@@ -6,6 +6,9 @@ import (
 )
 
 func TestCapabilityRegistrationsAndCompiledImplementations(t *testing.T) {
+	if fact := Resolve("outbounds", "bridge"); fact.Available() || fact.Registered || fact.Compiled || fact.SupportedByProduct || fact.Reason != "NETWORK_PLANNER_BROKER_INTEGRATION_REQUIRED" {
+		t.Fatalf("Bridge must stay inactive without its canonical network broker integration: %+v", fact)
+	}
 	seen := map[string]bool{}
 	for _, fact := range Facts() {
 		key := fact.Category + ":" + fact.Type
