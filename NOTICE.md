@@ -102,8 +102,8 @@ The separately compiled `shtorm-extended` flavor uses Shtorm
 `v1.14.3-extended-2.7.3`, source
 `d9442d14b19ddd02605bf3ee893a171947038e19`, with runtime semantics v1.14.3.
 Its actual maintained engine is
-`github.com/MalenkiySolovey/sing-box-extended@v0.0.0-20261028223229-f8865b4b33f6`,
-commit `f8865b4b33f699185e054092ab658a443ffb1678`. Its maintained QUIC
+`github.com/MalenkiySolovey/sing-box-extended@v0.0.0-20261104100045-442e869e283c`,
+commit `442e869e283ca4af288f08d8b61ed580d3ba07bd`. Its maintained QUIC
 integration uses the same `MalenkiySolovey/sing-quic` repository as Official,
 independently pinned at `9034c2c10c6331aca496fd9f2dc3a1546bc6f61b`.
 `deploy/dependencies/sing-box-extended-integration.json` records exact authority

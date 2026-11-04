@@ -14,8 +14,51 @@ import (
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityendpoints "github.com/MalenkiySolovey/solovey-ui/internal/entities/endpoints"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
+	entityservices "github.com/MalenkiySolovey/solovey-ui/internal/entities/services"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 )
+
+func TestNativeRealmServiceCandidatePreservesPrivateTokens(t *testing.T) {
+	initSettingTestDB(t)
+	seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
+	db := dbsqlite.DB()
+	svc, applier, lifecycle := newHotReloadConfigService(t)
+	const token = "private-realm-candidate-canary"
+	draft := map[string]any{"type": "hysteria-realm", "tag": "rendezvous", "listen": "127.0.0.1", "listen_port": 9899,
+		"users":        []any{map[string]any{"name": "operator", "max_realms": 2, "token": map[string]string{"intent": "replace", "value": token}}},
+		"idle_timeout": "invalid-private-canary"}
+	raw, _ := json.Marshal(draft)
+	if _, err := svc.Save("services", "new", raw, "", "admin", "fixture.invalid"); err == nil || !strings.HasPrefix(err.Error(), "NATIVE_SERVICE_CANDIDATE_REJECTED") || strings.Contains(err.Error(), "canary") {
+		t.Fatal("invalid realm candidate was not privately rejected", err)
+	}
+	var count int64
+	if err := db.Model(&model.Service{}).Count(&count).Error; err != nil || count != 0 || len(applier.calls) != 0 || len(lifecycle.calls) != 0 {
+		t.Fatal("rejected realm committed identity or effects", err)
+	}
+	draft["idle_timeout"] = "15s"
+	raw, _ = json.Marshal(draft)
+	if _, err := svc.Save("services", "new", raw, "", "admin", "fixture.invalid"); err != nil {
+		t.Fatal(err)
+	}
+	view, err := entityservices.GetAll(db)
+	masked, _ := json.Marshal(view)
+	if err != nil || bytes.Contains(masked, []byte(token)) || bytes.Contains(masked, []byte("sbox:v1:")) {
+		t.Fatal("realm API disclosed credentials", err)
+	}
+	config, err := svc.GetConfig("")
+	if err != nil || !bytes.Contains(*config, []byte(token)) || singboxvalidation.ValidateConfig(*config) != nil {
+		t.Fatal("realm runtime projection failed", err)
+	}
+	edit, _ := json.Marshal((*view)[0])
+	var fields map[string]any
+	_ = json.Unmarshal(edit, &fields)
+	fields["users"].([]any)[0].(map[string]any)["token"].(map[string]any)["intent"] = "unchanged"
+	delete(fields["users"].([]any)[0].(map[string]any)["token"].(map[string]any), "correlation")
+	edit, _ = json.Marshal(fields)
+	if _, err := svc.Save("services", "edit", edit, "", "admin", "fixture.invalid"); err != nil {
+		t.Fatal("masked realm edit failed", err)
+	}
+}
 
 func TestNativeOpenVPNClientCandidateUsesCanonicalOwnerAndDNSReferences(t *testing.T) {
 	if !registry.Resolve("endpoints", "openvpn-client").Available() {
