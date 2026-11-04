@@ -15,7 +15,9 @@
     @save="emit('save')"
     @update:model-value="emit('update:modelValue', $event)"
   >
-    <slot />
+    <fieldset :disabled="readOnly" class="form-shell-fields" :class="{ 'form-shell-fields--readonly': readOnly }">
+      <v-defaults-provider :defaults="{ global: { disabled: readOnly === true } }"><slot /></v-defaults-provider>
+    </fieldset>
   </entity-drawer>
 
   <v-dialog
@@ -29,7 +31,9 @@
       <v-card-title>{{ title }}</v-card-title>
       <v-divider />
       <v-card-text style="padding: 0 16px; overflow-y: auto;">
-        <slot />
+        <fieldset :disabled="readOnly" class="form-shell-fields" :class="{ 'form-shell-fields--readonly': readOnly }">
+          <v-defaults-provider :defaults="{ global: { disabled: readOnly === true } }"><slot /></v-defaults-provider>
+        </fieldset>
       </v-card-text>
       <v-card-actions>
         <v-spacer />
@@ -123,3 +127,8 @@ const onClassicModel = (value: boolean) => {
   requestClose()
 }
 </script>
+
+<style scoped>
+.form-shell-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
+.form-shell-fields--readonly { pointer-events: none; }
+</style>

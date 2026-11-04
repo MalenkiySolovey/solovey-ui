@@ -3,6 +3,8 @@ import { createRenderer, createSSRApp, defineComponent, h, nextTick, reactive, r
 import { renderToString } from '@vue/server-renderer'
 import { createI18n } from 'vue-i18n'
 import DnsEditor from '@/layouts/modals/Dns.vue'
+import DnsRuleEditor from '@/layouts/modals/DnsRule.vue'
+import { coreConfigContract } from '@/types/coreConfigContract'
 import { readRuntimeCapabilities } from '@/types/runtimeCapabilities'
 import { createDnsServer } from '@/types/dns'
 
@@ -34,8 +36,8 @@ function mount(data: Record<string, any>, mode: string, native = false) {
   return { vm, saved }
 }
 
-async function renderEditor(source: Record<string, unknown>) {
-  const app = createSSRApp(defineComponent({ ...DnsEditor, created() { (this as any).updateData() } }), { visible: true, modelValue: true, index: 0, data: JSON.stringify(source) })
+async function renderEditor(source: Record<string, unknown>, editor: any = DnsEditor) {
+  const app = createSSRApp(defineComponent({ ...editor, created() { (this as any).updateData() } }), { visible: true, modelValue: true, index: 0, data: JSON.stringify(source) })
   app.use(createI18n({ legacy: false, locale: 'en', messages: { en: {} }, missingWarn: false, fallbackWarn: false }))
   app.config.globalProperties.$t = (key: string) => key
   app.config.warnHandler = () => {}
@@ -47,6 +49,18 @@ async function renderEditor(source: Record<string, unknown>) {
 
 describe('shared DNS editor for Classic and Nexus', () => {
   for (const mode of ['classic', 'nexus']) {
+    it(`${mode} renders unavailable historical DNS rules through the shared read-only shell`, async () => {
+      const source = { action: 'evaluate', server: 'dns', tag: 'preserved-evaluate', race: false }
+      mount({ type: 'mdns', tag: 'multicast' }, mode)
+      const previous = coreConfigContract.value
+      try {
+        coreConfigContract.value = { dnsActions: { route: ['server'] }, dnsConditions: [], tunDnsModes: [], maxRuleDepth: 8, maxRuleNodes: 128 }
+        const markup = await renderEditor(source, DnsRuleEditor)
+        expect(markup).toMatch(/<fieldset[^>]*disabled[^>]*class="form-shell-fields/)
+        expect(markup).toContain('dns.rule.unavailableAction')
+        expect(source).toEqual({ action: 'evaluate', server: 'dns', tag: 'preserved-evaluate', race: false })
+      } finally { coreConfigContract.value = previous }
+    })
     it(`${mode} selects an available native VPN DNS endpoint and retains resolver policy`, () => {
       for (const [type, endpoint] of [['openconnect', 'native-vpn'], ['openvpn', 'native-ovpn']]) {
       const source = { type, tag: 'vpn-dns', endpoint, accept_default_resolvers: true, accept_search_domain: true }
