@@ -7,7 +7,7 @@ import SecretCredentialField from '@/components/fields/SecretCredentialField.vue
 import { unchangedSecret } from '@/features/secretCredentialDraft'
 
 export default defineComponent({
-  props: ['outbound', 'managedClientKey'],
+  props: ['outbound', 'managedClientKey', 'mandatory'],
   components: { SecretCredentialField },
   data() {
     return {
@@ -63,8 +63,8 @@ export default defineComponent({
       return <oTls> this.$props.outbound.tls
     },
     tlsEnable: {
-      get() { return Object.hasOwn(this.tls, 'enabled') ? this.tls.enabled : false },
-      set(newValue: boolean) { this.$props.outbound.tls.enabled = newValue }
+      get() { return this.$props.mandatory === true || this.tls.enabled === true },
+      set(newValue: boolean) { if (this.$props.mandatory !== true) this.$props.outbound.tls.enabled = newValue }
     },
     disable_sni: {
       get() { return this.tls.disable_sni ?? false },
@@ -75,7 +75,7 @@ export default defineComponent({
       set(newValue: boolean) { this.$props.outbound.tls.insecure = newValue }
     },
     tlsOptional(): boolean {
-      return !['hysteria','hysteria2','tuic','shadowtls', 'anytls', 'naive', 'trusttunnel'].includes(this.$props.outbound.type)
+      return this.$props.mandatory !== true && !['hysteria','hysteria2','tuic','shadowtls', 'anytls', 'naive', 'trusttunnel'].includes(this.$props.outbound.type)
     },
     echConfigText: {
       get(): string { return this.tls.ech?.config ? this.tls.ech.config.join('\n') : '' },

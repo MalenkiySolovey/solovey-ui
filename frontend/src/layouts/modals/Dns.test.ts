@@ -34,6 +34,17 @@ function mount(data: Record<string, any>, mode: string, native = false) {
   return { vm, saved }
 }
 
+async function renderEditor(source: Record<string, unknown>) {
+  const app = createSSRApp(defineComponent({ ...DnsEditor, created() { (this as any).updateData() } }), { visible: true, modelValue: true, index: 0, data: JSON.stringify(source) })
+  app.use(createI18n({ legacy: false, locale: 'en', messages: { en: {} }, missingWarn: false, fallbackWarn: false }))
+  app.config.globalProperties.$t = (key: string) => key
+  app.config.warnHandler = () => {}
+  for (const name of ['v-row', 'v-col', 'v-select', 'v-text-field', 'v-textarea', 'v-switch', 'v-alert', 'v-card', 'v-card-title', 'v-card-text', 'v-card-actions', 'v-card-subtitle', 'v-divider', 'v-spacer', 'v-btn', 'v-dialog', 'v-navigation-drawer', 'v-toolbar', 'v-toolbar-title', 'v-icon', 'v-defaults-provider', 'v-menu', 'v-list', 'v-list-item']) {
+    app.component(name, defineComponent({ inheritAttrs: false, setup: (_, context) => () => h('div', context.attrs, context.slots.default?.()) }))
+  }
+  return renderToString(app)
+}
+
 describe('shared DNS editor for Classic and Nexus', () => {
   for (const mode of ['classic', 'nexus']) {
     it(`${mode} selects an available native VPN DNS endpoint and retains resolver policy`, () => {
@@ -103,17 +114,21 @@ describe('shared DNS editor for Classic and Nexus', () => {
     })
     it(`${mode} renders the shared mDNS fields in its actual form shell`, async () => {
       mount({ type: 'mdns', tag: 'multicast', interface: ['fixture0'] }, mode)
-      const app = createSSRApp(defineComponent({ ...DnsEditor, created() { (this as any).updateData() } }), { visible: true, modelValue: true, index: 0, data: JSON.stringify({ type: 'mdns', tag: 'multicast', interface: ['fixture0'] }) })
-      app.use(createI18n({ legacy: false, locale: 'en', messages: { en: {} }, missingWarn: false, fallbackWarn: false }))
-      app.config.globalProperties.$t = (key: string) => key
-      app.config.warnHandler = () => {}
-      for (const name of ['v-row', 'v-col', 'v-select', 'v-text-field', 'v-alert', 'v-card', 'v-card-title', 'v-card-text', 'v-card-actions', 'v-divider', 'v-spacer', 'v-btn', 'v-dialog', 'v-navigation-drawer', 'v-toolbar', 'v-toolbar-title', 'v-icon', 'v-defaults-provider']) {
-        app.component(name, defineComponent({ inheritAttrs: false, setup: (_, context) => () => h('div', context.attrs, context.slots.default?.()) }))
-      }
-      const markup = await renderToString(app)
+      const markup = await renderEditor({ type: 'mdns', tag: 'multicast', interface: ['fixture0'] })
       expect(markup).toContain('dns.mdnsInterfaces')
       expect(markup).toContain('dns.mdnsSemantics')
       expect(markup).toContain('fixture0')
+    })
+    it(`${mode} exposes mandatory DNS TLS options without rewriting captured TLS state`, async () => {
+      const source = { type: 'tls', tag: 'encrypted', server: 'resolver.example', tls: { enabled: false, future: { counter: 0 } } }
+      const { vm } = mount(source, mode)
+      const before = JSON.stringify(vm.dnsServer)
+      const markup = await renderEditor(source)
+      expect(markup).toContain('tls.insecure')
+      expect(markup).toContain('tls.disableSni')
+      expect(markup).not.toContain('label="tls.enable"')
+      expect(JSON.stringify(vm.dnsServer)).toBe(before)
+      expect(source.tls).toEqual({ enabled: false, future: { counter: 0 } })
     })
     it(`${mode} explains unavailable resolved history and refuses a missing service`, () => {
       const { vm, saved } = mount({ type: 'resolved', tag: 'resolved', service: 'missing', accept_default_resolvers: true }, mode)
