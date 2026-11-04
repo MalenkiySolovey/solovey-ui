@@ -119,6 +119,13 @@ func externalRedirectPolicy(req *http.Request, via []*http.Request) error {
 	req.Header.Del("Authorization")
 	req.Header.Del("Cookie")
 	req.Header.Del("Referer")
+	// Source-owned headers are private to the original request, including
+	// custom token headers unknown to net/http's standard sensitive list.
+	if names, ok := req.Context().Value(sourceHeaderNamesKey{}).([]string); ok {
+		for _, name := range names {
+			req.Header.Del(name)
+		}
+	}
 	if req.URL == nil {
 		return common.NewError("missing redirect url")
 	}
@@ -141,8 +148,26 @@ func FetchContext(ctx context.Context, rawURL string) (string, error) {
 }
 
 func FetchWithUserAgentContext(ctx context.Context, rawURL string, userAgent string) (string, error) {
+	return FetchWithHeadersContext(ctx, rawURL, userAgent, nil)
+}
+
+func FetchWithHeadersContext(ctx context.Context, rawURL string, userAgent string, headers http.Header) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if err := ValidateFetchHeaders(headers); err != nil {
+		return "", err
+	}
+	if len(headers) != 0 {
+		normalized := make(http.Header, len(headers))
+		names := make([]string, 0, len(headers))
+		for name, values := range headers {
+			key := http.CanonicalHeaderKey(name)
+			names = append(names, key)
+			normalized[key] = append([]string(nil), values...)
+		}
+		headers = normalized
+		ctx = context.WithValue(ctx, sourceHeaderNamesKey{}, names)
 	}
 	if err := ValidateURLContext(ctx, rawURL); err != nil {
 		logger.Warning("sub: invalid external URL:", err)
@@ -152,6 +177,9 @@ func FetchWithUserAgentContext(ctx context.Context, rawURL string, userAgent str
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return "", err
+	}
+	if len(headers) != 0 {
+		req.Header = headers.Clone()
 	}
 	if strings.TrimSpace(userAgent) != "" {
 		req.Header.Set("User-Agent", strings.TrimSpace(userAgent))

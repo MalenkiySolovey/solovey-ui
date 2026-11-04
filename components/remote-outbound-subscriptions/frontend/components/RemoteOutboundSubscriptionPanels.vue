@@ -9,7 +9,7 @@
         <div class="remote-outbounds__title">
           <div>
             <strong>{{ subscription.name }}</strong>
-            <span class="remote-outbounds__url">{{ subscription.sourceType === 'inline' ? $t('remoteOutbound.sourceTypes.inline') : subscription.url }}</span>
+            <span class="remote-outbounds__url">{{ subscription.sourceType === 'inline' ? $t('remoteOutbound.sourceTypes.inline') : subscription.sourceType === 'file' ? subscription.sourcePath : subscription.url }}</span>
           </div>
           <div class="remote-outbounds__chips">
             <v-chip density="compact" size="small" :color="subscription.enabled ? 'success' : undefined" variant="flat">

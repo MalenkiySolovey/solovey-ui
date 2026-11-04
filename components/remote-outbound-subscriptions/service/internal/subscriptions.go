@@ -9,6 +9,7 @@ import (
 	"time"
 
 	remotesub "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
 	subconversion "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/conversion"
@@ -73,10 +74,16 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 	now := time.Now().Unix()
 	input.Name = strings.TrimSpace(input.Name)
 	input.Url = strings.TrimSpace(input.Url)
+	input.SourcePath = strings.TrimSpace(input.SourcePath)
 	if err := remotesub.ValidateSourceUserAgent(input.UserAgent); err != nil {
 		return nil, err
 	}
 	input.UserAgent = strings.TrimSpace(input.UserAgent)
+	if prepared, err := coreruntime.PrepareDialerOverride(input.DialerOverride); err != nil {
+		return nil, err
+	} else {
+		input.DialerOverride = prepared
+	}
 	input.TagPrefix = remotesub.SanitizeTagPrefix(input.TagPrefix)
 	input.UpdateInterval = remotesub.NormalizeUpdateInterval(input.UpdateInterval)
 	if input.Name == "" {
@@ -86,7 +93,7 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 		return nil, common.NewError("subscription name is too long")
 	}
 	input.SourceType = input.SourceKind()
-	if input.SourceType != remotesub.SourceRemote && input.SourceType != remotesub.SourceInline {
+	if input.SourceType != remotesub.SourceRemote && input.SourceType != remotesub.SourceInline && input.SourceType != remotesub.SourceFile {
 		return nil, common.NewError("SUBSCRIPTION_SOURCE_TYPE_INVALID")
 	}
 	if err := input.ValidateSourceFilters(); err != nil {
@@ -111,6 +118,16 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 		if err := remotesub.ValidateSubscriptionURL(input.Url); err != nil {
 			return nil, common.NewError("subscription url is not allowed: ", err)
 		}
+	}
+	if input.SourceType == remotesub.SourceFile {
+		if input.Url != "" || input.UserAgent != "" {
+			return nil, common.NewError("FILE_SUBSCRIPTION_FETCH_OPTIONS_NOT_ALLOWED")
+		}
+		if err := remotesub.ValidateSourceFilePath(input.SourcePath); err != nil {
+			return nil, err
+		}
+	} else if input.SourcePath != "" {
+		return nil, common.NewError("SUBSCRIPTION_SOURCE_FILE_PATH_NOT_ALLOWED")
 	}
 	if input.TagPrefix == "" {
 		input.TagPrefix = remotesub.DefaultTagPrefix(input.Name, input.Id)
@@ -149,9 +166,11 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 			saved.Name = input.Name
 			saved.Url = input.Url
 			saved.UserAgent = input.UserAgent
+			saved.SourcePath = input.SourcePath
 			saved.Include = input.Include
 			saved.Exclude = input.Exclude
 			saved.RemoveEmojis = input.RemoveEmojis
+			saved.DialerOverride = input.DialerOverride
 			saved.Enabled = input.Enabled
 			saved.TagPrefix = input.TagPrefix
 			saved.AutoUpdate = input.AutoUpdate
@@ -172,9 +191,11 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 				Url:            input.Url,
 				UserAgent:      input.UserAgent,
 				SourceType:     input.SourceType,
+				SourcePath:     input.SourcePath,
 				Include:        input.Include,
 				Exclude:        input.Exclude,
 				RemoveEmojis:   input.RemoveEmojis,
+				DialerOverride: input.DialerOverride,
 				Enabled:        input.Enabled,
 				TagPrefix:      input.TagPrefix,
 				AutoUpdate:     input.AutoUpdate,
@@ -187,6 +208,9 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 			return err
 		}
 		if err := remotesub.ApplySourceContent(tx.Statement.Context, tx, &saved, input.Content, options); err != nil {
+			return err
+		}
+		if err := remotesub.ApplySourceHeaders(tx, &saved, input.FetchHeaders); err != nil {
 			return err
 		}
 		if err := tx.Save(&saved).Error; err != nil {

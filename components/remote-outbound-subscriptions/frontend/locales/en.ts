@@ -1,5 +1,11 @@
 export default {
   "remoteOutbound": {
+    "clearFetchHeaders": "Clear stored headers",
+    "noFetchHeaders": "No additional headers are stored.",
+    "fetchHeaders": "Private fetch headers (JSON)",
+    "fetchHeadersHint": "Optional JSON object of header names to strings or string arrays, up to 16 KiB. Values are encrypted and later edits use Keep, Replace or Clear. Headers apply only to source downloads and are removed on redirects. Set User-Agent separately; host, framing and proxy headers cannot be overridden.",
+    "sourcePath": "Source path on the Panel host",
+    "sourcePathHint": "Absolute path to a readable regular file on the Panel host (up to 512 KiB). Auto refresh checks it at the selected interval. Read or parse failures preserve the last collected connections. The Panel does not write or remove this file.",
     "inlineFile": "Load a local source file",
     "inlineFileHint": "Load a client configuration or share-link file into this source's Replace draft (up to 512 KiB). Save validates the contents.",
     "inlineFileSizeError": "Choose a non-empty file up to 512 KiB.",
@@ -7,13 +13,16 @@ export default {
     "includeNames": "Include names (regular expression)",
     "excludeNames": "Exclude names (regular expression)",
     "removeEmojis": "Remove emoji from imported names",
+    "dialerOverride": "Imported outbound dial options",
+    "dialerOverrideHint": "Explicit values override matching dial fields on Refresh for protocols that support Dial. Other source fields, captured observations and group behavior are preserved. Clearing restores source values on the next Refresh. These options do not change how the source URL is downloaded.",
+    "clearDialerOverride": "Use source dial options",
     "userAgent": "Source User-Agent",
     "userAgentHint": "Leave empty to collect formats automatically. A custom client identity fetches the original URL once when you Refresh.",
     "removeEmojisHint": "Applied on Refresh after filtering original names. Flags become country codes. Source observations and existing outbound tags are preserved.",
     "sourceFiltersHint": "Filters match original source names when you Refresh. Exclude wins; empty includes all. Keep every member required by a retained group. Saving does not change collected connections until Refresh.",
     "title": "External Subscriptions",
     "sourceType": "Source type",
-    "sourceTypes": { "remote": "Remote URL", "inline": "Inline content" },
+    "sourceTypes": { "remote": "Remote URL", "inline": "Inline content", "file": "Host file" },
     "inlineContent": "Source content",
     "inlineContentHint": "Paste a supported client configuration or share links (up to 512 KiB). Credentials are kept in the source owner; later edits use Keep or Replace. Save validates the source. Refresh updates its collected connections before you select and apply them.",
     "summary": "{total} subscriptions • {connections} connections • {synced} in outbounds",
@@ -59,6 +68,6 @@ export default {
     "deleteManagedOutboundWarning": "Remote sync will be disabled; selector/urltest refs will be adjusted.",
     "syncToOutbounds": "Sync to outbounds",
     "noConnections": "No connections. Refresh the subscription first.",
-    "empty": "Add a remote subscription URL, then refresh it to import connections."
+    "empty": "Add a remote URL, inline content or a file on the Panel host. Refresh the source to collect its connections before selecting and applying them."
   }
 }
