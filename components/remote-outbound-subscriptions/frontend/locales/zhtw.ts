@@ -1,5 +1,31 @@
 export default {
   "remoteOutbound": {
+    "healthChecks": "自動健康檢查",
+    "healthCheckEnabled": "探測已套用的來源出站",
+    "healthCheckURL": "健康檢查 URL",
+    "healthCheckInterval": "探測間隔（1m–24h）",
+    "healthCheckTimeout": "探測逾時（100ms–15s）",
+    "healthCheckHint": "定期探測已套用為出站的啟用連線。僅收集的連線保持未啟用。結果由目前執行環境 Health 管理，十分鐘後過期。來源下載憑證不會傳送到探測 URL。",
+    "healthObservationHint": "此來源探測目標的近期自動執行觀測。未知表示沒有相符的新鮮觀測，不表示健康。",
+    "healthStates": { "healthy": "健康：正常", "down": "健康：故障", "unknown": "健康：未知" },
+    "downloadOutbound": "下載使用的出站",
+    "downloadOutboundHint": "僅透過所選的執行中出站下載此來源。出站無法使用時重新整理失敗並保留已收集的連線，不會改用主機網路。",
+    "downloadOutboundUnavailable": "儲存的出站在目前執行環境無法使用。參照已保留，恢復可用前無法重新整理。請明確清除選擇以變更下載路徑。",
+    "noDownloadDetour": "主機網路（無 detour）",
+    "clearDownloadDetour": "清除下載 detour",
+    "clearFetchHeaders": "清除已儲存的標頭",
+    "noFetchHeaders": "未儲存額外標頭。",
+    "fetchHeaders": "私密下載標頭（JSON）",
+    "fetchHeadersHint": "選用 JSON 物件：標頭名稱對應字串或字串陣列，最大 16 KiB。值會加密，編輯時可保留、取代或清除。僅用於來源下載，重新導向時移除。User-Agent 另行設定；不能覆寫主機、訊息分框或代理標頭。",
+    "sourcePath": "面板主機上的來源檔案路徑",
+    "sourcePathHint": "面板主機上可讀取一般檔案的絕對路徑（最大 512 KiB）。自動重新整理依所選間隔檢查檔案。讀取或解析失敗時保留上次收集的連線。面板不會寫入或刪除此檔案。",
+    "dialerOverride": "匯入出站的撥號選項",
+    "dialerOverrideHint": "重新整理時，為支援 Dial 的協定覆寫明確指定的撥號欄位。其他欄位、來源觀測資料及群組行為保持不變。清除後，下次重新整理還原來源值。這些選項不影響來源 URL 的下載方式。",
+    "clearDialerOverride": "使用來源撥號選項",
+    "removeEmojis": "移除匯入名稱中的表情符號",
+    "userAgent": "來源 User-Agent",
+    "userAgentHint": "留空以自動收集各格式。設定自訂用戶端識別後，每次重新整理僅請求原始 URL 一次。",
+    "removeEmojisHint": "重新整理時於原始名稱篩選後套用。旗幟轉換為國家代碼，保留來源觀測資料及現有出站標籤。",
     "inlineFile": "載入本機來源檔案",
     "inlineFileHint": "將用戶端設定或分享連結檔案載入此來源的替換草稿（最大 512 KiB）。儲存時驗證內容。",
     "inlineFileSizeError": "請選擇非空且不超過 512 KiB 的檔案。",
@@ -8,7 +34,7 @@ export default {
     "excludeNames": "排除名稱（正規表示式）",
     "sourceFiltersHint": "重新整理時依來源名稱篩選。排除優先；留空表示全部。保留的群組所需的成員必須全部保留。儲存篩選條件不會修改已收集的連線，重新整理後才會套用。",
     "sourceType": "來源類型",
-    "sourceTypes": { "remote": "遠端 URL", "inline": "內嵌內容" },
+    "sourceTypes": { "remote": "遠端 URL", "inline": "內嵌內容", "file": "主機檔案" },
     "inlineContent": "來源內容",
     "inlineContentHint": "貼上支援的用戶端設定或分享連結（最多 512 KiB）。憑證由來源管理，後續編輯可保留或替換。儲存時驗證來源；重新整理會重新收集連線，再由您選擇並套用。",
     "title": "Remote Subscriptions",
@@ -55,6 +81,6 @@ export default {
     "deleteManagedOutboundWarning": "遠端同步將停用；selector/urltest 參照將會調整。",
     "syncToOutbounds": "同步到出站",
     "noConnections": "沒有連線。請先重新整理訂閱。",
-    "empty": "新增遠端訂閱 URL，然後重新整理以匯入連線。"
+    "empty": "新增遠端 URL、內嵌內容或面板主機上的檔案。重新整理來源以收集連線，然後選取並套用。"
   }
 }

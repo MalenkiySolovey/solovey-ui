@@ -33,7 +33,7 @@ func nativeDNSFindings(servers []dnsObject) []diagnostics.Finding {
 		if resolver != "" {
 			dependencies[tag] = append(dependencies[tag], resolver)
 		}
-		if kind != "sdns" && kind != "fallback" && kind != "openconnect" {
+		if kind != "sdns" && kind != "fallback" && nativeVPNEndpointType(kind) == "" {
 			continue
 		}
 		path := fmt.Sprintf("dns.servers[%d]", i)

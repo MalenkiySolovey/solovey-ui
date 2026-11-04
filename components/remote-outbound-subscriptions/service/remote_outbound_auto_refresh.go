@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 )
@@ -19,7 +20,7 @@ var (
 	remoteOutboundAutoDone chan struct{}
 )
 
-func StartRemoteOutboundAutoRefresh(runtime *coreservice.Runtime) {
+func StartRemoteOutboundAutoRefresh(runtime *coreservice.Runtime, outboundHTTP componenthost.OutboundHTTPClientProvider) {
 	remoteOutboundAutoMu.Lock()
 	defer remoteOutboundAutoMu.Unlock()
 	if remoteOutboundAutoStop != nil {
@@ -35,7 +36,8 @@ func StartRemoteOutboundAutoRefresh(runtime *coreservice.Runtime) {
 		defer close(done)
 		ticker := time.NewTicker(remoteOutboundAutoRefreshTick)
 		defer ticker.Stop()
-		service := &RemoteOutboundService{Runtime: runtime}
+		service := &RemoteOutboundService{Runtime: runtime, OutboundHTTP: outboundHTTP}
+		healthSchedule := &SourceHealthSchedule{}
 		for {
 			select {
 			case <-ctx.Done():
@@ -43,6 +45,9 @@ func StartRemoteOutboundAutoRefresh(runtime *coreservice.Runtime) {
 			case <-ticker.C:
 				if _, err := service.RefreshDueSubscriptionsContext(ctx, "system"); err != nil && ctx.Err() == nil {
 					logger.Warning("remote subscription auto refresh scan failed: ", err)
+				}
+				if _, err := service.ProbeDueSubscriptionsContext(ctx, healthSchedule); err != nil && ctx.Err() == nil {
+					logger.Warning("remote subscription health scan failed: ", err)
 				}
 			}
 		}

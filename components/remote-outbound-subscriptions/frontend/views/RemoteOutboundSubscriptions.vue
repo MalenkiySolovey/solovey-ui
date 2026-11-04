@@ -87,7 +87,7 @@
     <v-form ref="subscriptionForm" class="remote-outbounds__form" @submit.prevent="page.saveSubscription">
       <v-row align="center">
         <v-col cols="12" md="3">
-          <v-select v-model="page.form.sourceType" :disabled="page.form.id > 0" :items="[{ value: 'remote', title: $t('remoteOutbound.sourceTypes.remote') }, { value: 'inline', title: $t('remoteOutbound.sourceTypes.inline') }]" :label="$t('remoteOutbound.sourceType')" variant="outlined" density="compact" />
+          <v-select v-model="page.form.sourceType" :disabled="page.form.id > 0" :items="[{ value: 'remote', title: $t('remoteOutbound.sourceTypes.remote') }, { value: 'inline', title: $t('remoteOutbound.sourceTypes.inline') }, { value: 'file', title: $t('remoteOutbound.sourceTypes.file') }]" :label="$t('remoteOutbound.sourceType')" variant="outlined" density="compact" />
         </v-col>
         <v-col cols="12" md="3">
           <v-text-field
@@ -107,6 +107,9 @@
             variant="outlined"
           />
         </v-col>
+        <v-col v-else-if="page.form.sourceType === 'file'" cols="12" md="9">
+          <v-text-field v-model="page.form.sourcePath" :label="$t('remoteOutbound.sourcePath')" :hint="$t('remoteOutbound.sourcePathHint')" :rules="page.requiredRules" maxlength="4096" persistent-hint variant="outlined" density="compact" />
+        </v-col>
         <v-col v-else cols="12" md="9">
           <v-file-input :model-value="page.inlineFile" @update:model-value="page.loadInlineFile" :label="$t('remoteOutbound.inlineFile')" :hint="$t('remoteOutbound.inlineFileHint')" :error-messages="page.inlineFileError ? [page.inlineFileError] : []" :loading="page.inlineFileLoading" accept=".json,.yaml,.yml,.txt,.conf" show-size clearable persistent-hint variant="outlined" density="compact" />
           <SecretCredentialField v-model="page.form.content" :available="true" multiline :label="$t('remoteOutbound.inlineContent')" />
@@ -118,10 +121,10 @@
         <v-col cols="12" sm="6" md="1">
           <v-switch v-model="page.form.enabled" color="primary" density="compact" hide-details :label="$t('enable')" />
         </v-col>
-        <v-col v-if="page.form.sourceType === 'remote'" cols="12" sm="6" md="1">
+        <v-col v-if="page.form.sourceType !== 'inline'" cols="12" sm="6" md="1">
           <v-switch v-model="page.form.autoUpdate" color="primary" density="compact" hide-details :label="$t('remoteOutbound.autoUpdate')" />
         </v-col>
-        <v-col v-if="page.form.sourceType === 'remote'" cols="12" sm="6" md="1">
+        <v-col v-if="page.form.sourceType !== 'inline'" cols="12" sm="6" md="1">
           <v-text-field
             v-model.number="page.updateIntervalMinutes"
             density="compact"
@@ -141,7 +144,39 @@
           <v-text-field v-model="page.form.exclude" :label="$t('remoteOutbound.excludeNames')" maxlength="4096" variant="outlined" density="compact" />
         </v-col>
         <v-col cols="12" class="text-caption">{{ $t('remoteOutbound.sourceFiltersHint') }}</v-col>
+        <v-col v-if="page.form.sourceType === 'remote'" cols="12">
+          <template v-if="page.unavailableDownloadOutbound">
+            <v-text-field :model-value="page.unavailableDownloadOutbound" :label="$t('remoteOutbound.downloadOutbound')" readonly variant="outlined" density="compact" />
+            <v-alert type="warning" variant="tonal" class="mb-2">{{ $t('remoteOutbound.downloadOutboundUnavailable') }}</v-alert>
+            <v-btn variant="text" class="mb-3" @click="page.form.downloadOutboundId = 0">{{ $t('remoteOutbound.clearDownloadDetour') }}</v-btn>
+          </template>
+          <v-select v-else v-model="page.form.downloadOutboundId" :items="page.downloadOutboundChoices" :label="$t('remoteOutbound.downloadOutbound')" :hint="$t('remoteOutbound.downloadOutboundHint')" persistent-hint variant="outlined" density="compact" />
+          <v-text-field v-model="page.form.userAgent" :label="$t('remoteOutbound.userAgent')" :hint="$t('remoteOutbound.userAgentHint')" persistent-hint maxlength="4096" variant="outlined" density="compact" />
+          <SecretCredentialField v-model="page.form.fetchHeaders" :available="true" multiline :label="$t('remoteOutbound.fetchHeaders')" :clear-label="$t('remoteOutbound.clearFetchHeaders')" :absent-label="$t('remoteOutbound.noFetchHeaders')" />
+          <p class="text-caption">{{ $t('remoteOutbound.fetchHeadersHint') }}</p>
+        </v-col>
+        <v-col cols="12">
+          <v-switch v-model="page.form.removeEmojis" :label="$t('remoteOutbound.removeEmojis')" :hint="$t('remoteOutbound.removeEmojisHint')" persistent-hint color="primary" />
+        </v-col>
         <v-col cols="12" sm="6" md="12" class="remote-outbounds__form-actions">
+          <v-expansion-panels class="mb-4">
+            <v-expansion-panel :title="$t('remoteOutbound.healthChecks')">
+              <v-expansion-panel-text>
+                <p class="text-caption mb-3">{{ $t('remoteOutbound.healthCheckHint') }}</p>
+                <v-switch v-model="page.form.healthCheck.enabled" :label="$t('remoteOutbound.healthCheckEnabled')" color="primary" />
+                <v-text-field v-model="page.form.healthCheck.url" :disabled="!page.form.healthCheck.enabled" :label="$t('remoteOutbound.healthCheckURL')" maxlength="8192" variant="outlined" density="compact" />
+                <v-text-field v-model="page.form.healthCheck.interval" :disabled="!page.form.healthCheck.enabled" :label="$t('remoteOutbound.healthCheckInterval')" variant="outlined" density="compact" />
+                <v-text-field v-model="page.form.healthCheck.timeout" :disabled="!page.form.healthCheck.enabled" :label="$t('remoteOutbound.healthCheckTimeout')" variant="outlined" density="compact" />
+              </v-expansion-panel-text>
+            </v-expansion-panel>
+            <v-expansion-panel :title="$t('remoteOutbound.dialerOverride')">
+              <v-expansion-panel-text>
+                <p class="text-caption mb-3">{{ $t('remoteOutbound.dialerOverrideHint') }}</p>
+                <Dial :dial="page.form.dialerOverride" />
+                <v-btn variant="text" class="mt-2" @click="page.form.dialerOverride = {}">{{ $t('remoteOutbound.clearDialerOverride') }}</v-btn>
+              </v-expansion-panel-text>
+            </v-expansion-panel>
+          </v-expansion-panels>
           <v-btn color="primary" :loading="page.saving" :disabled="page.inlineFileLoading || !!page.inlineFileError" type="submit">
             {{ page.form.id ? $t('actions.update') : $t('actions.add') }}
           </v-btn>
@@ -162,6 +197,7 @@
 <script lang="ts" setup>
 import { reactive } from 'vue'
 import SecretCredentialField from '@/components/fields/SecretCredentialField.vue'
+import Dial from '@/components/fields/Dial.vue'
 import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
 import RemoteOutboundSubscriptionDialogs from '../components/RemoteOutboundSubscriptionDialogs.vue'

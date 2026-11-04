@@ -5,6 +5,7 @@ export const EpTypes = {
   Warp: 'warp',
   Tailscale: 'tailscale',
   OpenConnect: 'openconnect',
+  OpenVPNClient: 'openvpn-client',
 }
 
 type EpType = typeof EpTypes[keyof typeof EpTypes]
@@ -84,10 +85,13 @@ const defaultValues: Record<EpType, Endpoint> = {
   warp: { type: EpTypes.Warp, address: [], private_key: '', listen_port: 0, mtu: 1420, peers: [{ address: '', port: 0, public_key: ''}] },
   tailscale: { type: EpTypes.Tailscale, domain_resolver: 'local' },
   openconnect: { type: EpTypes.OpenConnect, server: '', flavor: 'anyconnect' },
+  'openvpn-client': { type: EpTypes.OpenVPNClient, mode: 'tls', network: 'udp', servers: [{ server: '', server_port: 1194 }], data_ciphers: ['AES-256-GCM'], auth: 'SHA256', tls: {} },
 }
 
 export function createEndpoint<T extends Endpoint>(type: string,json?: Partial<T>): Endpoint {
-  const defaults = defaultValues[type]
+  // A stored native VPN may use legacy single-server or static-key options.
+  // Creation defaults must not add a conflicting remotes list or TLS state.
+  const defaults = type === EpTypes.OpenVPNClient && json && 'type' in json ? { type } : defaultValues[type]
   const endpoint: Endpoint = { ...structuredClone(defaults ?? { type }), ...(json || {}) }
 
   if (type === EpTypes.Wireguard) {

@@ -33,10 +33,18 @@ export interface RemoteOutboundSubscription {
   sortOrder: number
   name: string
   url: string
-  sourceType?: 'remote' | 'inline'
+  userAgent?: string
+  downloadOutboundId?: number
+  sourceType?: 'remote' | 'inline' | 'file'
+  sourcePath?: string
   content?: SecretView
+  fetchHeaders?: SecretView
   include?: string
   exclude?: string
+  removeEmojis?: boolean
+  dialerOverride?: import('@/types/dial').Dial
+  healthCheck?: { enabled: boolean; url?: string; interval?: string; timeout?: string }
+  healthTargetId?: string
   enabled: boolean
   tagPrefix: string
   autoUpdate: boolean

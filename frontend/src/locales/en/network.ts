@@ -1,4 +1,18 @@
 export default {
+  "nativeRealm": {
+    "identityHint": "These identities authorize the rendezvous service and its realm limits. Tokens stay private. Renaming requires a replacement token; removing an identity revokes it.",
+    "addIdentity": "Add realm identity",
+    "removeIdentity": "Revoke realm identity",
+    "name": "Identity name",
+    "token": "Rendezvous token",
+    "maxRealms": "Maximum active realms",
+    "unlimited": "Empty or zero means no per-identity limit.",
+    "idle_timeout": "HTTP/2 idle timeout",
+    "keep_alive_period": "HTTP/2 keepalive period",
+    "stream_receive_window": "Stream receive window",
+    "connection_receive_window": "Connection receive window",
+    "max_concurrent_streams": "Maximum concurrent streams"
+  },
   "nativeMasque": {
     "profileHint": "Enter a device ID and token to reuse a Cloudflare profile. Without them, the runtime creates a profile when it starts.",
     "deviceId": "Cloudflare device ID",

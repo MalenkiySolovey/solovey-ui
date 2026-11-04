@@ -2,6 +2,98 @@ import { expect, test } from '@playwright/test'
 import { enableComponent, login } from './helpers'
 
 for (const mode of ['classic', 'nexus']) {
+  test(`${mode} saves source health policy and shows only matching runtime observations`, async ({ page }) => {
+    await page.addInitScript(selected => window.localStorage.setItem('sui:ui:mode', selected), mode)
+    await login(page)
+    await enableComponent(page, 'remote-outbound-subscriptions')
+    const sources: Record<string, unknown>[] = []
+    const mutations: Record<string, any>[] = []
+    const target = 'https://www.gstatic.com/generate_204'
+    await page.route('**/api/remote-outbound-subscriptions', route => route.fulfill({ json: { success: true, msg: '', obj: sources } }))
+    await page.route('**/api/remote-outbound-subscriptions/save', async route => {
+      const payload = JSON.parse(new URLSearchParams(route.request().postData() ?? '').get('data') ?? '{}')
+      mutations.push(payload)
+      sources.splice(0, sources.length, { ...payload, id: 1, healthTargetId: payload.healthCheck.url === target ? 'a'.repeat(64) : 'b'.repeat(64), groups: [],
+        connections: [{ id: 1, name: 'Applied health member', type: 'trojan', outboundTag: 'health-member', enabled: true, synced: true }], lastUpdated: 0, lastError: '' })
+      await route.fulfill({ json: { success: true, msg: '', obj: null } })
+    })
+    await page.route('**/api/load**', async route => {
+      const response = await route.fetch()
+      const result = await response.json()
+      if (result.obj) result.obj.onlines = { ...result.obj.onlines, outboundHealth: {
+        'health-member': { tag: 'health-member', source: 'subscription', targetId: 'a'.repeat(64), status: 'healthy', delayMs: 12, checkedAt: Math.floor(Date.now() / 1000) },
+      } }
+      await route.fulfill({ response, json: result })
+    })
+    await page.goto('hosts/local/remote-subscriptions')
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Owned health source')
+    await page.getByRole('textbox', { name: 'Subscription URL', exact: true }).fill('https://example.com/source')
+    await page.getByRole('button', { name: 'Automatic health checks', exact: true }).click()
+    await page.getByLabel('Probe applied source outbounds', { exact: true }).check()
+    await page.getByRole('textbox', { name: 'Probe interval (1m–24h)', exact: true }).fill('1m')
+    await page.getByRole('textbox', { name: 'Probe timeout (100ms–15s)', exact: true }).fill('2s')
+    await page.locator('form').getByRole('button', { name: 'Add', exact: true }).click()
+    await expect.poll(() => mutations.length).toBe(1)
+    expect(mutations[0].healthCheck).toEqual({ enabled: true, url: target, interval: '1m', timeout: '2s' })
+    await page.getByRole('button', { name: /Owned health source/ }).click()
+    await expect(page.getByText('Health: healthy', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Edit', exact: true }).click()
+    const healthPanel = page.getByRole('button', { name: 'Automatic health checks', exact: true })
+    if (await healthPanel.getAttribute('aria-expanded') !== 'true') await healthPanel.click()
+    await expect(page.getByRole('textbox', { name: 'Probe timeout (100ms–15s)', exact: true })).toHaveValue('2s')
+    await page.getByRole('textbox', { name: 'Health check URL', exact: true }).fill('https://example.org/new-probe')
+    await page.locator('form').getByRole('button', { name: 'Update', exact: true }).click()
+    await expect.poll(() => mutations.length).toBe(2)
+    await expect(page.getByText('Health: healthy', { exact: true })).toHaveCount(0)
+    await expect(page.getByText('Health: unknown', { exact: true })).toBeVisible()
+  })
+
+  test(`${mode} filters download outbounds and preserves an unavailable saved detour`, async ({ page }) => {
+    await page.addInitScript(selected => window.localStorage.setItem('sui:ui:mode', selected), mode)
+    await login(page)
+    await enableComponent(page, 'remote-outbound-subscriptions')
+    const sources: Record<string, unknown>[] = []
+    const mutations: Record<string, unknown>[] = []
+    const choices = [
+      { id: 7, tag: 'download-primary', type: 'direct', capability: { available: true } },
+      { id: 9, tag: 'unavailable-download', type: 'ssh', capability: { available: false } },
+      { id: 11, tag: 'unknown-download', type: 'future' },
+    ]
+    await page.route('**/api/remote-outbound-subscriptions', route => route.fulfill({ json: { success: true, msg: '', obj: sources } }))
+    await page.route('**/api/remote-outbound-subscriptions/download-outbounds', route => route.fulfill({ json: { success: true, msg: '', obj: choices } }))
+    await page.route('**/api/remote-outbound-subscriptions/save', async route => {
+      const payload = JSON.parse(new URLSearchParams(route.request().postData() ?? '').get('data') ?? '{}')
+      mutations.push(payload)
+      sources.splice(0, sources.length, { ...payload, id: 1, groups: [], connections: [], lastUpdated: 0, lastError: '' })
+      await route.fulfill({ json: { success: true, msg: '', obj: null } })
+    })
+    await page.goto('hosts/local/remote-subscriptions')
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Owned download source')
+    await page.getByRole('textbox', { name: 'Subscription URL', exact: true }).fill('https://example.com/source')
+    await page.getByRole('combobox', { name: 'Download through outbound', exact: true }).press('ArrowDown')
+    await expect(page.getByRole('option', { name: /unavailable-download|unknown-download/ })).toHaveCount(0)
+    await page.getByRole('option', { name: 'download-primary (direct)', exact: true }).click()
+    await page.locator('form').getByRole('button', { name: 'Add', exact: true }).click()
+    await expect.poll(() => mutations.length).toBe(1)
+    expect(mutations[0].downloadOutboundId).toBe(7)
+    choices[0].capability!.available = false
+    await page.reload()
+    await page.getByRole('button', { name: /Owned download source/ }).click()
+    await page.getByRole('button', { name: 'Edit', exact: true }).click()
+    await expect(page.getByRole('textbox', { name: 'Download through outbound', exact: true })).toHaveValue('download-primary')
+    await expect(page.getByText(/The saved outbound is unavailable on the current runtime/)).toBeVisible()
+    await expect(page.getByRole('combobox', { name: 'Download through outbound', exact: true })).toHaveCount(0)
+    await page.locator('form').getByRole('button', { name: 'Update', exact: true }).click()
+    await expect.poll(() => mutations.length).toBe(2)
+    expect(mutations[1].downloadOutboundId).toBe(7)
+    await page.getByRole('button', { name: 'Edit', exact: true }).click()
+    await page.getByRole('button', { name: 'Clear download detour', exact: true }).click()
+    await expect(page.getByRole('combobox', { name: 'Download through outbound', exact: true })).toBeVisible()
+    await page.locator('form').getByRole('button', { name: 'Update', exact: true }).click()
+    await expect.poll(() => mutations.length).toBe(3)
+    expect(mutations[2].downloadOutboundId).toBe(0)
+  })
+
   test(`${mode} creates an inline source and edits only its masked reference`, async ({ page }) => {
     await page.addInitScript(selected => window.localStorage.setItem('sui:ui:mode', selected), mode)
     await login(page)
@@ -24,6 +116,12 @@ for (const mode of ['classic', 'nexus']) {
     await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Owned inline source')
     await page.getByRole('textbox', { name: 'Include names (regular expression)', exact: true }).fill('^inline')
     await page.getByRole('textbox', { name: 'Exclude names (regular expression)', exact: true }).fill('-test$')
+    await page.getByLabel('Remove emoji from imported names', { exact: true }).check()
+    await page.getByRole('button', { name: 'Imported outbound dial options', exact: true }).click()
+    await page.getByRole('button', { name: 'Dial Options', exact: true }).click()
+    await page.getByRole('checkbox', { name: 'Connection Timeout', exact: true }).check()
+    await page.keyboard.press('Escape')
+    await page.getByRole('spinbutton', { name: 'Connection Timeout', exact: true }).fill('3')
     const sourceFile = page.locator('form input[type="file"]')
     await sourceFile.setInputFiles({ name: 'oversize.txt', mimeType: 'text/plain', buffer: Buffer.alloc((512 << 10) + 1, 'x') })
     await expect(page.getByText('Choose a non-empty file up to 512 KiB.', { exact: true })).toBeVisible()
@@ -34,12 +132,16 @@ for (const mode of ['classic', 'nexus']) {
     expect(mutations).toHaveLength(0)
     await page.locator('form').getByRole('button', { name: 'Add', exact: true }).click()
     await expect.poll(() => mutations.length).toBe(1)
-    expect(mutations[0]).toMatchObject({ sourceType: 'inline', url: '', autoUpdate: false, include: '^inline', exclude: '-test$', content: { intent: 'replace', value: privateSource } })
+    expect(mutations[0]).toMatchObject({ sourceType: 'inline', url: '', autoUpdate: false, include: '^inline', exclude: '-test$', removeEmojis: true, dialerOverride: { connect_timeout: '3s' }, content: { intent: 'replace', value: privateSource } })
     await page.getByRole('button', { name: /Owned inline source/ }).click()
     await page.getByRole('button', { name: 'Edit', exact: true }).click()
     await expect(page.getByRole('combobox', { name: 'Source type', exact: true })).toBeDisabled()
     await expect(page.getByRole('textbox', { name: 'Include names (regular expression)', exact: true })).toHaveValue('^inline')
     await expect(page.getByRole('textbox', { name: 'Exclude names (regular expression)', exact: true })).toHaveValue('-test$')
+    await expect(page.getByLabel('Remove emoji from imported names', { exact: true })).toBeChecked()
+    const dialPanel = page.getByRole('button', { name: 'Imported outbound dial options', exact: true })
+    if (await dialPanel.getAttribute('aria-expanded') !== 'true') await dialPanel.click()
+    await expect(page.getByRole('spinbutton', { name: 'Connection Timeout', exact: true })).toHaveValue('3')
     await expect(page.getByText('A credential is stored. Its value is hidden.', { exact: true })).toBeVisible()
     await expect(page.getByRole('textbox', { name: 'New credential', exact: true })).toHaveCount(0)
     await expect(page.getByText('inline-secret-fixture', { exact: false })).toHaveCount(0)
@@ -47,6 +149,91 @@ for (const mode of ['classic', 'nexus']) {
     await expect.poll(() => mutations.length).toBe(2)
     expect(mutations[1].content).toMatchObject({ intent: 'unchanged', reference: content.reference, rotationRevision: content.rotationRevision })
     expect(JSON.stringify(mutations[1])).not.toContain('inline-secret-fixture')
+  })
+
+  test(`${mode} keeps private source headers masked after creation`, async ({ page }) => {
+    await page.addInitScript(selected => window.localStorage.setItem('sui:ui:mode', selected), mode)
+    await login(page)
+    await enableComponent(page, 'remote-outbound-subscriptions')
+    const sources: Record<string, unknown>[] = []
+    const mutations: Record<string, any>[] = []
+    const reference = { owner: 'remote-outbound-subscriptions', id: 'record:1:headers', policy: 'OWNER_USE_AND_PRESENCE', projection: 'MASKED' }
+    await page.route('**/api/remote-outbound-subscriptions', route => route.fulfill({ json: { success: true, msg: '', obj: sources } }))
+    await page.route('**/api/remote-outbound-subscriptions/save', async route => {
+      const payload = JSON.parse(new URLSearchParams(route.request().postData() ?? '').get('data') ?? '{}')
+      mutations.push(payload)
+      const present = payload.fetchHeaders?.intent !== 'clear'
+      sources.splice(0, sources.length, { ...payload, id: 1, fetchHeaders: { reference, present, rotationRevision: present ? 'a'.repeat(64) : '' }, groups: [], connections: [], lastUpdated: 0, lastError: '' })
+      await route.fulfill({ json: { success: true, msg: '', obj: null } })
+    })
+    await page.goto('hosts/local/remote-subscriptions')
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Private header source')
+    await page.getByRole('textbox', { name: 'Subscription URL', exact: true }).fill('https://source.example/subscription')
+    await page.getByRole('textbox', { name: 'Source User-Agent', exact: true }).fill('SelectedClient/1')
+    const selectHeaders = async (choice: string) => {
+      await page.getByRole('combobox', { name: 'Private fetch headers (JSON)', exact: true }).press('Enter')
+      await page.getByRole('option', { name: choice, exact: true }).click()
+    }
+    await selectHeaders('Replace credential')
+    const raw = '{"Authorization":"Bearer synthetic-private-header"}'
+    await page.getByRole('textbox', { name: 'New credential', exact: true }).fill(raw)
+    await page.locator('form').getByRole('button', { name: 'Add', exact: true }).click()
+    await expect.poll(() => mutations.length).toBe(1)
+    expect(mutations[0]).toMatchObject({ userAgent: 'SelectedClient/1', fetchHeaders: { intent: 'replace', value: raw } })
+    await page.getByRole('button', { name: /Private header source/ }).click()
+    await page.getByRole('button', { name: 'Edit', exact: true }).click()
+    await expect(page.getByText('A credential is stored. Its value is hidden.', { exact: true })).toBeVisible()
+    await expect(page.getByRole('textbox', { name: 'New credential', exact: true })).toHaveCount(0)
+    await expect(page.getByText('synthetic-private-header', { exact: false })).toHaveCount(0)
+    await page.locator('form').getByRole('button', { name: 'Update', exact: true }).click()
+    await expect.poll(() => mutations.length).toBe(2)
+    expect(mutations[1].fetchHeaders).toMatchObject({ intent: 'unchanged', reference, rotationRevision: 'a'.repeat(64) })
+    expect(JSON.stringify(mutations[1])).not.toContain('synthetic-private-header')
+    await page.getByRole('button', { name: 'Edit', exact: true }).click()
+    await selectHeaders('Clear stored headers')
+    await page.locator('form').getByRole('button', { name: 'Update', exact: true }).click()
+    await expect.poll(() => mutations.length).toBe(3)
+    expect(mutations[2].fetchHeaders).toEqual({ intent: 'clear' })
+  })
+
+  test(`${mode} creates and edits a watched host file source`, async ({ page }) => {
+    await page.addInitScript(selected => window.localStorage.setItem('sui:ui:mode', selected), mode)
+    await login(page)
+    await enableComponent(page, 'remote-outbound-subscriptions')
+    const sources: Record<string, unknown>[] = []
+    const mutations: Record<string, unknown>[] = []
+    await page.route('**/api/remote-outbound-subscriptions', route => route.fulfill({ json: { success: true, msg: '', obj: sources } }))
+    await page.route('**/api/remote-outbound-subscriptions/save', async route => {
+      const payload = JSON.parse(new URLSearchParams(route.request().postData() ?? '').get('data') ?? '{}')
+      mutations.push(payload)
+      sources.splice(0, sources.length, { ...payload, id: 1, groups: [], connections: [], lastUpdated: 0, lastError: '' })
+      await route.fulfill({ json: { success: true, msg: '', obj: null } })
+    })
+    await page.goto('hosts/local/remote-subscriptions')
+    await page.getByRole('combobox', { name: 'Source type', exact: true }).press('ArrowDown')
+    await page.getByRole('option', { name: 'Host file', exact: true }).click()
+    await expect(page.getByRole('textbox', { name: 'Subscription URL', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('textbox', { name: 'Source User-Agent', exact: true })).toHaveCount(0)
+    await expect(page.locator('form input[type="file"]')).toHaveCount(0)
+    await expect(page.getByRole('textbox', { name: 'New credential', exact: true })).toHaveCount(0)
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Host file source')
+    await page.getByRole('textbox', { name: 'Source path on the Panel host', exact: true }).fill('/var/lib/solovey-ui/source.json')
+    await page.getByLabel('Auto refresh', { exact: true }).check()
+    await page.getByRole('spinbutton', { name: 'Interval', exact: true }).fill('10')
+    await page.locator('form').getByRole('button', { name: 'Add', exact: true }).click()
+    await expect.poll(() => mutations.length).toBe(1)
+    expect(mutations[0]).toMatchObject({ sourceType: 'file', sourcePath: '/var/lib/solovey-ui/source.json', url: '', userAgent: '', autoUpdate: true, updateInterval: 600 })
+    expect(mutations[0]).not.toHaveProperty('content')
+    await page.getByRole('button', { name: /Host file source/ }).click()
+    await expect(page.getByText('/var/lib/solovey-ui/source.json', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Edit', exact: true }).click()
+    await expect(page.getByRole('combobox', { name: 'Source type', exact: true })).toBeDisabled()
+    await expect(page.getByLabel('Auto refresh', { exact: true })).toBeChecked()
+    await expect(page.getByRole('spinbutton', { name: 'Interval', exact: true })).toHaveValue('10')
+    await page.getByRole('textbox', { name: 'Source path on the Panel host', exact: true }).fill('/var/lib/solovey-ui/replacement.json')
+    await page.locator('form').getByRole('button', { name: 'Update', exact: true }).click()
+    await expect.poll(() => mutations.length).toBe(2)
+    expect(mutations[1]).toMatchObject({ id: 1, sourceType: 'file', sourcePath: '/var/lib/solovey-ui/replacement.json', autoUpdate: true })
   })
 
   test(`${mode} shows preserved endpoint mapping failures and their diagnostics`, async ({ page }) => {

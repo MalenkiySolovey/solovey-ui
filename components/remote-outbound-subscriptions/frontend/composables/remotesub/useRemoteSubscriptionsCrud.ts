@@ -1,6 +1,8 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import Data from '@/store/modules/data'
 import HttpUtils from '@/plugins/httputil'
+import { availableCreationChoices } from '@/types/capabilityEditors'
+import type { RuntimeCapability } from '@/types/runtimeCapabilities'
 import { secretMutation, type SecretView, type SecretMutation } from '@/features/secretCredentialDraft'
 import {
   connectionConvertedType,
@@ -22,6 +24,7 @@ interface UseRemoteSubscriptionsCrudOptions {
 
 export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }: UseRemoteSubscriptionsCrudOptions) => {
   const subscriptions = ref<RemoteOutboundSubscription[]>([])
+  const downloadOutbounds = ref<{ id: number; tag: string; type: string; capability: RuntimeCapability }[]>([])
   const subscriptionForm = ref<SubscriptionFormRef | null>(null)
   const search = ref('')
   const loading = ref(false)
@@ -40,14 +43,31 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     id: 0,
     name: '',
     url: '',
-    sourceType: 'remote' as 'remote' | 'inline',
+    userAgent: '',
+    downloadOutboundId: 0,
+    sourceType: 'remote' as 'remote' | 'inline' | 'file',
+    sourcePath: '',
     content: undefined as SecretView | SecretMutation | undefined,
+    fetchHeaders: undefined as SecretView | SecretMutation | undefined,
     include: '',
     exclude: '',
+    removeEmojis: false,
+    dialerOverride: {} as import('@/types/dial').Dial,
+    healthCheck: { enabled: false, url: 'https://www.gstatic.com/generate_204', interval: '10m', timeout: '3s' },
     tagPrefix: '',
     enabled: true,
     autoUpdate: false,
     updateInterval: 86400,
+  })
+
+  const downloadOutboundChoices = computed(() => [
+    { title: t('remoteOutbound.noDownloadDetour'), value: 0 },
+    ...availableCreationChoices(downloadOutbounds.value, row => row.capability?.available)
+      .map(row => ({ title: `${row.tag} (${row.type})`, value: row.id })),
+  ])
+  const unavailableDownloadOutbound = computed(() => {
+    if (!form.downloadOutboundId || downloadOutboundChoices.value.some(row => row.value === form.downloadOutboundId)) return ''
+    return downloadOutbounds.value.find(row => row.id === form.downloadOutboundId)?.tag ?? `#${form.downloadOutboundId}`
   })
 
   const resetInlineFile = () => {
@@ -102,7 +122,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     const query = search.value.trim().toLowerCase()
     if (!query) return subscriptions.value
     return subscriptions.value.filter((subscription) => {
-      if (subscription.name.toLowerCase().includes(query) || subscription.url.toLowerCase().includes(query)) return true
+      if (subscription.name.toLowerCase().includes(query) || subscription.url.toLowerCase().includes(query) || (subscription.sourcePath ?? '').toLowerCase().includes(query)) return true
       if ((subscription.tagPrefix ?? '').toLowerCase().includes(query)) return true
       if ((subscription.groups ?? []).some(group => group.name.toLowerCase().includes(query))) return true
       return (subscription.connections ?? []).some(connection =>
@@ -118,10 +138,14 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
   const load = async () => {
     loading.value = true
     try {
-      const msg = await HttpUtils.get('api/remote-outbound-subscriptions')
+      const [msg, outboundMsg] = await Promise.all([
+        HttpUtils.get('api/remote-outbound-subscriptions'),
+        HttpUtils.get('api/remote-outbound-subscriptions/download-outbounds'),
+      ])
       if (msg.success) {
         subscriptions.value = msg.obj ?? []
       }
+      downloadOutbounds.value = outboundMsg.success && Array.isArray(outboundMsg.obj) ? outboundMsg.obj : []
       await loadConversionPolicy()
     } finally {
       loading.value = false
@@ -138,13 +162,20 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
         id: form.id,
         name: form.name,
         url: form.sourceType === 'remote' ? form.url : '',
+        userAgent: form.sourceType === 'remote' ? form.userAgent : '',
+        downloadOutboundId: form.sourceType === 'remote' ? form.downloadOutboundId : 0,
         sourceType: form.sourceType,
+        sourcePath: form.sourceType === 'file' ? form.sourcePath : '',
         content: form.sourceType === 'inline' ? secretMutation(form.content) : undefined,
+        fetchHeaders: form.sourceType === 'remote' ? secretMutation(form.fetchHeaders) : undefined,
         include: form.include,
         exclude: form.exclude,
+        removeEmojis: form.removeEmojis,
+        dialerOverride: form.dialerOverride,
+        healthCheck: form.healthCheck,
         tagPrefix: form.tagPrefix,
         enabled: form.enabled,
-        autoUpdate: form.sourceType === 'remote' && form.autoUpdate,
+        autoUpdate: form.sourceType !== 'inline' && form.autoUpdate,
         updateInterval: form.updateInterval,
       }
       const msg = await HttpUtils.post('api/remote-outbound-subscriptions/save', {
@@ -165,10 +196,17 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     form.id = 0
     form.name = ''
     form.url = ''
+    form.userAgent = ''
+    form.downloadOutboundId = 0
     form.sourceType = 'remote'
+    form.sourcePath = ''
     form.content = undefined
+    form.fetchHeaders = undefined
     form.include = ''
     form.exclude = ''
+    form.removeEmojis = false
+    form.dialerOverride = {}
+    form.healthCheck = { enabled: false, url: 'https://www.gstatic.com/generate_204', interval: '10m', timeout: '3s' }
     form.tagPrefix = ''
     form.enabled = true
     form.autoUpdate = false
@@ -181,10 +219,17 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     form.id = subscription.id
     form.name = subscription.name
     form.url = subscription.url
+    form.userAgent = subscription.userAgent ?? ''
+    form.downloadOutboundId = subscription.downloadOutboundId ?? 0
     form.sourceType = subscription.sourceType ?? 'remote'
+    form.sourcePath = subscription.sourcePath ?? ''
     form.content = subscription.content ? JSON.parse(JSON.stringify(subscription.content)) : undefined
+    form.fetchHeaders = subscription.fetchHeaders ? JSON.parse(JSON.stringify(subscription.fetchHeaders)) : undefined
     form.include = subscription.include ?? ''
     form.exclude = subscription.exclude ?? ''
+    form.removeEmojis = subscription.removeEmojis === true
+    form.dialerOverride = JSON.parse(JSON.stringify(subscription.dialerOverride ?? {}))
+    form.healthCheck = { enabled: false, url: 'https://www.gstatic.com/generate_204', interval: '10m', timeout: '3s', ...JSON.parse(JSON.stringify(subscription.healthCheck ?? {})) }
     form.tagPrefix = subscription.tagPrefix
     form.enabled = subscription.enabled
     form.autoUpdate = Boolean(subscription.autoUpdate)
@@ -220,6 +265,8 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
   }
 
   return {
+    downloadOutboundChoices,
+    unavailableDownloadOutbound,
     inlineFile,
     inlineFileLoading,
     inlineFileError,

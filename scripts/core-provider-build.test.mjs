@@ -19,7 +19,7 @@ test('explicit Extended build uses its immutable source and separate native lock
   assert.equal(plan.source.runtimeSemanticVersion,'1.14.3')
   assert.equal(plan.source.upstreamRevision,'d9442d14b19ddd02605bf3ee893a171947038e19')
   assert.equal(plan.modFile,'go.extended.mod')
-  assert.equal(plan.tags,'with_quic,with_utls,shtorm_extended,with_gvisor,with_openconnect')
+  assert.equal(plan.tags,'with_quic,with_utls,shtorm_extended,with_gvisor,with_openconnect,with_openvpn')
   assert.deepEqual(plan.goArgs,['-mod=readonly','-modfile=go.extended.mod'])
 })
 

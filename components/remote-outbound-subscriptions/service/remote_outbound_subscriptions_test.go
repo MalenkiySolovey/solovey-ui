@@ -6,14 +6,21 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unicode/utf8"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	remotesub "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	outboundentities "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
@@ -28,6 +35,418 @@ func initRemoteOutboundTestDB(t *testing.T) {
 
 func newTestRemoteOutboundService() *RemoteOutboundService {
 	return &RemoteOutboundService{Runtime: coreservice.NewRuntimeWithCoreProvider(nil)}
+}
+
+func TestSourceAutomaticHealthUsesCurrentRuntimeAndPreservesItsPolicy(t *testing.T) {
+	initRemoteOutboundTestDB(t)
+	t.Setenv("SUI_ALLOW_PRIVATE_SUB_URLS", "true")
+	db := dbsqlite.DB()
+	core := coreruntime.NewCore()
+	if err := core.Start([]byte(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"health-source-node"}]}`)); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = core.Stop() })
+	svc := &RemoteOutboundService{Runtime: coreservice.NewRuntime(core)}
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if r.Header.Get("Authorization") != "" || r.Header.Get("X-Source-Key") != "" {
+			t.Error("source download credentials reached its health target")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	health := func(target string) json.RawMessage {
+		value, _ := json.Marshal(remotesub.SourceHealthCheck{Enabled: true, URL: target, Interval: "1m", Timeout: "1s"})
+		return value
+	}
+	saved, err := svc.SaveSubscription(remotesub.RemoteOutboundSubscription{
+		Name: "automatic health", Url: "https://example.com/source", Enabled: true,
+		HealthCheck:  health(server.URL + "/?token=private-health-target"),
+		FetchHeaders: json.RawMessage(`{"intent":"replace","value":"{\"X-Source-Key\":\"private-download-key\"}"}`),
+	}, true, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	outbound := model.Outbound{Tag: "health-source-node", Type: "direct", Options: json.RawMessage(`{}`)}
+	if err := db.Create(&outbound).Error; err != nil {
+		t.Fatal(err)
+	}
+	for index, enabled := range []bool{true, false, true} {
+		connection := remotesub.RemoteOutboundConnection{SubscriptionId: saved.Id, Name: "health member", SourceKey: "health-" + strconv.Itoa(index),
+			Type: "direct", OutboundTag: outbound.Tag + strconv.Itoa(index), Enabled: enabled, Options: json.RawMessage(`{}`)}
+		if index < 2 {
+			connection.OutboundTag, connection.OutboundId, connection.Synced = outbound.Tag, &outbound.Id, true
+		}
+		// Each stored connection has a unique tag. The disabled entry deliberately
+		// has no matching applied outbound and collection-only members never probe.
+		if index == 1 {
+			connection.OutboundTag += "-disabled"
+		}
+		if err := db.Create(&connection).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	schedule := &SourceHealthSchedule{}
+	if checked, err := svc.ProbeDueSubscriptionsContext(context.Background(), schedule); err != nil || checked != 1 || requests.Load() != 1 {
+		t.Fatal("automatic health did not probe only the active canonical binding", checked, requests.Load(), err)
+	}
+	observation := core.OutboundHealthSnapshot()[outbound.Tag]
+	if observation.Source != coreruntime.ProbeSourceSubscription || observation.Status != "healthy" || observation.TargetID != saved.HealthTargetID {
+		t.Fatal("health escaped its canonical runtime owner", observation)
+	}
+	encoded, _ := json.Marshal(core.OutboundHealthSnapshot())
+	if strings.Contains(string(encoded), server.URL) || strings.Contains(string(encoded), "private-health-target") {
+		t.Fatal("health projection disclosed a probe target")
+	}
+	if checked, err := svc.ProbeDueSubscriptionsContext(context.Background(), schedule); err != nil || checked != 0 || requests.Load() != 1 {
+		t.Fatal("source interval was ignored", checked, err)
+	}
+	var original remotesub.RemoteOutboundSubscription
+	if err := db.First(&original, saved.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	saved.FetchHeaders, saved.HealthCheck = nil, nil
+	if kept, err := svc.SaveSubscription(*saved, true, "test"); err != nil || string(kept.HealthCheck) != string(original.HealthCheck) {
+		t.Fatal("omitted policy was silently reset", err)
+	}
+	for _, raw := range []string{`{"enabled":true,"interval":"1s"}`, `{"enabled":true,"timeout":"16s"}`, `{"enabled":null}`, `{"Enabled":true}`, `{"enabled":true,"enabled":false}`, `{"enabled":true,"url":"file:///private-health-canary"}`, `{"enabled":true,"unknown":"private-health-canary"}`} {
+		invalid := *saved
+		invalid.HealthCheck = json.RawMessage(raw)
+		if _, err := svc.SaveSubscription(invalid, true, "test"); !errors.Is(err, remotesub.ErrSourceHealthCheck) || strings.Contains(err.Error(), "canary") {
+			t.Fatal("invalid health policy was accepted or disclosed", err)
+		}
+	}
+	saved.HealthCheck = health(server.URL + "/?token=new-private-target")
+	changed, err := svc.SaveSubscription(*saved, true, "test")
+	if err != nil || changed.HealthTargetID == observation.TargetID {
+		t.Fatal("target change kept old health authority", err)
+	}
+	var current remotesub.RemoteOutboundSubscription
+	if err := db.First(&current, saved.Id).Error; err != nil || !original.SameSource(current) {
+		t.Fatal("health policy replaced source collection authority", err)
+	}
+	if checked, err := svc.ProbeDueSubscriptionsContext(context.Background(), schedule); err != nil || checked != 1 || requests.Load() != 2 {
+		t.Fatal("changed probe policy did not become due", checked, err)
+	}
+	if core.OutboundHealthSnapshot()[outbound.Tag].TargetID != changed.HealthTargetID {
+		t.Fatal("new policy did not own the observed target")
+	}
+	changed.Enabled = false
+	changed.FetchHeaders = nil
+	if _, err := svc.SaveSubscription(*changed, true, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if checked, err := svc.ProbeDueSubscriptionsContext(context.Background(), schedule); err != nil || checked != 0 || requests.Load() != 2 {
+		t.Fatal("disabled source kept probing", checked, err)
+	}
+	if err := core.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	if len(core.OutboundHealthSnapshot()) != 0 {
+		t.Fatal("stopped generation retained health")
+	}
+	if checked, err := newTestRemoteOutboundService().ProbeDueSubscriptionsContext(context.Background(), schedule); err != nil || checked != 0 {
+		t.Fatal("unbound source health used ambient runtime", checked, err)
+	}
+}
+
+func TestSourceDownloadOutboundUsesStableOwnerAndPreservesUnavailableHistory(t *testing.T) {
+	initRemoteOutboundTestDB(t)
+	t.Setenv("SUI_ALLOW_PRIVATE_SUB_URLS", "true")
+	db := dbsqlite.DB()
+	svc := newTestRemoteOutboundService()
+	outbound := model.Outbound{Tag: "source-download", Type: "direct", Options: json.RawMessage(`{}`)}
+	if err := db.Create(&outbound).Error; err != nil {
+		t.Fatal(err)
+	}
+	var requests, factories, dials atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if r.Header.Get("X-Source-Key") != "owned-detour-canary" || r.UserAgent() != "detour-source/1.0" {
+			t.Error("detour displaced private source headers or User-Agent")
+		}
+		_, _ = w.Write([]byte(`{"outbounds":[{"type":"shadowsocks","tag":"detour-node","server":"192.0.2.1","server_port":443,"method":"aes-128-gcm","password":"synthetic-password"}]}`))
+	}))
+	defer server.Close()
+	unavailable := false
+	svc.OutboundHTTP = componenthost.OutboundHTTPClientFunc(func(tag string, timeout time.Duration) (*http.Client, error) {
+		factories.Add(1)
+		if tag != outbound.Tag || timeout != 15*time.Second {
+			t.Error("download did not resolve the selected canonical outbound")
+		}
+		if unavailable {
+			return nil, errors.New("runtime stopped")
+		}
+		return &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			dials.Add(1)
+			return (&net.Dialer{}).DialContext(ctx, network, address)
+		}}}, nil
+	})
+	saved, err := svc.SaveSubscription(remotesub.RemoteOutboundSubscription{
+		Name: "selected download", Url: server.URL, UserAgent: "detour-source/1.0", DownloadOutboundID: outbound.Id,
+		Enabled: true, AutoUpdate: true, FetchHeaders: json.RawMessage(`{"intent":"replace","value":"{\"X-Source-Key\":\"owned-detour-canary\"}"}`),
+	}, true, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count, err := svc.RefreshDueSubscriptionsContext(context.Background(), "test"); err != nil || count != 1 || requests.Load() != 1 || factories.Load() != 1 || dials.Load() != 1 {
+		t.Fatal("scheduled source download bypassed the selected runtime port", err, count, requests.Load(), factories.Load(), dials.Load())
+	}
+	var original remotesub.RemoteOutboundSubscription
+	if err := db.First(&original, saved.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	var connection remotesub.RemoteOutboundConnection
+	if err := db.Where("subscription_id = ?", saved.Id).First(&connection).Error; err != nil {
+		t.Fatal(err)
+	}
+	unavailable = true
+	if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err == nil || requests.Load() != 1 {
+		t.Fatal("unavailable runtime fell back to host networking", err)
+	}
+	if err := db.First(&connection, connection.Id).Error; err != nil {
+		t.Fatal("failed detour removed the last good collection", err)
+	}
+	outbound.Tag = "renamed-download"
+	if err := db.Save(&outbound).Error; err != nil {
+		t.Fatal(err)
+	}
+	unavailable = false
+	if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err != nil || requests.Load() != 2 {
+		t.Fatal("outbound rename broke the stable source reference", err)
+	}
+	outbound.Type = "unavailable-future-protocol"
+	if err := db.Save(&outbound).Error; err != nil {
+		t.Fatal(err)
+	}
+	choices, err := svc.DownloadOutbounds()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, choice := range choices {
+		if choice.ID == outbound.Id {
+			found = true
+			if choice.Capability.Available {
+				t.Fatal("historical unavailable outbound advertised as available")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("unavailable reference disappeared from inspection facts")
+	}
+	saved.FetchHeaders = nil // omission retains its row-owned credential
+	if _, err := svc.SaveSubscription(*saved, true, "test"); err != nil {
+		t.Fatal("source edit destroyed a preserved unavailable reference", err)
+	}
+	previousFactories := factories.Load()
+	if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err == nil || factories.Load() != previousFactories || requests.Load() != 2 {
+		t.Fatal("unavailable capability entered runtime download", err)
+	}
+	var current remotesub.RemoteOutboundSubscription
+	if err := db.First(&current, saved.Id).Error; err != nil || !original.SameSource(current) {
+		t.Fatal("provider unavailability changed desired source state", err)
+	}
+	invalid := *saved
+	invalid.Id = 0
+	if _, err := svc.SaveSubscription(invalid, true, "test"); err == nil {
+		t.Fatal("new source selected an unavailable outbound")
+	}
+	outbound.Type = "direct"
+	if err := db.Save(&outbound).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err != nil || requests.Load() != 3 {
+		t.Fatal("return to supporting runtime did not reactivate the same source", err)
+	}
+	payload, _ := json.Marshal(outbound.Tag)
+	if err := (&coreservice.OutboundService{}).Save(db, "del", payload); err == nil || !strings.Contains(err.Error(), "SUBSCRIPTION_DOWNLOAD_OUTBOUND_REFERENCED") {
+		t.Fatal("referenced download outbound was deleted", err)
+	}
+	saved.DownloadOutboundID = 0
+	if _, err := svc.SaveSubscription(*saved, true, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.First(&current, saved.Id).Error; err != nil || original.SameSource(current) {
+		t.Fatal("detour removal retained old refresh authority", err)
+	}
+	if err := (&coreservice.OutboundService{}).Save(db, "del", payload); err != nil {
+		t.Fatal("explicitly cleared detour retained an outbound deletion reference", err)
+	}
+}
+
+func TestRemoteSourceHeadersStayRowBoundAndReachOnlyTheFetchOwner(t *testing.T) {
+	initRemoteOutboundTestDB(t)
+	t.Setenv("SUI_ALLOW_PRIVATE_SUB_URLS", "true")
+	db := dbsqlite.DB()
+	svc := newTestRemoteOutboundService()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer private-header-canary" || strings.Join(r.Header.Values("X-Scopes"), ",") != "one,two" || r.UserAgent() != "source-header-test/1.0" {
+			t.Error("private headers or independent User-Agent lost their request owner")
+		}
+		_, _ = w.Write([]byte(`{"outbounds":[{"type":"shadowsocks","tag":"header-source","server":"192.0.2.1","server_port":443,"method":"aes-128-gcm","password":"synthetic-endpoint-password"}]}`))
+	}))
+	defer server.Close()
+	mutation := func(value string) json.RawMessage {
+		raw, _ := json.Marshal(map[string]string{"intent": "replace", "value": value})
+		return raw
+	}
+	saved, err := svc.SaveSubscription(remotesub.RemoteOutboundSubscription{Name: "private-headers", Url: server.URL, UserAgent: "source-header-test/1.0", FetchHeaders: mutation(`{"Authorization":"Bearer private-header-canary","X-Scopes":["one","two"]}`)}, true, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, _ := json.Marshal(saved)
+	if strings.Contains(string(view), "canary") || strings.Contains(string(view), "sbox:v1:") || !strings.Contains(string(saved.FetchHeaders), `"present":true`) {
+		t.Fatal("normal source read disclosed captured HTTP credentials")
+	}
+	var original remotesub.RemoteOutboundSubscription
+	if err := db.First(&original, saved.Id).Error; err != nil || !strings.HasPrefix(original.SourceHeaders, "sbox:v1:") || strings.Contains(original.SourceHeaders, "canary") {
+		t.Fatal("request headers were not sealed in their source row", err)
+	}
+	if result, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err != nil || result.Fetched != 1 {
+		t.Fatal("credential-bearing source did not use the normal collection owner", err)
+	}
+	var keep map[string]any
+	_ = json.Unmarshal(saved.FetchHeaders, &keep)
+	keep["intent"] = "unchanged"
+	delete(keep, "correlation")
+	saved.FetchHeaders, _ = json.Marshal(keep)
+	saved.Name = "renamed-private-headers"
+	if _, err := svc.SaveSubscription(*saved, true, "test"); err != nil {
+		t.Fatal("masked source edit could not retain private headers", err)
+	}
+	for _, value := range []string{`{"Authorization":"a","authorization":"b"}`, `{"Host":"private-canary"}`, `{"X-Key":"private-canary\r\nHost: other"}`, `{"X-Key":[null]}`, `{"X-Key":123}`} {
+		invalid := *saved
+		invalid.FetchHeaders = mutation(value)
+		if _, err := svc.SaveSubscription(invalid, true, "test"); !errors.Is(err, remotesub.ErrSourceHeadersInvalid) || strings.Contains(err.Error(), "canary") {
+			t.Fatal("malformed private headers were accepted or disclosed", err)
+		}
+	}
+	var kept remotesub.RemoteOutboundSubscription
+	if err := db.First(&kept, saved.Id).Error; err != nil || !original.SameSource(kept) {
+		t.Fatal("masked edit or failed save replaced the source credential identity", err)
+	}
+	other, err := svc.SaveSubscription(remotesub.RemoteOutboundSubscription{Name: "other-source", Url: server.URL}, true, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other.FetchHeaders = saved.FetchHeaders
+	if _, err := svc.SaveSubscription(*other, true, "test"); err == nil {
+		t.Fatal("private headers crossed source row ownership")
+	}
+	saved.FetchHeaders = json.RawMessage(`{"intent":"clear"}`)
+	cleared, err := svc.SaveSubscription(*saved, true, "test")
+	if err != nil || strings.Contains(string(cleared.FetchHeaders), `"present":true`) {
+		t.Fatal("explicit clear did not release source credentials", err)
+	}
+	if err := db.First(&kept, saved.Id).Error; err != nil || kept.SourceHeaders != "" || original.SameSource(kept) {
+		t.Fatal("cleared headers retained old refresh authority", err)
+	}
+}
+
+func TestHostFileSourceRefreshPreservesLastGoodCollection(t *testing.T) {
+	initRemoteOutboundTestDB(t)
+	db := dbsqlite.DB()
+	svc := newTestRemoteOutboundService()
+	path := filepath.Join(t.TempDir(), "source.json")
+	const first = `{"outbounds":[{"type":"shadowsocks","tag":"file-ss","server":"192.0.2.1","server_port":443,"method":"aes-128-gcm","password":"private-file-source-canary"}]}`
+	write := func(raw string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(first)
+	for _, invalid := range []string{"relative.json", "https://source.example/config", `\\host\share\source.json`} {
+		if _, err := svc.SaveSubscription(remotesub.RemoteOutboundSubscription{Name: "invalid-file", SourceType: remotesub.SourceFile, SourcePath: invalid}, true, "test"); !errors.Is(err, remotesub.ErrSourceFilePathInvalid) {
+			t.Fatal("file source accepted a relative, URL or network path", err)
+		}
+	}
+	saved, err := svc.SaveSubscription(remotesub.RemoteOutboundSubscription{Name: "host-file", SourceType: remotesub.SourceFile, SourcePath: path, Enabled: true, AutoUpdate: true, UpdateInterval: 300}, true, "test")
+	if err != nil || saved == nil || saved.SourcePath != path || !saved.AutoUpdate || saved.Url != "" || len(saved.Content) != 0 {
+		t.Fatal("host file source did not retain its own refresh policy", err)
+	}
+	for _, field := range []string{"content", "url", "user-agent", "headers"} {
+		invalid := *saved
+		switch field {
+		case "content":
+			invalid.Content = json.RawMessage(`{"intent":"replace","value":"private-file-source-canary"}`)
+		case "url":
+			invalid.Url = "https://source.example/sub"
+		case "user-agent":
+			invalid.UserAgent = "private-file-source-canary"
+		case "headers":
+			invalid.FetchHeaders = json.RawMessage(`{"intent":"replace","value":"{}"}`)
+		}
+		if _, err := svc.SaveSubscription(invalid, true, "test"); err == nil || strings.Contains(err.Error(), "canary") {
+			t.Fatal("host file source accepted another source owner's fields", err)
+		}
+	}
+	if count, err := svc.RefreshDueSubscriptions("test"); err != nil || count != 1 {
+		t.Fatal("existing scheduler did not collect host file", count, err)
+	}
+	all, err := svc.GetAll()
+	if err != nil || all == nil || len(*all) != 1 || len((*all)[0].Connections) != 1 || (*all)[0].Connections[0].Name != "file-ss" {
+		t.Fatal("host file did not reach the canonical collection", err)
+	}
+	loaded := (*all)[0]
+	connectionID := loaded.Connections[0].Id
+	if _, err := svc.SyncConnectionToOutbound(connectionID, "test"); err != nil {
+		t.Fatal("file connection could not use the existing outbound owner", err)
+	}
+	var before remotesub.RemoteOutboundSubscription
+	if err := db.First(&before, saved.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{"private-file-source-canary", "", strings.Repeat("x", remotesub.MaxInlineSourceBytes+1)} {
+		write(raw)
+		if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err == nil || strings.Contains(err.Error(), "canary") || strings.Contains(err.Error(), path) {
+			t.Fatal("invalid file content was accepted or disclosed", err)
+		}
+		var current remotesub.RemoteOutboundSubscription
+		if err := db.First(&current, saved.Id).Error; err != nil || string(current.CanonicalSnapshot) != string(before.CanonicalSnapshot) || current.LastUpdated != before.LastUpdated || current.LastError == "" {
+			t.Fatal("failed file refresh replaced last good source state", err)
+		}
+		var connection remotesub.RemoteOutboundConnection
+		if err := db.First(&connection, connectionID).Error; err != nil || !connection.Synced || connection.OutboundId == nil {
+			t.Fatal("failed file refresh removed an owned runtime resource", err)
+		}
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); !errors.Is(err, remotesub.ErrSourceFileRead) {
+		t.Fatal("missing host file was not a private read failure", err)
+	}
+	write(first)
+	if err := db.Model(&before).Update("last_updated", 0).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count, err := svc.RefreshDueSubscriptions("test"); err != nil || count != 1 {
+		t.Fatal("restored host file could not resume scheduled collection", count, err)
+	}
+	all, err = svc.GetAll()
+	if err != nil || all == nil || len(*all) != 1 || (*all)[0].LastError != "" || len((*all)[0].Connections) != 1 || (*all)[0].Connections[0].Id != connectionID || !(*all)[0].Connections[0].Synced {
+		t.Fatal("recovery changed the stable connection owner", err)
+	}
+	loaded = (*all)[0]
+	replacement := loaded
+	replacement.SourcePath = filepath.Join(filepath.Dir(path), "replacement.json")
+	if replacement.SameSource(loaded) {
+		t.Fatal("old file refresh retained authority over a different path")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := remotesub.FetchSourceContext(ctx, db, loaded, remotesub.FetchOptions{}); !errors.Is(err, context.Canceled) {
+		t.Fatal("file collection ignored owner cancellation", err)
+	}
+	if err := svc.DeleteSubscription(saved.Id, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if raw, err := os.ReadFile(path); err != nil || string(raw) != first {
+		t.Fatal("deleting a file source modified the host file", err)
+	}
 }
 
 func TestInlineSourceUsesOwnedContentAndExistingRefreshPipeline(t *testing.T) {
@@ -89,12 +508,21 @@ func TestInlineSourceUsesOwnedContentAndExistingRefreshPipeline(t *testing.T) {
 		t.Fatal("invalid filter was accepted or disclosed its expression", err)
 	}
 	saved.Include, saved.Exclude = "^inline", "-test$"
+	saved.RemoveEmojis = true
+	for _, raw := range []string{`[]`, `{"server":"private-dial-canary"}`, `{"connect_timeout":"private-dial-canary"}`, `{"domain_resolver":{"server":"dns","private-dial-canary":true}}`} {
+		invalid := *saved
+		invalid.DialerOverride = json.RawMessage(raw)
+		if _, err := svc.SaveSubscription(invalid, true, "test"); err == nil || strings.Contains(err.Error(), "canary") {
+			t.Fatal("invalid dial policy was accepted or disclosed", err)
+		}
+	}
+	saved.DialerOverride = json.RawMessage(`{"connect_timeout":"3s","tcp_fast_open":false}`)
 	saved, err = svc.SaveSubscription(*saved, true, "test")
 	if err != nil {
 		t.Fatal("valid selection could not use the existing source owner", err)
 	}
 	var filtered remotesub.RemoteOutboundSubscription
-	if err := db.First(&filtered, saved.Id).Error; err != nil || filtered.Include != "^inline" || filtered.Exclude != "-test$" || row.SameSource(filtered) || filtered.SourceContent != row.SourceContent {
+	if err := db.First(&filtered, saved.Id).Error; err != nil || filtered.Include != "^inline" || filtered.Exclude != "-test$" || !filtered.RemoveEmojis || row.SameSource(filtered) || filtered.SourceContent != row.SourceContent || !remotesub.JSONRawEqual(filtered.DialerOverride, saved.DialerOverride) {
 		t.Fatal("filter edit lost content or retained stale refresh authority", err)
 	}
 	result, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test")
@@ -556,11 +984,16 @@ func TestRemoteOutboundRetagKeepsUnicodeAndUpdatesLinkedOutbound(t *testing.T) {
 		Id:        subscription.Id,
 		Name:      subscription.Name,
 		Url:       subscription.Url,
+		UserAgent: "CustomSubscriptionClient/1.0",
 		Enabled:   true,
 		TagPrefix: "РЅРѕРІС‹Р№-",
 	}, true, "test")
 	if err != nil {
 		t.Fatal(err)
+	}
+	var savedSource remotesub.RemoteOutboundSubscription
+	if err := db.First(&savedSource, subscription.Id).Error; err != nil || savedSource.UserAgent != "CustomSubscriptionClient/1.0" {
+		t.Fatal("source owner did not persist its client identity", err)
 	}
 
 	var storedConnection remotesub.RemoteOutboundConnection

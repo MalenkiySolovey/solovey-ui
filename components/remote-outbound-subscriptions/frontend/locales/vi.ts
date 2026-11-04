@@ -1,5 +1,31 @@
 export default {
   "remoteOutbound": {
+    "healthChecks": "Kiểm tra sức khỏe tự động",
+    "healthCheckEnabled": "Thăm dò outbound nguồn đã áp dụng",
+    "healthCheckURL": "URL kiểm tra sức khỏe",
+    "healthCheckInterval": "Khoảng thăm dò (1m–24h)",
+    "healthCheckTimeout": "Thời gian chờ (100ms–15s)",
+    "healthCheckHint": "Định kỳ thăm dò kết nối được bật và đã áp dụng thành Outbound. Kết nối chỉ được thu thập vẫn không hoạt động. Kết quả thuộc Health của runtime hiện tại và hết hạn sau mười phút. Thông tin xác thực tải nguồn không được gửi đến URL thăm dò.",
+    "healthObservationHint": "Quan sát runtime tự động gần đây cho mục tiêu thăm dò của nguồn. Không rõ nghĩa là không có quan sát mới phù hợp, không có nghĩa là khỏe mạnh.",
+    "healthStates": { "healthy": "Sức khỏe: tốt", "down": "Sức khỏe: lỗi", "unknown": "Sức khỏe: không rõ" },
+    "downloadOutbound": "Tải qua outbound",
+    "downloadOutboundHint": "Chỉ dùng outbound đang chạy đã chọn để tải nguồn này. Nếu outbound không khả dụng, làm mới sẽ thất bại và giữ các kết nối đã thu thập, không chuyển sang mạng máy chủ.",
+    "downloadOutboundUnavailable": "Outbound đã lưu không khả dụng trên runtime hiện tại. Tham chiếu được giữ lại; chỉ có thể làm mới khi nó khả dụng trở lại. Hãy xóa lựa chọn để đổi đường tải.",
+    "noDownloadDetour": "Mạng máy chủ (không detour)",
+    "clearDownloadDetour": "Xóa detour tải xuống",
+    "clearFetchHeaders": "Xóa tiêu đề đã lưu",
+    "noFetchHeaders": "Chưa lưu tiêu đề bổ sung.",
+    "fetchHeaders": "Tiêu đề tải riêng tư (JSON)",
+    "fetchHeadersHint": "Đối tượng JSON tùy chọn: tên tiêu đề tới chuỗi hoặc mảng chuỗi, tối đa 16 KiB. Giá trị được mã hóa; lần sửa sau có thể giữ, thay hoặc xóa. Chỉ dùng khi tải nguồn và bị xóa khi chuyển hướng. Đặt User-Agent riêng; không ghi đè tiêu đề máy chủ, định khung hoặc proxy.",
+    "sourcePath": "Đường dẫn nguồn trên máy chủ Panel",
+    "sourcePathHint": "Đường dẫn tuyệt đối đến tệp thông thường có thể đọc trên máy chủ Panel (tối đa 512 KiB). Tự động làm mới kiểm tra theo khoảng đã chọn. Lỗi đọc hoặc phân tích giữ nguyên các kết nối đã thu thập. Panel không ghi hoặc xóa tệp này.",
+    "dialerOverride": "Tùy chọn Dial cho outbound nhập",
+    "dialerOverrideHint": "Giá trị đặt rõ sẽ thay thế trường Dial tương ứng khi làm mới đối với giao thức hỗ trợ Dial. Giữ nguyên các trường khác, dữ liệu nguồn và hành vi nhóm. Xóa để khôi phục giá trị nguồn ở lần làm mới sau. Không thay đổi cách tải URL nguồn.",
+    "clearDialerOverride": "Dùng tùy chọn Dial của nguồn",
+    "removeEmojis": "Xóa emoji khỏi tên nhập",
+    "userAgent": "User-Agent của nguồn",
+    "userAgentHint": "Để trống để tự động thu thập các định dạng. Khi đặt nhận dạng máy khách, mỗi lần làm mới chỉ yêu cầu URL gốc một lần.",
+    "removeEmojisHint": "Áp dụng khi làm mới sau khi lọc tên gốc. Cờ được đổi thành mã quốc gia. Giữ nguyên dữ liệu nguồn và thẻ outbound hiện có.",
     "inlineFile": "Tải tệp nguồn cục bộ",
     "inlineFileHint": "Tải cấu hình máy khách hoặc tệp liên kết vào bản nháp thay thế của nguồn này (tối đa 512 KiB). Nội dung được kiểm tra khi lưu.",
     "inlineFileSizeError": "Chọn tệp không rỗng, tối đa 512 KiB.",
@@ -8,7 +34,7 @@ export default {
     "excludeNames": "Loại trừ tên (biểu thức chính quy)",
     "sourceFiltersHint": "Bộ lọc khớp tên gốc khi làm mới. Loại trừ được ưu tiên; để trống để lấy tất cả. Giữ đủ thành viên của nhóm còn lại. Lưu bộ lọc chưa thay đổi kết nối đã thu thập cho đến khi làm mới.",
     "sourceType": "Loại nguồn",
-    "sourceTypes": { "remote": "URL từ xa", "inline": "Nội dung trực tiếp" },
+    "sourceTypes": { "remote": "URL từ xa", "inline": "Nội dung trực tiếp", "file": "Tệp trên máy chủ" },
     "inlineContent": "Nội dung nguồn",
     "inlineContentHint": "Dán cấu hình máy khách hoặc liên kết được hỗ trợ (tối đa 512 KiB). Thông tin đăng nhập do nguồn quản lý; các lần sửa sau có thể giữ hoặc thay thế. Lưu sẽ kiểm tra nguồn. Làm mới thu thập lại kết nối trước khi bạn chọn và áp dụng.",
     "title": "Remote Subscriptions",
@@ -55,6 +81,6 @@ export default {
     "deleteManagedOutboundWarning": "Đồng bộ từ xa sẽ bị tắt; các tham chiếu selector/urltest sẽ được điều chỉnh.",
     "syncToOutbounds": "Đồng bộ sang outbound",
     "noConnections": "Không có kết nối. Hãy làm mới gói đăng ký trước.",
-    "empty": "Thêm URL gói đăng ký từ xa, sau đó làm mới để nhập kết nối."
+    "empty": "Thêm URL từ xa, nội dung trực tiếp hoặc tệp trên máy chủ Panel. Làm mới nguồn để thu thập kết nối trước khi chọn và áp dụng."
   }
 }

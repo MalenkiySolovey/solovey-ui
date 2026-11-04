@@ -9,7 +9,7 @@
         <div class="remote-outbounds__title">
           <div>
             <strong>{{ subscription.name }}</strong>
-            <span class="remote-outbounds__url">{{ subscription.sourceType === 'inline' ? $t('remoteOutbound.sourceTypes.inline') : subscription.url }}</span>
+            <span class="remote-outbounds__url">{{ subscription.sourceType === 'inline' ? $t('remoteOutbound.sourceTypes.inline') : subscription.sourceType === 'file' ? subscription.sourcePath : subscription.url }}</span>
           </div>
           <div class="remote-outbounds__chips">
             <v-chip density="compact" size="small" :color="subscription.enabled ? 'success' : undefined" variant="flat">
@@ -194,6 +194,11 @@
                   </v-chip>
                   <v-chip v-else density="compact" size="small" variant="tonal">
                     {{ $t('remoteOutbound.notSynced') }}
+                  </v-chip>
+                  <v-chip v-if="subscription.enabled && subscription.healthCheck?.enabled && connection.synced && connection.enabled && !projectionBlocked(connection)" density="compact" size="small" variant="tonal"
+                    :color="page.sourceHealth(subscription, connection)?.status === 'healthy' ? 'success' : page.sourceHealth(subscription, connection)?.status === 'down' ? 'error' : undefined">
+                    {{ $t(`remoteOutbound.healthStates.${page.sourceHealth(subscription, connection)?.status ?? 'unknown'}`) }}
+                    <v-tooltip activator="parent" location="top" :text="$t('remoteOutbound.healthObservationHint')" />
                   </v-chip>
                 </div>
               </td>
