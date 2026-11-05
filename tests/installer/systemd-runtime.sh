@@ -11,7 +11,7 @@ repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repository_root"
 node scripts/generate-systemd-policy.mjs --check
 build_root=$(mktemp -d)
-probe_root="/run/solovey-netlink-proof-$$"
+probe_root="/usr/local/lib/solovey-netlink-proof-$$"
 privileged=()
 if (( EUID != 0 )); then privileged=(sudo -n); fi
 cleanup() {
@@ -23,7 +23,8 @@ go test -c -o "$build_root/runtime-mount.test" ./components/server-protection/ru
 "${privileged[@]}" env SOLOVEY_TEST_NATIVE_MOUNT=1 "$build_root/runtime-mount.test" -test.run '^TestNativeRuntimeMountNamespace$'
 CGO_ENABLED=0 go build -o "$build_root/probe" tests/installer/systemd-runtime-probe.go
 # PrivateTmp hides /tmp and /var/tmp; ProtectHome hides runner home directories.
-# Install only this diagnostic binary in a unique root-owned runtime directory.
+# /run may be noexec under the executor's mount policy. Use a root-owned
+# executable library directory; the service hardening properties stay unchanged.
 "${privileged[@]}" install -d -m 0755 "$probe_root"
 "${privileged[@]}" install -m 0755 "$build_root/probe" "$probe_root/probe"
 properties=()
