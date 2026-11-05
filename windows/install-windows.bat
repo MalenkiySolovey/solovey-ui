@@ -53,6 +53,8 @@ copy "s-ui-windows.bat" "%INSTALL_DIR%\" >nul
 if errorlevel 1 goto copy_failed
 copy "configure-windows.ps1" "%INSTALL_DIR%\" >nul
 if errorlevel 1 goto copy_failed
+copy "prepare-windows-install.ps1" "%INSTALL_DIR%\" >nul
+if errorlevel 1 goto copy_failed
 copy "control-windows.ps1" "%INSTALL_DIR%\" >nul
 if errorlevel 1 goto copy_failed
 copy "uninstall-windows.bat" "%INSTALL_DIR%\" >nul
@@ -61,6 +63,13 @@ copy "uninstall-windows.ps1" "%INSTALL_DIR%\" >nul
 if errorlevel 1 goto copy_failed
 copy "README.md" "%INSTALL_DIR%\" >nul
 if errorlevel 1 goto copy_failed
+
+REM Public executable files are readable; state and native DLL are prepared
+REM before migration creates credentials or a service can start.
+icacls "%INSTALL_DIR%" /grant "*S-1-5-32-545:(OI)(CI)RX" /T >nul
+if errorlevel 1 goto permissions_failed
+powershell -NoProfile -ExecutionPolicy Bypass -File "%INSTALL_DIR%\prepare-windows-install.ps1" -InstallDir "%INSTALL_DIR%" -PackageRoot "%~dp0"
+if errorlevel 1 goto permissions_failed
 
 REM Проверка наличия WinSW
 set "WINSW_PATH=%INSTALL_DIR%\winsw.exe"
@@ -113,15 +122,6 @@ REM Настройка выполняется в PowerShell, чтобы поль
 REM не интерпретировался командным процессором cmd.exe.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%INSTALL_DIR%\configure-windows.ps1" -InstallDir "%INSTALL_DIR%"
 if errorlevel 1 goto configuration_failed
-
-REM Настройка прав
-echo Настройка прав доступа...
-icacls "%INSTALL_DIR%" /grant "*S-1-5-32-545:(OI)(CI)RX" /T >nul
-if errorlevel 1 goto permissions_failed
-icacls "%INSTALL_DIR%\db" /grant "*S-1-5-32-545:(OI)(CI)F" /T >nul
-if errorlevel 1 goto permissions_failed
-icacls "%INSTALL_DIR%\logs" /grant "*S-1-5-32-545:(OI)(CI)F" /T >nul
-if errorlevel 1 goto permissions_failed
 
 REM Создание переменной окружения
 echo Настройка переменной окружения...
