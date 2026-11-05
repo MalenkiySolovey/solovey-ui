@@ -51,6 +51,17 @@ to preserve stored data. Public stable v2026.4.1 contains no Extended packages.
 Use the explicit flag only with a complete published version that supplies the
 selected flavor.
 
+The canonical Dockerfile accepts `--build-arg CORE_PROVIDER=shtorm-extended`.
+Omitting it retains Official. The existing Docker workflow accepts the same
+explicit `core_provider` selection for both native release architectures. Manual
+qualification may bind an exact `source_commit` only with `preflight_only=true`;
+it retains private OCI bytes and checksums without registry writes. Extended
+image names and retained artifacts carry a provider suffix so they cannot
+replace Official outputs. Every image contains `CORE_PROVIDER.json`, produced
+by static inspection of its actual executable against the selected source pin,
+and provider-specific integration provenance. This composition is independent
+of final platform/runtime qualification and release authorization.
+
 Ordinary installer updates observe and retain the installed provider. An
 explicit different provider is rejected before network access and points to
 the authenticated maintenance command below. An unavailable or ambiguous

@@ -182,6 +182,14 @@ function validateReleaseContracts() {
     throw new Error('Dockerfile: production images must embed the configured public release trust roots');
   }
   const dockerSource = fs.readFileSync(path.join(workflowDir, 'docker.yml'), 'utf8');
+  if (dockerWorkflow.on.workflow_call.inputs.core_provider.default !== 'sing-box' ||
+      dockerWorkflow.on.workflow_dispatch.inputs.core_provider.default !== 'sing-box' ||
+      JSON.stringify(targetPolicy.extended.docker) !== JSON.stringify(targetPolicy.docker) ||
+      !dockerfile.includes('ARG CORE_PROVIDER=sing-box') ||
+      !dockerfile.includes('scripts/core-provider-build.mjs plan --provider "$CORE_PROVIDER"') ||
+      !dockerfile.includes('./cmd/solovey-artifact-info /app/solovey-ui')) {
+    throw new Error('Docker production must use explicit pinned provider selection and observed payload identity with Official default');
+  }
   if ((dockerSource.match(/SUI_RELEASE_TRUST_ROOTS_B64=\$\{\{ vars\.SUI_RELEASE_TRUST_ROOTS_B64 \}\}/g) ?? []).length < 2 ||
       !dockerSource.includes('Validate release trust root')) {
     throw new Error('docker.yml: both release image build paths must receive the public trust roots');
