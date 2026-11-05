@@ -32,7 +32,11 @@ func TestBackendAddressPublicationSharingViolation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer windows.CloseHandle(handle)
+		defer func() {
+			if err := windows.CloseHandle(handle); err != nil {
+				t.Errorf("close address publication handle: %v", err)
+			}
+		}()
 		var written uint32
 		if err := windows.WriteFile(handle, []byte(address), &written, nil); err != nil {
 			t.Fatal(err)
