@@ -11,6 +11,9 @@ for (const mode of ['classic', 'nexus']) {
     test.setTimeout(120_000)
     await page.addInitScript(layout => window.localStorage.setItem('sui:ui:mode', layout), mode)
     await login(page)
+    const capabilities = await (await page.request.get('api/capabilities')).json()
+    expect(capabilities.success).toBe(true)
+    if (process.env.SUI_E2E_EXPECT_PROVIDER) expect(capabilities.obj.provider.id).toBe(process.env.SUI_E2E_EXPECT_PROVIDER)
     const tags: string[] = []
     const rows = async () => (await (await page.request.get('api/outbounds')).json()).obj.outbounds ?? []
     try {
@@ -19,6 +22,15 @@ for (const mode of ['classic', 'nexus']) {
         await page.goto('hosts/local/outbounds')
         await page.getByRole('button', { name: 'Add', exact: true }).first().click()
         let form = page.getByRole('dialog').filter({ hasText: 'Add Outbound' })
+        const fact = capabilities.obj.facts.find((row: { category: string; type: string }) => row.category === 'outbounds' && row.type === kind)
+        expect(fact?.known).toBe(true)
+        if (!fact.available) {
+          await form.getByRole('combobox', { name: 'Type', exact: true }).press('Enter')
+          await expect(page.getByRole('option', { name: label, exact: true })).toHaveCount(0)
+          await page.keyboard.press('Escape')
+          await form.getByRole('button', { name: 'Close', exact: true }).first().click()
+          continue
+        }
         await select(page, form, 'Type', label)
         await form.getByRole('textbox', { name: 'Tag', exact: true }).fill(tag)
         await expect(form.getByLabel('Server Address')).toHaveCount(0)
