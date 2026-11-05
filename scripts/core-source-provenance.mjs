@@ -14,6 +14,7 @@ const topologies = new Map([
   ['https://github.com/shtorm-7/sing-box-extended', 'https://github.com/MalenkiySolovey/sing-box-extended'],
   ['https://github.com/SagerNet/sing-quic', 'https://github.com/MalenkiySolovey/sing-quic'],
   ['https://github.com/anytls/sing-anytls', 'https://github.com/MalenkiySolovey/sing-anytls'],
+  ['https://github.com/shtorm-7/sing', 'https://github.com/MalenkiySolovey/sing'],
 ])
 const git = (cwd, ...args) => execFileSync('git', ['-c', `safe.directory=${path.resolve(cwd)}`, '-C', cwd, ...args], {
   encoding: 'utf8', windowsHide: true, maxBuffer: 16 << 20, stdio: ['ignore', 'pipe', 'pipe'],

@@ -11,6 +11,7 @@ semantics remain shared. Provider selection stays in Host maintenance.
 | Official QUIC dependency | SagerNet/sing-quic | MalenkiySolovey/sing-quic | mirror/official-6a3a24d | solovey/official-patches |
 | Extended QUIC dependency | SagerNet/sing-quic | MalenkiySolovey/sing-quic | mirror/extended-75c3ac4 | solovey/extended-patches |
 | Existing AnyTLS dependency | anytls/sing-anytls | MalenkiySolovey/sing-anytls | mirror/v0.0.11 | solovey/anytls-patches |
+| Extended cache/TLS dependency | shtorm-7/sing | MalenkiySolovey/sing | mirror/extended-v0.9.7-extended-1.2.1 | solovey/extended-patches |
 
 Each core checkout uses `origin` for the copy and `upstream` for its authority.
 Pristine refs contain exact upstream commits and accept only reviewed
@@ -43,7 +44,8 @@ source delta, with the underlying shared/different authority stated explicitly:
 | C | SagerNet/sing-openvpn | Extended client endpoint/DNS integration consumes upstream directly at `v0.1.1-0.20260929151220-7c3045dbddce` (pristine commit `7c3045dbddce11779c93ede8e9e56ccbdc20d4ba`); no Solovey source delta, fork or patch queue |
 | D, shared authority (A) | SagerNet/sing-quic | One copy; one accepted Official source commit and two Extended source commits, independently pinned |
 | D, shared authority (A) | anytls/sing-anytls | One copy; one accepted source commit selected by both providers |
-| B | sing, sing-mux, sing-vmess, wireguard-go, tailscale | Official consumes SagerNet directly; Extended consumes the corresponding shtorm-7 repositories directly; no Solovey source delta |
+| D, different authorities (B) | sing | Official consumes SagerNet directly. Extended selects `MalenkiySolovey/sing` at `954ed9e938c74b69f54557a8e789fed35f9cd870`, based on Shtorm `fe045639087fe73d1412b99f09486bbef96433db` / `v0.9.7-extended-1.2.1`; two generic cached-packet ownership and atomic TLS handshake-publication fixes, linear queue, no wire change. Removal: equivalent upstream fix passes the recorded cache and TLS race regressions; upstream ready, not submitted. |
+| B | sing-mux, sing-vmess, wireguard-go, tailscale | Official consumes SagerNet directly; Extended consumes the corresponding shtorm-7 repositories directly; no Solovey source delta |
 | C | shtorm-7/dnscrypt/v2 | Extended-only replacement for ameshkov/dnscrypt/v2; no Solovey source delta |
 | C | shtorm-7/mtg-multi | Extended-only replacement for dolonet/mtg-multi; no Solovey source delta |
 | C | gobwas/ws | Extended Sudoku transport dependency; upstream v1.4.0 consumed directly, no Solovey source delta |
@@ -75,6 +77,7 @@ Canonical source documents and owned CI:
 - [Extended update procedure](https://github.com/MalenkiySolovey/sing-box-extended/blob/solovey/extended-patches/docs/solovey/UPSTREAM_REBASE_PROCEDURE.md) and [range-diff simulation](https://github.com/MalenkiySolovey/sing-box-extended/blob/solovey/extended-patches/docs/solovey/PATCH_SERIES_RANGE_DIFF.md)
 - [QUIC source and patch audit](https://github.com/MalenkiySolovey/sing-quic/blob/solovey/extended-patches/docs/solovey/SING_QUIC_SOURCE_AND_PATCH_AUDIT.md), [Official QUIC baseline](https://github.com/MalenkiySolovey/sing-quic/blob/solovey/official-patches/docs/solovey/SING_QUIC_OFFICIAL_BASELINE.md)
 - [AnyTLS existing correction](https://github.com/MalenkiySolovey/sing-anytls/blob/solovey/anytls-patches/docs/solovey/ANYTLS_COPY_BASELINE.md)
+- [Extended Sing source authority and cache/TLS corrections](https://github.com/MalenkiySolovey/sing/blob/solovey/extended-patches/SOURCE_AUTHORITY.md)
 
 Panel owns the exact source/build metadata in `core/provider/pins.json` and
 `deploy/dependencies/*-integration.json`. Actual changes and their tests belong
