@@ -154,6 +154,12 @@ func writeDurabilityProof(data []byte) error {
 	if err != nil {
 		return err
 	}
+	// The reader requires this exact public mode, regardless of caller umask.
+	if err := file.Chmod(0o444); err != nil {
+		_ = file.Close()
+		_ = os.Remove(temporary)
+		return err
+	}
 	_, writeErr := file.Write(data)
 	syncErr, closeErr := file.Sync(), file.Close()
 	if writeErr != nil || syncErr != nil || closeErr != nil {
