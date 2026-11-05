@@ -20,7 +20,7 @@ import (
 // Observe all members without extraction or candidate execution. Windows names
 // are case-insensitive, so aliases are rejected even on a Linux verifier.
 func inspectWindowsArchive(input io.ReaderAt, size int64, source release.CoreProviderSource) (release.PanelBuildIdentity, []archiveMemberObservation, error) {
-	invalid := errors.New("Windows package is malformed, ambiguous or exceeds bounds")
+	invalid := errors.New("windows package is malformed, ambiguous or exceeds bounds")
 	reader, err := zip.NewReader(input, size)
 	if err != nil || len(reader.File) == 0 || len(reader.File) > 64 {
 		return release.PanelBuildIdentity{}, nil, invalid
