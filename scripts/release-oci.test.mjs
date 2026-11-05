@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import test from 'node:test'
-import { releaseOCIIdentity } from './release-oci.mjs'
+import { releaseOCIIdentity, releaseOCIFlavor } from './release-oci.mjs'
 
 const revision = '9555471a21b9b87323c726cb61c2f113b572d83d'
 const require = createRequire(import.meta.url)
@@ -36,6 +36,15 @@ test('missing, malformed or mismatching identities fail before image generation'
   assert.equal(cli.stdout, '')
 })
 
+test('explicit OCI flavors are pinned and cannot replace Official image names', () => {
+  assert.deepEqual(releaseOCIFlavor(), { provider: 'sing-box', artifact_suffix: '' })
+  assert.deepEqual(releaseOCIFlavor('shtorm-extended'), { provider: 'shtorm-extended', artifact_suffix: '-shtorm-extended' })
+  for (const provider of ['', 'unknown', '../go.extended.mod', 'sing-box\nnext=value']) assert.throws(() => releaseOCIFlavor(provider))
+  const cli = spawnSync(process.execPath, ['scripts/release-oci.mjs', 'v2026.4.1', revision, 'shtorm-extended'], { encoding: 'utf8' })
+  assert.equal(cli.status, 0, cli.stderr)
+  assert.ok(cli.stdout.endsWith('provider=shtorm-extended\nartifact_suffix=-shtorm-extended\n'))
+})
+
 test('both platform producers and the final multiarch index consume the same validated identity', () => {
   const workflow = YAML.parse(fs.readFileSync('.github/workflows/docker.yml', 'utf8'))
   const expected = {
@@ -46,7 +55,7 @@ test('both platform producers and the final multiarch index consume the same val
   assert.deepEqual(workflow.jobs.build.strategy.matrix.include.map(row => row.platform), ['linux/amd64', 'linux/arm64'])
   for (const job of [workflow.jobs.build, workflow.jobs.publish]) {
     const identity = job.steps.find(step => step.id === 'source')
-    assert.ok(identity.run.includes('node scripts/release-oci.mjs "$RELEASE_TAG_INPUT" "$(git rev-parse HEAD)"'))
+    assert.ok(identity.run.includes('node scripts/release-oci.mjs "$RELEASE_TAG_INPUT" "$(git rev-parse HEAD)" "$CORE_PROVIDER"'))
   }
   for (const step of workflow.jobs.build.steps.filter(step => step.uses?.startsWith('docker/build-push-action@'))) {
     for (const [key, value] of Object.entries(expected)) {
@@ -55,10 +64,16 @@ test('both platform producers and the final multiarch index consume the same val
     }
     assert.equal(step.with.sbom, true)
     assert.equal(step.with.provenance, 'mode=max')
+    assert.ok(step.with['build-args'].includes('CORE_PROVIDER=${{ steps.source.outputs.provider }}'))
+    assert.ok(step.with.labels.includes('io.solovey.core-provider=${{ steps.source.outputs.provider }}'))
   }
   const manifest = workflow.jobs.publish.steps.find(step => step.name === 'Create and push multi-platform manifest').run
   assert.ok(manifest.includes('complete amd64/arm64 image digests are required'))
   assert.ok(manifest.includes('$DIGESTS'))
   for (const [key, value] of Object.entries(expected)) assert.ok(manifest.includes(`--annotation "index:org.opencontainers.image.${key}=${value}"`))
   assert.ok(manifest.includes('CHANNEL=latest'))
+  assert.ok(manifest.includes('${CHANNEL}${{ steps.source.outputs.artifact_suffix }}'))
+  assert.equal(workflow.on.workflow_call.inputs.core_provider.default, 'sing-box')
+  assert.equal(workflow.on.workflow_dispatch.inputs.core_provider.default, 'sing-box')
+  assert.ok(workflow.jobs.build.steps.find(step => step.id === 'source').run.includes('source_commit must match the exact checked-out commit'))
 })

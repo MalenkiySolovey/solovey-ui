@@ -28,14 +28,19 @@ WORKDIR /app
 ARG TARGETARCH
 ARG TARGETVARIANT
 ARG SUI_RELEASE_TRUST_ROOTS_B64
+ARG CORE_PROVIDER=sing-box
 ENV CGO_ENABLED=1 CGO_CFLAGS="-D_LARGEFILE64_SOURCE" GOARCH=$TARGETARCH CC=clang CXX=clang++
 # The pinned musl archive requires LLVM's linker. The glibc shared library's
 # loader and shutdown symbols are not compatible with this Alpine runtime.
-RUN apk add --no-cache gcc clang lld musl-dev libc-dev make git wget bash ca-certificates
+RUN apk add --no-cache gcc clang lld musl-dev libc-dev make git wget bash nodejs ca-certificates
 COPY . .
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN --mount=type=cache,id=solovey-ui-go-build,target=/root/.cache/go-build,sharing=locked \
     --mount=type=cache,id=solovey-ui-go-mod,target=/go/pkg/mod,sharing=locked \
-    set -e; \
+    set -euo pipefail; \
+    node scripts/core-provider-build.mjs plan --provider "$CORE_PROVIDER" \
+      --tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_musl,badlinkname,tfogo_checklinkname0,with_tailscale" > /tmp/core-provider-build.json; \
+    MOD_FILE="$(node -p 'require("/tmp/core-provider-build.json").modFile')"; \
     case "$TARGETARCH" in \
       amd64) CRONET_SHA256="a1b6ac7a1f6448121eb9ac896a4af298a17472895bd18d6c3de072f5b67468e5" ;; \
       arm64) CRONET_SHA256="57b95e9c665cbd93caf4d411280404a8989f638869a6e1e86e180396c967a470" ;; \
@@ -44,23 +49,32 @@ RUN --mount=type=cache,id=solovey-ui-go-build,target=/root/.cache/go-build,shari
       *) echo "unsupported target architecture" >&2; exit 1 ;; \
     esac; \
     CRONET_MODULE="github.com/sagernet/cronet-go/lib/linux_${TARGETARCH}_musl"; \
-    go mod download "$CRONET_MODULE"; \
-    go mod verify; \
-    CRONET_DIR="$(go list -m -f '{{.Dir}}' "$CRONET_MODULE")"; \
+    go mod download -modfile="$MOD_FILE" "$CRONET_MODULE"; \
+    go mod verify -modfile="$MOD_FILE"; \
+    CRONET_DIR="$(go list -mod=readonly -modfile="$MOD_FILE" -m -f '{{.Dir}}' "$CRONET_MODULE")"; \
     echo "${CRONET_SHA256}  $CRONET_DIR/libcronet.a" | sha256sum -c -; \
-    CRONET_VERSION="$(go list -m -f '{{.Version}}' "$CRONET_MODULE")"; \
+    CRONET_VERSION="$(go list -mod=readonly -modfile="$MOD_FILE" -m -f '{{.Version}}' "$CRONET_MODULE")"; \
     printf '{"schema":"solovey.native-cronet/v1","linkage":"static-musl","nativeVersion":"150.0.7871.63","module":"%s","moduleVersion":"%s","archiveSha256":"%s"}\n' "$CRONET_MODULE" "$CRONET_VERSION" "$CRONET_SHA256" > CRONET_INTEGRATION.json
 COPY --from=front-builder /app/web/html/ /app/web/html/
 COPY --from=front-builder /app/generated/components_generated.go /app/app/components_generated.go
 COPY --from=front-builder /app/generated/optional_commands_generated.go /app/cmd/optional_commands_generated.go
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+COPY --from=front-builder /app/QUIC_INTEGRATION.json /app/SSM_INTEGRATION.json /app/ANYTLS_INTEGRATION.json /app/integration-provenance/
 RUN --mount=type=cache,id=solovey-ui-go-build,target=/root/.cache/go-build,sharing=locked \
     --mount=type=cache,id=solovey-ui-go-mod,target=/go/pkg/mod,sharing=locked \
-    set -e; \
+    set -euo pipefail; \
     if [ "$TARGETARCH" = "arm" ]; then export GOARM=7; [ "$TARGETVARIANT" = "v6" ] && export GOARM=6; fi; \
-    go build -ldflags="-w -s -checklinkname=0 -linkmode external -extldflags '-fuse-ld=lld' -X github.com/MalenkiySolovey/solovey-ui/config/update.ReleaseTrustRootsBase64=$SUI_RELEASE_TRUST_ROOTS_B64" \
-    -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_musl,badlinkname,tfogo_checklinkname0,with_tailscale" \
-    -o solovey-ui main.go
+    readarray -t GO_ARGS < <(node -e 'console.log(require("/tmp/core-provider-build.json").goArgs.join("\n"))'); \
+    BUILD_TAGS="$(node -p 'require("/tmp/core-provider-build.json").tags')"; \
+    go build "${GO_ARGS[@]}" -trimpath -buildvcs=false \
+    -ldflags="-buildid= -w -s -checklinkname=0 -linkmode external -extldflags '-fuse-ld=lld' -X github.com/MalenkiySolovey/solovey-ui/config/update.ReleaseTrustRootsBase64=$SUI_RELEASE_TRUST_ROOTS_B64" \
+    -tags "$BUILD_TAGS" -o solovey-ui main.go; \
+    node -e 'console.log(JSON.stringify(require("/tmp/core-provider-build.json").source))' > /tmp/core-provider-source.json; \
+    CGO_ENABLED=0 go run -mod=readonly -modfile=go.mod ./cmd/solovey-artifact-info /app/solovey-ui \
+      < /tmp/core-provider-source.json > CORE_PROVIDER.json; \
+    if [ "$CORE_PROVIDER" = shtorm-extended ]; then \
+      rm /app/integration-provenance/QUIC_INTEGRATION.json /app/integration-provenance/SSM_INTEGRATION.json; \
+      node scripts/extended-integration-provenance.mjs manifest > /app/integration-provenance/EXTENDED_INTEGRATION.json; \
+    fi
 
 FROM alpine:latest@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acaeb241c829f4 AS runtime
 ENV TZ=Europe/Moscow SUI_DB_FOLDER=/data SUI_COMPONENTS_INSTALLED_FILE=/app/components/installed.json
@@ -68,11 +82,9 @@ WORKDIR /app
 RUN apk add --no-cache --upgrade ca-certificates gcompat libgcc \
     && mkdir -p /data /cert /app/components \
     && chown -R 65532:65532 /data /cert /app
-COPY --from=backend-builder --chown=65532:65532 /app/solovey-ui /app/CRONET_INTEGRATION.json /app/
+COPY --from=backend-builder --chown=65532:65532 /app/solovey-ui /app/CRONET_INTEGRATION.json /app/CORE_PROVIDER.json /app/
 COPY --from=front-builder --chown=65532:65532 /app/component-packs/ /app/components/
-COPY --from=front-builder --chown=65532:65532 /app/QUIC_INTEGRATION.json /app/QUIC_INTEGRATION.json
-COPY --from=front-builder --chown=65532:65532 /app/SSM_INTEGRATION.json /app/SSM_INTEGRATION.json
-COPY --from=front-builder --chown=65532:65532 /app/ANYTLS_INTEGRATION.json /app/ANYTLS_INTEGRATION.json
+COPY --from=backend-builder --chown=65532:65532 /app/integration-provenance/ /app/
 COPY --chown=65532:65532 entrypoint.sh /app/entrypoint.sh
 RUN chmod 0555 /app/solovey-ui /app/entrypoint.sh
 USER 65532:65532
@@ -83,7 +95,8 @@ ENTRYPOINT ["/app/entrypoint.sh"]
 FROM backend-builder AS native-cronet-probe-builder
 RUN --mount=type=cache,id=solovey-ui-go-build,target=/root/.cache/go-build,sharing=locked \
     --mount=type=cache,id=solovey-ui-go-mod,target=/go/pkg/mod,sharing=locked \
-    go build -tags with_musl -ldflags="-w -s -linkmode external -extldflags '-fuse-ld=lld'" \
+    go build -mod=readonly -modfile="$(node -p 'require("/tmp/core-provider-build.json").modFile')" \
+    -tags with_musl -ldflags="-w -s -linkmode external -extldflags '-fuse-ld=lld'" \
     -o /native-cronet-probe ./tests/installer/native-cronet
 
 FROM runtime AS native-cronet-probe
