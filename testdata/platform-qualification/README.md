@@ -13,7 +13,7 @@ owner first, then runs the installed binary on the native runner architecture.
 The loaded Cronet DLL is checked against the installed companion digest.
 
 The campaign exercises configuration/startup, credentials and SecretRef identity,
-core/process restart, native Naive initialization, occupied-port failure/recovery,
+core/process restart, native Naive initialization, unavailable-state failure/recovery,
 canonical backup, authenticated restore rehearsal/execution and restored traffic.
 An optional Official artifact also exercises unsupported desired-state retention
 and return to Extended. Container and emulator adapters are explicit configuration

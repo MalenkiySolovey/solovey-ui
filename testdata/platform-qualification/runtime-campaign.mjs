@@ -2,7 +2,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import assert from 'node:assert/strict'
-import net from 'node:net'
 import {spawn,spawnSync} from 'node:child_process'
 import {fileURLToPath} from 'node:url'
 const cfg=JSON.parse(fs.readFileSync(process.argv[2],'utf8').replace(/^\uFEFF/,''))
@@ -100,8 +99,8 @@ try{
  if(cfg.official){await stop();assert.equal(JSON.parse(run(cfg.official,['core-info'])).id,'sing-box');await start(cfg.official,'official');const desired=await inbounds();assert.equal(desired.filter(i=>i.tag?.startsWith('d12-mieru-')).length,2);const effective=await rawConfig();assert(!(effective.inbounds??[]).some(i=>i.type==='mieru'));assert.equal(JSON.stringify((await users()).find(u=>u.id===user.id).config.mieru.password),secretRef);pass('Official retains unsupported desired state and SecretRef while excluding effective runtime');await stop();await start(cfg.extended,'extended-return');await traffic('provider return');pass('return to Extended revalidates preserved state')}
  if(cfg.core){await stop();assert.equal(JSON.parse(run(cfg.core,['core-info'])).id,'shtorm-extended');await start(cfg.core,'extended-core');await traffic('Core profile');assert.equal(JSON.stringify((await users()).find(u=>u.id===user.id).config.mieru.password),secretRef);pass('Core profile persistence and credential identity')}
  if(!cfg.executor&&!cfg.commandPrefix){
-  await stop();const blocker=net.createServer();await new Promise((resolve,reject)=>blocker.once('error',reject).listen({host:'0.0.0.0',port:cfg.port,exclusive:true},resolve))
-  const fd=fs.openSync(path.join(privateDir,'failed-start.log'),'w');const failed=spawn(cfg.extended,[],{env,cwd:privateDir,stdio:['ignore',fd,fd],windowsHide:true});const code=await Promise.race([new Promise(r=>failed.once('close',r)),new Promise(r=>setTimeout(()=>{failed.kill();r(null)},10000))]);fs.closeSync(fd);await new Promise(r=>blocker.close(r));assert(code!==null&&code!==0,'occupied panel port did not reject startup');pass('failed start rejects occupied port')
+  await stop();const unavailableRoot=path.join(privateDir,'failed-start-not-a-directory');fs.writeFileSync(unavailableRoot,'deterministic unavailable state directory')
+  const fd=fs.openSync(path.join(privateDir,'failed-start.log'),'w');const failed=spawn(cfg.extended,[],{env:{...env,SUI_DB_FOLDER:unavailableRoot},cwd:privateDir,stdio:['ignore',fd,fd],windowsHide:true});const code=await Promise.race([new Promise(r=>failed.once('close',r)),new Promise(r=>setTimeout(()=>{failed.kill();r(null)},15000))]);fs.closeSync(fd);assert(code!==null&&code!==0,'unavailable configured state directory did not reject startup');pass('failed start rejects unavailable state directory')
   await start(cfg.extended,'failed-start-recovery');await traffic('failed start recovery')
  }
  await waitMutation()
