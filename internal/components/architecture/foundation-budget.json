@@ -1943,7 +1943,8 @@
       "rule": "direct-policy",
       "path": "core/registry/outbound.go",
       "symbol": "outboundDeclarations",
-      "digest": "47ce04525b48dad5aa2a609fd178bca8cb28986766c18aad5b822067939026b5"
+      "digest": "77e535a7513125c9d681df75f709db647de017e9b49b54627a5b17b6197ea70e",
+      "review": "Operator-deferred Bridge: only the unavailable reason identifies missing Network Planner/broker integration. Bridge stays unregistered/uncompiled and cannot activate. Direct registration, defaults, routing and omission behavior are unchanged; no network operation or privilege is introduced. Exact declaration review only; R1 identity and all other budget sites are retained."
     },
     {
       "rule": "direct-policy",
