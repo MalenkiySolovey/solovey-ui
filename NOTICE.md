@@ -168,6 +168,11 @@ Behavior witnesses include `590b08af39537ab4c85441513743c2360bbc187d`,
 `42baef5bed45a9a5b91d728e7e2250b524e4a41b` and
 `87c1fd049aeb2a7d9046656c801a4e643e73099a`. No implementation, tests or
 translations were copied for those independent behavior adaptations.
+The R7 Extended stable behavior reference is `deposist/s-ui-x-extended`
+`v1.1.1` at `af9ae56f024828ece4463014a2f9bc698646ca2d`; the older S-UI-X
+reference above remains historical. R7 keeps Solovey's canonical semantic owners
+and shared Classic/Nexus workflows. It does not select a later beta target.
+
 Earlier networking references v1.13.14/v1.13.18 and sing v0.8.13 belong to
 historical integration; current resolved versions are the module manifest's.
 
@@ -194,3 +199,10 @@ selection does not add an assertion package to production executables.
 Source-archive identities and dependency checksums accompany release provenance.
 Keep these notices and the applicable license material when redistributing the
 project, its maintained integrations or bundled third-party assets.
+
+The Extended resolved source graph also selects the test-only helper
+`github.com/RyuaNerin/testingutil v0.1.1`, exact upstream tag source
+`f857d1e840479b33b1af7d39eed771d12a1e3737`. Its original 2024 RyuaNerin
+MIT grant is included in that module archive and the dependency notices.
+The earlier v0.1.0 archive contains no grant and is not the selected source.
+This helper is absent from Panel production imports; Official does not select it.

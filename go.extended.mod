@@ -37,6 +37,8 @@ require (
 	github.com/AdguardTeam/golibs v0.32.7 // indirect
 	github.com/Diniboy1123/connect-ip-go v0.0.0-20260409225322-8d7bb0a858a2 // indirect
 	github.com/RyuaNerin/go-krypto v1.3.0 // indirect
+	// v0.1.0 has no source license; use the first upstream MIT-licensed tag.
+	github.com/RyuaNerin/testingutil v0.1.1 // indirect
 	github.com/ameshkov/dnscrypt/v2 v2.4.0 // indirect
 	github.com/ameshkov/dnsstamps v1.0.3 // indirect
 	github.com/anchore/go-lzo v0.1.0 // indirect

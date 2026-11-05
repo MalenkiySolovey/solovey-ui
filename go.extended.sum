@@ -52,6 +52,8 @@ github.com/OneOfOne/xxhash v1.2.8 h1:31czK/TI9sNkxIKfaUfGlU47BAxQ0ztGgd9vPyqimf8
 github.com/OneOfOne/xxhash v1.2.8/go.mod h1:eZbhyaAYD41SGSSsnmcpxVoRiQ/MPUTjUdIIOT9Um7Q=
 github.com/RyuaNerin/go-krypto v1.3.0 h1:smavTzSMAx8iuVlGb4pEwl9MD2qicqMzuXR2QWp2/Pg=
 github.com/RyuaNerin/go-krypto v1.3.0/go.mod h1:9R9TU936laAIqAmjcHo/LsaXYOZlymudOAxjaBf62UM=
+github.com/RyuaNerin/testingutil v0.1.1 h1:pdhXyITzVpkBMhhT1HBiG4JwtS8Ms7McgJIli8rJAQs=
+github.com/RyuaNerin/testingutil v0.1.1/go.mod h1:yTqj6Ta/ycHMPJHRyO12Mz3VrvTloWOsy23WOZH19AA=
 github.com/aclements/go-moremath v0.0.0-20210112150236-f10218a38794/go.mod h1:7e+I0LQFUI9AXWxOfsQROs9xPhoJtbsyWcjJqDd4KPY=
 github.com/ajg/form v1.5.1 h1:t9c7v8JUKu/XxOGBU0yjNpaMloxGEJhUkqFRq0ibGeU=
 github.com/ajg/form v1.5.1/go.mod h1:uL1WgH+h2mgNtvBq0339dVnzXdBETtL2LeUXaIv25UY=
