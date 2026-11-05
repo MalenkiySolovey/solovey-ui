@@ -13,8 +13,22 @@ on:
       preflight_only:
         default: true
         type: boolean
+      core_provider:
+        description: Explicit core provider; Official remains the default
+        default: sing-box
+        type: string
   workflow_dispatch:
     inputs:
+      source_commit:
+        description: "Exact immutable source commit (preflight only; leave empty for a release tag)"
+        required: false
+        type: string
+      core_provider:
+        description: "Core provider"
+        required: true
+        default: sing-box
+        type: choice
+        options: [sing-box, shtorm-extended]
       tag:
         description: "Release tag"
         required: true
@@ -33,6 +47,7 @@ permissions:
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository }}
   RELEASE_TAG_INPUT: ${{ inputs.tag || github.ref_name }}
+  CORE_PROVIDER: ${{ inputs.core_provider || 'sing-box' }}
 
 jobs:
   publication-authority:
@@ -67,9 +82,16 @@ jobs:
 
       - name: Validate release tag against source version
         id: source
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          PREFLIGHT_ONLY: ${{ inputs.preflight_only }}
         run: |
           set -euo pipefail
-          node scripts/release-oci.mjs "$RELEASE_TAG_INPUT" "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if [ -n "$SOURCE_COMMIT" ]; then
+            [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]] && [ "$(git rev-parse HEAD)" = "$SOURCE_COMMIT" ] || { echo 'source_commit must match the exact checked-out commit' >&2; exit 1; }
+            if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then [ "$PREFLIGHT_ONLY" = true ] || exit 1; fi
+          fi
+          node scripts/release-oci.mjs "$RELEASE_TAG_INPUT" "$(git rev-parse HEAD)" "$CORE_PROVIDER" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
@@ -117,19 +139,22 @@ jobs:
           file: Dockerfile
           platforms: ${{ matrix.platform }}
           push: false
-          outputs: type=oci,dest=${{ runner.temp }}/solovey-ui-docker-${{ matrix.platform_name }}.tar
+          outputs: type=oci,dest=${{ runner.temp }}/solovey-ui-docker-${{ matrix.platform_name }}${{ steps.source.outputs.artifact_suffix }}.tar
           sbom: true
           provenance: mode=max
           labels: |
+            io.solovey.core-provider=${{ steps.source.outputs.provider }}
             org.opencontainers.image.revision=${{ steps.source.outputs.commit }}
             org.opencontainers.image.version=${{ steps.source.outputs.version }}
             org.opencontainers.image.source=${{ steps.source.outputs.source }}
           annotations: |
+            index,manifest:io.solovey.core-provider=${{ steps.source.outputs.provider }}
             index,manifest:org.opencontainers.image.revision=${{ steps.source.outputs.commit }}
             index,manifest:org.opencontainers.image.version=${{ steps.source.outputs.version }}
             index,manifest:org.opencontainers.image.source=${{ steps.source.outputs.source }}
-          tags: ${{ steps.image.outputs.name }}:preflight-${{ matrix.platform_name }}
+          tags: ${{ steps.image.outputs.name }}:preflight-${{ matrix.platform_name }}${{ steps.source.outputs.artifact_suffix }}
           build-args: |
+            CORE_PROVIDER=${{ steps.source.outputs.provider }}
             SUI_RELEASE_TRUST_ROOTS_B64=${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
           cache-from: type=gha,scope=docker-${{ matrix.platform_name }}
           cache-to: type=gha,mode=max,scope=docker-${{ matrix.platform_name }}
@@ -137,7 +162,7 @@ jobs:
       - name: Seal private OCI candidate
         if: inputs.preflight_only == true
         env:
-          OCI_CANDIDATE: ${{ runner.temp }}/solovey-ui-docker-${{ matrix.platform_name }}.tar
+          OCI_CANDIDATE: ${{ runner.temp }}/solovey-ui-docker-${{ matrix.platform_name }}${{ steps.source.outputs.artifact_suffix }}.tar
         run: |
           cd "$RUNNER_TEMP"
           sha256sum "$(basename "$OCI_CANDIDATE")" > "$(basename "$OCI_CANDIDATE").sha256"
@@ -145,10 +170,10 @@ jobs:
         if: inputs.preflight_only == true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: solovey-ui-docker-${{ matrix.platform_name }}
+          name: solovey-ui-docker-${{ matrix.platform_name }}${{ steps.source.outputs.artifact_suffix }}
           path: |
-            ${{ runner.temp }}/solovey-ui-docker-${{ matrix.platform_name }}.tar
-            ${{ runner.temp }}/solovey-ui-docker-${{ matrix.platform_name }}.tar.sha256
+            ${{ runner.temp }}/solovey-ui-docker-${{ matrix.platform_name }}${{ steps.source.outputs.artifact_suffix }}.tar
+            ${{ runner.temp }}/solovey-ui-docker-${{ matrix.platform_name }}${{ steps.source.outputs.artifact_suffix }}.tar.sha256
           if-no-files-found: error
           retention-days: 7
 
@@ -164,15 +189,18 @@ jobs:
           sbom: true
           provenance: mode=max
           labels: |
+            io.solovey.core-provider=${{ steps.source.outputs.provider }}
             org.opencontainers.image.revision=${{ steps.source.outputs.commit }}
             org.opencontainers.image.version=${{ steps.source.outputs.version }}
             org.opencontainers.image.source=${{ steps.source.outputs.source }}
           annotations: |
+            index,manifest:io.solovey.core-provider=${{ steps.source.outputs.provider }}
             index,manifest:org.opencontainers.image.revision=${{ steps.source.outputs.commit }}
             index,manifest:org.opencontainers.image.version=${{ steps.source.outputs.version }}
             index,manifest:org.opencontainers.image.source=${{ steps.source.outputs.source }}
           tags: ${{ steps.image.outputs.name }}
           build-args: |
+            CORE_PROVIDER=${{ steps.source.outputs.provider }}
             SUI_RELEASE_TRUST_ROOTS_B64=${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
           cache-from: type=gha,scope=docker-${{ matrix.platform_name }}
           cache-to: type=gha,mode=max,scope=docker-${{ matrix.platform_name }}
@@ -188,7 +216,7 @@ jobs:
         if: inputs.preflight_only == false
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: docker-digest-${{ matrix.platform_name }}
+          name: docker-digest-${{ matrix.platform_name }}${{ steps.source.outputs.artifact_suffix }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
@@ -208,7 +236,7 @@ jobs:
         id: source
         run: |
           set -euo pipefail
-          node scripts/release-oci.mjs "$RELEASE_TAG_INPUT" "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          node scripts/release-oci.mjs "$RELEASE_TAG_INPUT" "$(git rev-parse HEAD)" "$CORE_PROVIDER" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
@@ -236,7 +264,7 @@ jobs:
       - name: Download image digests
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          pattern: docker-digest-*
+          pattern: docker-digest-*${{ steps.source.outputs.artifact_suffix }}
           path: ${{ runner.temp }}/digests
           merge-multiple: true
 
@@ -253,9 +281,10 @@ jobs:
           CHANNEL=latest
           case "${{ steps.vars.outputs.tag }}" in *-*) CHANNEL=beta ;; esac
           docker buildx imagetools create \
+            --annotation "index:io.solovey.core-provider=${{ steps.source.outputs.provider }}" \
             --annotation "index:org.opencontainers.image.revision=${{ steps.source.outputs.commit }}" \
             --annotation "index:org.opencontainers.image.version=${{ steps.source.outputs.version }}" \
             --annotation "index:org.opencontainers.image.source=${{ steps.source.outputs.source }}" \
-            -t "${{ steps.image.outputs.name }}:${{ steps.vars.outputs.tag }}" \
-            -t "${{ steps.image.outputs.name }}:${CHANNEL}" \
+            -t "${{ steps.image.outputs.name }}:${{ steps.vars.outputs.tag }}${{ steps.source.outputs.artifact_suffix }}" \
+            -t "${{ steps.image.outputs.name }}:${CHANNEL}${{ steps.source.outputs.artifact_suffix }}" \
             $DIGESTS

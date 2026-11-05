@@ -62,6 +62,17 @@ provider to that stage and gives Extended archives a distinct external name.
 FriendlyWrt uses the compatible ARM64 APK and its existing storage deployment
 contract. This build selection does not claim device runtime qualification.
 
+The canonical Dockerfile accepts `--build-arg CORE_PROVIDER=shtorm-extended`.
+Omitting it retains Official. The existing Docker workflow accepts the same
+explicit `core_provider` selection for both native release architectures. Manual
+qualification may bind an exact `source_commit` only with `preflight_only=true`;
+it retains private OCI bytes and checksums without registry writes. Extended
+image names and retained artifacts carry a provider suffix so they cannot
+replace Official outputs. Every image contains `CORE_PROVIDER.json`, produced
+by static inspection of its actual executable against the selected source pin,
+and provider-specific integration provenance. This composition is independent
+of final platform/runtime qualification and release authorization.
+
 Ordinary installer updates observe and retain the installed provider. An
 explicit different provider is rejected before network access and points to
 the authenticated maintenance command below. An unavailable or ambiguous
