@@ -104,6 +104,25 @@ func TestPinnedFSToolsHostMountAuthorityChild(t *testing.T) {
 	if err != nil || loaded.Revision != written.Revision {
 		t.Fatalf("published proof: %v", err)
 	}
+	for _, mask := range []int{0o077, 0o027} {
+		previous := unix.Umask(mask)
+		written, err := RefreshDatabaseDurabilityProof()
+		unix.Umask(previous)
+		if err != nil {
+			t.Fatalf("publish proof under umask %#o: %v", mask, err)
+		}
+		info, err := os.Lstat(DefaultDurabilityProofPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0o444 {
+			t.Fatalf("published proof mode under umask %#o: got %#o, want 0444", mask, info.Mode().Perm())
+		}
+		loaded, err := LoadDatabaseDurabilityProof()
+		if err != nil || loaded.Revision != written.Revision {
+			t.Fatalf("read proof published under umask %#o: %v", mask, err)
+		}
+	}
 	if err := os.WriteFile(DefaultDurabilityProofPath, []byte(`{"schema":"solovey-ui/openwrt-database-durability/v2"}`), 0444); err != nil {
 		t.Fatal(err)
 	}
