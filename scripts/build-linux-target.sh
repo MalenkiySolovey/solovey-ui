@@ -49,7 +49,6 @@ done
 [[ "$mode" == 'release' || "$mode" == 'openwrt' ]] || fail '--mode must be release or openwrt'
 [[ "$profile" == 'full' || "$profile" == 'core' ]] || fail '--profile must be full or core'
 [[ "$mode" != 'openwrt' || "$profile" == 'full' ]] || fail 'OpenWrt stage supports only the full profile'
-[[ "$mode" != 'openwrt' || "$core_provider" == 'sing-box' ]] || fail 'Extended is not declared for OpenWrt'
 [[ "$mode" != 'openwrt' || "${SOLOVEY_HERMETIC_TARGET_ENV:-}" == '1' ]] || fail 'OpenWrt targets must run through the canonical hermetic stage producer'
 [[ -n "$out" && -n "$platform" && -f "$trust_roots_file" ]] || fail 'output, platform and trust-roots file are required'
 [[ "${GOOS:-}" == 'linux' && -n "${GOARCH:-}" && "${CGO_ENABLED:-}" == '1' ]] || fail 'GOOS=linux, GOARCH and CGO_ENABLED=1 are required'
@@ -79,12 +78,10 @@ if [[ "$profile" == 'core' ]]; then
 	tags="${tags},minimal"
 fi
 provider_go_args=(-mod=readonly -modfile=go.mod)
-if [[ "$mode" == 'release' ]]; then
-	tags=$(node "$(dirname "${BASH_SOURCE[0]}")/core-provider-build.mjs" tags --provider "$core_provider" --tags "$tags")
-	if [[ "$core_provider" != 'sing-box' ]]; then
-		provider_args=$(node "$(dirname "${BASH_SOURCE[0]}")/core-provider-build.mjs" go-args --provider "$core_provider")
-		mapfile -t provider_go_args <<< "$provider_args"
-	fi
+tags=$(node "$(dirname "${BASH_SOURCE[0]}")/core-provider-build.mjs" tags --provider "$core_provider" --tags "$tags")
+if [[ "$core_provider" != 'sing-box' ]]; then
+	provider_args=$(node "$(dirname "${BASH_SOURCE[0]}")/core-provider-build.mjs" go-args --provider "$core_provider")
+	mapfile -t provider_go_args <<< "$provider_args"
 fi
 panel_ldflags="-buildid= -w -s -checklinkname=0 -linkmode external -extldflags '-static' -X github.com/MalenkiySolovey/solovey-ui/config/update.ArtifactPlatform=${platform} -X github.com/MalenkiySolovey/solovey-ui/config/update.ReleaseTrustRootsBase64=${trust_roots}"
 

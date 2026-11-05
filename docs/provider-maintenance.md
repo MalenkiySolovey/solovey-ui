@@ -51,6 +51,17 @@ to preserve stored data. Public stable v2026.4.1 contains no Extended packages.
 Use the explicit flag only with a complete published version that supplies the
 selected flavor.
 
+The canonical OpenWrt stage and APK producer accept `--core-provider
+shtorm-extended`; omission retains Official. Both existing target profiles use
+the same package name, procd/broker/persistence owners and SDK authority. The
+hermetic snapshot includes both provider locks and build-plan/provenance
+scripts. Panel and system helpers retain separate authenticated dependency
+graphs; the actual Panel executable is statically inspected against the
+selected pin before sealing its stage. Package admission binds the selected
+provider to that stage and gives Extended archives a distinct external name.
+FriendlyWrt uses the compatible ARM64 APK and its existing storage deployment
+contract. This build selection does not claim device runtime qualification.
+
 Ordinary installer updates observe and retain the installed provider. An
 explicit different provider is rejected before network access and points to
 the authenticated maintenance command below. An unavailable or ambiguous

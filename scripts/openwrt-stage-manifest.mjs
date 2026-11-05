@@ -10,6 +10,7 @@ import {
   verifySourceFingerprint,
 } from './openwrt-package-source-fingerprint.mjs'
 import { proveInstalledUnixTextAssets } from './openwrt-unix-text-assets.mjs'
+import { resolveProviderSource } from './core-provider-build.mjs'
 
 export const stageManifestSchema = 'solovey-ui/openwrt-target-stage/v2'
 
@@ -92,6 +93,7 @@ export function createStageManifest(stageRoot, sourceRoot) {
   const unixTextAssets = proveInstalledUnixTextAssets(payloadRoot)
   const unixTextAssetDigest = sha256(canonical(unixTextAssets))
   assertGoAuthorityBinding(payloadRoot, sourceFingerprintDocument)
+  assertProviderBinding(payloadRoot, sourceFingerprintDocument, sourceRoot)
   const buildInfoPath = path.join(payloadRoot, 'usr/lib/solovey-ui/BUILD_INFO.txt')
   const buildInfo = parseBuildInfo(fs.readFileSync(buildInfoPath, 'utf8'))
   assertBuildInfoBinding(buildInfo, sourceFingerprintDocument)
@@ -165,6 +167,7 @@ export function verifyStageManifest(manifest, stageRoot, sourceRoot) {
   }
 
   assertGoAuthorityBinding(payloadRoot, fingerprint)
+  assertProviderBinding(payloadRoot, fingerprint, sourceRoot)
   if (manifest.sourceFingerprint !== fingerprint.sourceFingerprint) throw new Error('stage/source fingerprint mismatch')
   if (manifest.generatedOutputDigest !== fingerprint.generated.outputDigest) throw new Error('stage/generated output mismatch')
   if (manifest.buildIdentity !== fingerprint.build.identity) throw new Error('stage/build identity mismatch')
@@ -209,6 +212,8 @@ function expectedPayloadEntries(payloadRoot) {
   }
   const componentIDs = []
   const paths = [...fixedPayloadPaths]
+  const fingerprint = readJSON(path.join(payloadRoot, 'usr/lib/solovey-ui/SOURCE_FINGERPRINT.json'))
+  if (fingerprint.build.facts.coreProvider) paths.push('usr/lib/solovey-ui/CORE_PROVIDER.json', 'usr/lib/solovey-ui/GO_PANEL_DEPENDENCY_AUTHORITY.json')
   for (const item of installed.components) {
     if (!item || !/^[a-z0-9-]+$/.test(item.id ?? '') || item.delivery !== 'in-process' || item.installed !== true) {
       throw new Error('component installation metadata contains an invalid component')
@@ -409,9 +414,50 @@ function assertBuildInfoBinding(info, fingerprint) {
   if (info.build_identity !== fingerprint.build.identity) throw new Error('BUILD_INFO build identity mismatch')
   if (info.go_toolchain_identity !== fingerprint.build.facts.go?.toolchain?.identity) throw new Error('BUILD_INFO Go toolchain identity mismatch')
   if (info.go_dependency_identity !== fingerprint.build.facts.go?.dependencies?.identity) throw new Error('BUILD_INFO Go dependency identity mismatch')
+  if (fingerprint.build.facts.coreProvider) {
+    if (info.core_provider !== fingerprint.build.facts.coreProvider.id ||
+        info.sing_box !== `v${fingerprint.build.facts.coreProvider.runtimeSemanticVersion}` ||
+        info.go_panel_dependency_identity !== fingerprint.build.facts.go.panelDependencies?.identity) {
+      throw new Error('BUILD_INFO provider or Panel dependency identity mismatch')
+    }
+  }
   if (fingerprint.build.facts.revision && info.commit !== fingerprint.build.facts.revision.commit) throw new Error('BUILD_INFO source revision mismatch')
   const target = fingerprint.build.facts.target
   if (info.target !== `${target.release}-${target.target}-${target.subtarget}-${target.packageArchitecture}`) throw new Error('BUILD_INFO target mismatch')
+}
+
+function assertProviderBinding(payloadRoot, fingerprint, sourceRoot) {
+  const facts = fingerprint.build.facts
+  if (!facts.coreProvider) return // Retain the accepted pre-provider stage contract.
+  const { source, flavor } = resolveProviderSource({ provider: facts.coreProvider.id, ...(sourceRoot ? { repoRoot: sourceRoot } : {}) })
+  if (canonical(source) !== canonical(facts.coreProvider)) throw new Error('stage provider differs from the pinned source')
+  const prefix = path.join(payloadRoot, 'usr/lib/solovey-ui')
+  const dependencies = readJSON(path.join(prefix, 'GO_PANEL_DEPENDENCY_AUTHORITY.json'))
+  const expected = facts.go.panelDependencies
+  if (dependencies.schema !== 'solovey-ui/go-dependency-authority/v1' || !expected ||
+      dependencies.dependencyIdentity !== expected.identity || dependencies.modules?.moduleGraphDigest !== expected.moduleGraphDigest ||
+      dependencies.source?.goMod?.sha256 !== expected.goModSha256 || dependencies.source?.goSum?.sha256 !== expected.goSumSha256 ||
+      dependencies.source.goMod.filename !== flavor.modFile || dependencies.source.goSum.filename !== flavor.modFile.replace(/\.mod$/, '.sum')) {
+    throw new Error('Panel dependency authority differs from provider build facts')
+  }
+  for (const name of [flavor.modFile, flavor.modFile.replace(/\.mod$/, '.sum')]) {
+    const declared = name.endsWith('.mod') ? dependencies.source.goMod : dependencies.source.goSum
+    const input = fingerprint.source.inputs.find(item => item.path === name)
+    if (!input || declared.sha256 !== input.sha256) throw new Error('Panel dependency lock differs from source fingerprint')
+  }
+  const engine = dependencies.modules.records?.filter(item => item.path === 'github.com/sagernet/sing-box') ?? []
+  if (engine.length !== 1 || engine[0].version !== `v${source.runtimeSemanticVersion}` ||
+      engine[0].replacement?.path !== source.module || engine[0].replacement.version !== source.providerVersion ||
+      engine[0].replacement.sum !== source.moduleSum) throw new Error('Panel dependency graph has a different provider source')
+  const observation = readJSON(path.join(prefix, 'CORE_PROVIDER.json'))
+  const binary = fs.readFileSync(path.join(prefix, 'solovey-ui'))
+  if (observation.schema !== 'solovey.panel-artifact-observation/v1' ||
+      observation.contentDigest !== sha256(binary) || observation.size !== binary.length ||
+      canonical(observation.build?.coreProvider) !== canonical(source) || observation.build.platform !== 'linux' ||
+      observation.build.arch !== facts.go.goarch || observation.build.binaryProfile !== 'full' ||
+      canonical(observation.build.buildTags) !== canonical([...facts.go.tags].sort())) {
+    throw new Error('Panel executable observation differs from the selected provider payload')
+  }
 }
 
 function assertGoAuthorityBinding(payloadRoot, fingerprint) {

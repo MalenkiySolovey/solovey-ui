@@ -12,6 +12,10 @@ const { createApkMetadataProof } = await load('openwrt-apk-metadata.mjs')
 const { verifyStageManifest, stageManifestSchema } = await load('openwrt-stage-manifest.mjs')
 const { apkRootfsProofSchema } = await load('openwrt-apk-rootfs.mjs')
 const { packageHostToolProofSchema, packageExecutionEnvironment } = await load('openwrt-package-host-tools.mjs')
+const { resolveProviderSource } = await load('core-provider-build.mjs')
+const coreProvider = process.env.SOLOVEY_UI_CORE_PROVIDER ?? 'sing-box'
+const providerSource = resolveProviderSource({ provider: coreProvider }).source
+const providerSuffix = coreProvider === 'sing-box' ? '' : `-${coreProvider}`
 const profiles = ['x86-64', 'rockchip-armv8']
 const json = file => JSON.parse(fs.readFileSync(file, 'utf8'))
 const digest = file => sha256(fs.readFileSync(file))
@@ -51,6 +55,8 @@ function verify(apk, proofDir, profile) {
   verifySourceFingerprint(fingerprint, process.cwd())
   for (const input of fingerprint.source.inputs) assert.ok(tracked.has(input.path), `untagged source input: ${input.path}`)
   const facts = fingerprint.build.facts
+  if (facts.coreProvider) assert.deepEqual(facts.coreProvider, providerSource, 'OpenWrt selected provider source')
+  else assert.equal(coreProvider, 'sing-box', 'legacy OpenWrt proof cannot qualify Extended')
   assert.equal(facts.revision.commit, productCommit, 'OPENWRT_PRODUCT_SOURCE == RELEASE_PRODUCT_SOURCE')
   if (process.env.SUI_RELEASE_TRUST_ROOTS_B64) {
     assert.equal(facts.releaseTrustRootsSha256, sha256(Buffer.from(process.env.SUI_RELEASE_TRUST_ROOTS_B64)))
@@ -105,7 +111,7 @@ function verify(apk, proofDir, profile) {
     const { sdkIdentity, ...material } = sdk
     assert.equal(sdkIdentity, sha256(canonical(material)))
   }
-  return { profile, productCommit, sourceFingerprint: fingerprint.sourceFingerprint, sha256: hash,
+  return { profile, coreProvider, productCommit, sourceFingerprint: fingerprint.sourceFingerprint, sha256: hash,
     metadata: metadata.metadata, stageIdentity: stage.stageIdentity, rootfsIdentity: rootfs.rootfsIdentity }
 }
 
@@ -116,7 +122,7 @@ if (mode === 'prepare') {
   assert.equal(apks.length, 1)
   const stageDir = path.join(directory, 'canonical-stage')
   verifyStageManifest(json(path.join(stageDir, 'STAGE_MANIFEST.json')), stageDir, process.cwd())
-  const proofDir = path.join(destination, 'proofs', selected)
+  const proofDir = path.join(destination, 'proofs', selected + providerSuffix)
   fs.mkdirSync(proofDir, { recursive: true })
   for (const name of ['SOURCE_FINGERPRINT.json', 'STAGE_MANIFEST.json', 'PACKAGE_HOST_TOOL_AUTHORITY.json',
     'APK_METADATA_PROOF.json', 'APK_ROOTFS_PROOF.json', 'SDK_EXTRACTED_AUTHORITY.json', 'SDK_DERIVATION.json']) {
@@ -124,7 +130,7 @@ if (mode === 'prepare') {
   }
   fs.copyFileSync(path.join(artifacts, `${apks[0]}.info.txt`), path.join(proofDir, 'APK_ADBDUMP.txt'))
   const result = verify(path.join(artifacts, apks[0]), proofDir, selected)
-  const name = `solovey-ui-openwrt-${selected}.apk`
+  const name = `solovey-ui${providerSuffix}-openwrt-${selected}.apk`
   fs.mkdirSync(path.join(destination, 'assets'), { recursive: true })
   fs.copyFileSync(path.join(artifacts, apks[0]), path.join(destination, 'assets', name))
   fs.writeFileSync(path.join(destination, 'assets', `${name}.sha256`), `${result.sha256}  ${name}\n`)
@@ -133,8 +139,8 @@ if (mode === 'prepare') {
   const assets = path.join(directory, 'assets')
   const expected = []
   for (const profile of profiles) {
-    const name = `solovey-ui-openwrt-${profile}.apk`
-    const result = verify(path.join(assets, name), path.join(directory, 'proofs', profile), profile)
+    const name = `solovey-ui${providerSuffix}-openwrt-${profile}.apk`
+    const result = verify(path.join(assets, name), path.join(directory, 'proofs', profile + providerSuffix), profile)
     assert.equal(fs.readFileSync(path.join(assets, `${name}.sha256`), 'utf8'), `${result.sha256}  ${name}\n`)
     expected.push(name, `${name}.sha256`)
     console.log(JSON.stringify(result))

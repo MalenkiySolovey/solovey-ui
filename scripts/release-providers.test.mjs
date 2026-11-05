@@ -13,7 +13,8 @@ test('provider selection covers the existing Linux matrix without changing Offic
   const extended = linuxBuildTargets().filter(target => target.provider !== 'sing-box')
   assert.deepEqual(extended.map(target => target.platform), targets.linux.map(target => target.platform))
   assert.deepEqual(extended.map(({ provider, artifact_suffix, ...target }) => target), targets.linux)
-  for (const surface of ['docker', 'openwrt']) assert.deepEqual(targets.extended[surface], [])
+  assert.deepEqual(targets.extended.docker.filter(arch => !targets.docker.includes(arch)), [])
+  assert.deepEqual(targets.extended.openwrt, ['x86-64', 'rockchip-armv8'])
   assert.equal(linuxAssetNames(legacySchema).length, 15)
   assert.equal(linuxAssetNames(providerSchema).length, 29)
   assert.deepEqual(linuxPanelArtifacts().filter(target => target.provider === 'shtorm-extended').map(target => target.name),

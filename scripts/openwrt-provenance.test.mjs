@@ -161,6 +161,39 @@ test('changed staged binary is rejected', () => {
   assert.throws(() => verifyStageManifest(manifest, stage, source), /stage payload record mismatch/)
 })
 
+test('both provider stages bind their actual Panel observation and separate authenticated lock', () => {
+  for (const provider of ['sing-box', 'shtorm-extended']) {
+    const fixture = makeProviderStage(provider)
+    assert.equal(verifyStageManifest(fixture.manifest, fixture.stage, fixture.source), true)
+    const metadata = stagePath(fixture.stage, 'usr/lib/solovey-ui/BUILD_INFO.txt')
+    fs.writeFileSync(metadata, fs.readFileSync(metadata, 'utf8').replace(`core_provider=${provider}`, 'core_provider=foreign'))
+    fs.rmSync(path.join(fixture.stage, 'STAGE_MANIFEST.json'))
+    assert.throws(() => createStageManifest(fixture.stage, fixture.source), /provider or Panel dependency identity/)
+  }
+})
+
+test('Extended stage cannot relabel an Official observation or accept changed payload bytes', () => {
+  for (const change of ['provider', 'digest', 'lock', 'graph']) {
+    const fixture = makeProviderStage('shtorm-extended')
+    fs.rmSync(path.join(fixture.stage, 'STAGE_MANIFEST.json'))
+    const prefix = 'usr/lib/solovey-ui/'
+    if (change === 'provider' || change === 'digest') {
+      const file = stagePath(fixture.stage, prefix + 'CORE_PROVIDER.json')
+      const observation = JSON.parse(fs.readFileSync(file, 'utf8'))
+      if (change === 'provider') observation.build.coreProvider.id = 'sing-box'
+      else observation.contentDigest = 'f'.repeat(64)
+      fs.writeFileSync(file, JSON.stringify(observation))
+    } else {
+      const file = stagePath(fixture.stage, prefix + 'GO_PANEL_DEPENDENCY_AUTHORITY.json')
+      const proof = JSON.parse(fs.readFileSync(file, 'utf8'))
+      if (change === 'lock') proof.source.goMod.filename = 'go.mod'
+      else proof.modules.records[1].replacement.path = 'github.com/MalenkiySolovey/sing-box'
+      fs.writeFileSync(file, JSON.stringify(proof))
+    }
+    assert.throws(() => createStageManifest(fixture.stage, fixture.source), /Panel (executable observation|dependency)/)
+  }
+})
+
 test('changed component asset is rejected', () => {
   const { source, stage, manifest } = makeStage()
   appendAbsolute(stagePath(stage, 'usr/lib/solovey-ui/components/widget/frontend/assets/widget.js'), 'tamper')
@@ -842,6 +875,45 @@ function makeStage(source = makeSource()) {
   const manifest = createStageManifest(stage, source)
   fs.writeFileSync(path.join(stage, 'STAGE_MANIFEST.json'), `${JSON.stringify(manifest, null, 2)}\n`)
   return { source, stage, facts, fingerprint, manifest }
+}
+
+function makeProviderStage(provider) {
+  const fixture = makeStage()
+  const catalog = JSON.parse(fs.readFileSync(path.join(scriptRoot, 'core/provider/pins.json'), 'utf8'))
+  const flavor = catalog.buildFlavors.find(item => item.id === provider)
+  const source = catalog.sources.find(item => item.id === provider && item.sourceRevision === flavor.sourceRevision)
+  write(fixture.source, 'core/provider/pins.json', JSON.stringify(catalog))
+  write(fixture.source, 'go.extended.mod', 'module example.invalid/extended-fixture\n')
+  write(fixture.source, 'go.sum', 'fixture sum\n')
+  write(fixture.source, 'go.extended.sum', 'extended fixture sum\n')
+  const proof = createDependencyProof([
+    { Path: 'github.com/MalenkiySolovey/solovey-ui', Main: true },
+    { Path: 'github.com/sagernet/sing-box', Version: `v${source.runtimeSemanticVersion}`, Replace: {
+      Path: source.module, Version: source.providerVersion, Sum: source.moduleSum, GoModSum: `h1:${'x'.repeat(43)}=`,
+    } },
+  ], path.join(fixture.source, flavor.modFile), path.join(fixture.source, flavor.modFile.replace(/\.mod$/, '.sum')), 'package')
+  const facts = { ...fixture.facts, coreProvider: source }
+  facts.go.tags = ['with_musl', 'with_naive_outbound', ...flavor.buildTags].sort()
+  facts.go.panelDependencies = {
+    goModSha256: proof.source.goMod.sha256, goSumSha256: proof.source.goSum.sha256,
+    moduleGraphDigest: proof.modules.moduleGraphDigest, identity: proof.dependencyIdentity,
+  }
+  const fingerprint = createSourceFingerprint(fixture.source, facts)
+  const prefix = 'payload/usr/lib/solovey-ui/'
+  write(fixture.stage, prefix + 'SOURCE_FINGERPRINT.json', JSON.stringify(fingerprint))
+  write(fixture.stage, prefix + 'GO_PANEL_DEPENDENCY_AUTHORITY.json', JSON.stringify(proof))
+  const binary = fs.readFileSync(stagePath(fixture.stage, 'usr/lib/solovey-ui/solovey-ui'))
+  write(fixture.stage, prefix + 'CORE_PROVIDER.json', JSON.stringify({
+    schema: 'solovey.panel-artifact-observation/v1', size: binary.length,
+    contentDigest: crypto.createHash('sha256').update(binary).digest('hex'),
+    build: { coreProvider: source, platform: 'linux', arch: 'amd64', binaryProfile: 'full', buildTags: facts.go.tags },
+  }))
+  write(fixture.stage, prefix + 'BUILD_INFO.txt', buildInfo(fingerprint).replace('sing_box=v1.12.0', `sing_box=v${source.runtimeSemanticVersion}`) +
+    `core_provider=${provider}\ngo_panel_dependency_identity=${proof.dependencyIdentity}\n`)
+  fs.rmSync(path.join(fixture.stage, 'STAGE_MANIFEST.json'))
+  const manifest = createStageManifest(fixture.stage, fixture.source)
+  write(fixture.stage, 'STAGE_MANIFEST.json', JSON.stringify(manifest))
+  return { ...fixture, facts, fingerprint, manifest }
 }
 
 function buildFacts() {

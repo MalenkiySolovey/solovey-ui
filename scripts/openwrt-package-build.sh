@@ -19,12 +19,13 @@ trust_roots_file=''
 go_toolchain_archive=''
 temporary_root=''
 target_profile='x86-64'
+core_provider='sing-box'
 
 source "$(dirname "${BASH_SOURCE[0]}")/openwrt-target-profile.sh"
 
 usage() {
 	cat <<'EOF'
-Usage: scripts/openwrt-package-build.sh --sdk-archive <official-sdk.tar.zst> --go-toolchain-archive <go1.26.10.linux-amd64.tar.gz> --source <worktree> --trust-roots-file <public-base64-file> --out <new-output-dir> [--jobs <count>] [--target-profile <x86-64|rockchip-armv8>]
+Usage: scripts/openwrt-package-build.sh --sdk-archive <official-sdk.tar.zst> --go-toolchain-archive <go1.26.10.linux-amd64.tar.gz> --source <worktree> --trust-roots-file <public-base64-file> --out <new-output-dir> [--jobs <count>] [--target-profile <x86-64|rockchip-armv8>] [--core-provider <sing-box|shtorm-extended>]
 
 This entrypoint invokes the source-owned canonical stage producer itself. It
 does not accept caller-supplied product binaries or a caller-selected stage.
@@ -48,12 +49,14 @@ while [[ $# -gt 0 ]]; do
 		--out) out_dir=${2:?--out requires a value}; shift 2 ;;
 		--jobs) jobs=${2:?--jobs requires a value}; shift 2 ;;
 		--target-profile) target_profile=${2:?--target-profile requires a value}; shift 2 ;;
+		--core-provider) core_provider=${2:?--core-provider requires a value}; shift 2 ;;
 		--help|-h) usage; exit 0 ;;
 		*) usage; fail "unknown argument: $1" ;;
 	esac
 done
 
 openwrt_target_profile_load "$target_profile" || exit $?
+[[ "$core_provider" == sing-box || "$core_provider" == shtorm-extended ]] || fail 'unknown core provider'
 
 [[ -n "$sdk_archive" && -n "$go_toolchain_archive" && -n "$source_dir" && -n "$trust_roots_file" && -n "$out_dir" ]] || { usage; exit 2; }
 [[ "$jobs" =~ ^[1-9][0-9]*$ ]] || fail '--jobs must be a positive integer'
@@ -201,7 +204,7 @@ PATH="$stage_tool_path" LC_ALL=C.UTF-8 LANG=C.UTF-8 GOOS=linux GOARCH="$OPENWRT_
 	CC="$stage_cc" CXX="$stage_cxx" CGO_LDFLAGS=-fuse-ld=lld \
 	/usr/bin/bash "$source_dir/scripts/openwrt-stage-build.sh" \
 	--source "$source_dir" --out "$stage_dir" --trust-roots-file "$trust_roots_file" \
-	--go-toolchain-archive "$private_go_archive" --target-profile "$target_profile"
+	--go-toolchain-archive "$private_go_archive" --target-profile "$target_profile" --core-provider "$core_provider"
 "$node_program" "$source_dir/scripts/openwrt-stage-manifest.mjs" verify --stage "$stage_dir" --source-root "$source_dir"
 
 for binary in \
