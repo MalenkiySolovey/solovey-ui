@@ -6,6 +6,7 @@ export interface CapabilityEditState {
  historical?: boolean
  message?: 'capability.waiting' | 'capability.unavailable' | 'capability.historical' | 'capability.unknown' | 'capability.contextUnsupported'
  reason?: string
+ reasonMessage?: 'capability.networkPlannerRequired'
  requiredProvider?: string
 }
 export interface CapabilityChoice { title: string; value: string }
@@ -22,18 +23,23 @@ export function capabilityEditState(snapshot: RuntimeCapabilities | undefined, c
  if (!snapshot) return { allowed: false, historical, message: 'capability.waiting' }
  const fact = runtimeCapability(snapshot, category, type)
  const unavailable = (message: CapabilityEditState['message'], reason = fact?.reason): CapabilityEditState =>
-  ({ allowed: false, historical, message: historical ? 'capability.historical' : message, reason, requiredProvider: fact?.requiredProvider })
+  ({ allowed: false, historical, message: historical ? 'capability.historical' : message, reason, requiredProvider: fact?.requiredProvider,
+   ...(reason === 'NETWORK_PLANNER_BROKER_INTEGRATION_REQUIRED' ? { reasonMessage: 'capability.networkPlannerRequired' as const } : {}) })
  if (!fact?.known) return unavailable('capability.unknown')
  if (!fact.contextSupported) return unavailable('capability.contextUnsupported')
  if (!fact.available) return unavailable('capability.unavailable')
- if (resource && ['inbounds', 'outbounds'].includes(category)) {
-  const side = category === 'inbounds' ? 'in' : 'out'
+ if (resource && ['inbounds', 'outbounds', 'endpoints'].includes(category)) {
+  const side = category === 'inbounds' ? 'in' : category === 'outbounds' ? 'out' : 'endpoint'
   const values = resource as Record<string, unknown>
   const fields = criticalFields?.[`${type}/${side}`]
-  // Realm changes endpoint addressing. Missing facts cannot authorize its use.
-  const critical = type === 'hysteria2' ? ['realm'] : []
+  // Backend field/value facts are authoritative. Identity-sensitive blocks
+  // also fail closed when an older/missing contract supplies no field fact.
+  const fallback = type === 'hysteria2' ? ['realm'] : category === 'endpoints' && ['wireguard', 'warp'].includes(type)
+   ? ['amnezia', 'preallocated_buffers_per_pool', 'disable_pauses'] : []
+  const critical = new Set([...Object.keys(fields ?? {}), ...fallback])
   for (const field of critical) {
-   if (values[field] != null && fields?.[field]?.available !== true) {
+   const rule = fields?.[field]
+   if (values[field] != null && (rule?.available !== true || typeof values[field] === 'string' && rule.unavailableValues?.includes(values[field]))) {
     return { ...unavailable('capability.unavailable', 'PROTOCOL_FIELD_CAPABILITY_UNAVAILABLE'), requiredProvider: fields?.[field]?.requiredProvider }
    }
   }

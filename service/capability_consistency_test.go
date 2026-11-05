@@ -101,7 +101,15 @@ func TestCapabilityConsumersAgreeForEveryAuthoritativeEntityFact(t *testing.T) {
 			continue
 		}
 		t.Run(fact.Category+"/"+fact.Type, func(t *testing.T) {
-			if err := db.Create(row).Error; err != nil {
+			if fact.Category == "services" && fact.Type == "hysteria-realm" && fact.Available {
+				// Realm tokens require the canonical owner even in a capability
+				// fixture; inserting an arbitrary options blob is not valid state.
+				draft, _ := json.Marshal(map[string]any{"type": fact.Type, "tag": tag, "listen": "127.0.0.1",
+					"users": []any{map[string]any{"name": "fixture", "token": map[string]string{"intent": "replace", "value": "capability-realm-token"}, "max_realms": 2}}})
+				if err := db.Transaction(func(tx *gorm.DB) error { _, err := entityservices.Save(tx, "new", draft); return err }); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := db.Create(row).Error; err != nil {
 				t.Fatal(err)
 			}
 			var configs []json.RawMessage

@@ -4,10 +4,81 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/core/registry"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/parser"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 )
+
+func TestEndpointIRNativeGroupsUseCanonicalMembersInClientJSON(t *testing.T) {
+	for _, kind := range []string{"bond", "core-failover", "bandwidth-limiter", "connection-limiter", "rate-limiter", "traffic-limiter"} {
+		t.Run(kind, func(t *testing.T) {
+			leaf := map[string]any{"type": "socks", "tag": "leaf", "server": "edge.example", "server_port": 1080, "username": "fixture", "password": "private-group-fixture"}
+			group := map[string]any{"type": kind, "tag": "proxy"}
+			if kind == "bond" {
+				group["outbounds"] = []any{map[string]any{"outbound": "leaf", "download_ratio": 100, "upload_ratio": 100, "count": 0}}
+			} else if kind == "core-failover" {
+				group["outbounds"], group["strategy"], group["delay"] = []string{"leaf"}, "cycle", "25ms"
+			} else {
+				group["route"] = map[string]any{"final": "leaf"}
+				switch kind {
+				case "bandwidth-limiter":
+					group["strategy"], group["mode"], group["speed"] = "global", "bidirectional", "10MB"
+				case "traffic-limiter":
+					group["strategy"], group["mode"], group["total"] = "global", "bidirectional", "1MB"
+				case "connection-limiter":
+					group["strategy"], group["count"] = "connection", 4
+				case "rate-limiter":
+					group["strategy"], group["count"], group["interval"] = "token-bucket", 10, "1s"
+				}
+			}
+			before := canonical.ObserveOutbound(canonical.FormatSingBox, group, 0)
+			if before.Kind != canonical.KindGroup || len(before.GroupMembers) != 1 || before.GroupMembers[0] != "leaf" {
+				t.Fatal("native members are absent from EndpointIR")
+			}
+			body, err := RenderJSON([]map[string]any{leaf, group}, JSONOptions{})
+			runtimeKind := kind
+			if kind == "core-failover" {
+				runtimeKind = "failover"
+			}
+			if !registry.Resolve("outbounds", runtimeKind).Available() {
+				if err == nil || strings.Contains(err.Error(), "private-group-fixture") {
+					t.Fatal("unavailable provider accepted native group or exposed credentials")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal("native group JSON unavailable", err)
+			}
+			if strings.Count(body, "private-group-fixture") != 1 || strings.Contains(body, `"type": "core-failover"`) {
+				t.Fatal("client group duplicated credentials or retained a Panel-only type")
+			}
+			if err := validation.ValidateConfig([]byte(body)); err != nil {
+				t.Fatal("selected native parser rejected group JSON", err)
+			}
+			parsed, err := parser.ParseSingBoxOutbounds(body)
+			if err != nil || len(parsed) != 2 {
+				t.Fatal("native group cannot be imported", err)
+			}
+			after := canonical.ObserveOutbound(canonical.FormatSingBox, parsed[1], 0)
+			if after.EndpointID != before.EndpointID || after.Kind != canonical.KindGroup {
+				t.Fatal("native group roundtrip changed member, strategy or ratio semantics")
+			}
+			for _, render := range []func() error{
+				func() error { _, err := RenderClash([]map[string]any{leaf, group}, DefaultClashConfig); return err },
+				func() error { _, err := RenderXray([]map[string]any{leaf, group}); return err },
+			} {
+				if err := render(); err == nil || strings.Contains(err.Error(), "private-group-fixture") {
+					t.Fatal("unsupported native group projection succeeded or exposed credentials")
+				}
+			}
+			if canonical.ObserveOutbound(canonical.FormatSingBox, group, 0).EndpointID != before.EndpointID {
+				t.Fatal("delivery mutated canonical group")
+			}
+		})
+	}
+}
 
 func TestEndpointIRRepresentativeSemanticRoundTrips(t *testing.T) {
 	for _, protocol := range []string{"vless", "vmess", "trojan", "anytls"} {

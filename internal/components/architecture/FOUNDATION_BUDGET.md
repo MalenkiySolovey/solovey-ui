@@ -41,7 +41,7 @@ F4 retires the eight broad Runtime type sites in Telegram's component and settin
 Limits: these checks establish stated AST/import boundaries, not a general Go/SQL/TypeScript dataflow proof. Wrappers, dynamic SQL, indirect function values, arbitrary Node schema names and runtime effective policy still require owner review and behavioral tests. New Root RPC contracts must retain closed typed verbs; preserving a field list cannot prove their implementation safe. R1 observations remain useful review input outside these reliable bounds.
 
 R3 B3 reviews exactly the existing `componenthost/health.Registry.Check` worker
-site, replacing digest `041c73a6…` with `109e493e…`; the worker budget count is
+site, replacing digest `041c73a6Р Р†Р вЂљР’В¦` with `109e493eР Р†Р вЂљР’В¦`; the worker budget count is
 unchanged. It retains the five-second caller deadline, buffered result and panic
 closure, adds a fixed registry-wide 256-slot admission bound, releases the slot
 only when the checker actually exits, and rejects a result after registration
@@ -53,7 +53,7 @@ the legacy budget is not regenerated or expanded.
 
 Current B3 CI exposed the existing web serving worker dereferencing a field
 cleared by immediate Stop. Its exact `web.Server.Start` worker is reviewed from
-`d712a8a6…` to `98ed5edf…`: it captures the initialized HTTP server and listener,
+`d712a8a6Р Р†Р вЂљР’В¦` to `98ed5edfР Р†Р вЂљР’В¦`: it captures the initialized HTTP server and listener,
 closes an owner completion channel on exit, and clears readiness before closing
 that channel. Stop joins it within its existing 30-second shutdown context
 before clearing/reusing fields. Timeout retains owner state and closes the
@@ -270,3 +270,47 @@ bookkeeping, not another scheduler or health authority. These two exact launch
 digests are reviewed; ticker and unrelated R1 inventory entries are unchanged.
 
 The reviewed source-health refresh closure retains the Host-owned OutboundHTTP port added by download detours. Its lifetime remains the existing Component worker; the port does not introduce another runtime or download scheduler.
+
+R7 explicit all-down policy reviews `AllDownPolicyDirect` and the changed
+`failoverOptions.finalChoice`, `finalTag` and `validateFailoverFinal` sites.
+Outbounds remains the sole persisted policy owner and the existing failover
+manager consumes that view; there is no second selector, worker or Direct
+runtime owner. New UI-created groups explicitly choose hold_current by default.
+Block uses the existing reject support, direct is an explicit operator choice,
+and omitted policy preserves the accepted legacy contract. Focused owner/cron
+and formats suites plus both Classic/Nexus save/edit/generated-policy workflows
+prove these choices and recovery. The exact reviewed AST digests and their
+actual multiplicities replace the changed sites; the R1 base and unrelated
+allowances remain fixed. This admits explicit product policy, not an implicit
+fallback or a regenerated legacy inventory. The same slice reviews ValidateEndpointProjection at 996e2d05...: client formats that cannot represent Panel probe/all-down policy reject it explicitly. Existing Direct/group treatment and route selection remain unchanged; subscription delivery does not silently discard this policy.
+
+R7 native group delivery reviews the changed parseSingBoxConfigOutbounds
+site at 4ac1f3ad: the existing subscription parser still drops Direct/block/DNS
+support rows, then canonical Outbounds composition converts representable
+native group members to stable references and rejects inline peers requiring
+explicit mapping. It creates no parser, credential or runtime authority.
+Existing format/EndpointIR/remote-source suites prove identity, preserved
+credentials and explicit unsupported-format diagnostics. Only this changed
+AST digest is replaced; unrelated allowances and the R1 base remain fixed.
+
+R7 native limiter registration reviews outboundDeclarations at 47ce0452 and
+scanOutboundRowsForTag at 28df95e9. The selected provider registry owns four
+available types; Outbounds owns their static policies and existing canonical
+route.final/rules/rule-set dependencies. Final references are eager and cycle
+checked through the existing owner; these are no hidden Direct fallbacks.
+The foreign manager strategy stays unavailable and preserved by capability
+value facts. CoreRuntime's existing outbound dial port owns admitted metadata
+and the generation context until connection Close; caller cancellation bounds
+setup only. Existing runtime TCP/UDP/restart, candidate transactions, IR and
+editor suites prove these changes. No new worker, persistent quota owner or
+privilege is introduced; only changed exact AST sites are reviewed.
+
+R7 native Parser import reviews parseSingBoxConfigOutbounds at 50df18ce.
+The canonical URI parser expands a wrapper before import preview; the tag and
+explicit native DialerOptions are retained, while unknown/invalid wrapper fields
+require explicit mapping with a private constant diagnostic. The existing
+utility Direct/block/DNS filtering remains unchanged. Outbounds/EndpointIR
+and SecretRef keep their existing ownership; there is no runtime Parser
+resource, raw-link credential owner, additional scheduler or default fallback.
+Existing parser/URI/format/source suites cover conversion and rejection. Only
+this changed AST digest replaces its predecessor.

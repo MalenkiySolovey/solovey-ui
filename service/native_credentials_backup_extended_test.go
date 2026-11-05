@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"strconv"
@@ -21,6 +22,7 @@ import (
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	backupenvelope "github.com/MalenkiySolovey/solovey-ui/internal/backup/envelope"
 	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
+	clientdevices "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients/devices"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
 	entityendpoints "github.com/MalenkiySolovey/solovey-ui/internal/entities/endpoints"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
@@ -101,6 +103,24 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		return row.Value
 	}
 	db := openFresh(sourceDir)
+	// The User remains the sole device/grant/credential owner across archive
+	// restoration. The Endpoint owns only its serving identity and pool policy.
+	wireguardKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))
+	headerKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{8}, 32))
+	wireguardDraft, _ := json.Marshal(map[string]any{
+		"type": "wireguard", "tag": "archive-managed-awg", "private_key": wireguardKey,
+		"listen_port": 23474, "address": []string{"10.79.0.1/29"}, "preallocated_buffers_per_pool": 512,
+		"amnezia": map[string]any{"h1": 123, "h2": "200-300", "h3": 400, "h4": "500-600", "s1": 16, "s2": 16, "s3": 16, "s4": 16,
+			"header_protection_key": map[string]string{"intent": "replace", "value": headerKey}},
+		"ext": map[string]any{"managed": true, "defaultDeviceLimit": 2, "publicEndpoint": "vpn.example:51820", "dns": []string{}},
+	})
+	if err := db.Transaction(func(tx *gorm.DB) error { _, err := entityendpoints.Save(tx, "new", wireguardDraft, nil); return err }); err != nil {
+		t.Fatal("managed AWG archive fixture failed", err)
+	}
+	var wireguard model.Endpoint
+	if err := db.Where("tag = ?", "archive-managed-awg").First(&wireguard).Error; err != nil {
+		t.Fatal(err)
+	}
 	const endpointPassword = "private-openconnect-archive-canary"
 	if registry.Resolve("endpoints", "openconnect").Available() {
 		raw, _ := json.Marshal(map[string]any{"type": "openconnect", "tag": "archive-vpn", "server": "https://192.0.2.1", "password": map[string]string{"intent": "replace", "value": endpointPassword}})
@@ -246,6 +266,33 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 	if err := db.Where("name = ?", client.Name).First(&client).Error; err != nil {
 		t.Fatal(err)
 	}
+	for _, request := range []clientdevices.Request{
+		{ClientID: client.Id, EndpointID: wireguard.Id, Operation: "grant"},
+		{ClientID: client.Id, EndpointID: wireguard.Id, Operation: "create", Name: "archive-phone", RequestKey: "archive-device-create"},
+	} {
+		if err := db.Transaction(func(tx *gorm.DB) error {
+			_, err := clientdevices.Mutate(tx, request, entityendpoints.ManagedDevicePolicy, time.Now().Unix())
+			return err
+		}); err != nil {
+			t.Fatal("managed AWG User archive fixture failed", err)
+		}
+	}
+	client, deviceState, err := clientdevices.Load(db, client.Id)
+	if err != nil || len(deviceState.Devices) != 1 || len(deviceState.Grants) != 1 {
+		t.Fatal("managed AWG archive lost device/grant state", err)
+	}
+	device := deviceState.Devices[0]
+	deviceConfig, err := entityendpoints.DevicePeerConfig(db, client.Id, device.ID, "fixture.invalid")
+	if err != nil {
+		t.Fatal("managed AWG private archive delivery failed", err)
+	}
+	var devicePrivate, devicePreshared string
+	if err := clientdevices.WithPrivateKeys(ctx, db, client.Id, device.ID, time.Now().Unix(), func(_ clientdevices.Info, private, preshared []byte) error {
+		devicePrivate, devicePreshared = string(private), string(preshared)
+		return nil
+	}); err != nil {
+		t.Fatal("managed AWG archive credential access failed", err)
+	}
 	var stored map[string]json.RawMessage
 	if json.Unmarshal(client.Config, &stored) != nil {
 		t.Fatal("stored owner fields are invalid")
@@ -273,6 +320,19 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		projection, err := NewSingBoxConfigBuilder(nil).BuildCandidateProjectionFromDB(candidate, "", false)
 		if err != nil || singboxvalidation.ValidateConfig(projection.Config) != nil {
 			t.Fatal("native archived candidate failed the exact provider check", err)
+		}
+		restoredDeviceConfig, err := entityendpoints.DevicePeerConfig(candidate, client.Id, device.ID, "fixture.invalid")
+		if err != nil || restoredDeviceConfig != deviceConfig {
+			t.Fatal("archive changed managed AWG device identity, address or private configuration", err)
+		}
+		if !bytes.Contains(projection.Config, []byte(device.PublicKey)) || !bytes.Contains(projection.Config, []byte(headerKey)) {
+			t.Fatal("archive lost managed AWG serving or peer projection")
+		}
+		_, restoredDevices, err := clientdevices.Load(candidate, client.Id)
+		beforeDevices, _ := json.Marshal(deviceState)
+		afterDevices, _ := json.Marshal(restoredDevices)
+		if err != nil || !bytes.Equal(beforeDevices, afterDevices) {
+			t.Fatal("archive changed managed AWG device/grant ciphertext or stable identity", err)
 		}
 		for kind, password := range map[string]string{"openconnect": endpointPassword, "openvpn-client": openVPNPassword} {
 			if registry.Resolve("endpoints", kind).Available() {
@@ -462,6 +522,9 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 	}
 	if bytes.Contains(archive, []byte(endpointPassword)) || bytes.Contains(archive, []byte(openVPNPassword)) {
 		t.Fatal("private archive persisted endpoint plaintext")
+	}
+	if bytes.Contains(archive, []byte(headerKey)) || bytes.Contains(archive, []byte(devicePrivate)) || bytes.Contains(archive, []byte(devicePreshared)) {
+		t.Fatal("private archive persisted managed AWG delivery plaintext")
 	}
 	for _, password := range passwords {
 		if bytes.Contains(archive, []byte(password)) {

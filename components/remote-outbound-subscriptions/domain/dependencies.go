@@ -77,6 +77,11 @@ func ExpandConnectionsWithGroupDependencies(tx *gorm.DB, connections []RemoteOut
 			seen[connection.Id] = struct{}{}
 			result = append(result, connection)
 		}
+	}
+	// Process appended groups too: native groups may borrow other groups. The
+	// identity set bounds cycles; the canonical owner validates their semantics.
+	for index := 0; index < len(result); index++ {
+		connection := result[index]
 		if !remoteConnectionIsGroup(connection) {
 			continue
 		}
@@ -221,30 +226,8 @@ func groupMemberRefs(connection RemoteOutboundConnection) []string {
 	if err := json.Unmarshal(connection.Options, &raw); err != nil {
 		return nil
 	}
-	return stringMemberList(raw["outbounds"])
-}
-
-func stringMemberList(value any) []string {
-	switch typed := value.(type) {
-	case []string:
-		result := make([]string, 0, len(typed))
-		for _, item := range typed {
-			if trimmed := strings.TrimSpace(item); trimmed != "" {
-				result = append(result, trimmed)
-			}
-		}
-		return result
-	case []any:
-		result := make([]string, 0, len(typed))
-		for _, item := range typed {
-			if trimmed := strings.TrimSpace(fmt.Sprint(item)); trimmed != "" && trimmed != "<nil>" {
-				result = append(result, trimmed)
-			}
-		}
-		return result
-	default:
-		return nil
-	}
+	raw["type"] = connection.Type
+	return subcanonical.ObserveOutbound(subcanonical.FormatSingBox, raw, 0).GroupMembers
 }
 
 func connectionMatchesMemberRef(connection RemoteOutboundConnection, ref string) bool {

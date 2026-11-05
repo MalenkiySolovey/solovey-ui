@@ -10,6 +10,35 @@ const snapshot: RuntimeCapabilities = {
  ],
 }
 describe('capability editor projection',()=>{
+ it('keeps Bridge inactive and inspectable until canonical network integration exists',()=>{
+  const current=structuredClone(snapshot)
+  current.facts.push({category:'outbounds',type:'bridge',runtimeType:'bridge',known:true,contextSupported:true,registered:false,compiled:false,available:false,reason:'NETWORK_PLANNER_BROKER_INTEGRATION_REQUIRED'})
+  const resource={interface:'br-preserved',iproute2_table_index:123,future:{retained:true}}
+  const before=structuredClone(resource)
+  expect(capabilityTypeChoices(current,'outbounds',{Direct:'direct',Bridge:'bridge'}).map(choice=>choice.value)).toEqual(['direct'])
+  expect(capabilityEditState(current,'outbounds','bridge','bridge',undefined,undefined,resource)).toMatchObject({allowed:false,historical:true,message:'capability.historical',reasonMessage:'capability.networkPlannerRequired'})
+  expect(resource).toEqual(before)
+ })
+ it('uses backend value facts to preserve unavailable manager state as history',()=>{
+  const supporting=structuredClone(snapshot)
+  supporting.facts.push({...supporting.facts[0],type:'traffic-limiter',runtimeType:'traffic-limiter'})
+  const fields={'traffic-limiter/out':{strategy:{available:true,unavailableValues:['manager']}}}
+  const resource={strategy:'manager',future:{value:'9007199254740993'}}
+  const before=JSON.stringify(resource)
+  expect(capabilityEditState(supporting,'outbounds','traffic-limiter','traffic-limiter',undefined,undefined,resource,fields)).toMatchObject({allowed:false,historical:true,message:'capability.historical'})
+  expect(capabilityEditState(supporting,'outbounds','traffic-limiter','',undefined,undefined,{strategy:'global'},fields)).toEqual({allowed:true})
+  expect(JSON.stringify(resource)).toBe(before)
+ })
+ it('keeps saved Amnezia endpoints inspectable and reactivates only with field capabilities',()=>{
+  const resource = { amnezia: { h1: 123, header_protection_key: { present: true }, future: { retained: true } } }
+  const before = structuredClone(resource)
+  const fields = { 'warp/endpoint': { amnezia: { available: false, requiredProvider: 'Shtorm Extended' } } }
+  expect(capabilityEditState(snapshot, 'endpoints', 'warp', 'warp', undefined, undefined, resource, fields)).toMatchObject({ allowed: false, historical: true, requiredProvider: 'Shtorm Extended' })
+  expect(capabilityEditState(snapshot, 'endpoints', 'warp', 'warp', undefined, undefined, resource)).toMatchObject({ allowed: false, historical: true })
+  fields['warp/endpoint'].amnezia.available = true
+  expect(capabilityEditState(snapshot, 'endpoints', 'warp', 'warp', undefined, undefined, resource, fields)).toEqual({ allowed: true })
+  expect(resource).toEqual(before)
+ })
  it('preserves critical protocol history and reactivates it only with supporting facts',()=>{
   const supporting = structuredClone(snapshot)
   supporting.facts.push({ ...supporting.facts[0], type: 'hysteria2', runtimeType: 'hysteria2' })

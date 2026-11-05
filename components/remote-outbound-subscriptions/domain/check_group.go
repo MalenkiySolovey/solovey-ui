@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds/composition"
 	"gorm.io/gorm"
 )
 
@@ -121,8 +122,11 @@ func appendGroupCheckConnection(tx *gorm.DB, connection RemoteOutboundConnection
 	return nil
 }
 func remoteConnectionIsGroup(connection RemoteOutboundConnection) bool {
+	if composition.IsLimiter(connection.Type) {
+		return true
+	}
 	switch connection.Type {
-	case "selector", "urltest", entityoutbounds.FailoverType:
+	case "selector", "urltest", entityoutbounds.FailoverType, "bond", "core-failover":
 		return true
 	default:
 		return false

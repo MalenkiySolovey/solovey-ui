@@ -238,7 +238,7 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 	if err := validateTransportReferences(tx); err != nil {
 		return nil, err
 	}
-	if outbound.Type == FailoverType || composition.IsGroup(outbound.Type) {
+	if outbound.Type == FailoverType || composition.IsGroup(outbound.Type) || composition.IsLimiter(outbound.Type) {
 		return &singboxapply.Change{
 			NeedsRestart:  true,
 			RestartReason: fmt.Sprintf("outbound group %q captures its selected members", outbound.Tag),

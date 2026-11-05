@@ -102,8 +102,8 @@ The separately compiled `shtorm-extended` flavor uses Shtorm
 `v1.14.3-extended-2.7.3`, source
 `d9442d14b19ddd02605bf3ee893a171947038e19`, with runtime semantics v1.14.3.
 Its actual maintained engine is
-`github.com/MalenkiySolovey/sing-box-extended@v0.0.0-20261104100045-442e869e283c`,
-commit `442e869e283ca4af288f08d8b61ed580d3ba07bd`. Its maintained QUIC
+`github.com/MalenkiySolovey/sing-box-extended@v0.0.0-20261104205147-493b451cdac6`,
+commit `493b451cdac67dd69c6c9027729e242674ba81e5`. Its maintained QUIC
 integration uses the same `MalenkiySolovey/sing-quic` repository as Official,
 independently pinned at `9034c2c10c6331aca496fd9f2dc3a1546bc6f61b`.
 `deploy/dependencies/sing-box-extended-integration.json` records exact authority
@@ -112,6 +112,13 @@ changes, tests and upstream removal conditions belong to the owning core
 repositories. The `v0.0.0` pseudo-version prefix reflects a copy without version
 tags and does not change the selected runtime semantic baseline.
 The shared AnyTLS integration retains its separate source identity above.
+
+Extended also selects `github.com/MalenkiySolovey/sing` at
+`954ed9e938c74b69f54557a8e789fed35f9cd870`, based on `shtorm-7/sing`
+`v0.9.7-extended-1.2.1` / `fe045639087fe73d1412b99f09486bbef96433db`,
+under GPL-3.0-or-later. Its isolated cached-packet ownership and atomic TLS
+handshake-publication corrections retain the original authorship and notices.
+Official's Sing dependency is unchanged.
 
 These engine and QUIC sources carry GPL-3.0-or-later notices. Original authorship
 and license bytes remain applicable. The engine's original LICENSE additionally
@@ -161,6 +168,11 @@ Behavior witnesses include `590b08af39537ab4c85441513743c2360bbc187d`,
 `42baef5bed45a9a5b91d728e7e2250b524e4a41b` and
 `87c1fd049aeb2a7d9046656c801a4e643e73099a`. No implementation, tests or
 translations were copied for those independent behavior adaptations.
+The R7 Extended stable behavior reference is `deposist/s-ui-x-extended`
+`v1.1.1` at `af9ae56f024828ece4463014a2f9bc698646ca2d`; the older S-UI-X
+reference above remains historical. R7 keeps Solovey's canonical semantic owners
+and shared Classic/Nexus workflows. It does not select a later beta target.
+
 Earlier networking references v1.13.14/v1.13.18 and sing v0.8.13 belong to
 historical integration; current resolved versions are the module manifest's.
 
@@ -179,6 +191,18 @@ inventory; it does not imply every listed module is linked into every binary.
 
 The three source integrations above include their original license files,
 authorship, exact public source revisions and separately identifiable Git changes.
+Both provider source graphs select the upstream test dependency
+`github.com/zeebo/assert v1.3.0` at
+`263ed52a87854146eb1cb7bbee9cc7fef2c48e29`, which includes its original
+CC0-1.0 grant. The older v1.1.0 module archive omitted that grant. This source
+selection does not add an assertion package to production executables.
 Source-archive identities and dependency checksums accompany release provenance.
 Keep these notices and the applicable license material when redistributing the
 project, its maintained integrations or bundled third-party assets.
+
+The Extended resolved source graph also selects the test-only helper
+`github.com/RyuaNerin/testingutil v0.1.1`, exact upstream tag source
+`f857d1e840479b33b1af7d39eed771d12a1e3737`. Its original 2024 RyuaNerin
+MIT grant is included in that module archive and the dependency notices.
+The earlier v0.1.0 archive contains no grant and is not the selected source.
+This helper is absent from Panel production imports; Official does not select it.

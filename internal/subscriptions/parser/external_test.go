@@ -6,6 +6,19 @@ import (
 	"testing"
 )
 
+func TestNativeGroupInlinePeersRequireExplicitMapping(t *testing.T) {
+	for _, body := range []string{
+		`{"outbounds":[{"type":"failover","tag":"native","outbounds":[{"type":"socks","server":"private-peer-value","server_port":1080}]}]}`,
+		`{"outbounds":[{"type":"bond","tag":"native","outbounds":[{"outbound":{"type":"selector","outbounds":["a","b"]},"download_ratio":100,"upload_ratio":100}]}]}`,
+		`{"outbounds":[{"type":"failover","outbounds":["leaf",{"type":"selector","outbounds":["leaf"]}]}]}`,
+	} {
+		rows, err := ParseSingBoxOutbounds(body)
+		if err == nil || rows != nil || strings.Contains(err.Error(), "private-peer-value") {
+			t.Fatal("inline native peer was silently flattened or exposed")
+		}
+	}
+}
+
 func TestParseExternalOutboundsKeepsSingBoxGroupsAndFiltersUtilityOutbounds(t *testing.T) {
 	result, err := ParseExternalOutbounds(`{
 		"outbounds": [
@@ -63,5 +76,36 @@ func TestParseSingBoxOutboundsIgnoresXrayStyleOutbounds(t *testing.T) {
 	}`)
 	if err == nil || !strings.Contains(err.Error(), "no result") {
 		t.Fatalf("expected no result for xray-style outbounds, got %v", err)
+	}
+}
+
+func TestNativeParserImportUsesCanonicalLinkConversion(t *testing.T) {
+	const link = "vless://f0aa8764-88a4-4d8e-8ca8-24df4d750382@192.0.2.1:443?security=tls&type=ws&path=%2Fprivate-path#link-label"
+	body := `{"outbounds":[{"type":"parser","tag":"stable-reference","link":"` + link + `","detour":"upstream","tcp_fast_open":false,"connect_timeout":"5s"}]}`
+	rows, err := ParseSingBoxOutbounds(body)
+	if err != nil || len(rows) != 1 {
+		t.Fatal("native parser wrapper was not converted", err)
+	}
+	row := rows[0]
+	if row["type"] != "vless" || row["tag"] != "stable-reference" || row["detour"] != "upstream" || row["tcp_fast_open"] != false || row["connect_timeout"] != "5s" {
+		t.Fatal("typed conversion lost identity or explicit dial options")
+	}
+	if _, exists := row["link"]; exists {
+		t.Fatal("opaque URI became an independent runtime credential field")
+	}
+	transport, ok := row["transport"].(map[string]any)
+	if !ok || transport["type"] != "ws" || transport["path"] != "/private-path" {
+		t.Fatal("URI transport fields were lost")
+	}
+	for _, body := range []string{
+		`{"outbounds":[{"type":"parser","link":"private-invalid-canary"}]}`,
+		`{"outbounds":[{"type":"parser","link":"` + link + `","unmapped_future_field":true}]}`,
+		`{"outbounds":[{"type":"parser","link":"` + link + `","connect_timeout":{"private-invalid-canary":true}}]}`,
+		`{"outbounds":[{"type":"parser","link":"` + link + `","tag":7}]}`,
+	} {
+		rows, err := ParseSingBoxOutbounds(body)
+		if err == nil || rows != nil || strings.Contains(err.Error(), "private-invalid-canary") || strings.Contains(err.Error(), link) {
+			t.Fatal("invalid/unmapped native parser input was silently accepted or disclosed")
+		}
 	}
 }

@@ -15,6 +15,58 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestNativeGroupSyncPreservesBondLegsAndMemberReferences(t *testing.T) {
+	for _, kind := range []string{"bond", "core-failover"} {
+		raw := `{"outbounds":["leaf"]}`
+		if kind == "bond" {
+			raw = `{"outbounds":[{"outbound":"leaf","download_ratio":100,"upload_ratio":100,"count":0}]}`
+		}
+		connection := RemoteOutboundConnection{Type: kind, OutboundTag: "ros-group", Options: json.RawMessage(raw)}
+		before := string(connection.Options)
+		if !remoteConnectionIsGroup(connection) || len(groupMemberRefs(connection)) != 1 || groupMemberRefs(connection)[0] != "leaf" {
+			t.Fatal("native group dependency not recognized")
+		}
+		result, err := connectionOutboundConfig(connection, map[string]string{"leaf": "ros-leaf"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var document map[string]any
+		if json.Unmarshal(result, &document) != nil {
+			t.Fatal("invalid source projection")
+		}
+		members := subcanonical.ObserveOutbound(subcanonical.FormatSingBox, document, 0).GroupMembers
+		if len(members) != 1 || members[0] != "ros-leaf" {
+			t.Fatal("native group leg was dropped or not namespaced")
+		}
+		if kind == "bond" {
+			leg := document["outbounds"].([]any)[0].(map[string]any)
+			if leg["download_ratio"] != float64(100) || leg["upload_ratio"] != float64(100) || leg["count"] != float64(0) {
+				t.Fatal("native bond leg options changed")
+			}
+		}
+		if string(connection.Options) != before {
+			t.Fatal("source projection mutated captured state")
+		}
+	}
+	unknown := rewriteOutboundTagList([]any{17, map[string]any{"outbound": "leaf", "future_field": false}}, map[string]string{"leaf": "ros-leaf"}).([]any)
+	if len(unknown) != 2 || unknown[0] != 17 || unknown[1].(map[string]any)["future_field"] != false {
+		t.Fatal("unknown source members disappeared before owner validation")
+	}
+	db := newRemoteSyncDB(t)
+	connections := []RemoteOutboundConnection{
+		{SubscriptionId: 1, SourceKey: "outer", Name: "outer", Type: "bond", OutboundTag: "ros-outer", Options: json.RawMessage(`{"outbounds":[{"outbound":"middle","download_ratio":100,"upload_ratio":100}]}`)},
+		{SubscriptionId: 1, SourceKey: "middle", Name: "middle", Type: "core-failover", OutboundTag: "ros-middle", Options: json.RawMessage(`{"outbounds":["leaf"]}`)},
+		{SubscriptionId: 1, SourceKey: "leaf", Name: "leaf", Type: "socks", OutboundTag: "ros-leaf", Options: json.RawMessage(`{"server":"edge.example","server_port":1080}`)},
+	}
+	if err := db.Create(&connections).Error; err != nil {
+		t.Fatal(err)
+	}
+	expanded, err := ExpandConnectionsWithGroupDependencies(db, connections[:1])
+	if err != nil || len(expanded) != 3 || expanded[2].Id != connections[2].Id {
+		t.Fatal("nested native group delivery omitted its canonical leaf", err)
+	}
+}
+
 func newRemoteSyncDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})

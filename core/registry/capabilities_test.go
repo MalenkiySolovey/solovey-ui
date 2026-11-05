@@ -6,6 +6,9 @@ import (
 )
 
 func TestCapabilityRegistrationsAndCompiledImplementations(t *testing.T) {
+	if fact := Resolve("outbounds", "bridge"); fact.Available() || fact.Registered || fact.Compiled || fact.SupportedByProduct || fact.Reason != "NETWORK_PLANNER_BROKER_INTEGRATION_REQUIRED" {
+		t.Fatalf("Bridge must stay inactive without its canonical network broker integration: %+v", fact)
+	}
 	seen := map[string]bool{}
 	for _, fact := range Facts() {
 		key := fact.Category + ":" + fact.Type
@@ -40,6 +43,12 @@ func TestCapabilityRegistrationsAndCompiledImplementations(t *testing.T) {
 	for kind, compiled := range map[string]bool{"mieru": supportsMieruOutbound, "trusttunnel": supportsTrustTunnelOutbound, "sudoku": supportsSudokuOutbound, "masque": supportsMASQUEOutbound, "bond": supportsNativeOutboundGroups, "failover": supportsNativeOutboundGroups} {
 		if fact := Resolve("outbounds", kind); !fact.Known || fact.Compiled != compiled || fact.Registered != compiled || fact.AuthenticatedUsers || fact.BuildTag == "" {
 			t.Fatalf("native outbound serving capability: %+v", fact)
+		}
+	}
+	for _, kind := range []string{"bandwidth-limiter", "connection-limiter", "rate-limiter", "traffic-limiter"} {
+		fact := Resolve("outbounds", kind)
+		if !fact.Known || fact.Available() != supportsNativeLimiters || fact.Compiled != supportsNativeLimiters || fact.Registered != supportsNativeLimiters {
+			t.Fatalf("native limiter capability: %+v", fact)
 		}
 	}
 	for kind, compiled := range map[string]bool{"mieru": supportsMieruInbound, "trusttunnel": supportsTrustTunnelInbound} {

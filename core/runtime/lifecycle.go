@@ -106,6 +106,7 @@ func (c *Core) StartWithBindings(sbConfig []byte, bindings []inboundidentity.Bin
 	c.outboundManager = instance.Outbound()
 	c.serviceManager = instance.Service()
 	c.endpointManager = instance.Endpoint()
+	c.endpointRevisions = make(map[string]uint64)
 	c.router = instance.Router()
 	c.factory = instance.LogFactory()
 	c.statsTracker = instance.StatsTracker()

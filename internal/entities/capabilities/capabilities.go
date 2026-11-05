@@ -22,6 +22,7 @@ type Fact struct {
 }
 
 type Snapshot struct {
+	WireGuardDevices    bool                  `json:"wireGuardDevices"`
 	Schema              string                `json:"schema"`
 	ComponentProfile    string                `json:"componentProfile"`
 	Facts               []Fact                `json:"facts"`
@@ -74,7 +75,7 @@ func Current() Snapshot {
 }
 
 func CurrentWithEnvironment(environment Environment) Snapshot {
-	result := Snapshot{Schema: Schema, ComponentProfile: profile.Binary, Facts: []Fact{}, Provider: coreprovider.Current(), MulticastInterfaces: environment.MulticastNames()}
+	result := Snapshot{Schema: Schema, ComponentProfile: profile.Binary, Facts: []Fact{}, Provider: coreprovider.Current(), MulticastInterfaces: environment.MulticastNames(), WireGuardDevices: registry.WireGuardDeviceManagementAvailable()}
 	for _, fact := range registry.Facts() {
 		if entitytypes.IsRuntimeOnly(fact.Category, fact.Type) {
 			continue

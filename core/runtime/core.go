@@ -35,6 +35,7 @@ type Core struct {
 	connTracker       *tracker.ConnTracker
 	managerGeneration uint64
 	effectiveInbounds map[string]InboundRuntimeRecord
+	endpointRevisions map[string]uint64
 	probeHealth       recentProbeHealth
 	privateAPI        *privateAPI
 	prepareAPI        func(context.Context, *option.Options) (context.Context, *privateAPI, error)

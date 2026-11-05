@@ -3,6 +3,7 @@ package outbounds
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
@@ -26,6 +27,53 @@ func validateNativeGroupCandidate(db *gorm.DB, candidate model.Outbound) error {
 	}
 	if !replaced {
 		rows = append(rows, candidate)
+	}
+	if composition.IsLimiter(candidate.Type) {
+		var fields struct {
+			Strategy string
+			Route    struct{ Final string }
+			Users    []struct{ Name, Strategy string }
+		}
+		if json.Unmarshal(candidate.Options, &fields) != nil || fields.Route.Final == "" {
+			return fmt.Errorf("OUTBOUND_LIMITER_ROUTE_INVALID")
+		}
+		// The foreign manager strategy belongs to its separate management plane;
+		// Solovey Users/quotas remain the only live account authority.
+		if fields.Strategy == "manager" {
+			return fmt.Errorf("OUTBOUND_LIMITER_MANAGER_UNAVAILABLE")
+		}
+		if fields.Strategy == "users" {
+			if len(fields.Users) == 0 {
+				return fmt.Errorf("OUTBOUND_LIMITER_USERS_INVALID")
+			}
+			names := map[string]bool{}
+			for _, user := range fields.Users {
+				if strings.TrimSpace(user.Name) == "" || names[user.Name] || user.Strategy == "manager" || user.Strategy == "users" {
+					return fmt.Errorf("OUTBOUND_LIMITER_USERS_INVALID")
+				}
+				names[user.Name] = true
+			}
+		}
+		refs, err := composition.LimiterReferences(candidate.Options)
+		if err != nil {
+			return err
+		}
+		known := map[string]bool{}
+		for _, row := range rows {
+			known[row.Tag] = true
+		}
+		var endpoints []model.Endpoint
+		if err := db.Select("tag").Find(&endpoints).Error; err != nil {
+			return err
+		}
+		for _, row := range endpoints {
+			known[row.Tag] = true
+		}
+		for _, tag := range refs {
+			if !known[tag] {
+				return fmt.Errorf("OUTBOUND_LIMITER_MEMBER_MISSING")
+			}
+		}
 	}
 	if _, err := composition.Build(rows); err != nil {
 		return err
@@ -78,42 +126,5 @@ func (v runtimeOutboundView) render(db *gorm.DB, row model.Outbound) (json.RawMe
 	if err != nil {
 		return nil, err
 	}
-	if !composition.IsGroup(row.Type) {
-		return raw, nil
-	}
-	var children []json.RawMessage
-	for _, member := range v.groups.Members(row.Tag) {
-		child, err := json.Marshal(struct {
-			Type      string   `json:"type"`
-			Outbounds []string `json:"outbounds"`
-			Default   string   `json:"default"`
-		}{"selector", []string{member.Outbound}, member.Outbound})
-		if err != nil {
-			return nil, err
-		}
-		if row.Type == "bond" {
-			child, err = json.Marshal(struct {
-				Outbound      json.RawMessage `json:"outbound"`
-				DownloadRatio int             `json:"download_ratio"`
-				UploadRatio   int             `json:"upload_ratio"`
-				Count         int             `json:"count,omitempty"`
-			}{child, member.DownloadRatio, member.UploadRatio, member.Count})
-			if err != nil {
-				return nil, err
-			}
-		}
-		children = append(children, child)
-	}
-	var config map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &config); err != nil {
-		return nil, err
-	}
-	if row.Type == "core-failover" {
-		config["type"] = json.RawMessage(`"failover"`)
-	}
-	config["outbounds"], err = json.Marshal(children)
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(config)
+	return v.groups.Render(row.Type, row.Tag, raw)
 }

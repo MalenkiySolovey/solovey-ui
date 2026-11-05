@@ -29,9 +29,18 @@ export default {
     "reverseMapping": "Обратное отображение",
     "domainStrategy": "Стратегия домена",
     "local": {
+      "semantics": "Локальный DNS следует системным настройкам и может использовать multicast для локальных и link-local имён. Если политика требует unicast, выберите явный DNS-сервер.",
+      "neighborDomains": "Предпочтительные соседние домены",
       "preferGo": "Предпочитать Go"
     },
     "rule": {
+      "unavailableAction": "Правило сохранено, но его действие или параметры недоступны в текущем runtime. Его можно просмотреть, экспортировать, удалить или отредактировать после возврата к поддерживающему runtime.",
+      "responseContext": "Контекст ответа",
+      "earlierEvaluateTag": "Тег предыдущего evaluate",
+      "response_answer": "Записи ответа (Answer)",
+      "response_ns": "Серверы имён ответа (Authority)",
+      "response_extra": "Дополнительные записи ответа (Additional)",
+      "responseModes": { "absent": "Без условия по ответу", "disabled": "Явно отключено", "anonymous": "Ответ без тега", "tagged": "Ответ с тегом" },
       "additionalConditions": "Дополнительные условия",
       "removeCondition": "Удалить условие «{field}»",
       "preservedCondition": "Условие сохранено, но недоступно в текущем runtime. Его значение здесь не редактируется.",
@@ -52,6 +61,13 @@ export default {
       "ipAcceptAny": "Принимать пустой IP",
       "rulesetAcceptEmpty": "Принимать пустой IP CIDR набора правил",
       "action": {
+        "evaluate": "Запросить и сохранить ответ",
+        "respond": "Вернуть сохранённый ответ",
+        "race": "Выполнять параллельно со следующими правилами",
+        "evaluateTag": "Тег ответа evaluate",
+        "speculative": "Предварительное выполнение запроса",
+        "timeout": "Таймаут запроса",
+        "disableOptimisticCache": "Отключить оптимистичный кэш",
         "title": "Действие",
         "route": "Маршрутизация",
         "routeOptions": "Параметры маршрутизации",

@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds/composition"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
@@ -60,7 +62,11 @@ func RenderJSON(outbounds []map[string]interface{}, options JSONOptions) (string
 	if err := json.Unmarshal([]byte(defaultJson), &jsonConfig); err != nil {
 		return "", err
 	}
-	jsonConfig["outbounds"] = jsonRuntimeOutbounds(outbounds)
+	runtimeOutbounds, err := jsonRuntimeOutbounds(outbounds)
+	if err != nil {
+		return "", err
+	}
+	jsonConfig["outbounds"] = runtimeOutbounds
 	if err := ApplyJSONOptions(&jsonConfig, options); err != nil {
 		return "", err
 	}
@@ -86,15 +92,46 @@ func RenderJSON(outbounds []map[string]interface{}, options JSONOptions) (string
 	return string(result), nil
 }
 
-func jsonRuntimeOutbounds(outbounds []map[string]interface{}) []map[string]interface{} {
+func jsonRuntimeOutbounds(outbounds []map[string]interface{}) ([]map[string]interface{}, error) {
 	result := make([]map[string]interface{}, 0, len(outbounds))
+	rows := make([]model.Outbound, 0, len(outbounds))
+	native := false
 	for _, outbound := range outbounds {
+		raw, err := json.Marshal(outbound)
+		if err != nil {
+			return nil, err
+		}
+		kind := asString(outbound["type"])
+		native = native || composition.IsGroup(kind)
+		rows = append(rows, model.Outbound{Type: kind, Tag: asString(outbound["tag"]), Options: raw})
+	}
+	var groups composition.Index
+	if native {
+		var err error
+		groups, err = composition.Build(rows)
+		if err != nil {
+			return nil, err
+		}
+	}
+	for position, outbound := range outbounds {
 		if outbound == nil {
+			continue
+		}
+		if composition.IsGroup(rows[position].Type) {
+			raw, err := groups.Render(rows[position].Type, rows[position].Tag, rows[position].Options)
+			if err != nil {
+				return nil, err
+			}
+			var rendered map[string]any
+			if err := json.Unmarshal(raw, &rendered); err != nil {
+				return nil, err
+			}
+			result = append(result, rendered)
 			continue
 		}
 		result = append(result, jsonRuntimeOutbound(outbound))
 	}
-	return result
+	return result, nil
 }
 
 func jsonRuntimeOutbound(outbound map[string]interface{}) map[string]interface{} {

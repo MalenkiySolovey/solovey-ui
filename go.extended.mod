@@ -3,6 +3,12 @@ module github.com/MalenkiySolovey/solovey-ui
 go 1.26.10
 
 require (
+	// v1.1.0 omits its license; select the upstream CC0 source grant.
+	github.com/zeebo/assert v1.3.0 // indirect
+	github.com/redis/go-redis/v9 v9.8.0 // indirect
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/AliRizaAynaci/gorl/v2 v2.2.0 // indirect
 	github.com/coder/websocket v1.8.14
 	github.com/gin-contrib/gzip v1.2.6
 	github.com/gin-contrib/sessions v1.1.0
@@ -31,6 +37,8 @@ require (
 	github.com/AdguardTeam/golibs v0.32.7 // indirect
 	github.com/Diniboy1123/connect-ip-go v0.0.0-20260409225322-8d7bb0a858a2 // indirect
 	github.com/RyuaNerin/go-krypto v1.3.0 // indirect
+	// v0.1.0 has no source license; use the first upstream MIT-licensed tag.
+	github.com/RyuaNerin/testingutil v0.1.1 // indirect
 	github.com/ameshkov/dnscrypt/v2 v2.4.0 // indirect
 	github.com/ameshkov/dnsstamps v1.0.3 // indirect
 	github.com/anchore/go-lzo v0.1.0 // indirect
@@ -251,7 +259,7 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-replace github.com/sagernet/sing-box => github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261104100045-442e869e283c
+replace github.com/sagernet/sing-box => github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261104205147-493b451cdac6
 
 replace github.com/anytls/sing-anytls => github.com/MalenkiySolovey/sing-anytls v0.0.12-0.20261011014237-8f440972b353
 
@@ -269,7 +277,7 @@ replace github.com/Diniboy1123/connect-ip-go => github.com/shtorm-7/connect-ip-g
 
 replace github.com/shtorm-7/go-cache/v2 => github.com/shtorm-7/go-cache/v2 v2.1.0-extended-1.2.0
 
-replace github.com/sagernet/sing => github.com/shtorm-7/sing v0.9.7-extended-1.2.1
+replace github.com/sagernet/sing => github.com/MalenkiySolovey/sing v0.9.7-extended-1.2.1.0.20261105013128-954ed9e938c7
 
 replace github.com/sagernet/sing-mux => github.com/shtorm-7/sing-mux v0.3.10-extended-1.1.0
 

@@ -20,6 +20,8 @@ export interface RuntimeCapability {
 }
 
 export interface RuntimeCapabilities {
+	/** Selected source exposes the lifecycle-fenced native peer IPC API. */
+	wireGuardDevices?: boolean
   schema: 'solovey-ui/entity-capabilities/v1'
   componentProfile: 'full' | 'minimal'
   facts: RuntimeCapability[]
@@ -35,6 +37,7 @@ export function readRuntimeCapabilities(value: unknown): RuntimeCapabilities | u
       !['full', 'minimal'].includes(String(data.componentProfile)) || !Array.isArray(data.facts)) return undefined
   if (data.provider !== undefined && !readCoreProviderIdentity(data.provider)) return undefined
   const seen = new Set<string>()
+  if (data.wireGuardDevices !== undefined && typeof data.wireGuardDevices !== 'boolean') return undefined
   if (data.multicastInterfaces !== undefined && (!Array.isArray(data.multicastInterfaces) ||
       data.multicastInterfaces.some(name => typeof name !== 'string' || !name) ||
       new Set(data.multicastInterfaces).size !== data.multicastInterfaces.length)) return undefined

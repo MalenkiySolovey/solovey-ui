@@ -110,9 +110,9 @@ func (j *FailoverJob) runGroup(core *coreruntime.Core, group entityoutbounds.Fai
 	j.persistState(group, snapshot)
 	current, _ := j.active(core, group.Tag)
 	fallback := ""
-	if group.FinalTag != "" && !memberListContains(group.Members, group.FinalTag) {
+	if group.FinalTag != "" {
 		fallback = group.FinalTag
-	} else if directTag != "" && !memberListContains(group.Members, directTag) {
+	} else if group.AllDownPolicy == "" && directTag != "" && !memberListContains(group.Members, directTag) {
 		fallback = directTag
 	}
 	decision := failover.SelectMember(failover.DecisionInput{
@@ -121,6 +121,7 @@ func (j *FailoverJob) runGroup(core *coreruntime.Core, group entityoutbounds.Fai
 		Current:        current,
 		Hysteresis:     group.Hysteresis,
 		DirectFallback: fallback,
+		AllDownPolicy:  group.AllDownPolicy,
 	})
 	active := current
 	if decision.ShouldSwitch {

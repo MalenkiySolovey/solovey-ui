@@ -7,6 +7,7 @@ import FormShell from '@/components/nexus/drawers/FormShell.vue'
 import StrictSelect from '@/shared/ui/StrictSelect.vue'
 import ComponentSlot from '@/componentSystem/ComponentSlot.vue'
 import SecretCredentialField from '@/components/fields/SecretCredentialField.vue'
+import ClientDevices from '@/components/ClientDevices.vue'
 import { clientCredentialDraftInvalid, initializeClientCredentialDrafts, managedClientSecretFields, managedCredentialAvailable, serializeClientCredentialDrafts, shuffleManagedClientCredentials } from '@/features/clientCredentialDraft'
 
 const DatePick = defineAsyncComponent(() => import('@/components/fields/DateTime.vue'))
@@ -28,13 +29,15 @@ export default defineComponent({
       ipLimitModes: ['monitor', 'enforce'],
       snapshot: '',
       revealSnell: false,
+      devicesVisible: false,
     }
   },
   methods: {
-    async updateData(id: number) {
-      this.loading = true
+    async updateData(id: number, background = false) {
+      if (!background) this.loading = true
       if (id > 0) {
         const newData = await Data().loadClients(id)
+        if (background && (!this.$props.visible || Number(this.$props.id) !== id)) return
         this.client = createClient(newData)
         this.title = "edit"
         this.clientConfig = this.client.config
@@ -52,7 +55,7 @@ export default defineComponent({
       this.componentLinks = clientLinks.filter(l => !isCoreClientLinkType(l.type))
       this.tab = "t1"
       this.revealSnell = false
-      this.loading = false
+      if (!background) this.loading = false
       this.snapshot = JSON.stringify([this.client, this.clientConfig, this.links, this.extLinks, this.subLinks, this.componentLinks])
     },
     closeModal() {
@@ -111,6 +114,7 @@ export default defineComponent({
     },
   },
   computed: {
+	devicesAvailable(): boolean { return this.$props.id > 0 && (Boolean(this.clientConfig.wireguard) || Data().capabilities?.wireGuardDevices === true) },
     publicRemark: {
       get(): string { return getClientPublicRemark(this.clientConfig) },
       set(value: string) { setClientPublicRemark(this.clientConfig, value ?? '') },
@@ -188,5 +192,5 @@ export default defineComponent({
       this.closeSelectMenus()
     },
   },
-  components: { FormShell, DatePick, StrictSelect, ComponentSlot, SecretCredentialField },
+  components: { FormShell, DatePick, StrictSelect, ComponentSlot, SecretCredentialField, ClientDevices },
 })

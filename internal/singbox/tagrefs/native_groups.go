@@ -32,6 +32,15 @@ func ValidateNativeOutboundGroups(rows []model.Outbound) error {
 		row := byTag[tag]
 		opts := optionsMapOf(row.Options)
 		candidates := make(map[string]bool)
+		if outboundcomposition.IsLimiter(row.Type) {
+			references, err := outboundcomposition.LimiterReferences(row.Options)
+			if err != nil {
+				return err
+			}
+			for _, target := range references {
+				candidates[target] = true
+			}
+		}
 		for _, field := range []string{"detour", "default", "final"} {
 			if value, ok := opts[field].(string); ok {
 				candidates[value] = true
@@ -63,7 +72,7 @@ func ValidateNativeOutboundGroups(rows []model.Outbound) error {
 		return nil
 	}
 	for _, row := range rows {
-		if outboundcomposition.IsGroup(row.Type) {
+		if outboundcomposition.IsGroup(row.Type) || outboundcomposition.IsLimiter(row.Type) {
 			if err := visit(row.Tag, 0); err != nil {
 				return err
 			}

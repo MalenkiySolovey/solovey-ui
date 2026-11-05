@@ -2,6 +2,7 @@
 package netentity
 
 import (
+	"context"
 	"encoding/json"
 
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
@@ -14,6 +15,22 @@ import (
 type EndpointService struct {
 	Core entityendpoints.Core
 	Warp entityendpoints.WarpHooks
+}
+
+type PeerConfig = entityendpoints.PeerConfig
+
+// PeerConfigs admits one finite private export against the active DB generation.
+func (o *EndpointService) PeerConfigs(ctx context.Context, id uint, host string) ([]entityendpoints.PeerConfig, error) {
+	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err != nil {
+		return nil, entityendpoints.ErrPeerConfigUnavailable
+	}
+	defer release()
+	db := dbsqlite.DB()
+	if db == nil {
+		return nil, entityendpoints.ErrPeerConfigUnavailable
+	}
+	return entityendpoints.PeerConfigs(db.WithContext(ctx), id, host)
 }
 
 func (o *EndpointService) GetAll() (*[]map[string]interface{}, error) {

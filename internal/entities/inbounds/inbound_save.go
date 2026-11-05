@@ -108,6 +108,9 @@ func DecodeForSave(tx *gorm.DB, data json.RawMessage) (model.Inbound, error) {
 	if err := inbound.UnmarshalJSON(data); err != nil {
 		return inbound, err
 	}
+	if inbound.Type == "hysteria2" && jsonvalue.StrictObject(data) != nil {
+		return inbound, common.NewError("NATIVE_INBOUND_INPUT_INVALID")
+	}
 	if managedNativeInbound(inbound.Type) || composition.IsGroup(inbound.Type) {
 		if jsonvalue.StrictObject(data) != nil {
 			return inbound, common.NewError("NATIVE_INBOUND_INPUT_INVALID")
@@ -134,6 +137,9 @@ func DecodeForSave(tx *gorm.DB, data json.RawMessage) (model.Inbound, error) {
 				return inbound, common.NewError("NATIVE_INBOUND_OWNED_FIELD: SSH authentication belongs to the existing Users owner")
 			}
 		}
+	}
+	if fact := entitycapabilities.ResolveResource("inbounds", inbound.Type, inbound.Options); !fact.Available {
+		return inbound, &saveeligibility.Rejection{Capability: fact}
 	}
 	if err := entityidentity.ValidateTypeTag(inbound.Type, inbound.Tag); err != nil {
 		return inbound, err

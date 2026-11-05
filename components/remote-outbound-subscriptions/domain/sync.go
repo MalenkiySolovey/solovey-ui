@@ -11,6 +11,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
+	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
 )
@@ -269,6 +270,36 @@ func rewriteOutboundTagReferences(raw map[string]any, tagMap map[string]string) 
 	if value, ok := raw["outbounds"]; ok {
 		raw["outbounds"] = rewriteOutboundTagList(value, tagMap)
 	}
+	if route, ok := raw["route"].(map[string]any); ok {
+		if tag, ok := route["final"].(string); ok {
+			route["final"] = rewriteOutboundTag(tag, tagMap)
+		}
+		var rewriteRules func([]any)
+		rewriteRules = func(rules []any) {
+			for _, item := range rules {
+				if rule, ok := item.(map[string]any); ok {
+					if tag, ok := rule["outbound"].(string); ok {
+						rule["outbound"] = rewriteOutboundTag(tag, tagMap)
+					}
+					if children, ok := rule["rules"].([]any); ok {
+						rewriteRules(children)
+					}
+				}
+			}
+		}
+		if rules, ok := route["rules"].([]any); ok {
+			rewriteRules(rules)
+		}
+		if sets, ok := route["rule_set"].([]any); ok {
+			for _, item := range sets {
+				if set, ok := item.(map[string]any); ok {
+					if tag, ok := set["download_detour"].(string); ok {
+						set["download_detour"] = rewriteOutboundTag(tag, tagMap)
+					}
+				}
+			}
+		}
+	}
 	if value, ok := raw["default"].(string); ok {
 		if rewritten := tagMap[strings.TrimSpace(value)]; rewritten != "" {
 			raw["default"] = rewritten
@@ -284,13 +315,21 @@ func rewriteOutboundTagList(value any, tagMap map[string]string) any {
 		}
 		return rewritten
 	case []any:
-		rewritten := make([]string, 0, len(typed))
+		rewritten := make([]any, 0, len(typed))
 		for _, item := range typed {
-			tag, ok := item.(string)
-			if !ok {
-				continue
+			switch value := item.(type) {
+			case string:
+				rewritten = append(rewritten, rewriteOutboundTag(value, tagMap))
+			case map[string]any:
+				leg := subcanonical.CloneOutbound(value)
+				if tag, ok := leg["outbound"].(string); ok {
+					leg["outbound"] = rewriteOutboundTag(tag, tagMap)
+				}
+				rewritten = append(rewritten, leg)
+			default:
+				// Preserve unknown carriers for the canonical owner's rejection.
+				rewritten = append(rewritten, item)
 			}
-			rewritten = append(rewritten, rewriteOutboundTag(tag, tagMap))
 		}
 		return rewritten
 	default:

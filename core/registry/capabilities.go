@@ -8,11 +8,22 @@ import (
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/util/jsonfields"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-box/protocol/wireguard"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry/facts"
 )
 
 const tailscaleBuildTag = "with_tailscale,with_gvisor"
+
+// Device management needs the selected source's finite peer IPC API. This is
+// a source capability, not a provider-name or OS assumption.
+func WireGuardDeviceManagementAvailable() bool {
+	_, available := any((*wireguard.Endpoint)(nil)).(interface {
+		IpcGet() (string, error)
+		IpcSet(string) error
+	})
+	return available && Resolve("endpoints", "wireguard").Available()
+}
 
 // A declaration keeps implementation eligibility beside its registration.
 // Registered option schemas may exist even when the constructor is a stub.
@@ -77,8 +88,9 @@ func Resolve(category, runtimeType string) Fact {
 }
 
 type ProtocolFieldCapability struct {
-	Available        bool   `json:"available"`
-	RequiredProvider string `json:"requiredProvider,omitempty"`
+	Available         bool     `json:"available"`
+	RequiredProvider  string   `json:"requiredProvider,omitempty"`
+	UnavailableValues []string `json:"unavailableValues,omitempty"`
 }
 
 // These optional blocks change endpoint identity/routing. An unavailable block
@@ -87,6 +99,18 @@ func CriticalProtocolFields() map[string]map[string]ProtocolFieldCapability {
 	result := map[string]map[string]ProtocolFieldCapability{}
 	for side, typ := range map[string]reflect.Type{"in": reflect.TypeFor[option.Hysteria2InboundOptions](), "out": reflect.TypeFor[option.Hysteria2OutboundOptions]()} {
 		result["hysteria2/"+side] = map[string]ProtocolFieldCapability{"realm": {Available: slices.Contains(jsonfields.Names(typ, false), "realm"), RequiredProvider: coreprovider.RequiredProviderName("shtorm_extended")}}
+	}
+	// The foreign manager is a separate upstream control plane, not Solovey
+	// Users. Keep imported state preserved and inactive without advertising it.
+	for _, kind := range []string{"bandwidth-limiter", "connection-limiter", "rate-limiter", "traffic-limiter"} {
+		result[kind+"/out"] = map[string]ProtocolFieldCapability{"strategy": {Available: supportsNativeLimiters, UnavailableValues: []string{"manager"}}}
+	}
+	wireguardFields := jsonfields.Names(reflect.TypeFor[option.WireGuardEndpointOptions](), false)
+	for _, kind := range []string{"wireguard", "warp"} {
+		result[kind+"/endpoint"] = map[string]ProtocolFieldCapability{}
+		for _, field := range []string{"amnezia", "preallocated_buffers_per_pool", "disable_pauses"} {
+			result[kind+"/endpoint"][field] = ProtocolFieldCapability{Available: slices.Contains(wireguardFields, field), RequiredProvider: coreprovider.RequiredProviderName("shtorm_extended")}
+		}
 	}
 	return result
 }

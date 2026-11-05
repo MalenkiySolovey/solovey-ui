@@ -1,11 +1,18 @@
 package parser
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"reflect"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds/composition"
+	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/util/jsonfields"
+	"github.com/sagernet/sing-box/option"
 )
 
 type LinkParser func(link string, index int) (*map[string]interface{}, string, error)
@@ -40,6 +47,14 @@ func parseSingBoxConfigOutbounds(data string) ([]map[string]interface{}, error) 
 			continue
 		}
 		outboundType := strings.TrimSpace(stringValue(outboundMap["type"]))
+		if outboundType == "parser" {
+			var err error
+			outboundMap, err = expandParserOutbound(outboundMap)
+			if err != nil {
+				return nil, err
+			}
+			outboundType = stringValue(outboundMap["type"])
+		}
 		if outboundType == "" {
 			continue
 		}
@@ -47,6 +62,14 @@ func parseSingBoxConfigOutbounds(data string) ([]map[string]interface{}, error) 
 		case "direct", "block", "dns":
 			continue
 		default:
+			raw, _ := json.Marshal(outboundMap)
+			canonical, err := composition.CanonicalReferences(outboundType, raw)
+			if err != nil {
+				return nil, err
+			}
+			if err := json.Unmarshal(canonical, &outboundMap); err != nil {
+				return nil, err
+			}
 			result = append(result, outboundMap)
 		}
 	}
@@ -90,4 +113,51 @@ func ParseSingBoxOutbounds(data string) ([]map[string]interface{}, error) {
 		return nil, common.NewError("not a sing-box json subscription")
 	}
 	return parseSingBoxConfigOutbounds(data)
+}
+
+// Parser is import syntax, not a second runtime/credential owner. Resolve it
+// through the existing URI/EndpointIR path before the canonical import preview.
+func expandParserOutbound(wrapper map[string]any) (map[string]any, error) {
+	invalid := errors.New("PARSER_OUTBOUND_REQUIRES_EXPLICIT_MAPPING")
+	link, ok := wrapper["link"].(string)
+	if !ok || strings.TrimSpace(link) == "" {
+		return nil, invalid
+	}
+	allowed := map[string]bool{"type": true, "tag": true, "link": true}
+	for _, name := range jsonfields.Names(reflect.TypeFor[option.DialerOptions](), false) {
+		allowed[name] = true
+	}
+	overrides := make(map[string]any)
+	for field, value := range wrapper {
+		if !allowed[field] || value == nil {
+			return nil, invalid
+		}
+		if field != "type" && field != "tag" && field != "link" {
+			overrides[field] = value
+		}
+	}
+	raw, err := json.Marshal(overrides)
+	if err != nil {
+		return nil, invalid
+	}
+	var typed option.DialerOptions
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&typed) != nil {
+		return nil, invalid
+	}
+	outbound, _, err := suburi.Parse(strings.TrimSpace(link), 0)
+	if err != nil || outbound == nil || stringValue((*outbound)["type"]) == "" {
+		return nil, invalid
+	}
+	for field, value := range overrides {
+		(*outbound)[field] = value
+	}
+	if tag, exists := wrapper["tag"]; exists {
+		if _, ok := tag.(string); !ok {
+			return nil, invalid
+		}
+		(*outbound)["tag"] = tag
+	}
+	return *outbound, nil
 }

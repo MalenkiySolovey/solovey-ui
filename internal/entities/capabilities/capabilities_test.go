@@ -8,6 +8,16 @@ import (
 )
 
 func TestCapabilitySemanticIdentityAndRuntimeContext(t *testing.T) {
+	for _, kind := range []string{"bandwidth-limiter", "connection-limiter", "rate-limiter", "traffic-limiter"} {
+		raw := []byte(`{"strategy":"manager","future":{"value":9007199254740993}}`)
+		before := string(raw)
+		if ResolveResource("outbounds", kind, raw).Available || string(raw) != before {
+			t.Fatal("foreign manager became a live authority or preservation changed")
+		}
+		if ResolveResource("outbounds", kind, []byte(`{"strategy":"global"}`)).Available != Resolve("outbounds", kind).Available {
+			t.Fatal("manager exclusion disabled unrelated supported strategies")
+		}
+	}
 	warp := Resolve("endpoints", "warp")
 	wg := Resolve("endpoints", "wireguard")
 	if !warp.Available || !wg.Available || warp.RuntimeType != wg.RuntimeType || warp.Type != "warp" {
