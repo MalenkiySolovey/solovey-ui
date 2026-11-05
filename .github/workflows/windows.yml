@@ -211,7 +211,6 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $peer = Join-Path $env:RUNNER_TEMP 'qualification-mieru-peer.exe'
-          $env:CGO_ENABLED = '0'
           go build '-mod=readonly' '-modfile=go.extended.mod' -o $peer ./testdata/platform-qualification/mieru-peer.go
           if ($LASTEXITCODE -ne 0) { throw 'Pinned qualification peer build failed' }
           $installed = Join-Path $env:RUNNER_TEMP 'native-installed-panel'
@@ -226,7 +225,7 @@ jobs:
             port = 28812
             extended = (Join-Path $installed 'sui.exe')
             peer = $peer
-            sourceCommit = '${{ inputs.source_commit }}'
+            sourceCommit = (git rev-parse HEAD)
             panelSha256 = (Get-FileHash -LiteralPath (Join-Path $installed 'sui.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
             expectedNativeSha = (Get-FileHash -LiteralPath (Join-Path $installed 'libcronet.dll') -Algorithm SHA256).Hash.ToLowerInvariant()
             env = @{ SUI_DB_FOLDER = (Join-Path $installed 'db') }
