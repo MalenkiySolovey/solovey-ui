@@ -15,6 +15,11 @@ on:
         type: boolean
   workflow_dispatch:
     inputs:
+      source_commit:
+        description: "Exact immutable product SHA for a tagless non-publishing qualification"
+        required: false
+        default: ""
+        type: string
       tag:
         description: "Release tag"
         required: true
@@ -44,8 +49,15 @@ jobs:
           fetch-depth: 1
 
       - name: Validate release tag against source version
+        env:
+          REQUESTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          PREFLIGHT_ONLY: ${{ inputs.preflight_only }}
         run: |
           set -euo pipefail
+          if [ -n "$REQUESTED_SOURCE_COMMIT" ]; then
+            [[ "$REQUESTED_SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]] && [ "$(git rev-parse HEAD)" = "$REQUESTED_SOURCE_COMMIT" ] || { echo 'exact product source SHA is required' >&2; exit 1; }
+            [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] || [ "$PREFLIGHT_ONLY" = true ] || { echo 'tagless manual qualification must not publish' >&2; exit 1; }
+          fi
           VERSION="${RELEASE_TAG_INPUT#v}"
           EXPECTED_VERSION="$(tr -d '\r\n' < config/identity/version)"
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
