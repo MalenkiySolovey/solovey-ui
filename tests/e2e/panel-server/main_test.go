@@ -70,7 +70,7 @@ func TestFullComponentCompositionStarts(t *testing.T) {
 			t.Fatal("component composition did not become ready before its deadline")
 		case <-ticker.C:
 			address, err := os.ReadFile(addressPath)
-			if os.IsNotExist(err) {
+			if backendAddressReadPending(err) {
 				continue
 			}
 			if err != nil {
@@ -98,4 +98,10 @@ func TestFullComponentCompositionStarts(t *testing.T) {
 			return
 		}
 	}
+}
+
+func backendAddressReadPending(err error) bool {
+	// A Windows sharing violation during address publication is pending under
+	// the existing readiness deadline. Other read errors remain terminal.
+	return os.IsNotExist(err) || backendAddressSharingViolation(err)
 }
