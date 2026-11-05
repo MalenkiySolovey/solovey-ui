@@ -10,8 +10,11 @@ set -Eeuo pipefail
 readonly GO_VERSION='go1.26.10'
 readonly GO_TOOLCHAIN_FILENAME='go1.26.10.linux-amd64.tar.gz'
 readonly GO_TOOLCHAIN_SHA256='ccfe7ae822d2c2f41f4fe7c956199967a4dac22d0ee0d2b2bfdb440aab3b20c5'
-readonly CRONET_TOOLCHAIN_COMMIT='e7f6f6f5b7ce226f686f6cb5d068a63da6657ccd'
-readonly BUILD_TAGS='with_quic,with_grpc,with_utls,with_acme,with_gvisor,badlinkname,tfogo_checklinkname0,with_tailscale,with_naive_outbound,with_musl'
+# Align the compiler/sysroot authority with the canonical 150.0.7871.63 native
+# archive producer used by the selected provider locks and Linux release path.
+readonly CRONET_TOOLCHAIN_COMMIT='7e27f60f7f04a1c762b6bb69b4a44d7b24cd7a5d'
+readonly BASE_BUILD_TAGS='with_quic,with_grpc,with_utls,with_acme,with_gvisor,badlinkname,tfogo_checklinkname0,with_tailscale,with_naive_outbound,with_musl'
+BUILD_TAGS=$BASE_BUILD_TAGS
 readonly HELPER_LDFLAGS_CONTRACT="-buildid= -w -s -linkmode external -extldflags '-static'"
 
 source_dir=''
@@ -19,13 +22,14 @@ out_dir=''
 trust_roots_file=''
 go_toolchain_archive=''
 target_profile='x86-64'
+core_provider='sing-box'
 temporary_root=''
 
 source "$(dirname "${BASH_SOURCE[0]}")/openwrt-target-profile.sh"
 
 usage() {
 	cat <<'EOF'
-Usage: scripts/openwrt-stage-build.sh --source <current-source> --out <new-stage-root> --trust-roots-file <public-base64-file> --go-toolchain-archive <go1.26.10.linux-amd64.tar.gz> [--target-profile <x86-64|rockchip-armv8>]
+Usage: scripts/openwrt-stage-build.sh --source <current-source> --out <new-stage-root> --trust-roots-file <public-base64-file> --go-toolchain-archive <go1.26.10.linux-amd64.tar.gz> [--target-profile <x86-64|rockchip-armv8>] [--core-provider <sing-box|shtorm-extended>]
 
 Required environment: the project-pinned Go and Node toolchains plus
 GOOS=linux, the profile's GOARCH, CGO_ENABLED=1 and the OpenWrt-musl CC/CXX compiler
@@ -45,12 +49,14 @@ while [[ $# -gt 0 ]]; do
 		--trust-roots-file) trust_roots_file=${2:?--trust-roots-file requires a value}; shift 2 ;;
 		--go-toolchain-archive) go_toolchain_archive=${2:?--go-toolchain-archive requires a value}; shift 2 ;;
 		--target-profile) target_profile=${2:?--target-profile requires a value}; shift 2 ;;
+		--core-provider) core_provider=${2:?--core-provider requires a value}; shift 2 ;;
 		--help|-h) usage; exit 0 ;;
 		*) usage; fail "unknown argument: $1" ;;
 	esac
 done
 
 openwrt_target_profile_load "$target_profile" || exit $?
+[[ "$core_provider" == sing-box || "$core_provider" == shtorm-extended ]] || fail 'unknown core provider'
 readonly PANEL_LDFLAGS_CONTRACT="-buildid= -w -s -checklinkname=0 -linkmode external -extldflags '-static' -X config/update.ArtifactPlatform=$OPENWRT_PLATFORM -X config/update.ReleaseTrustRootsBase64=<bound-public-roots>"
 
 [[ -n "$source_dir" && -n "$out_dir" && -f "$trust_roots_file" && -f "$go_toolchain_archive" ]] || { usage; exit 2; }
@@ -220,13 +226,17 @@ run_go() {
 	env -i "${go_environment[@]}" "$go_program" "$@"
 }
 
+helper_targets=(
+	./cmd/solovey-privileged-broker ./cmd/solovey-ssh-proof ./cmd/solovey-evidence ./cmd/solovey-broker-readiness
+	./cmd/solovey-openwrt-preservation ./components/server-protection/cmd/solovey-openwrt-owner-manifest
+	./cmd/solovey-openwrt-broker-manifest ./cmd/solovey-openwrt-durability ./cmd/solovey-openwrt-lifecycle
+)
+
 materialize_go_dependencies() {
 	local attempt
 	for attempt in 1 2 3 4 5; do
-		if run_go list -deps -json -tags "$BUILD_TAGS" . \
-			./cmd/solovey-privileged-broker ./cmd/solovey-ssh-proof ./cmd/solovey-evidence ./cmd/solovey-broker-readiness \
-			./cmd/solovey-openwrt-preservation ./components/server-protection/cmd/solovey-openwrt-owner-manifest \
-			./cmd/solovey-openwrt-broker-manifest ./cmd/solovey-openwrt-durability ./cmd/solovey-openwrt-lifecycle >/dev/null; then
+		if run_go list -deps -json -modfile=go.mod "${helper_targets[@]}" >/dev/null &&
+			run_go list -deps -json -modfile="$panel_mod_file" -tags "$BUILD_TAGS" . >/dev/null; then
 			return 0
 		fi
 		[[ "$attempt" -lt 5 ]] || fail 'authenticated Go target dependency materialization failed after five attempts'
@@ -240,6 +250,15 @@ materialize_go_dependencies() {
 run_node "$source_dir/scripts/generate-component-imports.mjs" --profile full --check
 run_node "$source_dir/scripts/openwrt-persistence-authority.mjs" --check
 run_node "$source_dir/scripts/openwrt-package-source-fingerprint.mjs" materialize --source-root "$source_dir" --out "$snapshot"
+provider_plan="$temporary_root/CORE_PROVIDER_BUILD.json"
+(
+	cd "$snapshot"
+	run_node scripts/core-provider-build.mjs plan --provider "$core_provider" --tags "$BASE_BUILD_TAGS"
+) > "$provider_plan"
+panel_mod_file=$(run_node -p 'require(process.argv[1]).modFile' "$provider_plan")
+BUILD_TAGS=$(run_node -p 'require(process.argv[1]).tags' "$provider_plan")
+provider_source="$temporary_root/CORE_PROVIDER_SOURCE.json"
+run_node -e 'console.log(JSON.stringify(require(process.argv[1]).source))' "$provider_plan" > "$provider_source"
 
 (
 	cd "$snapshot"
@@ -264,22 +283,26 @@ run_node "$snapshot/scripts/frontend-assets.mjs" publish \
 	--components-dir "$snapshot/.release/components"
 
 go_dependency_proof="$temporary_root/GO_DEPENDENCY_AUTHORITY.json"
+panel_dependency_proof="$temporary_root/GO_PANEL_DEPENDENCY_AUTHORITY.json"
 (
 	cd "$snapshot"
 	materialize_go_dependencies
 )
 (
 	cd "$snapshot"
-	run_go mod verify
+	run_go mod verify -modfile=go.mod
+	run_go mod verify -modfile="$panel_mod_file"
 )
 (
 	cd "$snapshot"
-	run_go list -deps -json -tags "$BUILD_TAGS" . \
-		./cmd/solovey-privileged-broker ./cmd/solovey-ssh-proof ./cmd/solovey-evidence ./cmd/solovey-broker-readiness \
-		./cmd/solovey-openwrt-preservation ./components/server-protection/cmd/solovey-openwrt-owner-manifest \
-		./cmd/solovey-openwrt-broker-manifest ./cmd/solovey-openwrt-durability ./cmd/solovey-openwrt-lifecycle
+	run_go list -deps -json -modfile=go.mod "${helper_targets[@]}"
 ) | run_node "$source_dir/scripts/openwrt-go-authority.mjs" create-dependencies \
 	--graph package --go-mod "$snapshot/go.mod" --go-sum "$snapshot/go.sum" --out "$go_dependency_proof"
+(
+	cd "$snapshot"
+	run_go list -deps -json -modfile="$panel_mod_file" -tags "$BUILD_TAGS" .
+) | run_node "$source_dir/scripts/openwrt-go-authority.mjs" create-dependencies \
+	--graph package --go-mod "$snapshot/$panel_mod_file" --go-sum "$snapshot/${panel_mod_file%.mod}.sum" --out "$panel_dependency_proof"
 
 go_toolchain_identity=$(run_node -e "const f=require(process.argv[1]); process.stdout.write(f.toolchainIdentity)" "$go_toolchain_proof")
 go_toolchain_tree_digest=$(run_node -e "const f=require(process.argv[1]); process.stdout.write(f.tree.treeDigest)" "$go_toolchain_proof")
@@ -352,10 +375,13 @@ BF_SUBTARGET="$OPENWRT_SUBTARGET" BF_PACKAGE_ARCH="$OPENWRT_PACKAGE_ARCH" \
 BF_GOARCH="$OPENWRT_GOARCH" BF_GOARCH_VARIANT="$OPENWRT_GOARCH_VARIANT" \
 BF_PLATFORM="$OPENWRT_PLATFORM" BF_CC_TARGET="$OPENWRT_CC_TARGET" \
 BF_SOURCE_REVISION="$commit" BF_SOURCE_DATE="$source_date" BF_OUT="$build_facts" \
+BF_CORE_PROVIDER_SOURCE="$provider_source" BF_PANEL_DEPENDENCIES="$panel_dependency_proof" \
 "$node_program" --input-type=module - <<'NODE'
 import fs from 'node:fs'
 const e = process.env
+const panelDependencies = JSON.parse(fs.readFileSync(e.BF_PANEL_DEPENDENCIES, 'utf8'))
 const facts = {
+  coreProvider: JSON.parse(fs.readFileSync(e.BF_CORE_PROVIDER_SOURCE, 'utf8')),
   revision: { commit: e.BF_SOURCE_REVISION, sourceDate: e.BF_SOURCE_DATE },
   target: {
     profile: e.BF_PROFILE_KEY,
@@ -389,6 +415,14 @@ const facts = {
       moduleGraphDigest: e.BF_GO_MODULE_GRAPH_DIGEST,
       moduleCount: Number(e.BF_GO_MODULE_COUNT),
       identity: e.BF_GO_DEPENDENCY_IDENTITY,
+      authentication: 'fresh-private-gomodcache-go-sumdb',
+    },
+    panelDependencies: {
+      goModSha256: panelDependencies.source.goMod.sha256,
+      goSumSha256: panelDependencies.source.goSum.sha256,
+      moduleGraphDigest: panelDependencies.modules.moduleGraphDigest,
+      moduleCount: panelDependencies.modules.count,
+      identity: panelDependencies.dependencyIdentity,
       authentication: 'fresh-private-gomodcache-go-sumdb',
     },
     goos: 'linux',
@@ -465,7 +499,7 @@ run_node "$snapshot/scripts/openwrt-package-source-fingerprint.mjs" create \
 source_fingerprint=$(run_node -e "const f=require(process.argv[1]); process.stdout.write(f.sourceFingerprint)" "$fingerprint")
 build_identity=$(run_node -e "const f=require(process.argv[1]); process.stdout.write(f.build.identity)" "$fingerprint")
 version=$(sed -n '1p' "$snapshot/config/identity/version")
-sing_box=$(cd "$snapshot" && run_go list -m -f '{{.Version}}' github.com/sagernet/sing-box)
+sing_box=$(cd "$snapshot" && run_go list -modfile="$panel_mod_file" -m -f '{{.Version}}' github.com/sagernet/sing-box)
 
 build_info="$temporary_root/BUILD_INFO.txt"
 {
@@ -478,11 +512,17 @@ build_info="$temporary_root/BUILD_INFO.txt"
 	echo "go=$go_version"
 	echo "go_toolchain_identity=$go_toolchain_identity"
 	echo "go_dependency_identity=$go_dependency_identity"
+	echo "go_panel_dependency_identity=$(run_node -p 'require(process.argv[1]).dependencyIdentity' "$panel_dependency_proof")"
 	echo "sing_box=$sing_box"
 	echo "source_fingerprint=$source_fingerprint"
 	echo "build_identity=$build_identity"
-	run_node "$snapshot/scripts/quic-integration-provenance.mjs" build-info
-	run_node "$snapshot/scripts/ssm-integration-provenance.mjs" build-info
+	if [[ "$core_provider" == shtorm-extended ]]; then
+		run_node "$snapshot/scripts/extended-integration-provenance.mjs" build-info
+	else
+		echo 'core_provider=sing-box'
+		run_node "$snapshot/scripts/quic-integration-provenance.mjs" build-info
+		run_node "$snapshot/scripts/ssm-integration-provenance.mjs" build-info
+	fi
 	run_node "$snapshot/scripts/anytls-integration-provenance.mjs" build-info
 } > "$build_info"
 
@@ -493,21 +533,33 @@ run_node "$source_dir/scripts/openwrt-go-authority.mjs" verify-toolchain \
 	--root "$go_root" --proof "$go_toolchain_proof"
 (
 	cd "$snapshot"
-	run_go mod verify
+	run_go mod verify -modfile=go.mod
+	run_go mod verify -modfile="$panel_mod_file"
 )
 (
 	cd "$snapshot"
-	run_go list -deps -json -tags "$BUILD_TAGS" . \
-		./cmd/solovey-privileged-broker ./cmd/solovey-ssh-proof ./cmd/solovey-evidence ./cmd/solovey-broker-readiness \
-		./cmd/solovey-openwrt-preservation ./components/server-protection/cmd/solovey-openwrt-owner-manifest \
-		./cmd/solovey-openwrt-broker-manifest ./cmd/solovey-openwrt-durability ./cmd/solovey-openwrt-lifecycle
+	run_go list -deps -json -modfile=go.mod "${helper_targets[@]}"
 ) | run_node "$source_dir/scripts/openwrt-go-authority.mjs" verify-dependencies \
 	--graph package --go-mod "$snapshot/go.mod" --go-sum "$snapshot/go.sum" --proof "$go_dependency_proof"
+(
+	cd "$snapshot"
+	run_go list -deps -json -modfile="$panel_mod_file" -tags "$BUILD_TAGS" .
+) | run_node "$source_dir/scripts/openwrt-go-authority.mjs" verify-dependencies \
+	--graph package --go-mod "$snapshot/$panel_mod_file" --go-sum "$snapshot/${panel_mod_file%.mod}.sum" --proof "$panel_dependency_proof"
 go_environment+=('SOLOVEY_GO_AUTHORITY_VERIFIED=1')
 (
 	cd "$snapshot"
 env -i "${go_environment[@]}" bash scripts/build-linux-target.sh --mode openwrt --out "$binary_dir" \
-		--platform "$OPENWRT_PLATFORM" --trust-roots-file "$trust_roots_file"
+		--platform "$OPENWRT_PLATFORM" --trust-roots-file "$trust_roots_file" --core-provider "$core_provider"
+)
+# Observe the target executable statically with the verified private host Go
+# toolchain. The target is never executed by the packaging authority.
+provider_observation="$temporary_root/CORE_PROVIDER.json"
+(
+	cd "$snapshot"
+	env -i "${go_environment[@]}" GOARCH=amd64 GOAMD64=v1 CGO_ENABLED=0 \
+		"$go_program" run -mod=readonly -modfile=go.mod ./cmd/solovey-artifact-info "$binary_dir/solovey-ui" \
+		< "$provider_source" > "$provider_observation"
 )
 
 payload="$out_dir/payload"
@@ -522,6 +574,8 @@ install -m 0644 "$build_info" "$payload/usr/lib/solovey-ui/BUILD_INFO.txt"
 install -m 0644 "$fingerprint" "$payload/usr/lib/solovey-ui/SOURCE_FINGERPRINT.json"
 install -m 0644 "$go_toolchain_proof" "$payload/usr/lib/solovey-ui/GO_TOOLCHAIN_AUTHORITY.json"
 install -m 0644 "$go_dependency_proof" "$payload/usr/lib/solovey-ui/GO_DEPENDENCY_AUTHORITY.json"
+install -m 0644 "$panel_dependency_proof" "$payload/usr/lib/solovey-ui/GO_PANEL_DEPENDENCY_AUTHORITY.json"
+install -m 0644 "$provider_observation" "$payload/usr/lib/solovey-ui/CORE_PROVIDER.json"
 cp -a "$snapshot/.release/components/." "$payload/usr/lib/solovey-ui/components/"
 find "$payload/usr/lib/solovey-ui/components" -type d -exec chmod 0755 {} +
 find "$payload/usr/lib/solovey-ui/components" -type f -exec chmod 0644 {} +

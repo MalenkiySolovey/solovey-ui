@@ -13,7 +13,7 @@
     "linux": ["amd64", "arm64", "armv7", "armv6", "armv5", "386", "s390x"],
     "windows": ["amd64", "arm64"],
     "docker": ["amd64", "arm64"],
-    "openwrt": []
+    "openwrt": ["x86-64", "rockchip-armv8"]
   },
   "windows": ["amd64", "arm64"],
   "windowsProfiles": ["full", "core"],

@@ -15,7 +15,7 @@ const productRoots = [
   'sub', 'util', 'web',
 ]
 
-const topLevelInputs = new Set(['LICENSE', 'go.mod', 'go.sum', 'main.go'])
+const topLevelInputs = new Set(['LICENSE', 'go.mod', 'go.sum', 'go.extended.mod', 'go.extended.sum', 'main.go'])
 
 const sourceHiddenFiles = new Set([
   'frontend/.browserslistrc',
@@ -25,6 +25,9 @@ const sourceHiddenFiles = new Set([
 
 const targetBuildScripts = new Set([
   'scripts/build-linux-target.sh',
+  'scripts/core-provider-build.mjs',
+  'scripts/core-source-provenance.mjs',
+  'scripts/extended-integration-provenance.mjs',
   'scripts/check-frontend-profile.mjs',
   'scripts/component-frontend-manifest.mjs',
   'scripts/extract-component-frontend.mjs',

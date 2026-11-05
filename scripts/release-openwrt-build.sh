@@ -3,6 +3,8 @@
 set -Eeuo pipefail
 profile=${1:?profile}
 product=${2:?product commit}
+provider=${3:-sing-box}
+[[ "$provider" == sing-box || "$provider" == shtorm-extended ]]
 [[ "$(git rev-parse HEAD)" == "$product" ]]
 git diff --exit-code HEAD --
 source scripts/openwrt-target-profile.sh
@@ -40,9 +42,10 @@ printf '%s' "$SUI_RELEASE_TRUST_ROOTS_B64" > "$work/public-roots.b64"
 # generator; the producer then checks and independently regenerates its snapshot.
 node scripts/generate-component-imports.mjs --profile full
 env -i PATH="$PATH" HOME="$HOME" CC="$CC" CXX="$CXX" \
+  GOOS=linux GOARCH="$OPENWRT_GOARCH" CGO_ENABLED=1 CGO_LDFLAGS="$CGO_LDFLAGS" \
   /usr/bin/bash scripts/openwrt-package-build.sh \
     --sdk-archive "$work/downloads/$OPENWRT_SDK_FILENAME" \
     --go-toolchain-archive "$work/downloads/$go_file" \
     --source "$PWD" --trust-roots-file "$work/public-roots.b64" \
-    --out "$work/package" --jobs 2 --target-profile "$profile"
-node "$RUNNER_TEMP/release-openwrt.mjs" prepare "$work/package" "$product" "$profile" openwrt-candidate
+    --out "$work/package" --jobs 2 --target-profile "$profile" --core-provider "$provider"
+SOLOVEY_UI_CORE_PROVIDER="$provider" node "$RUNNER_TEMP/release-openwrt.mjs" prepare "$work/package" "$product" "$profile" openwrt-candidate
