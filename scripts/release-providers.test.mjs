@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { execFileSync, spawnSync } from 'node:child_process'
 import test from 'node:test'
-import { targets, legacySchema, providerSchema, linuxBuildTargets, linuxPanelArtifacts, installerProviderPolicy } from './release-providers.mjs'
+import { targets, legacySchema, providerSchema, linuxBuildTargets, linuxPanelArtifacts, windowsPanelArtifacts, installerProviderPolicy } from './release-providers.mjs'
 import { linuxAssetNames } from './release-verify.mjs'
 
 test('provider selection covers the existing Linux matrix without changing Official targets or per-architecture capabilities', () => {
@@ -13,7 +13,7 @@ test('provider selection covers the existing Linux matrix without changing Offic
   const extended = linuxBuildTargets().filter(target => target.provider !== 'sing-box')
   assert.deepEqual(extended.map(target => target.platform), targets.linux.map(target => target.platform))
   assert.deepEqual(extended.map(({ provider, artifact_suffix, ...target }) => target), targets.linux)
-  for (const surface of ['windows', 'docker', 'openwrt']) assert.deepEqual(targets.extended[surface], [])
+  for (const surface of ['docker', 'openwrt']) assert.deepEqual(targets.extended[surface], [])
   assert.equal(linuxAssetNames(legacySchema).length, 15)
   assert.equal(linuxAssetNames(providerSchema).length, 29)
   assert.deepEqual(linuxPanelArtifacts().filter(target => target.provider === 'shtorm-extended').map(target => target.name),
@@ -21,6 +21,18 @@ test('provider selection covers the existing Linux matrix without changing Offic
       `solovey-ui-shtorm-extended-linux-${platform}.tar.gz`, `solovey-ui-shtorm-extended-core-linux-${platform}.tar.gz`,
     ]))
   assert.throws(() => linuxBuildTargets('unknown'), /Unsupported release schema/)
+})
+
+test('Windows has both providers in both profiles without changing Official names', () => {
+  const artifacts = windowsPanelArtifacts()
+  assert.equal(artifacts.length, 8)
+  assert.equal(new Set(artifacts.map(item => item.name)).size, 8)
+  for (const arch of targets.windows) for (const profile of targets.windowsProfiles) {
+    for (const provider of ['sing-box', 'shtorm-extended']) {
+      assert.ok(artifacts.some(item => item.arch === arch && item.profile === profile && item.provider === provider))
+    }
+    assert.ok(artifacts.some(item => item.name === `solovey-ui${profile === 'core' ? '-core' : ''}-windows-${arch}.zip`))
+  }
 })
 
 test('standalone installer embeds the exact generated release policy without a Node dependency', () => {

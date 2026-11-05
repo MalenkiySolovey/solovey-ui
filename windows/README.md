@@ -18,3 +18,14 @@ Run installation helpers from an elevated terminal. Windows release packages
 are supported on x64 and ARM64 and use the CGO-backed SQLite runtime. Release
 builds run natively on their target architecture so SQLite persistence is
 functional in both packages.
+
+Both Full/Core profiles support the explicit `sing-box` (default) and
+`shtorm-extended` build flavors through the same producer. For a production
+candidate, supply `-FrontendDist`, `-TrustRootsFile` and a new
+`-PackageDirectory`. This reuses verified frontend output, records the clean
+source identity, selects the pinned module graph and includes the authenticated
+architecture-specific `libcronet.dll`. The release workflow calls this producer
+and seals its ZIP; the verifier inspects the executable and DLL without running
+them. `-CrossCompile` requires an explicit CGO compiler and provides build proof
+only; native target tests remain required. No release publication is performed
+by the producer.

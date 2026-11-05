@@ -116,11 +116,14 @@ test('Windows metadata retains clean product identity across profile generation'
   assert.equal(identity['continue-on-error'], undefined)
   assert.match(identity.run, /git status --porcelain/)
   assert.match(identity.run, /node scripts\/release-source\.mjs/)
-  const generatedIndex = steps.findIndex(step => step.run?.includes('scripts/generate-component-imports.mjs'))
+  const generatedIndex = steps.findIndex(step => step.run?.includes('-File windows/build-windows.ps1'))
   assert.ok(identityIndex < generatedIndex, 'Core generation changes tracked Linux-only imports')
-  const metadata = steps.find(step => step.run?.includes('source_fingerprint='))
-  assert.ok(metadata.run.includes('source_fingerprint=${{ steps.source_identity.outputs.fingerprint }}'))
-  assert.ok(!metadata.run.includes('source_fingerprint=$(node'), 'recovery requires the original clean fingerprint')
+  const producer = steps[generatedIndex]
+  assert.ok(producer.run.includes("-ExpectedSourceFingerprint '${{ steps.source_identity.outputs.fingerprint }}'"))
+  assert.ok(producer.run.includes("-Provider '${{ matrix.provider }}'"))
+  const source = fs.readFileSync('windows/build-windows.ps1', 'utf8')
+  assert.ok(source.includes('"source_fingerprint=$sourceFingerprint"'))
+  assert.ok(source.includes("throw 'Source fingerprint changed before the producer'"))
 })
 
 test('interrupted publication recovery is gated and never rebuilds or overwrites registry', () => {

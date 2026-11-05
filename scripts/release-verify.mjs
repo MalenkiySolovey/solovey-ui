@@ -5,8 +5,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { execFileSync } from 'node:child_process'
 import { resolveProviderSource } from './core-provider-build.mjs'
-import { targets, legacySchema, providerSchema, linuxPanelArtifacts, withArtifactInspector, inspectPanelArchive, verifyReleaseEnvelope } from './release-providers.mjs'
+import { targets, legacySchema, providerSchema, linuxPanelArtifacts, windowsPanelArtifacts, withArtifactInspector, inspectPanelArchive, verifyReleaseEnvelope } from './release-providers.mjs'
 
 export { targets }
 export const linuxAssetNames = (schema = providerSchema) => [
@@ -14,10 +15,9 @@ export const linuxAssetNames = (schema = providerSchema) => [
   'solovey-ui-components.tar.gz',
 ].sort()
 
-export const windowsAssetNames = () => targets.windows.flatMap(arch =>
-  targets.windowsProfiles.map(profile => `solovey-ui${profile === 'core' ? '-core' : ''}-windows-${arch}.zip`)).sort()
+export const windowsAssetNames = () => windowsPanelArtifacts().map(target => target.name).sort()
 
-export async function verifyWindowsSet(directory) {
+export async function verifyWindowsInventory(directory) {
   const names = windowsAssetNames()
   const expected = names.flatMap(name => [name, `${name}.sha256`]).sort()
   if (JSON.stringify(fs.readdirSync(directory).sort()) !== JSON.stringify(expected)) throw new Error('Windows release directory is incomplete or contains extra assets')
@@ -32,6 +32,41 @@ export async function verifyWindowsSet(directory) {
     if (!fs.lstatSync(sidecar).isFile() || fs.readFileSync(sidecar, 'utf8') !== `${digest}  ${name}\n`) throw new Error(`Windows checksum mismatch for ${name}`)
   }
   return names
+}
+
+export async function verifyWindowsSet(directory, { artifactInfo = process.env.SOLOVEY_ARTIFACT_INFO } = {}) {
+  const names = await verifyWindowsInventory(directory)
+  await withArtifactInspector(artifactInfo, inspector => {
+    for (const target of windowsPanelArtifacts()) {
+      const file = path.join(directory, target.name)
+      const sha256 = fs.readFileSync(`${file}.sha256`, 'utf8').split(' ')[0]
+      inspectWindowsArchive(inspector, file, target, { sha256, size: fs.statSync(file).size })
+    }
+  })
+  return names
+}
+
+export function inspectWindowsArchive(inspector, file, target, identity) {
+  const source = resolveProviderSource({ provider: target.provider }).source
+  const observed = JSON.parse(execFileSync(inspector, ['--windows-archive', path.resolve(file)], {
+    input: JSON.stringify(source), encoding: 'utf8', windowsHide: true, timeout: 120000, maxBuffer: 256 << 10,
+  }))
+  assert.equal(observed.schema, 'solovey.panel-archive-observation/v1')
+  assert.equal(observed.contentDigest, identity.sha256)
+  assert.equal(observed.size, identity.size)
+  assert.deepEqual(observed.build.coreProvider, source)
+  assert.equal(observed.build.platform, 'windows')
+  assert.equal(observed.build.arch, target.arch)
+  assert.equal(observed.build.binaryProfile, target.profile)
+  for (const tag of ['with_naive_outbound', 'with_purego']) assert.ok(observed.build.buildTags.includes(tag), `missing Windows native tag ${tag}`)
+  const members = new Map(observed.members.map(member => [member.name, member]))
+  const cronetHash = { amd64: '3217c6260fbca5f16072e0b79735742f40109a63bb0ff88fd6b96dd6b54a2928',
+    arm64: 'a75a1b99a7e31802cf67ee14763e5cb9db6a24aaf7062f86c49f2fc1c030fcf0' }[target.arch]
+  assert.equal(members.get('libcronet.dll')?.sha256, cronetHash, 'Windows native companion differs from its pinned source')
+  for (const member of ['BUILD_INFO.txt', 's-ui-windows.bat', 's-ui-windows.xml', 'configure-windows.ps1', 'control-windows.ps1']) {
+    assert.ok(members.has(member), `Windows package misses ${member}`)
+  }
+  return observed
 }
 
 export async function verifyReleaseSet(directory, { version, trustRootsBase64, now = Date.now() / 1000, artifactInfo = process.env.SOLOVEY_ARTIFACT_INFO } = {}) {
