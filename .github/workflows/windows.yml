@@ -244,6 +244,43 @@ jobs:
             ./solovey-ui${{ matrix.provider == 'shtorm-extended' && '-shtorm-extended' || '' }}${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}.zip.sha256
           retention-days: 7
 
+      - name: Qualify the installed Extended artifact on its native architecture
+        if: matrix.provider == 'shtorm-extended'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $peer = Join-Path $env:RUNNER_TEMP 'qualification-mieru-peer.exe'
+          go build '-mod=readonly' '-modfile=go.extended.mod' -o $peer ./testdata/platform-qualification/mieru-peer.go
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned qualification peer build failed' }
+          $installed = Join-Path $env:RUNNER_TEMP 'native-installed-panel'
+          New-Item -ItemType Directory -Path $installed | Out-Null
+          Copy-Item -LiteralPath 'solovey-ui-windows/sui.exe' -Destination (Join-Path $installed 'sui.exe')
+          & windows/prepare-windows-install.ps1 -InstallDir $installed -PackageRoot (Join-Path $PWD 'solovey-ui-windows')
+          $configuration = Join-Path $env:RUNNER_TEMP 'qualification.json'
+          @{
+            outputRoot = (Join-Path $installed 'logs/qualification')
+            name = 'windows-${{ matrix.arch }}-${{ matrix.profile }}'
+            mode = 'native-hosted-windows'
+            port = 28812
+            extended = (Join-Path $installed 'sui.exe')
+            peer = $peer
+            sourceCommit = (git rev-parse HEAD)
+            panelSha256 = (Get-FileHash -LiteralPath (Join-Path $installed 'sui.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+            expectedNativeSha = (Get-FileHash -LiteralPath (Join-Path $installed 'libcronet.dll') -Algorithm SHA256).Hash.ToLowerInvariant()
+            env = @{ SUI_DB_FOLDER = (Join-Path $installed 'db') }
+          } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $configuration -Encoding UTF8
+          node testdata/platform-qualification/runtime-campaign.mjs $configuration
+          if ($LASTEXITCODE -ne 0) { throw 'Native installed artifact qualification failed' }
+
+      - name: Retain sanitized native runtime observations
+        if: always() && matrix.provider == 'shtorm-extended'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: native-runtime-windows-${{ matrix.arch }}-${{ matrix.profile }}
+          path: ${{ runner.temp }}/native-installed-panel/logs/qualification/windows-${{ matrix.arch }}-${{ matrix.profile }}/result.json
+          if-no-files-found: error
+          retention-days: 7
+
   verify-windows:
     needs: build-windows
     runs-on: ubuntu-latest

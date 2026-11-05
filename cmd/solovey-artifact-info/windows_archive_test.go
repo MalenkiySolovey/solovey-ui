@@ -8,6 +8,27 @@ import (
 	providerfixture "github.com/MalenkiySolovey/solovey-ui/testsupport/coreprovider"
 )
 
+func TestWindowsArchiveNamesUnifyNativeProducerSeparatorsBeforeAliasChecks(t *testing.T) {
+	for _, label := range []string{"sui.exe", "BUILD_INFO.txt", "libcronet.dll"} {
+		canonical, valid := windowsArchiveMemberName("solovey-ui-windows/" + label)
+		windows, accepted := windowsArchiveMemberName(`solovey-ui-windows\` + label)
+		if !valid || !accepted || canonical != windows {
+			t.Fatal("native Windows ZIP producers do not share one namespace")
+		}
+	}
+	for _, invalid := range []string{
+		`sui.exe`, `/solovey-ui-windows/sui.exe`, `C:\solovey-ui-windows\sui.exe`,
+		`solovey-ui-windows\..\sui.exe`, `solovey-ui-windows/../sui.exe`,
+		`solovey-ui-windows//sui.exe`, `solovey-ui-windows\nested\sui.exe`,
+		`solovey-ui-windows/sui.exe:stream`, `solovey-ui-windows/sui.exe.`,
+	} {
+		_, valid := windowsArchiveMemberName(invalid)
+		if valid {
+			t.Fatal("unsafe or nested Windows archive name accepted")
+		}
+	}
+}
+
 func TestWindowsPackageMetadataCannotRelabelObservedProviderProfileOrMachine(t *testing.T) {
 	build := release.PanelBuildIdentity{CoreProvider: providerfixture.Identity(t, "shtorm-extended").Source,
 		Platform: "windows", Arch: "arm64", BinaryProfile: "core"}

@@ -7,6 +7,7 @@ This directory contains Windows service and build helpers for Solovey UI.
 - `s-ui-windows.xml`: Windows service configuration.
 - `install-windows.bat`: service installation helper.
 - `configure-windows.ps1`: validated interactive panel configuration helper.
+- `prepare-windows-install.ps1`: verifies and installs the native companion and protects private state permissions.
 - `s-ui-windows.bat`: local control helper.
 - `control-windows.ps1`: implementation of the safe local control menu.
 - `uninstall-windows.bat`: service removal helper.
@@ -29,3 +30,8 @@ and seals its ZIP; the verifier inspects the executable and DLL without running
 them. `-CrossCompile` requires an explicit CGO compiler and provides build proof
 only; native target tests remain required. No release publication is performed
 by the producer.
+
+Installation copies the pinned DLL matching the panel's PE architecture before
+migration or service startup. Database, certificate and log files are accessible
+to LocalSystem, Administrators and the installing user. This also supports the
+documented manual ARM64 mode without granting other local users access to secrets.
