@@ -31,8 +31,9 @@ func run(args []string, input io.Reader, output io.Writer) error {
 		return verifyRelease(args[1], input, output)
 	}
 	archive := len(args) == 2 && args[0] == "--archive"
-	if (len(args) != 1 && !archive) || args[len(args)-1] == "" || (len(args) == 1 && args[0][0] == '-') {
-		return errors.New("usage: solovey-artifact-info [--archive] CANDIDATE; --canonical-manifest; --verify-release ENVELOPE; typed JSON on stdin")
+	windowsArchive := len(args) == 2 && args[0] == "--windows-archive"
+	if (len(args) != 1 && !archive && !windowsArchive) || args[len(args)-1] == "" || (len(args) == 1 && args[0][0] == '-') {
+		return errors.New("usage: solovey-artifact-info [--archive|--windows-archive] CANDIDATE; --canonical-manifest; --verify-release ENVELOPE; typed JSON on stdin")
 	}
 	candidate := args[len(args)-1]
 	raw, err := io.ReadAll(io.LimitReader(input, (64<<10)+1))
@@ -61,7 +62,9 @@ func run(args []string, input io.Reader, output io.Writer) error {
 	}
 	var metadata release.PanelBuildIdentity
 	var members []archiveMemberObservation
-	if archive {
+	if windowsArchive {
+		metadata, members, err = inspectWindowsArchive(file, info.Size(), source)
+	} else if archive {
 		metadata, members, err = inspectArchive(file, source)
 	} else {
 		metadata, err = release.InspectPanelBuild(file, source)
@@ -85,7 +88,7 @@ func run(args []string, input io.Reader, output io.Writer) error {
 		Build         release.PanelBuildIdentity `json:"build"`
 		Members       []archiveMemberObservation `json:"members,omitempty"`
 	}{"solovey.panel-artifact-observation/v1", hex.EncodeToString(hash.Sum(nil)), written, metadata, members}
-	if archive {
+	if archive || windowsArchive {
 		observation.Schema = "solovey.panel-archive-observation/v1"
 	}
 	if err := json.NewEncoder(output).Encode(observation); err != nil {

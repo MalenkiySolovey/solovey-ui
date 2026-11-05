@@ -8,6 +8,15 @@ import { execFileSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { requireExternalCandidate, verifyCandidate } from './release-candidate.mjs'
 
+export function windowsRecoveryTargets(targets) {
+  const extended = targets.extended?.windows ?? []
+  return targets.windows.flatMap(arch => ['sing-box', ...(extended.includes(arch) ? [targets.extended.provider] : [])].flatMap(provider =>
+    targets.windowsProfiles.map(profile => ({
+      job: `build-windows / Build-windows-${arch}-${profile}${extended.length ? `-${provider}` : ''}`,
+      artifact: `solovey-ui${provider === 'sing-box' ? '' : `-${provider}`}${profile === 'core' ? '-core' : ''}-windows-${arch}`,
+    }))))
+}
+
 export function verifyInterruptedRun(run, jobs, { repository, commit, tag, currentRunID, targets }) {
   assert.equal(run.repository.full_name.toLowerCase(), repository.toLowerCase())
   assert.equal(run.path, '.github/workflows/release.yml')
@@ -23,7 +32,7 @@ export function verifyInterruptedRun(run, jobs, { repository, commit, tag, curre
     'build-docker / publication-authority', 'build-docker / publish-manifest',
     ...targets.linux.map(t => 'Build-' + t.platform),
     ...(targets.extended?.linux ?? []).map(platform => `Build-${targets.extended.provider}-${platform}`),
-    ...targets.windows.flatMap(arch => targets.windowsProfiles.map(profile => `build-windows / Build-windows-${arch}-${profile}`)),
+    ...windowsRecoveryTargets(targets).map(target => target.job),
     ...targets.docker.map(arch => 'build-docker / build-' + arch)]
   assert.equal(new Set(jobs.map(j => j.name)).size, jobs.length, 'ambiguous source-run jobs')
   const job = name => { const found = jobs.find(j => j.name === name); assert.ok(found, `missing source-run job: ${name}`); return found }
@@ -86,7 +95,7 @@ async function resume() {
   fs.mkdirSync(directory, { recursive: true }); requireExternalCandidate(process.cwd(), directory)
   assert.equal(fs.readdirSync(directory).length, 0, 'recovery destination must be empty')
   const candidates = [['complete-linux-release', 'linux'],
-    ...targets.windows.flatMap(arch => targets.windowsProfiles.map(profile => [`solovey-ui${profile === 'core' ? '-core' : ''}-windows-${arch}`, 'windows'])),
+    ...windowsRecoveryTargets(targets).map(target => [target.artifact, 'windows']),
     ['complete-release-metadata', 'metadata'], ['complete-openwrt-release', 'openwrt'],
     ...targets.docker.map(arch => ['docker-digest-' + arch, 'digests/' + arch])]
   const retained = verifyRetainedArtifacts(artifacts, candidates.map(([name]) => name))

@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import test from 'node:test'
-import { linuxAssetNames, windowsAssetNames, verifyReleaseSet, verifyWindowsSet } from './release-verify.mjs'
+import { linuxAssetNames, windowsAssetNames, verifyReleaseSet, verifyWindowsInventory, verifyWindowsSet } from './release-verify.mjs'
 
 function fixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'solovey-release-contract-'))
@@ -99,12 +99,13 @@ test('Windows full/core archives and their exact checksum bindings are mandatory
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   // Inventory/digest fixtures, never executable release candidates.
   const names = windowsAssetNames()
-  assert.equal(names.length, 4)
+  assert.equal(names.length, 8)
   for (const name of names) { fs.writeFileSync(path.join(directory, name), Buffer.alloc(24, 1)); checksum(directory, name) }
-  assert.deepEqual(await verifyWindowsSet(directory), names)
+  assert.deepEqual(await verifyWindowsInventory(directory), names)
+  await assert.rejects(verifyWindowsSet(directory), /malformed|Command failed/, 'matching checksums cannot qualify non-executable Windows payloads')
   fs.appendFileSync(path.join(directory, names[1]), 'tampered')
-  await assert.rejects(verifyWindowsSet(directory), /checksum mismatch/)
+  await assert.rejects(verifyWindowsInventory(directory), /checksum mismatch/)
   fs.unlinkSync(path.join(directory, names[1]))
   fs.unlinkSync(path.join(directory, `${names[1]}.sha256`))
-  await assert.rejects(verifyWindowsSet(directory), /incomplete/)
+  await assert.rejects(verifyWindowsInventory(directory), /incomplete/)
 })

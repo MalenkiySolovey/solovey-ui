@@ -115,6 +115,11 @@ function validateReleaseContracts() {
   if (/CGO_ENABLED\s*=\s*["']?0|\bNoCGO\b/.test(windowsSource)) {
     throw new Error('windows.yml: a non-CGO Windows release path is forbidden because SQLite would be nonfunctional');
   }
+  const targetPolicy = JSON.parse(fs.readFileSync('scripts/release-targets.json', 'utf8'));
+  if (JSON.stringify(windowsWorkflow.jobs['build-windows'].strategy.matrix.provider) !== JSON.stringify(['sing-box', targetPolicy.extended.provider]) ||
+      JSON.stringify(targetPolicy.extended.windows) !== JSON.stringify(targetPolicy.windows)) {
+    throw new Error('windows.yml: both providers must cover the complete canonical Windows matrix');
+  }
   const windowsBuildSteps = windowsWorkflow?.jobs?.['build-windows']?.steps ?? [];
   const arm64Toolchain = windowsBuildSteps.find((step) => String(step.uses ?? '').startsWith('msys2/setup-msys2@'));
   if (

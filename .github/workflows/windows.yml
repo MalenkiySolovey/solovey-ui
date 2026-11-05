@@ -15,6 +15,11 @@ on:
         type: boolean
   workflow_dispatch:
     inputs:
+      source_commit:
+        description: "Exact immutable product SHA for a tagless non-publishing qualification"
+        required: false
+        default: ""
+        type: string
       tag:
         description: "Release tag"
         required: true
@@ -31,7 +36,6 @@ permissions:
 
 env:
   RELEASE_TAG_INPUT: ${{ inputs.tag || github.ref_name }}
-  TAGS: "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,badlinkname,tfogo_checklinkname0,with_tailscale"
 
 jobs:
   build-frontend:
@@ -45,8 +49,15 @@ jobs:
           fetch-depth: 1
 
       - name: Validate release tag against source version
+        env:
+          REQUESTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          PREFLIGHT_ONLY: ${{ inputs.preflight_only }}
         run: |
           set -euo pipefail
+          if [ -n "$REQUESTED_SOURCE_COMMIT" ]; then
+            [[ "$REQUESTED_SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]] && [ "$(git rev-parse HEAD)" = "$REQUESTED_SOURCE_COMMIT" ] || { echo 'exact product source SHA is required' >&2; exit 1; }
+            [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] || [ "$PREFLIGHT_ONLY" = true ] || { echo 'tagless manual qualification must not publish' >&2; exit 1; }
+          fi
           VERSION="${RELEASE_TAG_INPUT#v}"
           EXPECTED_VERSION="$(tr -d '\r\n' < config/identity/version)"
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
@@ -92,12 +103,13 @@ jobs:
 
   build-windows:
     needs: build-frontend
-    name: Build-windows-${{ matrix.arch }}-${{ matrix.profile }}
+    name: Build-windows-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.provider }}
     strategy:
       fail-fast: false
       matrix:
         arch: [amd64, arm64]
         profile: [full, core]
+        provider: [sing-box, shtorm-extended]
         include:
           - { arch: amd64, runner: windows-latest, cgo: "1" }
           - { arch: arm64, runner: windows-11-arm, cgo: "1" }
@@ -150,9 +162,6 @@ jobs:
           [ -z "$(git status --porcelain)" ] || { echo "Windows source must be clean before profile generation" >&2; exit 1; }
           echo "fingerprint=$(node scripts/release-source.mjs .)" >> "$GITHUB_OUTPUT"
 
-      - name: Publish verified frontend assets
-        run: node scripts/frontend-assets.mjs publish --dist .release/frontend --destination web/html
-
       - name: Set up native ARM64 C toolchain
         id: msys2
         if: matrix.arch == 'arm64'
@@ -190,47 +199,11 @@ jobs:
           # packaging so a CGO-disabled stub can never become a release asset.
           go test ./database/sqlite
 
-          node scripts/check-frontend-profile.mjs --profile "${{ matrix.profile }}" --dist .release/frontend
-          node scripts/generate-component-imports.mjs --profile "${{ matrix.profile }}"
-          BUILD_TAGS="${{ env.TAGS }}"
-          [ "${{ matrix.profile }}" != core ] || BUILD_TAGS="$BUILD_TAGS,minimal"
-          go build -trimpath -buildvcs=false -ldflags="-buildid= -w -s -checklinkname=0 -X github.com/MalenkiySolovey/solovey-ui/config/update.ReleaseTrustRootsBase64=$SUI_RELEASE_TRUST_ROOTS_B64" -tags "$BUILD_TAGS" -o sui.exe main.go
-          file sui.exe
-
-          mkdir solovey-ui-windows
-          cp sui.exe solovey-ui-windows/
-          cp -r windows/* solovey-ui-windows/
-          {
-            echo "version=$RELEASE_TAG_INPUT"
-            echo "commit=$(git rev-parse HEAD)"
-            echo "tree=$(git rev-parse HEAD^{tree})"
-            echo "source_fingerprint=${{ steps.source_identity.outputs.fingerprint }}"
-            echo "platform=windows/${{ matrix.arch }}"
-            echo "profile=${{ matrix.profile }}"
-            echo "go=$(go version)"
-            echo "compiler=$($CC --version | head -n1)"
-            echo "node=$(node --version)"
-            echo "npm=$(npm --version)"
-            echo "sing_box=$(go list -m -f '{{.Version}}' github.com/sagernet/sing-box)"
-            node scripts/quic-integration-provenance.mjs build-info
-            node scripts/ssm-integration-provenance.mjs build-info
-            node scripts/anytls-integration-provenance.mjs build-info
-          } > solovey-ui-windows/BUILD_INFO.txt
-
-      - name: Copy module-authenticated libcronet-go
-        shell: bash
-        run: |
-          case "${{ matrix.arch }}" in
-            amd64) CRONET_SHA256="3217c6260fbca5f16072e0b79735742f40109a63bb0ff88fd6b96dd6b54a2928" ;;
-            arm64) CRONET_SHA256="a75a1b99a7e31802cf67ee14763e5cb9db6a24aaf7062f86c49f2fc1c030fcf0" ;;
-            *) echo "no pinned libcronet sha256 for arch ${{ matrix.arch }}" >&2; exit 1 ;;
-          esac
-          module="github.com/sagernet/cronet-go/lib/windows_${{ matrix.arch }}"
-          go mod download "$module"
-          go mod verify
-          library_dir=$(go list -m -f '{{.Dir}}' "$module")
-          cp "$library_dir/libcronet.dll" solovey-ui-windows/libcronet.dll
-          echo "${CRONET_SHA256}  solovey-ui-windows/libcronet.dll" | sha256sum -c -
+          printf '%s' "$SUI_RELEASE_TRUST_ROOTS_B64" > .release/public-roots.b64
+          powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File windows/build-windows.ps1 \
+            -Architecture '${{ matrix.arch }}' -Profile '${{ matrix.profile }}' -Provider '${{ matrix.provider }}' \
+            -FrontendDist .release/frontend -TrustRootsFile .release/public-roots.b64 \
+            -ExpectedSourceFingerprint '${{ steps.source_identity.outputs.fingerprint }}' -PackageDirectory solovey-ui-windows
 
       - name: Package on Windows
         if: runner.os == 'Windows'
@@ -238,7 +211,7 @@ jobs:
         run: |
           Compress-Archive `
             -Path solovey-ui-windows `
-            -DestinationPath "solovey-ui${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}.zip" `
+            -DestinationPath "solovey-ui${{ matrix.provider == 'shtorm-extended' && '-shtorm-extended' || '' }}${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}.zip" `
             -CompressionLevel Optimal `
             -Force
 
@@ -246,12 +219,12 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          zip -r "solovey-ui${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}.zip" solovey-ui-windows
+          zip -r "solovey-ui${{ matrix.provider == 'shtorm-extended' && '-shtorm-extended' || '' }}${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}.zip" solovey-ui-windows
 
       - name: Write package checksum
         shell: bash
         env:
-          ARCHIVE: solovey-ui${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}.zip
+          ARCHIVE: solovey-ui${{ matrix.provider == 'shtorm-extended' && '-shtorm-extended' || '' }}${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}.zip
         run: |
           node --input-type=module - <<'NODE'
           import fs from 'node:fs';
@@ -265,10 +238,47 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: solovey-ui${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}
+          name: solovey-ui${{ matrix.provider == 'shtorm-extended' && '-shtorm-extended' || '' }}${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}
           path: |
-            ./solovey-ui${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}.zip
-            ./solovey-ui${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}.zip.sha256
+            ./solovey-ui${{ matrix.provider == 'shtorm-extended' && '-shtorm-extended' || '' }}${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}.zip
+            ./solovey-ui${{ matrix.provider == 'shtorm-extended' && '-shtorm-extended' || '' }}${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}.zip.sha256
+          retention-days: 7
+
+      - name: Qualify the installed Extended artifact on its native architecture
+        if: matrix.provider == 'shtorm-extended'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $peer = Join-Path $env:RUNNER_TEMP 'qualification-mieru-peer.exe'
+          go build '-mod=readonly' '-modfile=go.extended.mod' -o $peer ./testdata/platform-qualification/mieru-peer.go
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned qualification peer build failed' }
+          $installed = Join-Path $env:RUNNER_TEMP 'native-installed-panel'
+          New-Item -ItemType Directory -Path $installed | Out-Null
+          Copy-Item -LiteralPath 'solovey-ui-windows/sui.exe' -Destination (Join-Path $installed 'sui.exe')
+          & windows/prepare-windows-install.ps1 -InstallDir $installed -PackageRoot (Join-Path $PWD 'solovey-ui-windows')
+          $configuration = Join-Path $env:RUNNER_TEMP 'qualification.json'
+          @{
+            outputRoot = (Join-Path $installed 'logs/qualification')
+            name = 'windows-${{ matrix.arch }}-${{ matrix.profile }}'
+            mode = 'native-hosted-windows'
+            port = 28812
+            extended = (Join-Path $installed 'sui.exe')
+            peer = $peer
+            sourceCommit = (git rev-parse HEAD)
+            panelSha256 = (Get-FileHash -LiteralPath (Join-Path $installed 'sui.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+            expectedNativeSha = (Get-FileHash -LiteralPath (Join-Path $installed 'libcronet.dll') -Algorithm SHA256).Hash.ToLowerInvariant()
+            env = @{ SUI_DB_FOLDER = (Join-Path $installed 'db') }
+          } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $configuration -Encoding UTF8
+          node testdata/platform-qualification/runtime-campaign.mjs $configuration
+          if ($LASTEXITCODE -ne 0) { throw 'Native installed artifact qualification failed' }
+
+      - name: Retain sanitized native runtime observations
+        if: always() && matrix.provider == 'shtorm-extended'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: native-runtime-windows-${{ matrix.arch }}-${{ matrix.profile }}
+          path: ${{ runner.temp }}/native-installed-panel/logs/qualification/windows-${{ matrix.arch }}-${{ matrix.profile }}/result.json
+          if-no-files-found: error
           retention-days: 7
 
   verify-windows:
@@ -285,5 +295,13 @@ jobs:
           pattern: solovey-ui*windows-*
           path: windows-assets
           merge-multiple: true
+      - name: Set up verifier Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - name: Set up verifier Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: frontend/.node-version
       - name: Verify complete Windows candidates before publication eligibility
         run: node scripts/release-verify.mjs windows-assets "$RELEASE_TAG_INPUT" --windows

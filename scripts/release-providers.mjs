@@ -39,6 +39,19 @@ export function linuxPanelArtifacts(schema = providerSchema) {
     })))
 }
 
+export function windowsPanelArtifacts() {
+  const official = resolveProviderSource().provider
+  const policy = targets.extended
+  const extended = resolveProviderSource({ provider: policy.provider }).provider
+  assert.equal(new Set(policy.windows).size, policy.windows.length, 'Duplicate Extended Windows target')
+  for (const arch of policy.windows) assert.ok(targets.windows.includes(arch), 'Extended Windows target is outside the canonical matrix')
+  return targets.windows.flatMap(arch => [official, ...(policy.windows.includes(arch) ? [extended] : [])].flatMap(provider =>
+    targets.windowsProfiles.map(profile => ({
+      name: `solovey-ui${provider === official ? '' : `-${provider}`}${profile === 'core' ? '-core' : ''}-windows-${arch}.zip`,
+      platform: 'windows', arch, profile, provider,
+    }))))
+}
+
 export function installerProviderPolicy() {
   const cases = linuxPanelArtifacts().map(target => {
     const name = target.name.replace(/^solovey-ui/, '${APP_NAME}')
