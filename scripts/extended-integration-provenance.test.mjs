@@ -14,7 +14,7 @@ test('Extended source notice binds native baseline, dedicated copy, checksums an
   assert.equal(lock.sources[0].patchSeries.patchCount,64)
   assert.equal(lock.sources[2].original.repository,'https://github.com/shtorm-7/sing')
   assert.equal(lock.sources[2].original.commit,'fe045639087fe73d1412b99f09486bbef96433db')
-  assert.equal(lock.sources[2].patchSeries.patchCount,1)
+  assert.equal(lock.sources[2].patchSeries.patchCount,2)
   assert.ok(lock.sources.every(source => !Object.hasOwn(source,'patch')))
 })
 

@@ -275,7 +275,7 @@ replace github.com/Diniboy1123/connect-ip-go => github.com/shtorm-7/connect-ip-g
 
 replace github.com/shtorm-7/go-cache/v2 => github.com/shtorm-7/go-cache/v2 v2.1.0-extended-1.2.0
 
-replace github.com/sagernet/sing => github.com/MalenkiySolovey/sing v0.9.7-extended-1.2.1.0.20261104162557-ee43b0a17793
+replace github.com/sagernet/sing => github.com/MalenkiySolovey/sing v0.9.7-extended-1.2.1.0.20261105013128-954ed9e938c7
 
 replace github.com/sagernet/sing-mux => github.com/shtorm-7/sing-mux v0.3.10-extended-1.1.0
 

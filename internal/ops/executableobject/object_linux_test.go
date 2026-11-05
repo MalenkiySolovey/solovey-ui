@@ -165,7 +165,9 @@ func TestRootExecutableObjectTrustMatrixOnLinuxFilesystem(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("root ownership matrix requires root")
 	}
-	root, err := os.MkdirTemp("/run", "solovey-executable-object-")
+	// The host may mount /run noexec. This fixture must execute as an
+	// unprivileged user while retaining real trusted root-owned ancestry.
+	root, err := os.MkdirTemp("/usr/local/lib", "solovey-executable-object-")
 	if err != nil {
 		t.Fatal(err)
 	}

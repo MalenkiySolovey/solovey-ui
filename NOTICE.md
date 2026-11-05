@@ -114,10 +114,11 @@ tags and does not change the selected runtime semantic baseline.
 The shared AnyTLS integration retains its separate source identity above.
 
 Extended also selects `github.com/MalenkiySolovey/sing` at
-`ee43b0a1779396fb4af9c5638d4f58667b53619a`, based on `shtorm-7/sing`
+`954ed9e938c74b69f54557a8e789fed35f9cd870`, based on `shtorm-7/sing`
 `v0.9.7-extended-1.2.1` / `fe045639087fe73d1412b99f09486bbef96433db`,
-under GPL-3.0-or-later. Its isolated cached-packet ownership correction retains
-the original authorship and notices. Official's Sing dependency is unchanged.
+under GPL-3.0-or-later. Its isolated cached-packet ownership and atomic TLS
+handshake-publication corrections retain the original authorship and notices.
+Official's Sing dependency is unchanged.
 
 These engine and QUIC sources carry GPL-3.0-or-later notices. Original authorship
 and license bytes remain applicable. The engine's original LICENSE additionally
