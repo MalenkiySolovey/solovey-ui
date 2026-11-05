@@ -12,9 +12,14 @@ const { createApkMetadataProof } = await load('openwrt-apk-metadata.mjs')
 const { verifyStageManifest, stageManifestSchema } = await load('openwrt-stage-manifest.mjs')
 const { apkRootfsProofSchema } = await load('openwrt-apk-rootfs.mjs')
 const { packageHostToolProofSchema, packageExecutionEnvironment } = await load('openwrt-package-host-tools.mjs')
-const { resolveProviderSource } = await load('core-provider-build.mjs')
 const coreProvider = process.env.SOLOVEY_UI_CORE_PROVIDER ?? 'sing-box'
-const providerSource = resolveProviderSource({ provider: coreProvider }).source
+let providerSource
+if (fs.existsSync('scripts/core-provider-build.mjs')) {
+  const { resolveProviderSource } = await load('core-provider-build.mjs')
+  providerSource = resolveProviderSource({ provider: coreProvider }).source
+} else {
+  assert.equal(coreProvider, 'sing-box', 'legacy immutable sources cannot compose Extended')
+}
 const providerSuffix = coreProvider === 'sing-box' ? '' : `-${coreProvider}`
 const profiles = ['x86-64', 'rockchip-armv8']
 const json = file => JSON.parse(fs.readFileSync(file, 'utf8'))

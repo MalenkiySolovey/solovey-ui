@@ -10,7 +10,9 @@ set -Eeuo pipefail
 readonly GO_VERSION='go1.26.10'
 readonly GO_TOOLCHAIN_FILENAME='go1.26.10.linux-amd64.tar.gz'
 readonly GO_TOOLCHAIN_SHA256='ccfe7ae822d2c2f41f4fe7c956199967a4dac22d0ee0d2b2bfdb440aab3b20c5'
-readonly CRONET_TOOLCHAIN_COMMIT='e7f6f6f5b7ce226f686f6cb5d068a63da6657ccd'
+# Align the compiler/sysroot authority with the canonical 150.0.7871.63 native
+# archive producer used by the selected provider locks and Linux release path.
+readonly CRONET_TOOLCHAIN_COMMIT='7e27f60f7f04a1c762b6bb69b4a44d7b24cd7a5d'
 readonly BASE_BUILD_TAGS='with_quic,with_grpc,with_utls,with_acme,with_gvisor,badlinkname,tfogo_checklinkname0,with_tailscale,with_naive_outbound,with_musl'
 BUILD_TAGS=$BASE_BUILD_TAGS
 readonly HELPER_LDFLAGS_CONTRACT="-buildid= -w -s -linkmode external -extldflags '-static'"
