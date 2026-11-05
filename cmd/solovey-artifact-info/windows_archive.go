@@ -26,7 +26,6 @@ func inspectWindowsArchive(input io.ReaderAt, size int64, source release.CorePro
 		return release.PanelBuildIdentity{}, nil, invalid
 	}
 	seen := map[string]bool{}
-	label := regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 	var total uint64
 	var build release.PanelBuildIdentity
 	var metadata bytes.Buffer
@@ -39,15 +38,16 @@ func inspectWindowsArchive(input io.ReaderAt, size int64, source release.CorePro
 	}()
 	members := make([]archiveMemberObservation, 0, len(reader.File))
 	for _, member := range reader.File {
-		if !strings.HasPrefix(member.Name, "solovey-ui-windows/") || seen[strings.ToLower(member.Name)] {
+		name, valid := windowsArchiveMemberName(member.Name)
+		if !valid || seen[strings.ToLower(name)] {
 			return release.PanelBuildIdentity{}, nil, invalid
 		}
-		seen[strings.ToLower(member.Name)] = true
-		relative := strings.TrimPrefix(member.Name, "solovey-ui-windows/")
+		seen[strings.ToLower(name)] = true
+		relative := strings.TrimPrefix(name, "solovey-ui-windows/")
 		if relative == "" && member.FileInfo().IsDir() {
 			continue
 		}
-		if !label.MatchString(relative) || !member.Mode().IsRegular() || member.UncompressedSize64 == 0 || member.UncompressedSize64 > 512<<20 {
+		if relative == "" || !member.Mode().IsRegular() || member.UncompressedSize64 == 0 || member.UncompressedSize64 > 512<<20 {
 			return release.PanelBuildIdentity{}, nil, invalid
 		}
 		total += member.UncompressedSize64
@@ -101,6 +101,19 @@ func inspectWindowsArchive(input io.ReaderAt, size int64, source release.CorePro
 	}
 	slices.SortFunc(members, func(a, b archiveMemberObservation) int { return strings.Compare(a.Name, b.Name) })
 	return build, members, nil
+}
+
+var windowsArchiveLabel = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+func windowsArchiveMemberName(name string) (string, bool) {
+	// Windows PowerShell Compress-Archive writes backslashes. Both canonical
+	// producers share the same flat namespace; normalize before alias checks.
+	name = strings.ReplaceAll(name, `\`, "/")
+	if !strings.HasPrefix(name, "solovey-ui-windows/") {
+		return "", false
+	}
+	relative := strings.TrimPrefix(name, "solovey-ui-windows/")
+	return name, relative == "" || (windowsArchiveLabel.MatchString(relative) && !strings.HasSuffix(relative, "."))
 }
 
 func windowsBuildInfoMatches(raw string, build release.PanelBuildIdentity) bool {
