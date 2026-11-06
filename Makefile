@@ -32,7 +32,7 @@ audit\:gosec:
 	$(ADVISORY_RUN) -Group advisory -Name gosec -CommandLine "gosec -exclude-dir .tmp -exclude-dir .gotmp -exclude-dir .gocache -exclude-dir frontend/node_modules ./..."
 
 audit\:vuln:
-	$(RUN) -Group analysis -Name govulncheck -CommandLine "govulncheck ./..."
+	$(RUN) -Group analysis -Name govulncheck -CommandLine "node scripts/audit/provider-vuln.mjs"
 
 audit\:fe-install:
 	$(RUN) -Group core -Name npm-ci -WorkingDirectory frontend -CommandLine "npm ci"
