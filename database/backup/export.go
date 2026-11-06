@@ -271,6 +271,10 @@ func copyBackupTable(sourceDB *gorm.DB, backupDB *gorm.DB, modelValue any) error
 		return common.NewError("backup model must be a pointer")
 	}
 	batch := dbsqlite.BatchSize(backupDB, modelValue)
+	statement := &gorm.Statement{DB: backupDB}
+	if err := statement.Parse(modelValue); err != nil {
+		return err
+	}
 	return backupDB.Transaction(func(tx *gorm.DB) error {
 		slicePtr := reflect.New(reflect.SliceOf(modelType.Elem()))
 		return sourceDB.Model(modelValue).FindInBatches(slicePtr.Interface(), batch, func(_ *gorm.DB, _ int) error {
@@ -310,7 +314,22 @@ func copyBackupTable(sourceDB *gorm.DB, backupDB *gorm.DB, modelValue any) error
 					row.RestoredUntrusted = true
 				}
 			}
-			return tx.CreateInBatches(slicePtr.Elem().Interface(), batch).Error
+			// These are stored facts, not new resources. Struct creation would
+			// replace zero values with model defaults and generate timestamps.
+			// Explicit columns retain those values after the owner-specific
+			// authority scrubbing above, including registered serializers.
+			rows := make([]map[string]any, slicePtr.Elem().Len())
+			for index := range rows {
+				rows[index] = make(map[string]any)
+				for _, field := range statement.Schema.Fields {
+					if field.DBName == "" || !field.Readable || !field.Creatable {
+						continue
+					}
+					value, _ := field.ValueOf(sourceDB.Statement.Context, slicePtr.Elem().Index(index))
+					rows[index][field.DBName] = value
+				}
+			}
+			return tx.Table(statement.Table).CreateInBatches(rows, batch).Error
 		}).Error
 	})
 }
