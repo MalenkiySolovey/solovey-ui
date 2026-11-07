@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v2026.4.1"
+        default: "v2026.5.0"
         type: string
       preflight_only:
         description: "Validate and build release artifacts without publishing"
@@ -51,6 +51,18 @@ jobs:
     needs: [release-preflight, assemble-linux, build-windows, verify-openwrt, release-metadata]
     uses: ./.github/workflows/docker.yml
     with:
+      core_provider: sing-box
+      tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      preflight_only: ${{ github.event_name == 'workflow_dispatch' && inputs.preflight_only }}
+      source_commit: ${{ needs.release-preflight.outputs.product-commit }}
+    secrets: inherit
+
+  build-docker-extended:
+    if: inputs.resume_run_id == ''
+    needs: [release-preflight, assemble-linux, build-windows, verify-openwrt, release-metadata]
+    uses: ./.github/workflows/docker.yml
+    with:
+      core_provider: shtorm-extended
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       preflight_only: ${{ github.event_name == 'workflow_dispatch' && inputs.preflight_only }}
       source_commit: ${{ needs.release-preflight.outputs.product-commit }}
@@ -94,7 +106,7 @@ jobs:
           node --check scripts/release-preflight.test.mjs
           node --test scripts/release-preflight.test.mjs
           node scripts/audit/validate-workflows.js
-          node --test scripts/release-execution.test.mjs scripts/release-resume.test.mjs scripts/release-candidate.test.mjs scripts/release-oci.test.mjs
+          node --test scripts/release-execution.test.mjs scripts/release-resume.test.mjs scripts/release-candidate.test.mjs scripts/release-oci.test.mjs scripts/release-completeness.test.mjs
           cp scripts/release-publish-gate.mjs "$RUNNER_TEMP/release-publish-gate.mjs"
 
       - name: Check out immutable product source
@@ -818,7 +830,7 @@ jobs:
 
   build-openwrt:
     if: inputs.resume_run_id == ''
-    name: Canonical OpenWrt ${{ matrix.profile }}
+    name: Canonical OpenWrt ${{ matrix.profile }}${{ matrix.provider == 'shtorm-extended' && ' shtorm-extended' || '' }}
     needs: [release-preflight, test-installer, build-frontend, component-profile-checks]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -826,6 +838,7 @@ jobs:
       fail-fast: false
       matrix:
         profile: [x86-64, rockchip-armv8]
+        provider: [sing-box, shtorm-extended]
     steps:
       - name: Check out release orchestrator
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -852,11 +865,11 @@ jobs:
       - name: Execute immutable canonical package producer and admission
         env:
           SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
-        run: bash "$RUNNER_TEMP/release-openwrt-build.sh" "${{ matrix.profile }}" "${{ needs.release-preflight.outputs.product-commit }}"
+        run: bash "$RUNNER_TEMP/release-openwrt-build.sh" "${{ matrix.profile }}" "${{ needs.release-preflight.outputs.product-commit }}" "${{ matrix.provider }}"
       - name: Retain APK and complete producer evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: openwrt-${{ matrix.profile }}
+          name: openwrt-${{ matrix.profile }}-${{ matrix.provider }}
           path: openwrt-candidate/
           if-no-files-found: error
           retention-days: 7
@@ -898,7 +911,7 @@ jobs:
 
   publish-linux:
     name: Publish complete verified release
-    needs: [release-preflight, assemble-linux, build-windows, build-docker, resume-candidate, test-installer, build-frontend, component-profile-checks, verify-openwrt, release-metadata]
+    needs: [release-preflight, assemble-linux, build-windows, build-docker, build-docker-extended, resume-candidate, test-installer, build-frontend, component-profile-checks, verify-openwrt, release-metadata]
     if: >-
       always() && !cancelled() &&
       (github.event_name == 'push' || inputs.preflight_only == false) &&
@@ -908,7 +921,8 @@ jobs:
         needs.build-frontend.result == 'success' && needs.component-profile-checks.result == 'success' &&
         needs.verify-openwrt.result == 'success' && needs.release-metadata.result == 'success' &&
         needs.assemble-linux.result == 'success' &&
-        needs.build-windows.result == 'success' && needs.build-docker.result == 'success'))
+        needs.build-windows.result == 'success' && needs.build-docker.result == 'success' &&
+        needs.build-docker-extended.result == 'success'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

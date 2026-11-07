@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 	providerfixture "github.com/MalenkiySolovey/solovey-ui/testsupport/coreprovider"
 )
@@ -13,7 +14,7 @@ func providerReleaseFixture(t *testing.T, id string) ReleaseIdentityV1 {
 	t.Helper()
 	artifact := ArtifactIdentityV1{Name: "provider-fixture.tar.gz", Role: "panel-full", Platform: "linux", Arch: "amd64",
 		MediaType: "application/gzip", Size: 101, SHA256: updateDigest("provider-content"), Provenance: "fixture", CoreProvider: id}
-	return ReleaseIdentityV1{ReleaseID: "fixture-provider-release", Sequence: 19, Version: "2026.4.1",
+	return ReleaseIdentityV1{ReleaseID: "fixture-provider-release", Sequence: 19, Version: configidentity.GetVersion(),
 		ManifestDigest: updateDigest("provider-manifest"), ArtifactSetDigest: artifactSetDigest([]ArtifactIdentityV1{artifact}),
 		BinaryProfile: "full", DeploymentRevision: updateDigest("provider-deployment"), MigrationSetDigest: updateDigest("provider-migrations"),
 		RestartClass: "stack", RollbackClass: "automatic", Artifacts: []ArtifactIdentityV1{artifact}, CoreProvider: providerfixture.Identity(t, id).Source}

@@ -39,9 +39,10 @@ export function linuxPanelArtifacts(schema = providerSchema) {
     })))
 }
 
-export function windowsPanelArtifacts() {
+export function windowsPanelArtifacts(schema = providerSchema) {
+  assert.ok([legacySchema, providerSchema].includes(schema), 'Unsupported release schema')
   const official = resolveProviderSource().provider
-  const policy = targets.extended
+  const policy = schema === providerSchema ? targets.extended : { windows: [] }
   const extended = resolveProviderSource({ provider: policy.provider }).provider
   assert.equal(new Set(policy.windows).size, policy.windows.length, 'Duplicate Extended Windows target')
   for (const arch of policy.windows) assert.ok(targets.windows.includes(arch), 'Extended Windows target is outside the canonical matrix')
@@ -50,6 +51,24 @@ export function windowsPanelArtifacts() {
       name: `solovey-ui${provider === official ? '' : `-${provider}`}${profile === 'core' ? '-core' : ''}-windows-${arch}.zip`,
       platform: 'windows', arch, profile, provider,
     }))))
+}
+
+export function openwrtBuildTargets(schema = providerSchema) {
+  assert.ok([legacySchema, providerSchema].includes(schema), 'Unsupported release schema')
+  const profiles = ['x86-64', 'rockchip-armv8']
+  const extended = schema === providerSchema ? targets.extended?.openwrt ?? [] : []
+  assert.equal(new Set(extended).size, extended.length, 'Duplicate Extended OpenWrt target')
+  for (const profile of extended) assert.ok(profiles.includes(profile), 'Extended OpenWrt target is outside the canonical matrix')
+  return profiles.flatMap(profile => ['sing-box', ...(extended.includes(profile) ? [targets.extended.provider] : [])].map(provider => ({
+    profile, provider, name: `solovey-ui${provider === 'sing-box' ? '' : `-${provider}`}-openwrt-${profile}.apk`,
+  })))
+}
+
+export function publicAssetNames(schema = providerSchema) {
+  const payloads = [...linuxPanelArtifacts(schema), ...windowsPanelArtifacts(schema), ...openwrtBuildTargets(schema)].map(item => item.name)
+  payloads.push('solovey-ui-components.tar.gz', 'solovey-ui-release.json', 'solovey-ui-friendlywrt-storage.json', ...targets.releaseMetadata)
+  assert.equal(new Set(payloads).size, payloads.length, 'Duplicate public release asset')
+  return payloads.flatMap(name => [name, `${name}.sha256`]).sort()
 }
 
 export function installerProviderPolicy() {

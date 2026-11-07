@@ -13,15 +13,20 @@ const { verifyStageManifest, stageManifestSchema } = await load('openwrt-stage-m
 const { apkRootfsProofSchema } = await load('openwrt-apk-rootfs.mjs')
 const { packageHostToolProofSchema, packageExecutionEnvironment } = await load('openwrt-package-host-tools.mjs')
 const coreProvider = process.env.SOLOVEY_UI_CORE_PROVIDER ?? 'sing-box'
-let providerSource
+let resolveProviderSource
 if (fs.existsSync('scripts/core-provider-build.mjs')) {
-  const { resolveProviderSource } = await load('core-provider-build.mjs')
-  providerSource = resolveProviderSource({ provider: coreProvider }).source
+  const build = await load('core-provider-build.mjs')
+  resolveProviderSource = build.resolveProviderSource
+  resolveProviderSource({ provider: coreProvider })
 } else {
   assert.equal(coreProvider, 'sing-box', 'legacy immutable sources cannot compose Extended')
 }
 const providerSuffix = coreProvider === 'sing-box' ? '' : `-${coreProvider}`
 const profiles = ['x86-64', 'rockchip-armv8']
+const policy = fs.existsSync('scripts/release-providers.mjs') ? await load('release-providers.mjs') : null
+const buildTargets = policy?.openwrtBuildTargets ? policy.openwrtBuildTargets() : profiles.map(profile => ({
+  profile, provider: 'sing-box', name: `solovey-ui-openwrt-${profile}.apk`,
+}))
 const json = file => JSON.parse(fs.readFileSync(file, 'utf8'))
 const digest = file => sha256(fs.readFileSync(file))
 const [mode, directory, productCommit, selected, destination] = process.argv.slice(2)
@@ -52,7 +57,8 @@ function authority(profile) {
   }))
 }
 
-function verify(apk, proofDir, profile) {
+function verify(apk, proofDir, profile, provider = coreProvider) {
+  const providerSource = resolveProviderSource?.({ provider }).source
   const stat = fs.lstatSync(apk)
   assert.ok(stat.isFile() && stat.size > 0 && stat.size < 256 * 1024 * 1024, 'APK size/type')
   const hash = digest(apk)
@@ -61,7 +67,7 @@ function verify(apk, proofDir, profile) {
   for (const input of fingerprint.source.inputs) assert.ok(tracked.has(input.path), `untagged source input: ${input.path}`)
   const facts = fingerprint.build.facts
   if (facts.coreProvider) assert.deepEqual(facts.coreProvider, providerSource, 'OpenWrt selected provider source')
-  else assert.equal(coreProvider, 'sing-box', 'legacy OpenWrt proof cannot qualify Extended')
+  else assert.equal(provider, 'sing-box', 'legacy OpenWrt proof cannot qualify Extended')
   assert.equal(facts.revision.commit, productCommit, 'OPENWRT_PRODUCT_SOURCE == RELEASE_PRODUCT_SOURCE')
   if (process.env.SUI_RELEASE_TRUST_ROOTS_B64) {
     assert.equal(facts.releaseTrustRootsSha256, sha256(Buffer.from(process.env.SUI_RELEASE_TRUST_ROOTS_B64)))
@@ -116,7 +122,7 @@ function verify(apk, proofDir, profile) {
     const { sdkIdentity, ...material } = sdk
     assert.equal(sdkIdentity, sha256(canonical(material)))
   }
-  return { profile, coreProvider, productCommit, sourceFingerprint: fingerprint.sourceFingerprint, sha256: hash,
+  return { profile, coreProvider: provider, productCommit, sourceFingerprint: fingerprint.sourceFingerprint, sha256: hash,
     metadata: metadata.metadata, stageIdentity: stage.stageIdentity, rootfsIdentity: rootfs.rootfsIdentity }
 }
 
@@ -143,9 +149,9 @@ if (mode === 'prepare') {
 } else if (mode === 'verify') {
   const assets = path.join(directory, 'assets')
   const expected = []
-  for (const profile of profiles) {
-    const name = `solovey-ui${providerSuffix}-openwrt-${profile}.apk`
-    const result = verify(path.join(assets, name), path.join(directory, 'proofs', profile + providerSuffix), profile)
+  for (const { profile, provider, name } of buildTargets) {
+    const suffix = provider === 'sing-box' ? '' : `-${provider}`
+    const result = verify(path.join(assets, name), path.join(directory, 'proofs', profile + suffix), profile, provider)
     assert.equal(fs.readFileSync(path.join(assets, `${name}.sha256`), 'utf8'), `${result.sha256}  ${name}\n`)
     expected.push(name, `${name}.sha256`)
     console.log(JSON.stringify(result))

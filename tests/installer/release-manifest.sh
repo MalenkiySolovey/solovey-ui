@@ -50,7 +50,7 @@ if (envelope.schema !== 'solovey.release/v1') throw new Error('unexpected envelo
 if (envelope.algorithm !== 'Ed25519') throw new Error('unexpected signature algorithm')
 const compatibility = JSON.parse(fs.readFileSync('scripts/release-compatibility.json', 'utf8'))
 if (envelope.manifest.minimumPanelVersion !== compatibility.minimumPanelVersion ||
-    envelope.manifest.minimumCoreSchema !== '1.12' || envelope.manifest.maximumCoreSchema !== '1.13' ||
+    envelope.manifest.minimumCoreSchema !== '1.13' || envelope.manifest.maximumCoreSchema !== '1.13' ||
     envelope.manifest.targetCoreSchema !== '1.13' || envelope.manifest.rollbackClass !== 'manual-recovery') {
   throw new Error('signed schema upgrade/recovery contract is incorrect')
 }
