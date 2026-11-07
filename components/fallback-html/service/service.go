@@ -244,6 +244,14 @@ func (s *Service) SaveSite(input SiteInput, actor string) (fallbackdomain.Site, 
 			if err := tx.Save(&site).Error; err != nil {
 				return err
 			}
+			// GORM applies the model's true creation default to a false bool.
+			// Retain an explicit disabled request in the same transaction.
+			if input.ID == 0 && input.Enabled != nil && !*input.Enabled {
+				if err := tx.Model(&site).Update("enabled", false).Error; err != nil {
+					return err
+				}
+				site.Enabled = false
+			}
 			if input.ID == 0 {
 				if err := createDefaultPages(tx, site.ID, site.Name, now); err != nil {
 					return err
