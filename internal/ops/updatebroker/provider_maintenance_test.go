@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry/facts"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilityview"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/targetcheck"
@@ -22,7 +23,7 @@ func providerMaintenanceFixture(t *testing.T) ProviderMaintenanceV1 {
 	return ProviderMaintenanceV1{ConfigurationDigest: updateDigest("configuration"), ConfigurationBytes: 2,
 		ConfigurationRevision: updateDigest("desired-revision"), BackupRef: updateDigest("database-backup"),
 		PreviousProvider: providerReleaseFixture(t, "sing-box").CoreProvider, PreviousExecutableDigest: updateDigest("previous-executable"),
-		PreviousPanelVersion: "2026.4.1", PreviousCapabilityRevision: providerCapabilityFixture(t, "sing-box", "full").Revision(),
+		PreviousPanelVersion: configidentity.GetVersion(), PreviousCapabilityRevision: providerCapabilityFixture(t, "sing-box", "full").Revision(),
 		RuntimeGeneration: "00000000-0000-4000-8000-000000000001"}
 }
 
