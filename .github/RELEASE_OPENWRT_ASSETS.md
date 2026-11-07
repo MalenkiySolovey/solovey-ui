@@ -3,6 +3,9 @@
 
 - OpenWrt 25.12.5 x86/64: `solovey-ui-openwrt-x86-64.apk`.
 - OpenWrt 25.12.5 rockchip/armv8: `solovey-ui-openwrt-rockchip-armv8.apk`.
+- Explicit Extended equivalents: `solovey-ui-shtorm-extended-openwrt-x86-64.apk`
+  and `solovey-ui-shtorm-extended-openwrt-rockchip-armv8.apk`. Official remains
+  the default; a provider change requires the supported maintenance lifecycle.
 - FriendlyWrt 25.12 on the qualified NanoPi R76S: the **same rockchip APK** plus
   `solovey-ui-friendlywrt-storage.json` and the existing actual `/opt` mount proof.
 

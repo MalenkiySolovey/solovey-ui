@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026.5.0
+
+- Add Shtorm Extended as an explicit second CoreRuntime provider, preserving Official as the default and ordinary-update provider retention.
+- Extend shared Classic/Nexus editors, native protocol/transport and VPN endpoint coverage, managed WG/AWG workflows, capability-driven Create/Add and lossless historical provider state.
+- Expand EndpointIR/subscription delivery, external source import/filter/fetch/health workflows and canonical import ownership.
+- Establish typed ComponentHost/ComponentKit consumers, semantic Action authorization, URL-scoped Local Host UX and solovey.management/v1 conformance; production Node and Zapret remain future work.
+- Qualify the Extended Linux, Windows, Docker, OpenWrt and FriendlyWrt matrix at its actual native/KVM/emulated/physical levels. Preserve the shared FriendlyWrt ARM64 APK and direct-persistent-/opt descriptor.
+- Preserve stored zero values in typed logical Backup/Restore and honor explicit disabled fallback-site creation (PRs #216/#217).
+- Publish both provider sets through one complete release transaction with separate source graphs, checksums, notices, SBOM and OCI identity. Schema remains 1.13; previous stable is v2026.4.1.
+- Keep Bridge network integration unavailable and SEC-2 bounded/deferred. See .github/RELEASE_NOTES_v2026.5.0.md for capability and upgrade limits.
+
 ## 2026.4.1
 
 - Correct administrator and settings CLI success reporting without reopening the initialized database; retain future-schema rejection before mutation.

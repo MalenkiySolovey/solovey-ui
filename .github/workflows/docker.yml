@@ -32,7 +32,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v2026.4.1"
+        default: "v2026.5.0"
         type: string
       preflight_only:
         description: "Build release images without publishing"
@@ -261,12 +261,16 @@ jobs:
         id: image
         run: echo "name=${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
 
-      - name: Download image digests
+      - name: Download amd64 image digest
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          pattern: docker-digest-*${{ steps.source.outputs.artifact_suffix }}
+          name: docker-digest-amd64${{ steps.source.outputs.artifact_suffix }}
           path: ${{ runner.temp }}/digests
-          merge-multiple: true
+      - name: Download arm64 image digest
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: docker-digest-arm64${{ steps.source.outputs.artifact_suffix }}
+          path: ${{ runner.temp }}/digests
 
       - name: Create and push multi-platform manifest
         working-directory: ${{ runner.temp }}/digests

@@ -127,7 +127,7 @@ test('Windows metadata retains clean product identity across profile generation'
 })
 
 test('interrupted publication recovery is gated and never rebuilds or overwrites registry', () => {
-  for (const name of ['test-installer', 'build-frontend', 'component-profile-checks', 'build-linux', 'build-docker', 'build-windows', 'release-metadata', 'assemble-linux', 'build-openwrt', 'verify-openwrt']) {
+  for (const name of ['test-installer', 'build-frontend', 'component-profile-checks', 'build-linux', 'build-docker', 'build-docker-extended', 'build-windows', 'release-metadata', 'assemble-linux', 'build-openwrt', 'verify-openwrt']) {
     assert.equal(release.jobs[name].if, "inputs.resume_run_id == ''", name)
   }
   const recovery = release.jobs['resume-candidate']

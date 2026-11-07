@@ -24,6 +24,22 @@ export async function candidatePanelInventory(signed, targets, loadPolicy = () =
   return { providerAware: true, panels: linuxPanelArtifacts(signed.schema) }
 }
 
+export async function candidateAssetInventory(signed, targets) {
+  if (signed.schema === 'solovey.release/v2') {
+    const { publicAssetNames, windowsPanelArtifacts } = await load('release-providers.mjs')
+    return { names: publicAssetNames(signed.schema), windows: windowsPanelArtifacts(signed.schema) }
+  }
+  assert.ok(signed.schema === undefined || signed.schema === 'solovey.release/v1', 'unsupported product release schema')
+  const { panels } = await candidatePanelInventory(signed, targets)
+  const windows = targets.windows.flatMap(arch => targets.windowsProfiles.map(profile => ({
+    name: `solovey-ui${profile === 'core' ? '-core' : ''}-windows-${arch}.zip`, arch, profile,
+  })))
+  const payloads = [...panels, ...windows].map(item => item.name)
+  payloads.push('solovey-ui-components.tar.gz', 'solovey-ui-release.json', ...targets.releaseMetadata,
+    'solovey-ui-openwrt-x86-64.apk', 'solovey-ui-openwrt-rockchip-armv8.apk', 'solovey-ui-friendlywrt-storage.json')
+  return { names: payloads.flatMap(name => [name, `${name}.sha256`]).sort(), windows }
+}
+
 export function requireExternalCandidate(checkout, directory) {
   const relative = path.relative(fs.realpathSync(checkout), fs.realpathSync(directory))
   assert.ok(relative && (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)), 'candidate outputs must be outside the immutable checkout')
@@ -39,17 +55,23 @@ export function verifyRecoveryBinding(receipt, actual, sourceRunID) {
 
 async function verifyRegistryStillBound(receipt) {
   const image = receipt.repository.toLowerCase()
-  assert.match(image, /^[\w.-]+\/[\w.-]+$/); assert.match(receipt.registryDigest, /^sha256:[a-f0-9]{64}$/)
+  assert.match(image, /^[\w.-]+\/[\w.-]+$/)
   const tokenResponse = await fetch(`https://ghcr.io/token?scope=repository:${image}:pull`, { signal: AbortSignal.timeout(30000) })
   assert.ok(tokenResponse.ok); const { token } = await tokenResponse.json()
-  for (const ref of [receipt.tag, receipt.tag.includes('-') ? 'beta' : 'latest']) {
-    const response = await fetch(`https://ghcr.io/v2/${image}/manifests/${ref}`, { headers: {
-      Authorization: `Bearer ${token}`, Accept: 'application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json',
-    }, signal: AbortSignal.timeout(60000) })
-    assert.ok(response.ok)
-    const digest = 'sha256:' + sha(Buffer.from(await response.arrayBuffer()))
-    assert.equal(digest, receipt.registryDigest, 'published registry output changed after recovery admission')
-    assert.equal(response.headers.get('docker-content-digest'), digest)
+  const bindings = receipt.registryBindings ?? [{ suffix: '', digest: receipt.registryDigest }]
+  assert.ok(bindings.length > 0 && bindings.length <= 2)
+  assert.equal(new Set(bindings.map(binding => binding.suffix)).size, bindings.length)
+  for (const binding of bindings) {
+    assert.ok(['', '-shtorm-extended'].includes(binding.suffix)); assert.match(binding.digest, /^sha256:[a-f0-9]{64}$/)
+    for (const ref of [receipt.tag, receipt.tag.includes('-') ? 'beta' : 'latest'].map(ref => ref + binding.suffix)) {
+      const response = await fetch(`https://ghcr.io/v2/${image}/manifests/${ref}`, { headers: {
+        Authorization: `Bearer ${token}`, Accept: 'application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json',
+      }, signal: AbortSignal.timeout(60000) })
+      assert.ok(response.ok)
+      const digest = 'sha256:' + sha(Buffer.from(await response.arrayBuffer()))
+      assert.equal(digest, binding.digest, 'published registry output changed after recovery admission')
+      assert.equal(response.headers.get('docker-content-digest'), digest)
+    }
   }
 }
 
@@ -60,11 +82,12 @@ export async function verifyCandidate(directory, { commit, tag, fingerprint, tru
   assert.equal(run('git', ['rev-parse', 'HEAD']).trim(), commit)
   assert.equal(run('git', ['status', '--porcelain']).trim(), '', 'candidate verification requires a clean immutable product checkout')
   assert.equal(run(process.execPath, ['scripts/release-source.mjs', process.cwd()]).trim(), fingerprint)
-  const { verifyReleaseSet, verifyWindowsSet, linuxAssetNames, targets } = await load('release-verify.mjs')
+  const { verifyReleaseSet, verifyWindowsSet, targets } = await load('release-verify.mjs')
   const { verifyMetadata } = await load('release-metadata.mjs')
   const linux = path.join(directory, 'linux'), windows = path.join(directory, 'windows')
   const signed = await verifyReleaseSet(linux, { version: tag, trustRootsBase64 })
   const panelInventory = await candidatePanelInventory(signed, targets)
+  const inventory = await candidateAssetInventory(signed, targets)
   await verifyWindowsSet(windows)
   await verifyMetadata(path.join(directory, 'metadata'), commit)
   run(process.execPath, [openwrtVerifier, 'verify', path.join(directory, 'openwrt'), commit], { stdio: 'inherit' })
@@ -73,8 +96,8 @@ export async function verifyCandidate(directory, { commit, tag, fingerprint, tru
 import json, pathlib, sys, tarfile, zipfile
 root=pathlib.Path(sys.argv[1]); commit, fingerprint, tag=sys.argv[2:5]
 panels=json.loads(sys.argv[5]); provider_aware=sys.argv[6]=='true'
+windows=json.loads(sys.argv[7])
 tree=__import__('subprocess').check_output(['git','rev-parse',commit+'^{tree}'],text=True).strip()
-targets=json.loads(pathlib.Path('scripts/release-targets.json').read_text())
 def verify(data, platform, profile, provider=None):
  fields=dict(line.split('=',1) for line in data.decode().splitlines() if '=' in line)
  assert fields['commit']==commit and fields['tree']==tree and fields['source_fingerprint']==fingerprint
@@ -83,14 +106,12 @@ def verify(data, platform, profile, provider=None):
 for target in panels:
  with tarfile.open(root/'linux'/target['name']) as archive:
   verify(archive.extractfile('solovey-ui/BUILD_INFO.txt').read(),'linux/'+target['arch'],target['profile'],target['provider'] if provider_aware else None)
-for arch in targets['windows']:
- for profile in targets['windowsProfiles']:
-  prefix='-core' if profile=='core' else ''
-  with zipfile.ZipFile(root/'windows'/('solovey-ui'+prefix+'-windows-'+arch+'.zip')) as archive:
-   names=[n for n in archive.namelist() if n.replace(chr(92),'/')=='solovey-ui-windows/BUILD_INFO.txt']
-   assert len(names)==1
-   verify(archive.read(names[0]),'windows/'+arch,profile)
-`, directory, commit, fingerprint, tag, JSON.stringify(panelInventory.panels), String(panelInventory.providerAware)])
+for target in windows:
+ with zipfile.ZipFile(root/'windows'/target['name']) as archive:
+  names=[n for n in archive.namelist() if n.replace(chr(92),'/')=='solovey-ui-windows/BUILD_INFO.txt']
+  assert len(names)==1
+  verify(archive.read(names[0]),'windows/'+target['arch'],target['profile'],target.get('provider'))
+`, directory, commit, fingerprint, tag, JSON.stringify(panelInventory.panels), String(panelInventory.providerAware), JSON.stringify(inventory.windows)])
   const assets = [], names = new Set()
   for (const relative of ['linux', 'windows', 'metadata', 'openwrt/assets']) {
     for (const name of fs.readdirSync(path.join(directory, relative)).sort()) {
@@ -102,8 +123,8 @@ for arch in targets['windows']:
       assets.push({ name, size: stat.size, sha256: hash.digest('hex') })
     }
   }
-  const expectedCount = (linuxAssetNames(signed.schema).length + 1 + targets.windows.length * targets.windowsProfiles.length + targets.releaseMetadata.length + 3) * 2
-  assert.equal(assets.length, expectedCount); assets.sort((a, b) => a.name.localeCompare(b.name))
+  assert.deepEqual([...names].sort(), inventory.names, 'public release must contain every canonical provider artifact and no extras')
+  assets.sort((a, b) => a.name.localeCompare(b.name))
   const actual = { commit, tag, fingerprint, envelopeSHA256: sha(fs.readFileSync(path.join(linux, 'solovey-ui-release.json'))), sequence: signed.sequence, assets }
   if (receipt) {
     const recovery = json(receipt)

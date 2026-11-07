@@ -17,6 +17,18 @@ export function windowsRecoveryTargets(targets) {
     }))))
 }
 
+export function dockerRecoveryFlavors(targets) {
+  const result = [{ provider: 'sing-box', job: 'build-docker', suffix: '', architectures: targets.docker }]
+  if (targets.extended?.docker?.length) result.push({ provider: targets.extended.provider, job: 'build-docker-extended',
+    suffix: `-${targets.extended.provider}`, architectures: targets.extended.docker })
+  return result
+}
+
+export function openwrtRecoveryJobs(targets) {
+  return ['Canonical OpenWrt x86-64', 'Canonical OpenWrt rockchip-armv8',
+    ...(targets.extended?.openwrt ?? []).map(profile => `Canonical OpenWrt ${profile} ${targets.extended.provider}`)]
+}
+
 export function verifyInterruptedRun(run, jobs, { repository, commit, tag, currentRunID, targets }) {
   assert.equal(run.repository.full_name.toLowerCase(), repository.toLowerCase())
   assert.equal(run.path, '.github/workflows/release.yml')
@@ -28,12 +40,12 @@ export function verifyInterruptedRun(run, jobs, { repository, commit, tag, curre
   const required = ['Release preflight', 'test-installer', 'component-profile-checks', 'build-frontend',
     'Prepare source, SBOM and dependency notices', 'Assemble and verify complete Linux release',
     'build-windows / build-frontend', 'build-windows / verify-windows',
-    'Canonical OpenWrt x86-64', 'Canonical OpenWrt rockchip-armv8', 'Verify complete OpenWrt and FriendlyWrt candidate',
-    'build-docker / publication-authority', 'build-docker / publish-manifest',
+    ...openwrtRecoveryJobs(targets), 'Verify complete OpenWrt and FriendlyWrt candidate',
+    ...dockerRecoveryFlavors(targets).flatMap(({ job, architectures }) => [`${job} / publication-authority`, `${job} / publish-manifest`,
+      ...architectures.map(arch => `${job} / build-${arch}`)]),
     ...targets.linux.map(t => 'Build-' + t.platform),
     ...(targets.extended?.linux ?? []).map(platform => `Build-${targets.extended.provider}-${platform}`),
-    ...windowsRecoveryTargets(targets).map(target => target.job),
-    ...targets.docker.map(arch => 'build-docker / build-' + arch)]
+    ...windowsRecoveryTargets(targets).map(target => target.job)]
   assert.equal(new Set(jobs.map(j => j.name)).size, jobs.length, 'ambiguous source-run jobs')
   const job = name => { const found = jobs.find(j => j.name === name); assert.ok(found, `missing source-run job: ${name}`); return found }
   for (const name of required) assert.equal(job(name).conclusion, 'success', name)
@@ -41,8 +53,10 @@ export function verifyInterruptedRun(run, jobs, { repository, commit, tag, curre
   for (const item of jobs) assert.ok(['success', 'skipped'].includes(item.conclusion) || item.name === 'Publish complete verified release', 'unclassified source-run failure')
   const step = (name, title) => assert.ok(job(name).steps.some(s => s.name === title && s.conclusion === 'success'), `publication step not completed: ${title}`)
   step('Release preflight', 'Verify immutable publication identity before any registry write')
-  for (const arch of targets.docker) step('build-docker / build-' + arch, 'Build and push Docker image by digest')
-  step('build-docker / publish-manifest', 'Create and push multi-platform manifest')
+  for (const { job, architectures } of dockerRecoveryFlavors(targets)) {
+    for (const arch of architectures) step(`${job} / build-${arch}`, 'Build and push Docker image by digest')
+    step(`${job} / publish-manifest`, 'Create and push multi-platform manifest')
+  }
   return true
 }
 
@@ -97,7 +111,8 @@ async function resume() {
   const candidates = [['complete-linux-release', 'linux'],
     ...windowsRecoveryTargets(targets).map(target => [target.artifact, 'windows']),
     ['complete-release-metadata', 'metadata'], ['complete-openwrt-release', 'openwrt'],
-    ...targets.docker.map(arch => ['docker-digest-' + arch, 'digests/' + arch])]
+    ...dockerRecoveryFlavors(targets).flatMap(({ provider, suffix, architectures }) => architectures.map(arch =>
+      [`docker-digest-${arch}${suffix}`, `digests/${provider}/${arch}`]))]
   const retained = verifyRetainedArtifacts(artifacts, candidates.map(([name]) => name))
   for (const [name, destination] of candidates) gh(['run', 'download', runID, '--repo', repository, '--name', name, '--dir', path.join(directory, destination)])
   const actual = await verifyCandidate(directory, { commit, tag, fingerprint, trustRootsBase64: process.env.SUI_RELEASE_TRUST_ROOTS_B64, openwrtVerifier: path.join(process.env.RUNNER_TEMP, 'release-openwrt.mjs') })
@@ -114,27 +129,42 @@ async function resume() {
     if (kind === 'manifests') assert.equal(response.headers.get('docker-content-digest'), digest)
     return { value: JSON.parse(bytes), digest }
   }
-  const index = await registry('manifests', tag)
-  assert.equal((await registry('manifests', tag.includes('-') ? 'beta' : 'latest')).digest, index.digest)
-  const producers = [], producerDigests = []
-  for (const arch of targets.docker) {
-    const folder = path.join(directory, 'digests', arch), names = fs.readdirSync(folder)
-    assert.equal(names.length, 1); assert.match(names[0], /^[a-f0-9]{64}$/); assert.equal(fs.statSync(path.join(folder, names[0])).size, 0)
-    const digest = 'sha256:' + names[0], producer = await registry('manifests', digest)
-    assert.ok(producer.value.manifests.some(m => m.platform?.os === 'linux' && m.platform.architecture === arch))
-    producers.push(producer.value); producerDigests.push({ architecture: arch, digest })
+  const registryBindings = []
+  for (const { provider, suffix, architectures } of dockerRecoveryFlavors(targets)) {
+    const index = await registry('manifests', tag + suffix)
+    assert.equal((await registry('manifests', (tag.includes('-') ? 'beta' : 'latest') + suffix)).digest, index.digest)
+    const producers = [], producerDigests = []
+    for (const arch of architectures) {
+      const folder = path.join(directory, 'digests', provider, arch), names = fs.readdirSync(folder)
+      assert.equal(names.length, 1); assert.match(names[0], /^[a-f0-9]{64}$/); assert.equal(fs.statSync(path.join(folder, names[0])).size, 0)
+      const digest = 'sha256:' + names[0], producer = await registry('manifests', digest)
+      assert.ok(producer.value.manifests.some(m => m.platform?.os === 'linux' && m.platform.architecture === arch))
+      producers.push(producer.value); producerDigests.push({ architecture: arch, digest })
+    }
+    verifyRegistryDescriptorBinding(index.value, producers)
+    for (const item of index.value.manifests.filter(m => m.platform.os === 'linux')) {
+      const manifest = await registry('manifests', item.digest), config = await registry('blobs', manifest.value.config.digest)
+      assert.equal(config.value.architecture, item.platform.architecture); assert.equal(config.value.os, 'linux')
+      assert.equal(config.value.config.Labels['org.opencontainers.image.revision'], commit)
+      assert.equal(config.value.config.Labels['org.opencontainers.image.version'], tag)
+      assert.equal(config.value.config.Labels['org.opencontainers.image.source'], 'https://github.com/MalenkiySolovey/solovey-ui')
+      if (targets.extended?.docker?.length) {
+        assert.equal(config.value.config.Labels['io.solovey.core-provider'], provider)
+        for (const [key, value] of Object.entries({ 'io.solovey.core-provider': provider, 'org.opencontainers.image.version': tag,
+          'org.opencontainers.image.revision': commit, 'org.opencontainers.image.source': 'https://github.com/MalenkiySolovey/solovey-ui' })) {
+          assert.equal(index.value.annotations[key], value)
+          assert.equal(manifest.value.annotations[key], value)
+        }
+      }
+      assert.equal(config.value.config.User, '65532:65532')
+    }
+    registryBindings.push({ provider, suffix, digest: index.digest, producerDigests })
   }
-  verifyRegistryDescriptorBinding(index.value, producers)
-  for (const item of index.value.manifests.filter(m => m.platform.os === 'linux')) {
-    const manifest = await registry('manifests', item.digest), config = await registry('blobs', manifest.value.config.digest)
-    assert.equal(config.value.architecture, item.platform.architecture); assert.equal(config.value.os, 'linux')
-    assert.equal(config.value.config.Labels['org.opencontainers.image.revision'], commit)
-    assert.equal(config.value.config.User, '65532:65532')
-  }
-  const receipt = { schema: 'solovey.release-recovery/v1', repository, sourceRun: { id: run.id, number: run.run_number, attempt: run.run_attempt, event: run.event, head: run.head_sha }, ...actual, retainedArtifacts: retained, registryDigest: index.digest, producerDigests }
+  const receipt = { schema: 'solovey.release-recovery/v1', repository, sourceRun: { id: run.id, number: run.run_number, attempt: run.run_attempt, event: run.event, head: run.head_sha }, ...actual, retainedArtifacts: retained,
+    registryDigest: registryBindings[0].digest, producerDigests: registryBindings[0].producerDigests, registryBindings }
   const receiptDir = path.join(process.env.RUNNER_TEMP, 'release-recovery-receipt')
   fs.mkdirSync(receiptDir, { recursive: true }); fs.writeFileSync(path.join(receiptDir, 'RECOVERY_RECEIPT.json'), JSON.stringify(receipt, null, 2) + '\n')
-  console.log(JSON.stringify({ resumedRun: run.id, productCommit: commit, sourceFingerprint: fingerprint, signedSequence: actual.sequence, envelopeSHA256: actual.envelopeSHA256, assetCount: actual.assets.length, registryDigest: index.digest, status: 'PASS' }))
+  console.log(JSON.stringify({ resumedRun: run.id, productCommit: commit, sourceFingerprint: fingerprint, signedSequence: actual.sequence, envelopeSHA256: actual.envelopeSHA256, assetCount: actual.assets.length, registryBindings, status: 'PASS' }))
 }
 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) await resume()

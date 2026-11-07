@@ -1,7 +1,7 @@
 {
-  "version": "2026.4.1",
-  "minimumPanelVersion": "2026.4.0",
-  "minimumCoreSchema": "1.12",
+  "version": "2026.5.0",
+  "minimumPanelVersion": "2026.4.1",
+  "minimumCoreSchema": "1.13",
   "maximumCoreSchema": "1.13",
   "targetCoreSchema": "1.13",
   "componentMinimumCoreSchema": "1.13",

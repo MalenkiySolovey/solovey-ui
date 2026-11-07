@@ -51,9 +51,13 @@ Release checklist:
 `scripts/release-targets.json` records the supported release inventory. Generic
 Linux has full and core archives for amd64, arm64, armv7, armv6, armv5, 386 and
 s390x, plus one component bundle. Every archive has an exact SHA-256 sidecar.
-The explicit Shtorm Extended flavor adds full/core Linux amd64 archives under
-the same release transaction. Its platform policy is `extended` in that file;
-other Extended platforms are not declared. Official remains the default.
+The explicit Shtorm Extended flavor adds full/core archives for all seven Linux
+architectures in the same transaction. Its platform policy is `extended` in
+that file. Official remains the default. Both providers also ship Windows
+amd64/arm64 full/core packages, Docker amd64/arm64 images and OpenWrt
+x86-64/rockchip-armv8 full APKs. FriendlyWrt shares the ARM64 APK and one storage
+descriptor. `release-providers.mjs` derives the complete public file inventory;
+do not reuse a previous release's asset count.
 `solovey-ui-release.json` and its checksum bind the complete Linux update set.
 Windows ships amd64 and arm64 full/core ZIP packages with checksums; the operator-managed
 Docker output covers amd64 and arm64. RISC-V is not a current release target.
@@ -63,7 +67,8 @@ publishes independently. Linux assembly and signature/complete-set verification
 also run in preflight-only mode, retaining the candidate as an Actions artifact.
 Publication verifies the immutable tag against the tested source before any
 registry write. Release runs are serialized so channel updates have one writer.
-After Windows and Linux are ready, the Docker owner builds both image targets;
+After every package and disclosure gate is ready, the Docker owner builds both
+architecture targets for each provider;
 only publication mode pushes their digests and complete multi-platform manifest.
 Preflight retains private OCI archives, SBOM and build provenance for both
 Docker architectures.
@@ -100,7 +105,7 @@ storage. Source fingerprinting continues to include unknown nonignored source
 files; candidate staging must not pollute that authority. The publication gate
 rechecks all immutable product verifiers, archive BUILD_INFO identities and all
 candidate bytes against the recovery receipt. It also requires the existing
-version/latest OCI digests to remain unchanged. Missing/expired/ambiguous retained
+version/latest OCI digests for every declared provider to remain unchanged. Missing/expired/ambiguous retained
 artifacts, changed source/bytes, invalid trust or an already public version fail
 closed. Recovery intermediates retain one day; its small receipt retains seven.
 
@@ -121,8 +126,8 @@ Official-only and cannot silently omit Extended packages; recovery of an old
 product uses its immutable product contract without requiring newer modules.
 
 `scripts/release-compatibility.json` owns the reviewed update range and target
-schema for the exact source version. The reviewed metadata covers incoming
-panel 2026.4.0/schema 1.12, with target and component packs at schema 1.13.
+schema for the exact source version. The reviewed 2026.5.0 metadata covers
+incoming panel 2026.4.1/schema 1.13, with target and component packs at schema 1.13.
 Signed self-update requires the target schema to match the running binary's
 compiled schema. Therefore v2026.4.0/schema 1.12 to v2026.4.1/schema 1.13 uses
 the normal operator-managed installer/package/container path; the old runtime

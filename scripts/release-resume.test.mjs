@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
-import { verifyInterruptedRun, verifyRetainedArtifacts, verifyRegistryDescriptorBinding, windowsRecoveryTargets } from './release-resume.mjs'
+import { verifyInterruptedRun, verifyRetainedArtifacts, verifyRegistryDescriptorBinding, windowsRecoveryTargets, dockerRecoveryFlavors, openwrtRecoveryJobs } from './release-resume.mjs'
 
 const targets = JSON.parse(fs.readFileSync(new URL('./release-targets.json', import.meta.url), 'utf8'))
 function fixture() {
@@ -9,12 +9,20 @@ function fixture() {
   const run = { id: 123, repository: { full_name: context.repository }, path: '.github/workflows/release.yml', event: 'push', head_sha: context.commit, head_branch: context.tag, status: 'completed', conclusion: 'failure', run_number: 59, run_attempt: 1 }
   const names = ['Release preflight', 'test-installer', 'component-profile-checks', 'build-frontend', 'Prepare source, SBOM and dependency notices', 'Assemble and verify complete Linux release', 'build-windows / build-frontend', 'build-windows / verify-windows', 'Canonical OpenWrt x86-64', 'Canonical OpenWrt rockchip-armv8', 'Verify complete OpenWrt and FriendlyWrt candidate', 'build-docker / publication-authority', 'build-docker / publish-manifest', ...targets.linux.map(t => 'Build-' + t.platform), ...targets.windows.flatMap(arch => targets.windowsProfiles.map(p => `build-windows / Build-windows-${arch}-${p}`)), ...targets.docker.map(arch => 'build-docker / build-' + arch)]
   const jobs = names.filter(name => !name.startsWith('build-windows / Build-windows-')).map(name => ({ name, conclusion: 'success', steps: [] }))
+  for (const name of openwrtRecoveryJobs(targets).filter(name => !names.includes(name))) jobs.push({ name, conclusion: 'success', steps: [] })
+  for (const { job, architectures } of dockerRecoveryFlavors(targets).slice(1)) {
+    for (const name of [`${job} / publication-authority`, `${job} / publish-manifest`, ...architectures.map(arch => `${job} / build-${arch}`)]) jobs.push({ name, conclusion: 'success', steps: [] })
+  }
   jobs.push(...windowsRecoveryTargets(targets).map(target => ({ name: target.job, conclusion: 'success', steps: [] })))
   jobs.push(...targets.extended.linux.map(platform => ({ name: `Build-${targets.extended.provider}-${platform}`, conclusion: 'success', steps: [] })))
   const step = (name, title) => jobs.find(j => j.name === name).steps.push({ name: title, conclusion: 'success' })
   step('Release preflight', 'Verify immutable publication identity before any registry write')
   for (const arch of targets.docker) step('build-docker / build-' + arch, 'Build and push Docker image by digest')
   step('build-docker / publish-manifest', 'Create and push multi-platform manifest')
+  for (const { job, architectures } of dockerRecoveryFlavors(targets).slice(1)) {
+    for (const arch of architectures) step(`${job} / build-${arch}`, 'Build and push Docker image by digest')
+    step(`${job} / publish-manifest`, 'Create and push multi-platform manifest')
+  }
   jobs.push({ name: 'Publish complete verified release', conclusion: 'failure', steps: [] })
   return { run, jobs, context }
 }
@@ -36,6 +44,22 @@ test('Windows recovery preserves legacy producer names and requires all new prov
     const { run, jobs, context } = fixture()
     assert.throws(() => verifyInterruptedRun(run, jobs.filter(job => job.name !== target.job), context), /missing source-run job/)
   }
+})
+
+test('recovery cannot omit an Extended APK or OCI publication that belongs to the product matrix', () => {
+  for (const name of ['Canonical OpenWrt x86-64 shtorm-extended', 'Canonical OpenWrt rockchip-armv8 shtorm-extended',
+    'build-docker-extended / publication-authority', 'build-docker-extended / build-amd64', 'build-docker-extended / build-arm64', 'build-docker-extended / publish-manifest']) {
+    const { run, jobs, context } = fixture()
+    assert.throws(() => verifyInterruptedRun(run, jobs.filter(job => job.name !== name), context), /missing source-run job/)
+  }
+  for (const name of ['build-docker-extended / build-amd64', 'build-docker-extended / build-arm64', 'build-docker-extended / publish-manifest']) {
+    const { run, jobs, context } = fixture()
+    jobs.find(job => job.name === name).steps[0].conclusion = 'skipped'
+    assert.throws(() => verifyInterruptedRun(run, jobs, context), /publication step not completed/)
+  }
+  const legacy = structuredClone(targets); delete legacy.extended
+  assert.deepEqual(openwrtRecoveryJobs(legacy), ['Canonical OpenWrt x86-64', 'Canonical OpenWrt rockchip-armv8'])
+  assert.deepEqual(dockerRecoveryFlavors(legacy), [{ provider: 'sing-box', job: 'build-docker', suffix: '', architectures: ['amd64', 'arm64'] }])
 })
 
 test('recovery rejects source/tag drift, unrelated events, nonterminal/successful and current runs', () => {
