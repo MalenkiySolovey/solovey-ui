@@ -11,6 +11,20 @@ const run = (command, args, options = {}) => execFileSync(command, args, { encod
 const json = file => JSON.parse(fs.readFileSync(file, 'utf8'))
 const load = name => import(pathToFileURL(path.resolve('scripts', name)))
 
+// Windows emits commit and the complete source fingerprint. The verified
+// disclosure binds that same commit to its Git tree; Windows BUILD_INFO does
+// not invent the Linux producer's additional tree field.
+export function verifyArchiveBuildInfo(data, target, { commit, tree, fingerprint, tag }) {
+  const fields = Object.fromEntries(data.split(/\r?\n/).filter(line => line.includes('=')).map(line => {
+    const separator = line.indexOf('='); return [line.slice(0, separator), line.slice(separator + 1)]
+  }))
+  assert.ok(['linux', 'windows'].includes(target.platform), 'unsupported archive metadata platform')
+  for (const [name, expected] of Object.entries({ commit, source_fingerprint: fingerprint, version: tag,
+    platform: `${target.platform}/${target.arch}`, profile: target.profile })) assert.equal(fields[name], expected, `archive ${name} differs`)
+  if (target.platform === 'linux' || fields.tree !== undefined) assert.equal(fields.tree, tree, 'archive tree differs')
+  if (target.provider !== undefined) assert.equal(fields.core_provider, target.provider, 'archive provider differs')
+}
+
 // An execution-only recovery orchestrator can be newer than its immutable
 // product. v1 products predate release-providers.mjs and retain their original
 // Official-only archive convention; v2 always uses the product's policy owner.
@@ -89,29 +103,27 @@ export async function verifyCandidate(directory, { commit, tag, fingerprint, tru
   const panelInventory = await candidatePanelInventory(signed, targets)
   const inventory = await candidateAssetInventory(signed, targets)
   await verifyWindowsSet(windows)
-  await verifyMetadata(path.join(directory, 'metadata'), commit)
+  const disclosure = await verifyMetadata(path.join(directory, 'metadata'), commit)
   run(process.execPath, [openwrtVerifier, 'verify', path.join(directory, 'openwrt'), commit], { stdio: 'inherit' })
   // Read archive metadata without extraction or executing any candidate binary.
-  run('python3', ['-c', `
+  const archiveMetadata = JSON.parse(run('python3', ['-c', `
 import json, pathlib, sys, tarfile, zipfile
-root=pathlib.Path(sys.argv[1]); commit, fingerprint, tag=sys.argv[2:5]
-panels=json.loads(sys.argv[5]); provider_aware=sys.argv[6]=='true'
-windows=json.loads(sys.argv[7])
-tree=__import__('subprocess').check_output(['git','rev-parse',commit+'^{tree}'],text=True).strip()
-def verify(data, platform, profile, provider=None):
- fields=dict(line.split('=',1) for line in data.decode().splitlines() if '=' in line)
- assert fields['commit']==commit and fields['tree']==tree and fields['source_fingerprint']==fingerprint
- assert fields['version']==tag and fields['platform']==platform and fields['profile']==profile
- if provider is not None: assert fields['core_provider']==provider
+root=pathlib.Path(sys.argv[1]); panels=json.loads(sys.argv[2]); windows=json.loads(sys.argv[3]); result=[]
 for target in panels:
  with tarfile.open(root/'linux'/target['name']) as archive:
-  verify(archive.extractfile('solovey-ui/BUILD_INFO.txt').read(),'linux/'+target['arch'],target['profile'],target['provider'] if provider_aware else None)
+  result.append({'target':target,'data':archive.extractfile('solovey-ui/BUILD_INFO.txt').read().decode()})
 for target in windows:
  with zipfile.ZipFile(root/'windows'/target['name']) as archive:
   names=[n for n in archive.namelist() if n.replace(chr(92),'/')=='solovey-ui-windows/BUILD_INFO.txt']
   assert len(names)==1
-  verify(archive.read(names[0]),'windows/'+target['arch'],target['profile'],target.get('provider'))
-`, directory, commit, fingerprint, tag, JSON.stringify(panelInventory.panels), String(panelInventory.providerAware), JSON.stringify(inventory.windows)])
+  result.append({'target':target,'data':archive.read(names[0]).decode()})
+print(json.dumps(result))
+`, directory, JSON.stringify(panelInventory.panels.map(target => ({ ...target, platform: 'linux',
+    provider: panelInventory.providerAware ? target.provider : undefined }))), JSON.stringify(inventory.windows.map(target => ({ ...target, platform: 'windows' })))]))
+  assert.equal(disclosure.source.fingerprint, fingerprint, 'archive source fingerprint differs from verified disclosure')
+  for (const { data, target } of archiveMetadata) verifyArchiveBuildInfo(data, target, {
+    commit, tree: disclosure.source.tree, fingerprint, tag,
+  })
   const assets = [], names = new Set()
   for (const relative of ['linux', 'windows', 'metadata', 'openwrt/assets']) {
     for (const name of fs.readdirSync(path.join(directory, relative)).sort()) {

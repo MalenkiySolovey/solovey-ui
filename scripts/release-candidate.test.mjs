@@ -5,7 +5,34 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
-import { candidatePanelInventory, requireExternalCandidate, verifyCandidate, verifyRecoveryBinding } from './release-candidate.mjs'
+import { candidatePanelInventory, requireExternalCandidate, verifyArchiveBuildInfo, verifyCandidate, verifyRecoveryBinding } from './release-candidate.mjs'
+
+test('Windows archive admission binds its emitted commit and fingerprint without a Linux-only tree field', () => {
+  const identity = { commit: 'a'.repeat(40), tree: 'b'.repeat(40), fingerprint: 'c'.repeat(64), tag: 'v2026.5.0' }
+  const target = { platform: 'windows', arch: 'arm64', profile: 'core', provider: 'shtorm-extended' }
+  const fields = { app: 'solovey-ui', version: identity.tag, commit: identity.commit, source_fingerprint: identity.fingerprint,
+    platform: 'windows/arm64', profile: 'core', core_provider: 'shtorm-extended' }
+  const text = fields => Object.entries(fields).map(([key, value]) => `${key}=${value}`).join('\n') + '\n'
+  verifyArchiveBuildInfo(text(fields), target, identity)
+  for (const name of ['version', 'commit', 'source_fingerprint', 'platform', 'profile', 'core_provider']) {
+    const missing = { ...fields }; delete missing[name]
+    assert.throws(() => verifyArchiveBuildInfo(text(missing), target, identity), name)
+    assert.throws(() => verifyArchiveBuildInfo(text({ ...fields, [name]: 'different' }), target, identity), name)
+  }
+  verifyArchiveBuildInfo(text({ ...fields, tree: identity.tree }), target, identity)
+  assert.throws(() => verifyArchiveBuildInfo(text({ ...fields, tree: 'd'.repeat(40) }), target, identity), /tree/)
+})
+
+test('Linux archive admission retains the additional required tree binding', () => {
+  const identity = { commit: 'a'.repeat(40), tree: 'b'.repeat(40), fingerprint: 'c'.repeat(64), tag: 'v2026.5.0' }
+  const target = { platform: 'linux', arch: 'amd64', profile: 'full', provider: 'sing-box' }
+  const fields = { version: identity.tag, commit: identity.commit, source_fingerprint: identity.fingerprint,
+    platform: 'linux/amd64', profile: 'full', core_provider: 'sing-box' }
+  const text = values => Object.entries(values).map(([key, value]) => `${key}=${value}`).join('\n') + '\n'
+  assert.throws(() => verifyArchiveBuildInfo(text(fields), target, identity), /tree/)
+  verifyArchiveBuildInfo(text({ ...fields, tree: identity.tree }), target, identity)
+  assert.throws(() => verifyArchiveBuildInfo(text({ ...fields, tree: 'd'.repeat(40) }), target, identity), /tree/)
+})
 
 test('new recovery orchestration retains old Official-only products and uses v2 product policy when available', async () => {
   const targets = { linux: [{ platform: 'amd64' }, { platform: 'armv7' }] }
