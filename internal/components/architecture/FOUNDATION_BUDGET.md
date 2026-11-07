@@ -1,5 +1,20 @@
 # Foundation regression budget
 
+R7-D12 physical qualification reviews one new owner-local mutation in
+`fallback-html/service.(*Service).SaveSite` (`ecd8fd5a...`). The existing Fallback
+service owns the `fallbackdomain.Site` row; its existing mutation lock and SQL
+transaction enclose both creation and the primary-key-scoped `enabled = false`
+update. The update only honors an explicitly disabled new-site request after
+GORM reapplies the model's true creation default. Failure rolls back creation;
+no foreign table, publication, runtime worker or privilege is acquired.
+`TestCreateSiteHonorsExplicitDisabledState` proves returned and stored false,
+no active publication, and the unchanged true default when the field is omitted.
+The containing Direct-policy digest changes from `d560e9dc...` to `e7ed0bc9...`;
+its existing `ExposureMode: "direct"` classifies Fallback site exposure and does
+not select an outbound, route, final or fallback. This is one reviewed mutation
+addition and one declaration digest replacement. The R1 base, Direct-site count,
+worker allowances and all unrelated inventory entries remain unchanged.
+
 R7 inline External Subscriptions adds one reviewed owner-local `tx.Save(&saved)`
 site (`e857ad88...`) in `*Service.SaveSubscription`. The existing source owner
 first reserves its row identity, then seals the inline source with owner/row/field
