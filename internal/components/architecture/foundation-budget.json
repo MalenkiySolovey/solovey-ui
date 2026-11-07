@@ -485,6 +485,12 @@
       "rule": "component-model-mutation",
       "path": "components/fallback-html/service/service.go",
       "symbol": "*Service.SaveSite",
+      "digest": "ecd8fd5a7924f928250ec44468f8623cd5a49906cf4365a8fe9f9cdf88a9992a"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/service.go",
+      "symbol": "*Service.SaveSite",
       "digest": "ef34c25c2f7196239f66af2653028ea6c3c84361895b18db29ebc785203b83eb"
     },
     {
@@ -1907,7 +1913,7 @@
       "rule": "direct-policy",
       "path": "components/fallback-html/service/service.go",
       "symbol": "*Service.SaveSite",
-      "digest": "d560e9dc3ee5afba82f5125221db5b2cac0004664be63d3281edca404a1e83fc"
+      "digest": "e7ed0bc912295ffde2911a715b99596c65b90dc5b5b0b1fe8f0e48a4489d7d4a"
     },
     {
       "rule": "direct-policy",
