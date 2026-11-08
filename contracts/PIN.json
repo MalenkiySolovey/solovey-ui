@@ -1,0 +1,16 @@
+{
+  "schema": "solovey.contracts.consumer-pin/v1",
+  "canonicalRepository": "MalenkiySolovey/solovey-contracts",
+  "module": "github.com/MalenkiySolovey/solovey-contracts",
+  "version": "v1.0.0",
+  "sourceCommit": "ca13e3bb8e516594467dcbf717f757d4806d553c",
+  "sourceTree": "5e388c7f5f6126ce0be6925a8a4b1cdfed399b20",
+  "moduleChecksum": "h1:me6uddB3lN19zfYkGp6iuOT46LOshbSelIECAt4Y7aY=",
+  "goModChecksum": "h1:2fPj6/IiP0jvioVnW2OKurqGPwilJ+gcXNs74aX1VcI=",
+  "manifestSHA256": "e66ee044d4496caffba532e7dd7608f774582a40abf6d4f825e36350803f4516",
+  "contractVersion": "solovey.management/v1",
+  "schemaSHA256": "629e9397122bb06e3534cd5753137d6acd4f51016bf96a038558bb0f5e434b8b",
+  "generatedSHA256": "90d6b8bfd66a2167b410f4044f8b1ba05653a9dd8d971d3ef24f67b3dde35aec",
+  "vectorsSHA256": "1e3e87c62ad4bbdd47a1c34d41b0a0be156d9c76851ecef61bf2d9fde3ab90ff",
+  "bundleSHA256": "d4690452c43a9a3f78e19b5fd03b016ee9f8dc69e8ee376a0098f11767191610"
+}

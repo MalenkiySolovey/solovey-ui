@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
+	wire "github.com/MalenkiySolovey/solovey-contracts/management/v1"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
-	wire "github.com/MalenkiySolovey/solovey-ui/contracts/management/v1"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"

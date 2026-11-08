@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
+	wire "github.com/MalenkiySolovey/solovey-contracts/management/v1"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
-	wire "github.com/MalenkiySolovey/solovey-ui/contracts/management/v1"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	ops "github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 )

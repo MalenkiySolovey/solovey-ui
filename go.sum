@@ -8,6 +8,8 @@ github.com/MalenkiySolovey/sing-box v1.14.3-0.20261012000247-8b914e4be510 h1:RkQ
 github.com/MalenkiySolovey/sing-box v1.14.3-0.20261012000247-8b914e4be510/go.mod h1:O4q0spxb+xwV/p9HYR+Es1cMjK3bBvYl6k08V9rSpwU=
 github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762 h1:0x0RTO9IyqRHO9rmEpUhCKRBeISM5LwKLsIiIifFbRY=
 github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762/go.mod h1:rJFeVxbEej2iuyeCJ3drKW+p5rOgtLIW3XhZ6ty7Fig=
+github.com/MalenkiySolovey/solovey-contracts v1.0.0 h1:me6uddB3lN19zfYkGp6iuOT46LOshbSelIECAt4Y7aY=
+github.com/MalenkiySolovey/solovey-contracts v1.0.0/go.mod h1:2fPj6/IiP0jvioVnW2OKurqGPwilJ+gcXNs74aX1VcI=
 github.com/ajg/form v1.5.1 h1:t9c7v8JUKu/XxOGBU0yjNpaMloxGEJhUkqFRq0ibGeU=
 github.com/ajg/form v1.5.1/go.mod h1:uL1WgH+h2mgNtvBq0339dVnzXdBETtL2LeUXaIv25UY=
 github.com/akutz/memconn v0.1.0 h1:NawI0TORU4hcOMsMr11g7vwlCdkYeLKXBcxWu2W/P8A=

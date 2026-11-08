@@ -48,6 +48,8 @@ github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762 h1:0x0
 github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762/go.mod h1:rJFeVxbEej2iuyeCJ3drKW+p5rOgtLIW3XhZ6ty7Fig=
 github.com/MalenkiySolovey/sing-quic v0.7.2-0.20261025183737-9034c2c10c63 h1:kRQoFAgCMnYrjyyejCWtJd7Sc08t40HMHY4x58Es88c=
 github.com/MalenkiySolovey/sing-quic v0.7.2-0.20261025183737-9034c2c10c63/go.mod h1:rJFeVxbEej2iuyeCJ3drKW+p5rOgtLIW3XhZ6ty7Fig=
+github.com/MalenkiySolovey/solovey-contracts v1.0.0 h1:me6uddB3lN19zfYkGp6iuOT46LOshbSelIECAt4Y7aY=
+github.com/MalenkiySolovey/solovey-contracts v1.0.0/go.mod h1:2fPj6/IiP0jvioVnW2OKurqGPwilJ+gcXNs74aX1VcI=
 github.com/OneOfOne/xxhash v1.2.8 h1:31czK/TI9sNkxIKfaUfGlU47BAxQ0ztGgd9vPyqimf8=
 github.com/OneOfOne/xxhash v1.2.8/go.mod h1:eZbhyaAYD41SGSSsnmcpxVoRiQ/MPUTjUdIIOT9Um7Q=
 github.com/RyuaNerin/go-krypto v1.3.0 h1:smavTzSMAx8iuVlGb4pEwl9MD2qicqMzuXR2QWp2/Pg=

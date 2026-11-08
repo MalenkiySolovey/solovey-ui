@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+env:
+  GOWORK: 'off'
+  GOFLAGS: -mod=readonly
+
 jobs:
   contract:
     name: management-contract
@@ -20,6 +24,7 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version-file: frontend/.node-version
-      - run: node contracts/tools/generate.mjs --check
-      - run: go test ./contracts/management/v1 ./internal/managementcontract ./componenthost/supervisor
+      - run: node scripts/verify-contract-pin.mjs
+      - run: node --test scripts/verify-contract-pin.test.mjs
+      - run: go test github.com/MalenkiySolovey/solovey-contracts/management/v1 ./contracts/management/v1 ./internal/managementcontract ./componenthost/supervisor
       - run: go test ./service ./service/datalifecycle -run TestManagementContract -count=1
