@@ -51,10 +51,3 @@ func ValidateOrdinaryUpdate(value OrdinaryUpdateV1) error {
 func (value OrdinaryUpdateV1) Matches(operationID string, identity ReleaseIdentityV1) bool {
 	return ValidateOrdinaryUpdate(value) == nil && value == ordinaryUpdateBinding(operationID, identity, value.InstalledProvider)
 }
-
-func (value OrdinaryUpdateV1) observation() *OrdinaryUpdateV1 {
-	if value == (OrdinaryUpdateV1{}) {
-		return nil
-	}
-	return &value
-}

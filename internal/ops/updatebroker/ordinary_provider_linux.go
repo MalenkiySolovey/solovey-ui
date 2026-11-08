@@ -12,6 +12,13 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 )
 
+func (value OrdinaryUpdateV1) observation() *OrdinaryUpdateV1 {
+	if value == (OrdinaryUpdateV1{}) {
+		return nil
+	}
+	return &value
+}
+
 func verifyOrdinaryProviderPeer(peer broker.PeerIdentity, source release.CoreProviderSource, target ReleaseIdentityV1) error {
 	if len(target.Artifacts) != 1 {
 		return errors.New("ordinary update target is incomplete")
