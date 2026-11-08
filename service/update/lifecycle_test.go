@@ -47,20 +47,38 @@ type lifecycleProvider struct {
 	reconcileCalls     int
 	cleanupErr         error
 	cleanupCalls       int
+	stagedSource       release.CoreProviderSource
+	stagedOperation    string
 }
 
 func (provider *lifecycleProvider) Capabilities(context.Context) Capabilities {
 	return Capabilities{Mode: "native", Check: "AVAILABLE", Download: "AVAILABLE", Prepare: "AVAILABLE",
 		Activate: "AVAILABLE", Rollback: "AVAILABLE", OSUpdates: "EXTERNAL_MANAGED", Reboot: "OPERATOR_ADVISORY"}
 }
-func (provider *lifecycleProvider) DownloadAndStage(_ context.Context, _ model.UpdateOperation, _ release.Verified, artifacts []release.Artifact, progress func(int64)) error {
+func (provider *lifecycleProvider) DownloadAndStage(_ context.Context, operation model.UpdateOperation, verified release.Verified, artifacts []release.Artifact, progress func(int64)) error {
 	provider.stageCalls++
+	provider.stagedOperation = operation.OperationID
+	if len(artifacts) == 1 {
+		identity, err := verified.ArtifactIdentity(artifacts[0])
+		if err != nil {
+			return err
+		}
+		provider.stagedSource = identity.CoreProvider
+	}
 	if provider.downloadErr == nil {
 		for _, artifact := range artifacts {
 			progress(artifact.Size)
 		}
 	}
 	return provider.downloadErr
+}
+func (provider *lifecycleProvider) AdmitOrdinaryActivation(_ context.Context, operation model.UpdateOperation, current release.CoreProviderSource) error {
+	if operation.OperationID != provider.stagedOperation ||
+		provider.stagedSource == (release.CoreProviderSource{}) && current.ID != "sing-box" ||
+		provider.stagedSource != (release.CoreProviderSource{}) && current.ID != provider.stagedSource.ID {
+		return ErrCoreProviderMaintenance
+	}
+	return nil
 }
 func (provider *lifecycleProvider) Preflight(context.Context, model.UpdateOperation, release.Verified, []release.Artifact) (PreflightResult, error) {
 	return PreflightResult{RollbackAvailable: provider.preflightAvailable, BackupRef: lifecycleDigest("fixture-backup")}, provider.preflightErr

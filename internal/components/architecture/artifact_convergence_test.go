@@ -20,7 +20,9 @@ func TestArtifactIdentityCannotOwnTransportOrAnotherTrustStore(t *testing.T) {
 
 func TestMigratedArtifactConsumersUseVerifiedIdentity(t *testing.T) {
 	for _, target := range []struct{ file, function, required string }{
-		{"service/update/lifecycle.go", "fetchAndVerify", "PanelArtifacts"},
+		{"service/update/lifecycle.go", "fetchAndVerify", "ordinaryArtifacts"},
+		{"service/update/core_provider.go", "ordinaryArtifacts", "PanelArtifactsForProvider"},
+		{"service/update/core_provider.go", "ordinaryArtifacts", "ArtifactIdentity"},
 		{"service/update/lifecycle.go", "validateManifestCompatibility", "ComponentArtifacts"},
 		{"service/update/broker_provider.go", "downloadAndStageArtifact", "ArtifactIdentity"},
 	} {
@@ -44,6 +46,9 @@ func TestMigratedArtifactConsumersUseVerifiedIdentity(t *testing.T) {
 			}
 			if ok && selector.Sel.Name == "ArtifactsFor" {
 				t.Errorf("%s bypassed verified identity", target.function)
+			}
+			if ok && target.function == "ordinaryArtifacts" && selector.Sel.Name == "PanelArtifacts" {
+				t.Errorf("ordinary updater returned to v1-only artifact selection")
 			}
 			return true
 		})

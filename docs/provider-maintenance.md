@@ -23,6 +23,17 @@ read-only preview binds a signed v2 envelope and explicit artifact set to the
 current source and desired-configuration revision. It clears raw configuration
 before returning the public projection.
 
+From 2026.5.1, ordinary Update consumes signed v2 for the installed provider in
+both Full and Core profiles. It cannot select another provider. The existing
+Root checkpoint independently binds the installed executable's source and the
+signed candidate source, architecture and profile. A signed source can advance
+within the same provider after normal candidate verification. This does not
+grant configuration-maintenance authority. The internal Update broker ABI is
+`update-broker-provider-1.2`; the management contract and core schema do not
+change. The canonical installer upgrades Panel and broker together for older
+releases. Frozen 2026.5.0 and 2026.4.1 require that manual upgrade once; see the
+[corrective release notes](../.github/RELEASE_NOTES_v2026.5.1.md).
+
 ## Installer and release flavors
 
 A fresh installation selects Official (`sing-box`) unless the operator passes
