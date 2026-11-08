@@ -42,6 +42,8 @@ const (
 )
 
 type diskState struct {
+	PreparedPriorMaintenance        providerMaintenanceState    `json:"preparedPriorMaintenance,omitzero"`
+	OrdinaryUpdate                  OrdinaryUpdateV1            `json:"ordinaryUpdate,omitzero"`
 	ProviderMaintenance             providerMaintenanceState    `json:"providerMaintenance,omitzero"`
 	ActiveSequence                  uint64                      `json:"activeSequence"`
 	ActiveDigest                    string                      `json:"activeDigest"`
@@ -134,6 +136,7 @@ func (h *Host) observe(_ context.Context, _ broker.Request, peer broker.PeerIden
 		}
 	}
 	result := ObservationV1{ProviderRevision: ProviderRevision, InstalledSequence: state.ActiveSequence,
+		OrdinaryUpdate:              state.OrdinaryUpdate.observation(),
 		ProviderMaintenanceRevision: ProviderMaintenanceRevision,
 		ProviderMaintenance:         state.ProviderMaintenance.observation(),
 		ActiveSequence:              state.ActiveSequence, ActiveDigest: state.ActiveDigest, InstalledDigest: state.ActiveDigest,
@@ -250,15 +253,19 @@ func (h *Host) prepare(ctx context.Context, envelope broker.Request, peer broker
 		return nil, broker.Failure(broker.CodeInvalidRequest, "update preflight request is invalid")
 	}
 	withProvider := request.Release.CoreProvider != (release.CoreProviderSource{})
-	if withProvider {
-		if request.Maintenance == nil || ValidateProviderMaintenance(*request.Maintenance) != nil || len(request.Release.Artifacts) != 1 {
+	maintenance := request.Maintenance != nil
+	if maintenance {
+		if !withProvider || request.InstalledProvider != (release.CoreProviderSource{}) || ValidateProviderMaintenance(*request.Maintenance) != nil || len(request.Release.Artifacts) != 1 {
 			return nil, broker.Failure(broker.CodeInvalidRequest, "provider preflight requires a complete maintenance checkpoint")
 		}
 		if request.ValidateConfiguration {
 			return h.prepareProviderConfiguration(ctx, envelope, request, peer)
 		}
-	} else if request.Maintenance != nil || request.ValidateConfiguration || request.MaintenanceHeld {
-		return nil, broker.Failure(broker.CodeInvalidRequest, "legacy preflight cannot carry provider maintenance claims")
+	} else if request.ValidateConfiguration || request.MaintenanceHeld {
+		return nil, broker.Failure(broker.CodeInvalidRequest, "ordinary preflight cannot carry provider maintenance claims")
+	} else if withProvider && (len(request.Release.Artifacts) != 1 || release.ValidateCoreProviderSource(request.InstalledProvider) != nil || request.InstalledProvider.ID != request.Release.CoreProvider.ID) ||
+		!withProvider && request.InstalledProvider != (release.CoreProviderSource{}) {
+		return nil, broker.Failure(broker.CodeInvalidRequest, "ordinary preflight requires its installed provider identity")
 	}
 	if err := h.reconcileStagingState(envelope.OperationID); err != nil {
 		return nil, broker.Failure(broker.CodeExecution, "update staging state could not be reconciled")
@@ -306,12 +313,17 @@ func (h *Host) prepare(ctx context.Context, envelope broker.Request, peer broker
 	if !h.localCheckpointMatches(state.ActiveRelease, state.ActiveLocalCheckpoint) {
 		return nil, broker.Failure(broker.CodeRevision, "installed rollback generation changed")
 	}
-	if withProvider {
+	if maintenance {
 		if !pathWithin(filepath.Join(h.ReleaseRoot, state.ActiveRelease), peer.Executable) ||
 			verifyPreviousProviderPeer(peer, *request.Maintenance, request.Release.BinaryProfile) != nil {
 			return nil, broker.Failure(broker.CodeRevision, "provider preflight source observation changed")
 		}
-	} else if !h.legacyAutoVerificationAllowed(state) {
+	} else if withProvider {
+		if !pathWithin(filepath.Join(h.ReleaseRoot, state.ActiveRelease), peer.Executable) ||
+			verifyOrdinaryProviderPeer(peer, request.InstalledProvider, request.Release) != nil {
+			return nil, broker.Failure(broker.CodeRevision, "ordinary update must retain its installed provider")
+		}
+	} else if !h.legacyAutoVerificationAllowed(state) || state.OrdinaryUpdate != (OrdinaryUpdateV1{}) && state.OrdinaryUpdate.CoreProvider.ID != "sing-box" {
 		return nil, broker.Failure(broker.CodeRevision, "installed provider requires explicit maintenance preflight")
 	}
 	maxSequence, maxDigest := state.activationHighWater()
@@ -326,17 +338,29 @@ func (h *Host) prepare(ctx context.Context, envelope broker.Request, peer broker
 	rollbackRef := SemanticReference("rollback", envelope.OperationID, request.Release.ManifestDigest)
 	preparedReplay := state.preparedRollbackMatches(envelope.OperationID, request.Release.ManifestDigest, rollbackRef)
 	activatedReplay := preparedReplay && state.ActiveSequence == request.Release.Sequence && state.ActiveDigest == request.Release.ManifestDigest && state.ActiveRelease == releaseName
-	sameEnvelopeTransition := withProvider && request.Maintenance.PreviousProvider.ID != request.Release.CoreProvider.ID &&
+	sameEnvelopeTransition := maintenance && request.Maintenance.PreviousProvider.ID != request.Release.CoreProvider.ID &&
 		request.Release.Sequence == maxSequence && request.Release.ManifestDigest == maxDigest &&
 		state.ActiveSequence == request.Release.Sequence && state.ActiveDigest == request.Release.ManifestDigest && state.ActiveRelease != releaseName
 	if request.Release.Sequence < maxSequence || request.Release.Sequence == maxSequence && !activatedReplay && !sameEnvelopeTransition {
 		return nil, broker.Failure(broker.CodeRevision, "prepared release sequence is not monotonic")
 	}
+	if !maintenance && state.ProviderMaintenance.Phase == "ROLLBACK_VERIFIED" {
+		// The completed rollback is terminal; only a still-live committed
+		// transition needs its proof retained with the next prepared rollback.
+		state.ProviderMaintenance = providerMaintenanceState{}
+	}
 	if state.hasBoundPreparedRollback() && !preparedReplay {
 		return nil, broker.Failure(broker.CodeFence, "another update rollback checkpoint is still prepared")
 	}
-	if withProvider && preparedReplay && (!state.ProviderMaintenance.matches(envelope.OperationID, request.Release) || state.ProviderMaintenance.Input != *request.Maintenance) {
+	if maintenance && preparedReplay && (!state.ProviderMaintenance.matches(envelope.OperationID, request.Release) || state.ProviderMaintenance.Input != *request.Maintenance) {
 		return nil, broker.Failure(broker.CodeFence, "provider maintenance checkpoint binding changed")
+	}
+	if withProvider && !maintenance && preparedReplay && (!state.OrdinaryUpdate.Matches(envelope.OperationID, request.Release) || state.OrdinaryUpdate.InstalledProvider != request.InstalledProvider) {
+		return nil, broker.Failure(broker.CodeFence, "ordinary update provider checkpoint binding changed")
+	}
+	if !maintenance && state.ProviderMaintenance != (providerMaintenanceState{}) &&
+		state.ProviderMaintenance.Phase != "COMMITTED" && state.ProviderMaintenance.Phase != "ROLLBACK_VERIFIED" {
+		return nil, broker.Failure(broker.CodeFence, "provider maintenance must finish before ordinary update")
 	}
 	if info, err := os.Lstat(finalRoot); errors.Is(err, os.ErrNotExist) {
 		if err := h.publishPreparedGeneration(panelArtifact, finalRoot, request.Release); err != nil {
@@ -352,11 +376,22 @@ func (h *Host) prepare(ctx context.Context, envelope broker.Request, peer broker
 		state.PreparedRollbackRelease, state.PreparedRollbackSequence, state.PreparedRollbackDigest = state.ActiveRelease, state.ActiveSequence, state.ActiveDigest
 		state.PreparedRollbackLocalCheckpoint = state.ActiveLocalCheckpoint
 		state.PreparedRollbackOperationID, state.PreparedRollbackManifestDigest, state.PreparedRollbackRef = envelope.OperationID, request.Release.ManifestDigest, rollbackRef
-		if withProvider {
+		if maintenance {
+			state.OrdinaryUpdate = OrdinaryUpdateV1{}
 			state.ProviderMaintenance = providerMaintenanceState{OperationID: envelope.OperationID, ManifestDigest: request.Release.ManifestDigest,
 				ArtifactSetDigest: request.Release.ArtifactSetDigest, ReleaseDigest: broker.Digest(mustJSON(request.Release)), TargetRelease: releaseName,
 				TargetSequence: request.Release.Sequence, TargetProvider: request.Release.CoreProvider, TargetPanelVersion: request.Release.Version,
 				Input: *request.Maintenance, Phase: "CHECKPOINTED"}
+		} else {
+			// The existing live A-to-P rollback remains authoritative while B
+			// is only prepared. Retain its completed provider proof until B
+			// commits, or restore it when B rolls back before verification.
+			state.PreparedPriorMaintenance = state.ProviderMaintenance
+			state.ProviderMaintenance = providerMaintenanceState{}
+			state.OrdinaryUpdate = OrdinaryUpdateV1{}
+			if withProvider {
+				state.OrdinaryUpdate = ordinaryUpdateBinding(envelope.OperationID, request.Release, request.InstalledProvider)
+			}
 		}
 	}
 	if state.MaxActivatedSequence < maxSequence {
@@ -366,7 +401,7 @@ func (h *Host) prepare(ctx context.Context, envelope broker.Request, peer broker
 	if err := h.saveState(state); err != nil {
 		return nil, broker.Failure(broker.CodeExecution, "release rollback checkpoint could not be committed")
 	}
-	if withProvider {
+	if maintenance {
 		result := providerPrepareResult(envelope.OperationID, request.Release, state.ProviderMaintenance.Phase == "VALIDATED")
 		result.ConfigurationRevision = state.ProviderMaintenance.Input.ConfigurationRevision
 		return result, nil
@@ -404,7 +439,8 @@ func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broke
 	if err := h.admitProviderActivation(envelope, request, stored, state, peer); err != nil {
 		return nil, broker.Failure(broker.CodeFence, "provider activation maintenance proof is unavailable or changed")
 	}
-	if stored.CoreProvider != (release.CoreProviderSource{}) && h.maintenance != nil {
+	withMaintenance := state.ProviderMaintenance != (providerMaintenanceState{})
+	if withMaintenance && h.maintenance != nil {
 		if err := h.maintenance.admit(ctx, releaseRoot); err != nil {
 			return nil, broker.Failure(broker.CodeRecoveryRequired, "provider activation requires the installed shared broker and fixed services")
 		}
@@ -434,7 +470,7 @@ func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broke
 	}
 	state.ActiveRelease, state.ActiveSequence, state.ActiveDigest = releaseName, request.Release.Sequence, request.Release.ManifestDigest
 	state.ActiveLocalCheckpoint = LocalGenerationCheckpointV1{}
-	if stored.CoreProvider != (release.CoreProviderSource{}) {
+	if withMaintenance {
 		state.ProviderMaintenance.Phase = "ACTIVATED"
 	}
 	state.VerifiedSequence, state.VerifiedDigest, state.UpdatedAt = 0, "", h.Now().Unix()
@@ -449,7 +485,7 @@ func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broke
 		}
 		return nil, broker.Failure(broker.CodeExecution, "active release state could not be committed")
 	}
-	if (stored.CoreProvider == (release.CoreProviderSource{}) || h.maintenance == nil) && h.Restart != nil {
+	if (!withMaintenance || h.maintenance == nil) && h.Restart != nil {
 		h.Restart(peer.PID)
 	}
 	return ActivateResultV1{ProviderRevision: ProviderRevision, ActiveSequence: request.Release.Sequence,
@@ -482,7 +518,12 @@ func (h *Host) verify(_ context.Context, envelope broker.Request, peer broker.Pe
 		verifyPreparedProvider(filepath.Join(h.ReleaseRoot, state.ActiveRelease), stored) != nil {
 		return nil, broker.Failure(broker.CodeRevision, "active release metadata changed")
 	}
-	if stored.CoreProvider != (release.CoreProviderSource{}) {
+	if state.OrdinaryUpdate != (OrdinaryUpdateV1{}) {
+		if !state.OrdinaryUpdate.Matches(envelope.OperationID, stored) || request.ProviderHealth != nil ||
+			verifyOrdinaryProviderPeer(peer, stored.CoreProvider, stored) != nil {
+			return nil, broker.Failure(broker.CodeFence, "ordinary update runtime provider binding changed")
+		}
+	} else if stored.CoreProvider != (release.CoreProviderSource{}) {
 		proof := state.ProviderMaintenance
 		if !proof.matches(envelope.OperationID, stored) || (proof.Phase != "ACTIVATED" && proof.Phase != "COMMITTED") ||
 			peer.ExecutableDigest != proof.ExecutableDigest || !providerHealthMatches(proof, request.ProviderHealth) {
@@ -498,7 +539,7 @@ func (h *Host) verify(_ context.Context, envelope broker.Request, peer broker.Pe
 			state.promotePreparedRollback()
 		}
 		state.VerifiedSequence, state.VerifiedDigest, state.UpdatedAt = state.ActiveSequence, state.ActiveDigest, h.Now().Unix()
-		if stored.CoreProvider != (release.CoreProviderSource{}) {
+		if state.ProviderMaintenance != (providerMaintenanceState{}) {
 			state.ProviderMaintenance.Phase = "COMMITTED"
 		}
 		state.raiseHighWater(state.ActiveSequence, state.ActiveDigest)
@@ -570,14 +611,20 @@ func (h *Host) rollbackCheckpoint(ctx context.Context, operationID string, reque
 		return nil, broker.Failure(broker.CodeRecoveryRequired, "provider rollback shared broker is unavailable or changed")
 	}
 	previousRelease := state.ActiveRelease
+	restored := state
+	previousMaintenance := state.PreparedPriorMaintenance
+	restored.ActiveRelease, restored.ActiveSequence, restored.ActiveDigest = rollbackRelease, rollbackSequence, rollbackDigest
+	restored.ActiveLocalCheckpoint = rollbackLocal
+	if err := h.restoreOrdinaryProviderBinding(&restored, operationID); err != nil {
+		return nil, broker.Failure(broker.CodeRecoveryRequired, "ordinary rollback provider could not be restored")
+	}
 	rollbackProfile, profileErr := releaseBinaryProfile(rollbackRoot)
 	if err := h.verifyReleaseExecutables(rollbackRoot); err != nil || h.activateLink(rollbackRelease) != nil || h.rewriteClientManifest(rollbackRoot) != nil ||
 		profileErr != nil || h.OwnerManifest == nil || h.OwnerManifest(ctx, rollbackRoot, rollbackProfile) != nil {
 		h.restoreActivation(ctx, previousRelease)
 		return nil, broker.Failure(broker.CodeExecution, "update rollback could not be committed")
 	}
-	state.ActiveRelease, state.ActiveSequence, state.ActiveDigest = rollbackRelease, rollbackSequence, rollbackDigest
-	state.ActiveLocalCheckpoint = rollbackLocal
+	state = restored
 	if withProvider {
 		state.ProviderMaintenance.Phase = "ROLLED_BACK"
 	} else if preparedAuthority {
@@ -586,6 +633,13 @@ func (h *Host) rollbackCheckpoint(ctx context.Context, operationID string, reque
 		state.clearRollback()
 	}
 	state.VerifiedSequence, state.VerifiedDigest, state.UpdatedAt = 0, "", h.Now().Unix()
+	if preparedAuthority && previousMaintenance != (providerMaintenanceState{}) {
+		state.OrdinaryUpdate = OrdinaryUpdateV1{}
+		state.ProviderMaintenance = previousMaintenance
+		// This restores historical A-to-P authority, not fresh runtime health.
+		// The calling lifecycle still verifies the restored running generation.
+		state.VerifiedSequence, state.VerifiedDigest = state.ActiveSequence, state.ActiveDigest
+	}
 	if err := h.saveState(state); err != nil {
 		if !updateAuthorityVisible(err) {
 			h.restoreActivation(ctx, previousRelease)
@@ -1680,6 +1734,7 @@ func (state *diskState) clearRollback() {
 }
 
 func (state *diskState) clearPreparedRollback() {
+	state.PreparedPriorMaintenance = providerMaintenanceState{}
 	state.PreparedRollbackLocalCheckpoint = LocalGenerationCheckpointV1{}
 	state.PreparedRollbackRelease, state.PreparedRollbackSequence, state.PreparedRollbackDigest = "", 0, ""
 	state.PreparedRollbackOperationID, state.PreparedRollbackManifestDigest, state.PreparedRollbackRef = "", "", ""
@@ -1731,7 +1786,10 @@ func validateDiskState(state diskState) error {
 		state.MaxActivatedSequence == state.ActiveSequence && state.MaxActivatedSequence > 0 && state.MaxActivatedDigest != state.ActiveDigest {
 		return errors.New("invalid update state")
 	}
-	return validateProviderMaintenanceState(state)
+	if err := validateProviderMaintenanceState(state); err != nil {
+		return err
+	}
+	return validateOrdinaryUpdateState(state)
 }
 
 func decodeStrict(data []byte, target any) error {

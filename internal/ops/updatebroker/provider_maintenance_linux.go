@@ -109,6 +109,9 @@ func (h *Host) legacyAutoVerificationAllowed(state diskState) bool {
 	if state.ProviderMaintenance != (providerMaintenanceState{}) {
 		return false
 	}
+	if state.OrdinaryUpdate != (OrdinaryUpdateV1{}) {
+		return h.ordinaryProviderVerificationAllowed(state)
+	}
 	// Qualified names remain fail-closed even if their identity file is lost.
 	if len(state.ActiveRelease) > 38 && releaseDirectoryPattern.MatchString(state.ActiveRelease) {
 		return false
@@ -134,23 +137,7 @@ func openPreviousProviderPeer(peer broker.PeerIdentity, input ProviderMaintenanc
 	if peer.PID <= 0 || peer.ExecutableDigest != input.PreviousExecutableDigest || ValidateProviderMaintenance(input) != nil {
 		return nil, failed
 	}
-	object, err := executableobject.Open(peer.Executable, executableobject.Policy{
-		MaxBytes: release.MaxPanelMemberBytes, RequireRegular: true, RequireExecutable: true,
-		RequireRootOwner: true, RequiredMode: 0o755, ForbiddenMode: 0o022,
-		RequireTrustedAncestry: true, AncestryOwner: 0, AncestryForbiddenMode: 0o022,
-		AllowRootOwnedStickyAncestry: true, RequireStablePath: true,
-	})
-	if err != nil {
-		return nil, failed
-	}
-	identity := object.Identity()
-	observed, err := release.InspectPanelBuild(object.File(), input.PreviousProvider)
-	if err != nil || identity.Digest != peer.ExecutableDigest || identity.Device != peer.Device || identity.Inode != peer.Inode ||
-		identity.Size != peer.ExecutableSize || observed.CoreProvider != input.PreviousProvider || observed.BinaryProfile != profile || object.Revalidate() != nil {
-		_ = object.Close()
-		return nil, failed
-	}
-	return object, nil
+	return openProviderPeer(peer, input.PreviousProvider, profile)
 }
 
 func (h *Host) stageProviderConfiguration(envelope broker.Request, request StageChunkRequestV1, peer broker.PeerIdentity) (any, error) {
@@ -305,6 +292,15 @@ func readProviderConfiguration(path string, input ProviderMaintenanceV1) ([]byte
 }
 
 func (h *Host) admitProviderActivation(envelope broker.Request, request ActivateRequestV1, stored ReleaseIdentityV1, state diskState, peer broker.PeerIdentity) error {
+	if state.OrdinaryUpdate != (OrdinaryUpdateV1{}) {
+		if !state.OrdinaryUpdate.Matches(envelope.OperationID, stored) || state.ProviderMaintenance != (providerMaintenanceState{}) ||
+			request.MaintenanceHeld || request.ConfigurationDigest != "" || request.ConfigurationRevision != "" ||
+			!pathWithin(filepath.Join(h.ReleaseRoot, state.ActiveRelease), peer.Executable) ||
+			verifyOrdinaryProviderPeer(peer, state.OrdinaryUpdate.InstalledProvider, stored) != nil {
+			return errors.New("ordinary update provider binding changed")
+		}
+		return nil
+	}
 	if stored.CoreProvider == (release.CoreProviderSource{}) {
 		if state.ProviderMaintenance != (providerMaintenanceState{}) {
 			return errors.New("provider maintenance admission is required")

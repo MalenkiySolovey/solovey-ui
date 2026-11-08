@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	// SHA-256 of the Update provider ABI descriptor "update-broker-provider-1.1".
+	// SHA-256 of the Update provider ABI descriptor "update-broker-provider-1.2".
 	// Broker expected revisions are digests, including this fixed ABI identity.
-	ProviderRevision            = "85d11d88c95e16abb9532bd7fbc934c37a89e46c96c7ea2a723cd8a514012984"
+	ProviderRevision            = "86e3c5efdc060d96cbec6388c90611ef6e0b39565111582848c1f431f6621210"
 	MaxChunkBytes               = 384 << 10
 	ProviderMaintenanceRevision = "update-broker-maintenance-1.2"
 	// ProviderActivationHealthDeadline is shared by the Panel journal and the
@@ -50,6 +50,7 @@ type ReleaseIdentityV1 struct {
 }
 
 type ObservationV1 struct {
+	OrdinaryUpdate                  *OrdinaryUpdateV1                 `json:"ordinaryUpdate,omitempty"`
 	ProviderRevision                string                            `json:"providerRevision"`
 	ProviderMaintenanceRevision     string                            `json:"providerMaintenanceRevision,omitempty"`
 	ProviderMaintenance             *ProviderMaintenanceObservationV1 `json:"providerMaintenance,omitempty"`
@@ -108,12 +109,13 @@ type ReleaseStagingResultV1 struct {
 }
 
 type PrepareRequestV1 struct {
-	Release                    ReleaseIdentityV1      `json:"release"`
-	ExpectedBrokerCapability   string                 `json:"expectedBrokerCapability"`
-	ExpectedManagementRevision string                 `json:"expectedManagementRevision"`
-	Maintenance                *ProviderMaintenanceV1 `json:"maintenance,omitempty"`
-	ValidateConfiguration      bool                   `json:"validateConfiguration,omitempty"`
-	MaintenanceHeld            bool                   `json:"maintenanceHeld,omitempty"`
+	InstalledProvider          release.CoreProviderSource `json:"installedProvider,omitzero"`
+	Release                    ReleaseIdentityV1          `json:"release"`
+	ExpectedBrokerCapability   string                     `json:"expectedBrokerCapability"`
+	ExpectedManagementRevision string                     `json:"expectedManagementRevision"`
+	Maintenance                *ProviderMaintenanceV1     `json:"maintenance,omitempty"`
+	ValidateConfiguration      bool                       `json:"validateConfiguration,omitempty"`
+	MaintenanceHeld            bool                       `json:"maintenanceHeld,omitempty"`
 }
 
 type PrepareResultV1 struct {

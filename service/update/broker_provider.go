@@ -15,6 +15,7 @@ import (
 	"time"
 
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
+	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	backupdb "github.com/MalenkiySolovey/solovey-ui/database/backup"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
@@ -169,12 +170,19 @@ func (p *BrokerProvider) Preflight(ctx context.Context, operation model.UpdateOp
 	if err != nil {
 		return PreflightResult{}, err
 	}
+	request := contract.PrepareRequestV1{Release: identity,
+		ExpectedBrokerCapability: operation.BrokerCapability, ExpectedManagementRevision: operation.DeploymentRevision}
+	if identity.CoreProvider.ID != "" {
+		installed := coreprovider.Current()
+		if !coreprovider.SourceIdentityVerified(installed) || installed.ID != identity.CoreProvider.ID {
+			return PreflightResult{}, ErrCoreProviderMaintenance
+		}
+		request.InstalledProvider = installed.Source
+	}
 	backupRef, err := p.prepareDatabaseBackup(ctx, operation)
 	if err != nil {
 		return PreflightResult{}, err
 	}
-	request := contract.PrepareRequestV1{Release: identity,
-		ExpectedBrokerCapability: operation.BrokerCapability, ExpectedManagementRevision: operation.DeploymentRevision}
 	var result contract.PrepareResultV1
 	if err := p.mutate(ctx, broker.VerbUpdatePrepare, operation, 800_001, request, &result); err != nil {
 		return PreflightResult{}, err

@@ -68,6 +68,13 @@ test('PATCH-R4 requires the exact reviewed stable transition from 2026.4.0', () 
   for (const mutation of [{ previousStable: '2026.3.3' }, { stableBaseline: '2026.4.0' }, { pendingAcceptance: ['upgrade'] }, { acceptedPrerelease: '2026.4.1-rc.1' }, { candidateBase: '2026.4.2' }]) assert.throws(() => validateReleaseTrain('2026.4.1', { ...train, ...mutation }))
 })
 
+test('corrective updater release admits only 2026.5.1 after the frozen 2026.5.0', () => {
+  const train = { stableBaseline: '2026.5.1', candidateBase: '2026.5.1', stage: 'stable', previousStable: '2026.5.0', acceptedPrerelease: null, pendingAcceptance: [] }
+  assert.doesNotThrow(() => validateReleaseTrain('2026.5.1', train))
+  for (const version of ['2026.4.1', '2026.5.0', '2026.5.1-beta.1', '2026.5.2', '2026.6.0']) assert.throws(() => validateReleaseTrain(version, train))
+  for (const mutation of [{ previousStable: '2026.4.1' }, { stableBaseline: '2026.5.0' }, { acceptedPrerelease: '2026.5.1-rc.1' }, { pendingAcceptance: ['updater'] }, { candidateBase: '2026.5.2' }]) assert.throws(() => validateReleaseTrain('2026.5.1', { ...train, ...mutation }))
+})
+
 function fixture(overrides = {}) {
   const { privateKey, publicKey } = generateKeyPairSync('ed25519')
   const now = new Date('2026-08-15T00:00:00Z')

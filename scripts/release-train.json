@@ -1,8 +1,8 @@
 {
-  "stableBaseline": "2026.5.0",
-  "candidateBase": "2026.5.0",
+  "stableBaseline": "2026.5.1",
+  "candidateBase": "2026.5.1",
   "stage": "stable",
-  "previousStable": "2026.4.1",
+  "previousStable": "2026.5.0",
   "acceptedPrerelease": null,
   "pendingAcceptance": []
 }

@@ -126,7 +126,7 @@ Official-only and cannot silently omit Extended packages; recovery of an old
 product uses its immutable product contract without requiring newer modules.
 
 `scripts/release-compatibility.json` owns the reviewed update range and target
-schema for the exact source version. The reviewed 2026.5.0 metadata covers
+schema for the exact source version. The reviewed 2026.5.1 metadata covers
 incoming panel 2026.4.1/schema 1.13, with target and component packs at schema 1.13.
 Signed self-update requires the target schema to match the running binary's
 compiled schema. Therefore v2026.4.0/schema 1.12 to v2026.4.1/schema 1.13 uses
@@ -135,6 +135,13 @@ rejects in-app activation across that boundary. Published v2026.3.3 likewise
 retains its exact 1.11 admission guard. Do not weaken these guards for an upgrade.
 The signed envelope declares manual recovery. Keep a protected pre-upgrade
 backup; an older binary must not open migrated state.
+
+The frozen 2026.5.0 ordinary updater rejects signed v2 and cannot bootstrap its
+own correction. 2026.4.1 also predates v2. Both use the version-pinned canonical
+installer/package/container upgrade to 2026.5.1, preserving provider and state.
+The corrected binary consumes v2 through ordinary Update. Never replace the
+signed channel with v1/unsigned fallback or lower its sequence to repair an old
+binary. The corrective release notes document the manual native upgrade.
 
 `scripts/release-metadata.mjs` produces the canonical source archive, dependency
 notice archive, CycloneDX SBOM and provenance assets listed in

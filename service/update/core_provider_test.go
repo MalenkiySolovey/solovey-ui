@@ -67,11 +67,18 @@ func TestLegacyReleaseCannotAdmitUnknownOrExtendedCoreProvider(t *testing.T) {
 				t.Fatalf("unsafe prepare: %v", err)
 			}
 			caps := fixture.manager.Capabilities(t.Context())
-			if caps.Download != "UNAVAILABLE" || caps.Prepare != "UNAVAILABLE" || caps.Activate != "UNAVAILABLE" ||
-				caps.Rollback != "AVAILABLE" || !containsReason(caps.ReasonCodes, ReasonCode(test.want)) {
+			unverified := test.id != "shtorm-extended"
+			if unverified && (caps.Download != "UNAVAILABLE" || caps.Prepare != "UNAVAILABLE" || caps.Activate != "UNAVAILABLE" ||
+				caps.Rollback != "AVAILABLE" || !containsReason(caps.ReasonCodes, ReasonCode(test.want))) {
 				t.Fatalf("unsafe capability posture: %+v", caps)
 			}
-			if client.calls != 0 || fixture.provider.stageCalls != 0 || fixture.provider.activateCalls != 0 {
+			// A verified Extended host can consume v2. Only fetching and verifying
+			// the signed schema can distinguish that from this unsupported v1 set.
+			wantCalls := 0
+			if !unverified {
+				wantCalls = 2 // Check and direct Prepare; neither creates authority.
+			}
+			if client.calls != wantCalls || fixture.provider.stageCalls != 0 || fixture.provider.activateCalls != 0 {
 				t.Fatal("denied provider reached release transport or host mutation")
 			}
 			for _, row := range []any{&model.UpdateOperation{}, &model.UpdateReleaseState{}, &model.UpdateJournal{}} {

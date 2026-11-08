@@ -355,7 +355,7 @@ func (m *LifecycleManager) Capabilities(ctx context.Context) Capabilities {
 		return UnavailableProvider{}.Capabilities(ctx)
 	}
 	result := m.provider.Capabilities(ctx)
-	if err := m.legacyCoreProviderAdmission(); err != nil {
+	if _, err := m.installedCoreProvider(); err != nil {
 		for _, capability := range []*string{&result.Download, &result.Prepare, &result.Activate} {
 			if *capability == "AVAILABLE" {
 				*capability = "UNAVAILABLE"
@@ -463,7 +463,7 @@ func (m *LifecycleManager) Check(ctx context.Context, channel release.Channel) (
 		result.ReasonCodes = []string{"production_release_trust_unavailable"}
 		return result, ErrSigningUnavailable
 	}
-	if err := m.legacyCoreProviderAdmission(); err != nil {
+	if _, err := m.installedCoreProvider(); err != nil {
 		result.SigningStatus = "AVAILABLE_NOT_YET_VERIFIED"
 		result.ReasonCodes = []string{ReasonCode(err)}
 		return result, err
@@ -475,6 +475,11 @@ func (m *LifecycleManager) Check(ctx context.Context, channel release.Channel) (
 	}
 	verified, artifacts, err := m.fetchAndVerify(ctx, channel, lastApplied)
 	if err != nil {
+		if errors.Is(err, ErrCoreProviderMaintenance) || errors.Is(err, ErrCoreProviderUnverified) {
+			result.SigningStatus = "AVAILABLE_NOT_YET_VERIFIED"
+			result.ReasonCodes = []string{ReasonCode(err)}
+			return result, err
+		}
 		result.SigningStatus = "VERIFICATION_FAILED"
 		result.ReasonCodes = []string{"release_verification_failed"}
 		return result, err
@@ -547,7 +552,7 @@ func (m *LifecycleManager) prepareLocked(ctx context.Context, request PrepareReq
 		return model.UpdateOperation{}, ErrResourcePressure
 	}
 	if preparation == nil {
-		if err := m.legacyCoreProviderAdmission(); err != nil {
+		if _, err := m.installedCoreProvider(); err != nil {
 			return model.UpdateOperation{}, err
 		}
 	}
@@ -561,6 +566,9 @@ func (m *LifecycleManager) prepareLocked(ctx context.Context, request PrepareReq
 		verified, artifacts, err = m.fetchAndVerify(ctx, request.Channel, lastApplied)
 	} else {
 		verified, artifacts, err = m.fetchProviderRelease(ctx, request.Channel, preparation.request.TargetProvider, lastApplied)
+	}
+	if errors.Is(err, ErrCoreProviderMaintenance) || errors.Is(err, ErrCoreProviderUnverified) {
+		return model.UpdateOperation{}, err
 	}
 	if err != nil || verified.Manifest.Sequence != request.ExpectedSequence || verified.Digest != request.ExpectedManifestDigest {
 		return model.UpdateOperation{}, ErrReleaseChanged
@@ -670,7 +678,7 @@ func (m *LifecycleManager) activateLocked(ctx context.Context, request RevisionR
 		return operation, ErrRevisionMismatch
 	}
 	if !providerMaintenance {
-		if err := m.legacyCoreProviderAdmission(); err != nil {
+		if err := m.ordinaryActivationAdmission(ctx, operation); err != nil {
 			return operation, err
 		}
 	}
@@ -976,7 +984,7 @@ func (m *LifecycleManager) checkHealth(ctx context.Context, operation model.Upda
 }
 
 func (m *LifecycleManager) fetchAndVerify(ctx context.Context, channel release.Channel, lastApplied uint64) (release.Verified, []release.Artifact, error) {
-	if err := m.legacyCoreProviderAdmission(); err != nil {
+	if _, err := m.installedCoreProvider(); err != nil {
 		return release.Verified{}, nil, err
 	}
 	source, ok := m.sources[channel]
@@ -1000,7 +1008,7 @@ func (m *LifecycleManager) fetchAndVerify(ctx context.Context, channel release.C
 		}
 	}
 	platform, arch := m.platform()
-	artifacts, err := verified.PanelArtifacts(platform, arch, m.profile())
+	artifacts, err := m.ordinaryArtifacts(verified, platform, arch, m.profile())
 	return verified, artifacts, err
 }
 

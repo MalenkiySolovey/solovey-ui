@@ -17,9 +17,12 @@ stable releases.
 release channel. Promotion requires the supported platform/storage contracts to
 remain accepted and every blocking candidate gate to pass. Source and host tests
 protect these contracts; they do not expand the supported hardware matrix.
-The operator-approved 2026.5.0 feature release follows 2026.4.1 directly; its
-train records `acceptedPrerelease=null` and no pending acceptance. Preflight admits only that
-exact stable version with the coherent reviewed train.
+The operator-approved 2026.5.1 corrective release follows the published
+2026.5.0 and repairs ordinary signed-v2 updater admission. Its reviewed train
+records `acceptedPrerelease=null` and no pending acceptance; publication still
+requires exact-source CI and candidate/public acceptance. No subsequent version
+is reserved. Historical 2026.5.0 publication and its updater blocker remain
+recorded independently.
 
 Use a dedicated branch and reviewed PR for release changes. The accepted main
 commit is the immutable release source. A new release uses a fresh monotonic

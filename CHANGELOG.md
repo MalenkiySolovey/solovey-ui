@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.5.1
+
+- Correct ordinary Check/Prepare/Activate for signed v2 releases on Official and Shtorm Extended installations. Select the installed provider's artifact and bind its source to the existing Root checkpoint; provider changes retain explicit maintenance authorization.
+- Preserve signature, expiry, sequence, artifact/source/platform/profile, backup and rollback admission. Keep schema 1.13 and the accepted engine source pins unchanged.
+- Document the version-pinned installer upgrade required by frozen v2026.5.0 and v2026.4.1 binaries, whose ordinary updaters cannot consume the v2 envelope. See .github/RELEASE_NOTES_v2026.5.1.md.
+
 ## 2026.5.0
 
 - Add Shtorm Extended as an explicit second CoreRuntime provider, preserving Official as the default and ordinary-update provider retention.
