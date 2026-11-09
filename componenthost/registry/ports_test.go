@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	hostports "github.com/MalenkiySolovey/solovey-host/componenthost"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
@@ -12,8 +13,8 @@ import (
 
 type typedOwner struct{}
 
-func (typedOwner) Start(context.Context, componenthost.Ports) error { return nil }
-func (typedOwner) Stop(context.Context) error                       { return nil }
+func (typedOwner) Start(context.Context, hostports.Ports) error { return nil }
+func (typedOwner) Stop(context.Context) error                   { return nil }
 
 func typedFixture() Component {
 	return Component{Manifest: manifest.Manifest{ID: "typed-owner", Name: "Typed owner", Delivery: manifest.DeliveryInProcess,

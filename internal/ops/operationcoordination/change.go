@@ -1,32 +1,14 @@
 package operationcoordination
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	canonical "github.com/MalenkiySolovey/solovey-host/operationref"
 	"strings"
-
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
 )
 
-// Reference correlates projections without creating another durable operation.
-// IDs are derived from an owner namespace and its existing opaque operation ID.
-type Reference struct {
-	CorrelationID string      `json:"correlationId"`
-	ChangeID      string      `json:"changeId"`
-	HostRef       hostref.Ref `json:"hostRef"`
-	Owner         string      `json:"owner"`
-	ResourceID    string      `json:"resourceId"`
-	OperationID   string      `json:"operationId"`
-}
+type Reference = canonical.Reference
 
 func NewReference(owner, resourceID, operationID string) Reference {
-	sum := sha256.Sum256([]byte(owner + "\x00" + operationID))
-	id := hex.EncodeToString(sum[:24])
-	if !referenceToken(owner, 64) || !referenceToken(resourceID, 256) || !referenceToken(operationID, 96) {
-		owner, resourceID, operationID = "unavailable", "unavailable", "unavailable"
-	}
-	return Reference{CorrelationID: "operation:" + id, ChangeID: "change:" + id,
-		HostRef: hostref.Local(), Owner: owner, ResourceID: resourceID, OperationID: operationID}
+	return canonical.NewReference(owner, resourceID, operationID)
 }
 
 type Outcome string
@@ -75,6 +57,4 @@ func (c Change) WithProblem(code string) Change {
 	return c
 }
 
-func referenceToken(value string, limit int) bool {
-	return value != "" && len(value) <= limit && strings.Trim(value, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:@+-") == ""
-}
+func referenceToken(value string, limit int) bool { return canonical.ValidToken(value, limit) }

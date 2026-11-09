@@ -175,7 +175,7 @@ func (s *Service) MetricHistory(metric ObservabilityMetric, bucket Observability
 	}
 	result := make([]ObservabilityMetricSample, 0, len(samples))
 	for _, sample := range samples {
-		value, ok := sample.metricValue(metric)
+		value, ok := metricValue(sample, metric)
 		if !ok {
 			continue
 		}

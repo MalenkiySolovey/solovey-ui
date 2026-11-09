@@ -3,22 +3,23 @@
 package observability
 
 import (
+	canonical "github.com/MalenkiySolovey/solovey-host/observation"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"time"
 )
 
-type ObservabilityBucket string
-type ObservabilityMetric string
+type ObservabilityBucket = canonical.ObservabilityBucket
+type ObservabilityMetric = canonical.ObservabilityMetric
 
 const (
-	ObservabilityBucket2s             ObservabilityBucket = "2s"
-	ObservabilityBucket30s            ObservabilityBucket = "30s"
-	ObservabilityBucket1m             ObservabilityBucket = "1m"
-	ObservabilityBucket5m             ObservabilityBucket = "5m"
-	ObservabilityMetricCPU            ObservabilityMetric = "cpu"
-	ObservabilityMetricRAM            ObservabilityMetric = "ram"
-	ObservabilityMetricNetIn          ObservabilityMetric = "net_in"
-	ObservabilityMetricNetOut         ObservabilityMetric = "net_out"
+	ObservabilityBucket2s             ObservabilityBucket = canonical.ObservabilityBucket2s
+	ObservabilityBucket30s            ObservabilityBucket = canonical.ObservabilityBucket30s
+	ObservabilityBucket1m             ObservabilityBucket = canonical.ObservabilityBucket1m
+	ObservabilityBucket5m             ObservabilityBucket = canonical.ObservabilityBucket5m
+	ObservabilityMetricCPU            ObservabilityMetric = canonical.ObservabilityMetricCPU
+	ObservabilityMetricRAM            ObservabilityMetric = canonical.ObservabilityMetricRAM
+	ObservabilityMetricNetIn          ObservabilityMetric = canonical.ObservabilityMetricNetIn
+	ObservabilityMetricNetOut         ObservabilityMetric = canonical.ObservabilityMetricNetOut
 	observabilityDefaultMemoryCapMB                       = 32
 	observabilitySampleEstimateBytes                      = 2048
 	observabilityCoreSampleBytes                          = 1024
@@ -38,20 +39,9 @@ var observabilityDefaultBucketCaps = map[ObservabilityBucket]int{
 	ObservabilityBucket5m:  144,
 }
 
-type ObservabilitySample struct {
-	DateTime int64                  `json:"dateTime"`
-	CPU      float64                `json:"cpu"`
-	Memory   map[string]interface{} `json:"memory"`
-	Network  map[string]interface{} `json:"network"`
-}
-type CoreSample struct {
-	DateTime int64                  `json:"dateTime"`
-	Core     map[string]interface{} `json:"core"`
-}
-type ObservabilityMetricSample struct {
-	DateTime int64   `json:"dateTime"`
-	Value    float64 `json:"value"`
-}
+type ObservabilitySample = canonical.ObservabilitySample
+type CoreSample = canonical.CoreSample
+type ObservabilityMetricSample = canonical.ObservabilityMetricSample
 
 func IsValidObservabilityMetric(metric ObservabilityMetric) bool {
 	switch metric {

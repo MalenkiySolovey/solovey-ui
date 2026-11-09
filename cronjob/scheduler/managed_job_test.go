@@ -5,6 +5,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/robfig/cron/v3"
 )
 
 type blockingContextJob struct {
@@ -120,5 +122,50 @@ func TestStopRetainsTimedOutLifecycleForRetry(t *testing.T) {
 	case <-job.done:
 	default:
 		t.Fatal("Stop retry returned before the retained job finished")
+	}
+}
+
+func TestConcurrentStopDrainsScheduledJobAndRejectsNewEntries(t *testing.T) {
+	scheduler := New()
+	if err := scheduler.Start(time.UTC, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = scheduler.Stop(ctx)
+	})
+	job := &blockingContextJob{start: make(chan struct{}), done: make(chan struct{})}
+	if id := scheduler.Schedule(cron.Every(time.Second), job); id == 0 {
+		t.Fatal("scheduled job was not registered")
+	}
+	select {
+	case <-job.start:
+	case <-time.After(3 * time.Second):
+		t.Fatal("scheduled job did not execute")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	results := make(chan error, 8)
+	for index := 0; index < cap(results); index++ {
+		go func() { results <- scheduler.Stop(ctx) }()
+	}
+	for index := 0; index < cap(results); index++ {
+		select {
+		case err := <-results:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-ctx.Done():
+			t.Fatal("concurrent Stop exceeded its deadline")
+		}
+	}
+	select {
+	case <-job.done:
+	default:
+		t.Fatal("Stop returned before the shared context job drained")
+	}
+	if scheduler.Schedule(cron.Every(time.Second), job) != 0 {
+		t.Fatal("stopped scheduler accepted a new recurring entry")
 	}
 }

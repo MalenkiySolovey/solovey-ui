@@ -33,7 +33,7 @@ func TestComponentStopRetainsLifecycleStateWhenJobDoesNotStop(t *testing.T) {
 	scheduler := &observabilityTrackingScheduler{removeErr: errors.New("job still running")}
 	c := &component{}
 	host := componenthost.Ports{Scheduler: scheduler, ObservationPorts: componenthost.ObservationPorts{ObservationSampler: &trackingSampler{}}}
-	if err := c.Start(context.Background(), host); err != nil {
+	if err := c.Start(context.Background(), host.LocalPorts()); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.Stop(context.Background()); err == nil {
@@ -55,10 +55,10 @@ func TestComponentStartIsIdempotent(t *testing.T) {
 	scheduler := &observabilityTrackingScheduler{}
 	c := &component{}
 	host := componenthost.Ports{Scheduler: scheduler, ObservationPorts: componenthost.ObservationPorts{ObservationSampler: &trackingSampler{}}}
-	if err := c.Start(context.Background(), host); err != nil {
+	if err := c.Start(context.Background(), host.LocalPorts()); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Start(context.Background(), host); err != nil {
+	if err := c.Start(context.Background(), host.LocalPorts()); err != nil {
 		t.Fatal(err)
 	}
 	if scheduler.added != 1 {
@@ -77,7 +77,7 @@ func TestComponentStartIsIdempotent(t *testing.T) {
 
 func TestComponentStartFailsWhenSchedulerCapabilityIsUnavailable(t *testing.T) {
 	c := &component{}
-	if err := c.Start(context.Background(), componenthost.Ports{}); err == nil {
+	if err := c.Start(context.Background(), componenthost.Ports{}.LocalPorts()); err == nil {
 		t.Fatal("Start must fail closed without a scheduler capability")
 	}
 	if c.started {

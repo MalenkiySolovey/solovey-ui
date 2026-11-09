@@ -6,6 +6,7 @@ import (
 	"context"
 	_ "embed"
 	"errors"
+	hostports "github.com/MalenkiySolovey/solovey-host/componenthost"
 	"strings"
 	"sync"
 
@@ -56,8 +57,8 @@ type component struct {
 	backupScheduler        *jobs.TelegramBackupScheduler
 }
 
-func (c *component) Start(ctx context.Context, ports componenthost.Ports) error {
-	return c.start(ctx, ports.Scheduler, ports.OutboundHTTP, ports.Audit.Recorder)
+func (c *component) Start(ctx context.Context, ports hostports.Ports) error {
+	return c.start(ctx, ports.Scheduler, ports.OutboundHTTP, ports.AuditRecorder)
 }
 
 func (c *component) start(ctx context.Context, scheduler componenthost.Scheduler, transport componenthost.OutboundHTTPClientProvider, audit componenthost.AuditRecorder) error {
@@ -186,7 +187,7 @@ func (c *component) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (c *component) DropData(ctx context.Context, ports componenthost.Ports) error {
+func (c *component) DropData(ctx context.Context, ports hostports.Ports) error {
 	if ports.DropOwnedSettings == nil {
 		return errors.New("telegram owned settings port is unavailable")
 	}

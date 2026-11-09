@@ -3,27 +3,13 @@ package operationcoordination
 import (
 	"context"
 	"errors"
+	canonical "github.com/MalenkiySolovey/solovey-host/operationref"
 	"strconv"
-	"strings"
 )
 
 const MaxJournalPage = 200
 
-type Correlation struct {
-	Reference
-	JobID string `json:"jobId"`
-}
-
-func (r Reference) Correlation() Correlation {
-	id := strings.TrimPrefix(r.CorrelationID, "operation:")
-	if !strings.HasPrefix(r.CorrelationID, "operation:") || len(id) != 48 || strings.Trim(id, "0123456789abcdef") != "" ||
-		r.ChangeID != "change:"+id || !referenceToken(r.Owner, 64) || !referenceToken(r.ResourceID, 256) ||
-		!referenceToken(r.OperationID, 96) || !r.HostRef.IsLocal() {
-		r = NewReference(r.Owner, r.ResourceID, r.OperationID)
-		id = strings.TrimPrefix(r.CorrelationID, "operation:")
-	}
-	return Correlation{Reference: r, JobID: "job:" + id}
-}
+type Correlation = canonical.Correlation
 
 // JournalEvent is a bounded index projection, never a copied owner payload or
 // recovery instruction. Owner journals retain their existing distinct storage.

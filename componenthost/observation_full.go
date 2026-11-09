@@ -3,6 +3,7 @@
 package componenthost
 
 import (
+	hostports "github.com/MalenkiySolovey/solovey-host/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	auditsvc "github.com/MalenkiySolovey/solovey-ui/service/audit"
@@ -47,4 +48,8 @@ func (d APIDeps) bindObservationPort(port string, target *Ports) bool {
 			target.Rate.CheckAuditRateLimit != nil && target.Rate.AuditRateLimitKey != nil
 	}
 	return false
+}
+
+func (p Ports) bindLocalObservation(target *hostports.Ports) {
+	target.ObservationSampler = p.ObservationSampler
 }
