@@ -3,9 +3,9 @@ package lifecycle
 import (
 	"context"
 	"errors"
+	hostports "github.com/MalenkiySolovey/solovey-host/componenthost"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 )
 
@@ -14,15 +14,15 @@ type portOwner struct {
 	stopErr                   error
 }
 
-func (o *portOwner) Start(_ context.Context, ports componenthost.Ports) error {
+func (o *portOwner) Start(_ context.Context, ports hostports.Ports) error {
 	if !ports.Host.IsLocal() {
 		return errors.New("incorrect host")
 	}
 	o.started++
 	return nil
 }
-func (o *portOwner) Stop(context.Context) error                          { o.stopped++; return o.stopErr }
-func (o *portOwner) DropData(context.Context, componenthost.Ports) error { o.dropped++; return nil }
+func (o *portOwner) Stop(context.Context) error                      { o.stopped++; return o.stopErr }
+func (o *portOwner) DropData(context.Context, hostports.Ports) error { o.dropped++; return nil }
 
 func TestPortLifecycleUsesExistingSupervisorContractAndDropOwner(t *testing.T) {
 	owner := &portOwner{stopErr: errors.New("not drained")}

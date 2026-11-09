@@ -67,10 +67,10 @@ func TestTelegramComponentStartIsIdempotent(t *testing.T) {
 	c := &component{}
 	host := testTelegramHostPorts()
 	host.Scheduler = scheduler
-	if err := c.Start(context.Background(), host); err != nil {
+	if err := c.Start(context.Background(), host.LocalPorts()); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Start(context.Background(), host); err != nil {
+	if err := c.Start(context.Background(), host.LocalPorts()); err != nil {
 		t.Fatal(err)
 	}
 	if scheduler.added != 3 {
@@ -136,7 +136,7 @@ func TestTelegramDropDataRemovesOwnedSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := (&component{}).DropData(context.Background(), testTelegramDropPorts(t)); err != nil {
+	if err := (&component{}).DropData(context.Background(), testTelegramDropPorts(t).LocalPorts()); err != nil {
 		t.Fatal(err)
 	}
 	var settingsCount int64

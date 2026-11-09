@@ -10,7 +10,7 @@ import (
 
 func TestSecretReferenceHasNoBackendRawProjectionOrRevealOperation(t *testing.T) {
 	path := filepath.Join(moduleRoot(t), "componenthost", "secretref", "reference.go")
-	allowed := map[string]bool{"errors": true, "strings": true, modulePath + "/internal/ops/operationcoordination": true}
+	allowed := map[string]bool{"github.com/MalenkiySolovey/solovey-host/secretref": true}
 	for _, imported := range fileImports(t, path) {
 		if !allowed[imported] {
 			t.Errorf("SecretRef acquired storage/crypto/transport owner: %s", imported)

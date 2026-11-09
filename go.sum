@@ -12,6 +12,8 @@ github.com/MalenkiySolovey/solovey-contracts v1.0.0 h1:me6uddB3lN19zfYkGp6iuOT46
 github.com/MalenkiySolovey/solovey-contracts v1.0.0/go.mod h1:2fPj6/IiP0jvioVnW2OKurqGPwilJ+gcXNs74aX1VcI=
 github.com/MalenkiySolovey/solovey-host v0.1.0 h1:V6KsxPOAxi+3d2J2qSyfL5fSQ7YjNBridu0Yu5Kf6F8=
 github.com/MalenkiySolovey/solovey-host v0.1.0/go.mod h1:BYWYcRbRalG4iX4DOcfLbq4NgKYUadcY5d9dc724dK8=
+github.com/MalenkiySolovey/solovey-host v0.2.0 h1:aHILNCSiIh6EUuCC+jWQpk/Wh2D3ZTO0I29SzHzrF+Q=
+github.com/MalenkiySolovey/solovey-host v0.2.0/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
 github.com/ajg/form v1.5.1 h1:t9c7v8JUKu/XxOGBU0yjNpaMloxGEJhUkqFRq0ibGeU=
 github.com/ajg/form v1.5.1/go.mod h1:uL1WgH+h2mgNtvBq0339dVnzXdBETtL2LeUXaIv25UY=
 github.com/akutz/memconn v0.1.0 h1:NawI0TORU4hcOMsMr11g7vwlCdkYeLKXBcxWu2W/P8A=

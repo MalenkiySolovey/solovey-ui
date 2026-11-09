@@ -3,21 +3,16 @@ package lifecycle
 import (
 	"context"
 	"fmt"
+	hostports "github.com/MalenkiySolovey/solovey-host/componenthost"
 
-	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 )
 
 // PortLifecycle uses the same supervisor and observed lifecycle as legacy
 // in-process Components, with a declared, narrow dependency boundary.
-type PortLifecycle interface {
-	Start(context.Context, componenthost.Ports) error
-	Stop(context.Context) error
-}
+type PortLifecycle = hostports.Lifecycle
 
-type PortDataDropper interface {
-	DropData(context.Context, componenthost.Ports) error
-}
+type PortDataDropper = hostports.DataDropper
 
 type portAdapter struct {
 	manifest manifest.Manifest
@@ -70,7 +65,7 @@ func (a portAdapter) Start(ctx context.Context, host Context) error {
 	if err != nil {
 		return err
 	}
-	return a.owner.Start(ctx, ports)
+	return a.owner.Start(ctx, ports.LocalPorts())
 }
 
 func (a portAdapter) Stop(ctx context.Context) error { return a.owner.Stop(ctx) }
@@ -85,5 +80,5 @@ func (a portDropAdapter) DropData(ctx context.Context, host Context) error {
 	if err != nil {
 		return err
 	}
-	return a.dropper.DropData(ctx, ports)
+	return a.dropper.DropData(ctx, ports.LocalPorts())
 }

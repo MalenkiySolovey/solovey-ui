@@ -157,7 +157,7 @@ func TestTelegramStoredSecretReferenceAuthDiscoveryBackupResealAndReplacement(t 
 		t.Fatal("secret leaked into audit")
 	}
 	// Existing owner DropData remains the deletion authority.
-	if err := (&component{}).DropData(t.Context(), testTelegramDropPorts(t)); err != nil {
+	if err := (&component{}).DropData(t.Context(), testTelegramDropPorts(t).LocalPorts()); err != nil {
 		t.Fatal(err)
 	}
 	if token, err := (telegramsettings.Reader{}).GetTelegramBotToken(t.Context()); err != nil || token != "" {

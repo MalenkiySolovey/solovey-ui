@@ -3,6 +3,7 @@ package componenthost
 import (
 	"context"
 	"fmt"
+	hostports "github.com/MalenkiySolovey/solovey-host/componenthost"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
@@ -94,4 +95,13 @@ type PortRouteAdapter[T any] struct {
 func (a PortRouteAdapter[T]) RegisterRoutes(g *gin.RouterGroup, ports Ports) error {
 	a.Register(g, a.Build(ports))
 	return nil
+}
+
+// LocalPorts projects the declared lifecycle capabilities into the public Host
+// contract. HTTP request authority and concrete owner adapters stay in Panel.
+func (p Ports) LocalPorts() hostports.Ports {
+	result := hostports.Ports{Host: p.Host, Scheduler: p.Scheduler, OutboundHTTP: p.OutboundHTTP,
+		AuditRecorder: p.Audit.Recorder, DropOwnedSettings: p.DropOwnedSettings}
+	p.bindLocalObservation(&result)
+	return result
 }

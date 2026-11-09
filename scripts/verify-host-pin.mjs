@@ -26,6 +26,8 @@ export function validatePin(pin) {
   for(const key of ['sourceCommit','sourceTree'])assert.match(pin[key],/^[a-f0-9]{40}$/)
   for(const key of ['moduleChecksum','goModChecksum'])assert.match(pin[key],/^h1:[A-Za-z0-9+/]{43}=$/)
   assert.match(pin.fixturesSHA256,/^[a-f0-9]{64}$/)
+  assert.match(pin.valuesSHA256,/^[a-f0-9]{64}$/)
+  assert.deepEqual(pin.dependencies,{'github.com/robfig/cron/v3':'v3.0.1'},'unreviewed Host dependency closure')
   assert.ok(Object.keys(pin.files).length>=6,'Host source hashes required')
   for(const [name,hash] of Object.entries(pin.files)) {
     assert.ok(!path.isAbsolute(name)&&!name.split('/').includes('..'),'invalid source path')
@@ -64,7 +66,10 @@ export function verifyFiles(directory,pin) {
   assert.equal(bundle.schema,'host-network-identity-fixtures/v1')
   assert.equal(bundle.cases.length,27)
   assert.equal(new Set(bundle.cases.map(item=>item.name)).size,27)
-  return fixture
+  const values=read(directory,'qualification/testdata/values.json')
+  assert.equal(digest(values),pin.valuesSHA256,'Host neutral-value fixture drift')
+  assert.equal(Object.keys(JSON.parse(values)).length,13)
+  return {network:fixture,values}
 }
 
 export function assertRetired(directory) {
@@ -82,7 +87,7 @@ export function verifyConsumer({directory=root,sync=false}={}) {
   assertRetired(directory)
   const downloaded=JSON.parse(run(directory,['mod','download','-json',`${pin.module}@${pin.version}`]))
   validateResolution(downloaded,pin)
-  const fixture=verifyFiles(downloaded.Dir,pin),resolutions=[]
+  const fixtures=verifyFiles(downloaded.Dir,pin),resolutions=[]
   const modfiles=fs.existsSync(path.join(directory,'go.extended.mod'))?['go.mod','go.extended.mod']:['go.mod']
   for(const modfile of modfiles) {
     validateRequirement(JSON.parse(run(directory,['mod','edit','-json',`-modfile=${modfile}`])),pin)
@@ -91,11 +96,14 @@ export function verifyConsumer({directory=root,sync=false}={}) {
     assert.equal(path.resolve(selected.Dir),path.resolve(downloaded.Dir),'selected Host source differs from verified module')
     resolutions.push({modfile,module:selected.Path,version:selected.Version,sum:selected.Sum})
   }
-  const filename=path.join(directory,'host/fixtures/snapshots.json')
-  if(sync) { fs.mkdirSync(path.dirname(filename),{recursive:true}); fs.writeFileSync(filename,fixture) }
-  assert.equal(read(directory,'host/fixtures/snapshots.json'),fixture,'derived Host fixtures differ from accepted module')
+  for(const [name,text] of [['snapshots.json',fixtures.network],['values.json',fixtures.values]]) {
+    const filename=path.join(directory,'host/fixtures',name)
+    if(sync) { fs.mkdirSync(path.dirname(filename),{recursive:true}); fs.writeFileSync(filename,text) }
+    assert.equal(read(directory,`host/fixtures/${name}`),text,`derived Host fixture differs from accepted module: ${name}`)
+  }
   return {status:'PASS',module:pin.module,version:pin.version,sourceCommit:pin.sourceCommit,
-    moduleChecksum:pin.moduleChecksum,fixturesSHA256:pin.fixturesSHA256,fixtures:27,resolutions}
+    moduleChecksum:pin.moduleChecksum,fixturesSHA256:pin.fixturesSHA256,valuesSHA256:pin.valuesSHA256,
+    networkFixtures:27,valueFixtures:13,resolutions}
 }
 
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) {

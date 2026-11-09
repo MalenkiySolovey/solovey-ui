@@ -25,7 +25,7 @@ func AggregateCoreSamples(samples []CoreSample, dateTime int64) CoreSample {
 	latest.DateTime = dateTime
 	return latest
 }
-func (sample ObservabilitySample) metricValue(metric ObservabilityMetric) (float64, bool) {
+func metricValue(sample ObservabilitySample, metric ObservabilityMetric) (float64, bool) {
 	switch metric {
 	case ObservabilityMetricCPU:
 		return sample.CPU, true

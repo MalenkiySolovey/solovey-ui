@@ -2472,7 +2472,7 @@
       "rule": "worker-lifetime",
       "path": "cronjob/scheduler/scheduler.go",
       "symbol": "*Scheduler.RemoveJob",
-      "digest": "c9412dc003fdfdf1c3d6564bbf67e0710b6817f4c8acf729b77a34d8103f5fac"
+      "digest": "296da54a7f333f8dccaac00011217c814395d28203f679c9462c8a8096e6de7d"
     },
     {
       "rule": "worker-lifetime",

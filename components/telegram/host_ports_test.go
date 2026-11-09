@@ -163,7 +163,7 @@ func TestTelegramNarrowPortsPreserveNotifierCancellationAndFailedStopAuthority(t
 		}
 	})
 	if err := c.Start(t.Context(), componenthost.Ports{Scheduler: scheduler,
-		OutboundHTTP: transport, Audit: componenthost.AuditDeps{Recorder: &telegramAuditRecorder{}}}); err != nil {
+		OutboundHTTP: transport, Audit: componenthost.AuditDeps{Recorder: &telegramAuditRecorder{}}}.LocalPorts()); err != nil {
 		t.Fatal(err)
 	}
 	if err := (&service.SettingService{}).Save(dbsqlite.DB(), json.RawMessage(`{"telegramEnabled":"true","telegramBotToken":"123456:port-private-token","telegramChatID":"-99","telegramTransportMode":"outbound","telegramOutboundTag":"selected-vpn"}`)); err != nil {

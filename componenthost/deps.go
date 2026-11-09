@@ -2,6 +2,7 @@ package componenthost
 
 import (
 	"context"
+	hostports "github.com/MalenkiySolovey/solovey-host/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
 	"time"
 
@@ -9,7 +10,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"
-	"github.com/robfig/cron/v3"
 )
 
 // Deps is the in-process component host dependency surface.
@@ -26,12 +26,7 @@ type Deps struct {
 	DropOwnedSettings func(context.Context, string) error
 }
 
-type Scheduler interface {
-	AddJob(string, cron.Job) (cron.EntryID, error)
-	Schedule(cron.Schedule, cron.Job) cron.EntryID
-	RemoveJob(cron.EntryID)
-	RemoveJobAndWait(context.Context, cron.EntryID) error
-}
+type Scheduler = hostports.Scheduler
 
 type APIDeps struct {
 	ObservationPorts

@@ -84,3 +84,29 @@ func TestBindingFailsBeforeReturningPartialAuthority(t *testing.T) {
 		}
 	}
 }
+
+func TestLocalLifecycleProjectionPreservesDeclaredCapabilityScope(t *testing.T) {
+	host := Deps{API: APIDeps{
+		Audit:        AuditDeps{Recorder: portAudit{}},
+		OutboundHTTP: OutboundHTTPClientFunc(func(string, time.Duration) (*http.Client, error) { return nil, nil }),
+		Auth:         AuthDeps{RequireScope: func(*gin.Context, string, ...string) bool { return true }},
+		HTTP:         HTTPDeps{JSONObj: func(*gin.Context, interface{}, error) {}},
+	}}
+	ports, err := host.BindLifecycle(manifest.HostAPI{Version: manifest.HostAPIV1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	local := ports.LocalPorts()
+	if !local.Host.IsLocal() || local.Scheduler != nil || local.OutboundHTTP != nil || local.AuditRecorder != nil || local.ObservationSampler != nil || local.DropOwnedSettings != nil {
+		t.Fatal("undeclared capability crossed the neutral lifecycle boundary")
+	}
+	ports, err = host.BindLifecycle(manifest.HostAPI{Version: manifest.HostAPIV1, Lifecycle: []string{manifest.PortAuditRecord}})
+	if err != nil || ports.LocalPorts().AuditRecorder == nil || ports.LocalPorts().OutboundHTTP != nil {
+		t.Fatal("declared audit scope changed", err)
+	}
+	for _, name := range []string{"Runtime", "Auth", "Request", "HTTP", "DB", "Database", "Exec", "Filesystem"} {
+		if _, exists := reflect.TypeOf(local).FieldByName(name); exists {
+			t.Errorf("neutral lifecycle projection exposes %s", name)
+		}
+	}
+}

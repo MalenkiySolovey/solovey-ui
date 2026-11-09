@@ -12,7 +12,7 @@ const (
 	AuditSeverityWarn = auditsvc.AuditSeverityWarn
 )
 
-type AuditEvent auditsvc.Event
+type AuditEvent = auditsvc.Event
 
 type AuditService struct {
 	Runtime *Runtime

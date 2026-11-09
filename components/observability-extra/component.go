@@ -6,6 +6,7 @@ import (
 	"context"
 	_ "embed"
 	"errors"
+	hostports "github.com/MalenkiySolovey/solovey-host/componenthost"
 	"sync"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
@@ -41,7 +42,7 @@ type component struct {
 	entryID   cron.EntryID
 }
 
-func (c *component) Start(_ context.Context, ports componenthost.Ports) error {
+func (c *component) Start(_ context.Context, ports hostports.Ports) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.started {

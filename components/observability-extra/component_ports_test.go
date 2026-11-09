@@ -122,7 +122,7 @@ func TestRegisteredComponentUsesInjectedSamplingAndAuthorizedHistoryOwners(t *te
 func TestMissingSamplingOwnerDoesNotScheduleWork(t *testing.T) {
 	scheduler := &observabilityTrackingScheduler{}
 	c := &component{}
-	if err := c.Start(context.Background(), componenthost.Ports{Scheduler: scheduler}); err == nil || scheduler.added != 0 || c.started {
+	if err := c.Start(context.Background(), componenthost.Ports{Scheduler: scheduler}.LocalPorts()); err == nil || scheduler.added != 0 || c.started {
 		t.Fatalf("unavailable sampling owner scheduled work: %v %+v", err, c)
 	}
 }

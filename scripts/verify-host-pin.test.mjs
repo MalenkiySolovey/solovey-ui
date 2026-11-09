@@ -16,9 +16,11 @@ test('accepted immutable Host source and canonical fixtures verify',()=>{
   validatePin(pin)
   validateRequirement(requirement,pin)
   validateResolution(downloaded,pin)
-  assert.equal(JSON.parse(verifyFiles(downloaded.Dir,pin)).cases.length,27)
+  const fixtures=verifyFiles(downloaded.Dir,pin)
+  assert.equal(JSON.parse(fixtures.network).cases.length,27)
+  assert.equal(Object.keys(JSON.parse(fixtures.values)).length,13)
 })
-for(const field of ['canonicalRepository','module','version','sourceCommit','sourceTree','moduleChecksum','goModChecksum','fixturesSHA256'])
+for(const field of ['canonicalRepository','module','version','sourceCommit','sourceTree','moduleChecksum','goModChecksum','fixturesSHA256','valuesSHA256'])
   test(`invalid Host ${field} is rejected`,()=>{
     const current=clone(pin);current[field]='untrusted-source'
     assert.throws(()=>validatePin(current))

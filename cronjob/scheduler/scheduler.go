@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	sharedscheduler "github.com/MalenkiySolovey/solovey-host/scheduler"
 	"sync"
 	"time"
 
@@ -21,19 +22,7 @@ type Scheduler struct {
 	stopDone context.Context
 }
 
-type contextJob interface {
-	RunContext(context.Context)
-}
-
-type managedJob struct {
-	job    cron.Job
-	ctx    context.Context
-	cancel context.CancelFunc
-
-	mu      sync.Mutex
-	stopped bool
-	active  sync.WaitGroup
-}
+type managedJob = sharedscheduler.ManagedJob
 
 func New() *Scheduler {
 	return &Scheduler{}
@@ -125,7 +114,7 @@ func (c *Scheduler) AddJob(spec string, job cron.Job) (cron.EntryID, error) {
 	managed := newManagedJob(c.ctx, job)
 	entryID, err := c.cron.AddJob(spec, managed)
 	if err != nil {
-		managed.cancelAndPrevent()
+		managed.CancelAndPrevent()
 		return 0, err
 	}
 	c.managed[entryID] = managed
@@ -144,7 +133,7 @@ func (c *Scheduler) Schedule(schedule cron.Schedule, job cron.Job) cron.EntryID 
 	managed := newManagedJob(c.ctx, job)
 	entryID := c.cron.Schedule(schedule, managed)
 	if entryID == 0 {
-		managed.cancelAndPrevent()
+		managed.CancelAndPrevent()
 		return 0
 	}
 	c.managed[entryID] = managed
@@ -166,9 +155,9 @@ func (c *Scheduler) RemoveJob(id cron.EntryID) {
 	if managed == nil {
 		return
 	}
-	managed.cancelAndPrevent()
+	managed.CancelAndPrevent()
 	go func() {
-		_ = managed.wait(context.Background())
+		_ = managed.Wait(context.Background())
 		c.mu.Lock()
 		if c.managed[id] == managed {
 			delete(c.managed, id)
@@ -193,8 +182,8 @@ func (c *Scheduler) RemoveJobAndWait(ctx context.Context, id cron.EntryID) error
 	if managed == nil {
 		return nil
 	}
-	managed.cancelAndPrevent()
-	if err := managed.wait(ctx); err != nil {
+	managed.CancelAndPrevent()
+	if err := managed.Wait(ctx); err != nil {
 		return err
 	}
 	c.mu.Lock()
@@ -219,7 +208,7 @@ func (c *Scheduler) Stop(ctx context.Context) error {
 	}
 	if c.stopDone == nil {
 		for _, job := range c.managed {
-			job.cancelAndPrevent()
+			job.CancelAndPrevent()
 		}
 		if c.cancel != nil {
 			c.cancel()
@@ -246,65 +235,5 @@ func (c *Scheduler) Stop(ctx context.Context) error {
 }
 
 func newManagedJob(parent context.Context, job cron.Job) *managedJob {
-	if parent == nil {
-		parent = context.Background()
-	}
-	ctx, cancel := context.WithCancel(parent)
-	return &managedJob{job: job, ctx: ctx, cancel: cancel}
-}
-
-func (j *managedJob) Run() {
-	if j == nil || j.job == nil {
-		return
-	}
-	j.mu.Lock()
-	if j.stopped || j.ctx.Err() != nil {
-		j.mu.Unlock()
-		return
-	}
-	j.active.Add(1)
-	j.mu.Unlock()
-	defer j.active.Done()
-	ctx, release, err := dbsqlite.AcquireOperation(j.ctx)
-	if err != nil {
-		return
-	}
-	defer release()
-	if job, ok := j.job.(contextJob); ok {
-		job.RunContext(ctx)
-		return
-	}
-	j.job.Run()
-}
-
-func (j *managedJob) cancelAndPrevent() {
-	if j == nil {
-		return
-	}
-	j.mu.Lock()
-	j.stopped = true
-	j.cancel()
-	j.mu.Unlock()
-}
-
-func (j *managedJob) wait(ctx context.Context) error {
-	if j == nil {
-		return nil
-	}
-	done := make(chan struct{})
-	go func() {
-		j.active.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-		return nil
-	case <-ctx.Done():
-		select {
-		case <-done:
-			return nil
-		default:
-			return ctx.Err()
-		}
-	}
+	return sharedscheduler.NewManagedJob(parent, job, dbsqlite.AcquireOperation)
 }

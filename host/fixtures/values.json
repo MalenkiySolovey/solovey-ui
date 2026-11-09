@@ -1,0 +1,164 @@
+{
+  "audit-event": {
+    "Actor": "component:telegram",
+    "Event": "fixture_result",
+    "Resource": "settings",
+    "Severity": "info",
+    "IP": "",
+    "UserAgent": "",
+    "Details": {
+      "status": "ok"
+    }
+  },
+  "core-sample": {
+    "dateTime": 1800000000,
+    "core": {
+      "connections": 3
+    }
+  },
+  "denied-intent-view": {
+    "reference": {
+      "owner": "",
+      "id": "",
+      "policy": "",
+      "projection": ""
+    },
+    "present": false,
+    "correlation": {
+      "correlationId": "",
+      "changeId": "",
+      "hostRef": {
+        "kind": "",
+        "id": ""
+      },
+      "owner": "",
+      "resourceId": "",
+      "operationId": "",
+      "jobId": ""
+    }
+  },
+  "denied-owner-view": {
+    "reference": {
+      "owner": "",
+      "id": "",
+      "policy": "",
+      "projection": ""
+    },
+    "present": false,
+    "correlation": {
+      "correlationId": "",
+      "changeId": "",
+      "hostRef": {
+        "kind": "",
+        "id": ""
+      },
+      "owner": "",
+      "resourceId": "",
+      "operationId": "",
+      "jobId": ""
+    }
+  },
+  "invalid-operation-reference": {
+    "correlationId": "operation:6e340b9cffb37a989ca544e6bb780a2c78901d3fb3373876",
+    "changeId": "change:6e340b9cffb37a989ca544e6bb780a2c78901d3fb3373876",
+    "hostRef": {
+      "kind": "LOCAL",
+      "id": "local"
+    },
+    "owner": "unavailable",
+    "resourceId": "unavailable",
+    "operationId": "unavailable"
+  },
+  "local-host": {
+    "kind": "LOCAL",
+    "id": "local"
+  },
+  "masked-secret-view": {
+    "reference": {
+      "owner": "telegram",
+      "id": "telegramBotToken",
+      "policy": "OWNER_USE_AND_PRESENCE",
+      "projection": "MASKED"
+    },
+    "present": true,
+    "rotationRevision": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "correlation": {
+      "correlationId": "operation:5c09c53e57ff606003a3b42f47dbfff8018a659d449cb613",
+      "changeId": "change:5c09c53e57ff606003a3b42f47dbfff8018a659d449cb613",
+      "hostRef": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "owner": "telegram",
+      "resourceId": "secret:telegramBotToken",
+      "operationId": "fixture-intent",
+      "jobId": "job:5c09c53e57ff606003a3b42f47dbfff8018a659d449cb613"
+    }
+  },
+  "metric-sample": {
+    "dateTime": 1800000000,
+    "value": 12.5
+  },
+  "nonrevision-secret-view": {
+    "reference": {
+      "owner": "telegram",
+      "id": "telegramBotToken",
+      "policy": "OWNER_USE_AND_PRESENCE",
+      "projection": "MASKED"
+    },
+    "present": true,
+    "correlation": {
+      "correlationId": "operation:5c09c53e57ff606003a3b42f47dbfff8018a659d449cb613",
+      "changeId": "change:5c09c53e57ff606003a3b42f47dbfff8018a659d449cb613",
+      "hostRef": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "owner": "telegram",
+      "resourceId": "secret:telegramBotToken",
+      "operationId": "fixture-intent",
+      "jobId": "job:5c09c53e57ff606003a3b42f47dbfff8018a659d449cb613"
+    }
+  },
+  "observability-sample": {
+    "dateTime": 1800000000,
+    "cpu": 12.5,
+    "memory": {
+      "total": 1024,
+      "used": 256
+    },
+    "network": {
+      "in": 100,
+      "out": 50
+    }
+  },
+  "operation-correlation": {
+    "correlationId": "operation:5c09c53e57ff606003a3b42f47dbfff8018a659d449cb613",
+    "changeId": "change:5c09c53e57ff606003a3b42f47dbfff8018a659d449cb613",
+    "hostRef": {
+      "kind": "LOCAL",
+      "id": "local"
+    },
+    "owner": "telegram",
+    "resourceId": "secret:telegramBotToken",
+    "operationId": "fixture-intent",
+    "jobId": "job:5c09c53e57ff606003a3b42f47dbfff8018a659d449cb613"
+  },
+  "operation-reference": {
+    "correlationId": "operation:5c09c53e57ff606003a3b42f47dbfff8018a659d449cb613",
+    "changeId": "change:5c09c53e57ff606003a3b42f47dbfff8018a659d449cb613",
+    "hostRef": {
+      "kind": "LOCAL",
+      "id": "local"
+    },
+    "owner": "telegram",
+    "resourceId": "secret:telegramBotToken",
+    "operationId": "fixture-intent"
+  },
+  "secret-reference": {
+    "owner": "telegram",
+    "id": "telegramBotToken",
+    "policy": "OWNER_USE_AND_PRESENCE",
+    "projection": "MASKED"
+  }
+}

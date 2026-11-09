@@ -52,6 +52,8 @@ github.com/MalenkiySolovey/solovey-contracts v1.0.0 h1:me6uddB3lN19zfYkGp6iuOT46
 github.com/MalenkiySolovey/solovey-contracts v1.0.0/go.mod h1:2fPj6/IiP0jvioVnW2OKurqGPwilJ+gcXNs74aX1VcI=
 github.com/MalenkiySolovey/solovey-host v0.1.0 h1:V6KsxPOAxi+3d2J2qSyfL5fSQ7YjNBridu0Yu5Kf6F8=
 github.com/MalenkiySolovey/solovey-host v0.1.0/go.mod h1:BYWYcRbRalG4iX4DOcfLbq4NgKYUadcY5d9dc724dK8=
+github.com/MalenkiySolovey/solovey-host v0.2.0 h1:aHILNCSiIh6EUuCC+jWQpk/Wh2D3ZTO0I29SzHzrF+Q=
+github.com/MalenkiySolovey/solovey-host v0.2.0/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
 github.com/OneOfOne/xxhash v1.2.8 h1:31czK/TI9sNkxIKfaUfGlU47BAxQ0ztGgd9vPyqimf8=
 github.com/OneOfOne/xxhash v1.2.8/go.mod h1:eZbhyaAYD41SGSSsnmcpxVoRiQ/MPUTjUdIIOT9Um7Q=
 github.com/RyuaNerin/go-krypto v1.3.0 h1:smavTzSMAx8iuVlGb4pEwl9MD2qicqMzuXR2QWp2/Pg=

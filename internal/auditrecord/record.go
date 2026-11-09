@@ -5,6 +5,7 @@ package auditrecord
 import (
 	"encoding/json"
 	"errors"
+	canonical "github.com/MalenkiySolovey/solovey-host/auditrecord"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -26,15 +27,7 @@ const (
 	DetailsMaxBytes   = 16 * 1024
 )
 
-type Event struct {
-	Actor     string
-	Event     string
-	Resource  string
-	Severity  string
-	IP        string
-	UserAgent string
-	Details   map[string]any
-}
+type Event = canonical.Event
 
 func Build(event Event) (model.AuditEvent, error) {
 	if event.Severity == "" {
