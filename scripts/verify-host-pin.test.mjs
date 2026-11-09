@@ -25,6 +25,20 @@ for(const field of ['canonicalRepository','module','version','sourceCommit','sou
     const current=clone(pin);current[field]='untrusted-source'
     assert.throws(()=>validatePin(current))
   })
+test('proxy and cache metadata may omit optional origin fields',()=>{
+  for(const Origin of [{VCS:'git',Hash:pin.sourceCommit},undefined])
+    validateResolution({...downloaded,Origin},pin)
+})
+test('foreign origin URL or VCS is rejected when provided',()=>{
+  for(const Origin of [
+    {VCS:'git',Hash:pin.sourceCommit,URL:'https://example.invalid/foreign'},
+    {VCS:'other',Hash:pin.sourceCommit},
+  ])assert.throws(()=>validateResolution({...downloaded,Origin},pin))
+})
+test('proxy origin still requires the accepted source commit',()=>{
+  for(const Hash of [undefined,'0'.repeat(40)])
+    assert.throws(()=>validateResolution({...downloaded,Origin:{VCS:'git',Hash}},pin),/source commit/)
+})
 for(const field of ['Path','Version','Sum','GoModSum'])test(`wrong resolved Host ${field} is rejected`,()=>{
   const current=clone(downloaded);current[field]='untrusted-source'
   assert.throws(()=>validateResolution(current,pin))
