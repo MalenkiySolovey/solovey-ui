@@ -3,6 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
+import { componentManifestKey } from './component-source-inputs.mjs'
 import { flattenComponentFrontendEntries, readComponentFrontendEntries } from './component-frontend-manifest.mjs'
 
 const args = new Map()
@@ -35,7 +36,9 @@ const manifest = JSON.parse(manifestText)
 const haystack = JSON.stringify(manifest)
 const entriesByComponent = readComponentFrontendEntries(componentsDir)
 const componentIDs = readComponentIDs(componentsDir)
-const optionalModuleNeedles = flattenComponentFrontendEntries(entriesByComponent)
+const resolvedEntries = Object.fromEntries(Object.entries(entriesByComponent).map(([id, entries]) =>
+  [id, entries.map(entry => entry.startsWith('frontend/') ? componentManifestKey(id, entry, path.dirname(path.resolve(componentsDir))) : entry)]))
+const optionalModuleNeedles = flattenComponentFrontendEntries(resolvedEntries)
 if (optionalModuleNeedles.length === 0) {
   fail(`no component frontend entries declared in ${componentsDir}`)
 }
@@ -49,7 +52,7 @@ if (profile === 'core') {
 } else {
   const expectedModules = selectedIDs
     ? flattenComponentFrontendEntries(Object.fromEntries(
-      selectedIDs.map(id => [id, entriesByComponent[id] ?? []]),
+      selectedIDs.map(id => [id, resolvedEntries[id] ?? []]),
     ))
     : optionalModuleNeedles
   const forbiddenModules = selectedIDs

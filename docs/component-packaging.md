@@ -3,6 +3,23 @@
 Components are in-process. Code availability, pack files, installed inventory,
 enabled policy, active lifecycle and durable data are separate facts.
 
+External Component source inputs are accepted in `components/sources.lock.json`.
+Each entry binds an approved source repository, immutable Go module version,
+source commit/tree, Go checksums, manifest hash and the complete frontend file
+inventory/digest. `node scripts/component-source-inputs.mjs prepare` resolves the
+real module and verifies both provider modfiles before producing disposable,
+generated `.component-sources/<id>` build inputs. Local replacements, workspace
+substitution, source drift, unlisted frontend files and symlinks fail closed.
+The existing `component.json` parser remains the runtime manifest authority.
+
+Frontend builds run preparation automatically. Vite compiles verified external
+entries into the same application and packaging walks their dynamic imports,
+CSS and locale chunks. Core/minimal selection excludes those entries. External
+first-party UI uses `@solovey/component-ui`, whose public exports forward to the
+existing registry, settings, secret fields and HTTP owners. This is a build API
+for reviewed first-party contributions; installed code still uses the existing
+ComponentHost admission and product update channel.
+
 | Delivery | Compiled backend / frontend bytes | Pack files and installed inventory |
 | --- | --- | --- |
 | Generic Linux full | Full optional Go code; core frontend embedded; extracted component frontend in packs | Installer installs all component packs and full inventory |
