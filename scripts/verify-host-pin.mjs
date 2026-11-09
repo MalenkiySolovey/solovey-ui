@@ -53,7 +53,9 @@ export function validateResolution(metadata,pin) {
   if(metadata.Origin) {
     assert.equal(metadata.Origin.VCS,'git')
     assert.equal(metadata.Origin.Hash,pin.sourceCommit,'Host source commit mismatch')
-    assert.equal(metadata.Origin.URL,`https://github.com/${pin.canonicalRepository}`)
+    // Module proxies may omit the repository URL while retaining its commit.
+    if(metadata.Origin.URL!==undefined)
+      assert.equal(metadata.Origin.URL,`https://github.com/${pin.canonicalRepository}`)
   }
 }
 
