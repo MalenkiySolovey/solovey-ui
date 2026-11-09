@@ -11,8 +11,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	identity "github.com/MalenkiySolovey/solovey-host/networkidentity"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	identity "github.com/MalenkiySolovey/solovey-ui/internal/networkidentity"
 )
 
 type interfaceObservation struct {

@@ -3,8 +3,8 @@ package api
 import (
 	"context"
 
+	identity "github.com/MalenkiySolovey/solovey-host/networkidentity"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	identity "github.com/MalenkiySolovey/solovey-ui/internal/networkidentity"
 	"github.com/MalenkiySolovey/solovey-ui/service/resourceinventory"
 	"github.com/gin-gonic/gin"
 )

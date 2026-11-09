@@ -1,0 +1,24 @@
+{
+  "schema": "solovey.host.consumer-pin/v1",
+  "canonicalRepository": "MalenkiySolovey/solovey-host",
+  "module": "github.com/MalenkiySolovey/solovey-host",
+  "version": "v0.1.0",
+  "sourceCommit": "0852abe0c5c1ec7f6fa297a3917ad607ad936040",
+  "sourceTree": "b6675967a28bbf3e3096a7fed7d6a77e58096334",
+  "moduleChecksum": "h1:V6KsxPOAxi+3d2J2qSyfL5fSQ7YjNBridu0Yu5Kf6F8=",
+  "goModChecksum": "h1:BYWYcRbRalG4iX4DOcfLbq4NgKYUadcY5d9dc724dK8=",
+  "fixturesSHA256": "ff83fc9c0b5a7d64d35d37ede09b530aafa07d3fe420e3e0bd055278c15b8eb3",
+  "packages": [
+    "hostref",
+    "networkidentity"
+  ],
+  "files": {
+    "go.mod": "a08011ccc90f9d28a64dfc7dabbeb369ae04241cc17850ef976f1b319d60d2bc",
+    "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    "SOURCE_PROVENANCE.json": "3fb9889b5493b8e4f9476553afa89a204338e3af774291ba1ae2434c0fb23c84",
+    "hostref/local.go": "949bb6667472f06c27f257c41445011491952bf8c6cf53f217ffa24b925c31d0",
+    "networkidentity/address.go": "77372f14fdb6076ffafafa236a7444be88394df0d2a86c2b4ed6e37ea8d8cc18",
+    "networkidentity/snapshot.go": "74f6104efdbb3c1d19ff2e189edd08cb33658a9f6eb188dee42b5515f658919d",
+    "networkidentity/testdata/snapshots.json": "ff83fc9c0b5a7d64d35d37ede09b530aafa07d3fe420e3e0bd055278c15b8eb3"
+  }
+}
