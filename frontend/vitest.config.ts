@@ -14,6 +14,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      '@solovey/component-ui': fileURLToPath(new URL('./src/componentSystem/sdk.ts', import.meta.url)),
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },

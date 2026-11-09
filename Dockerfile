@@ -1,8 +1,13 @@
+FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca AS component-source-tools
+
 FROM --platform=$BUILDPLATFORM node:alpine@sha256:3ad34ca6292aec4a91d8ddeb9229e29d9c2f689efd0dd242860889ac71842eba AS front-builder
+COPY --from=component-source-tools /usr/local/go/ /usr/local/go/
+ENV PATH="/usr/local/go/bin:${PATH}" GOWORK=off
+RUN apk add --no-cache git ca-certificates
 WORKDIR /app
 COPY frontend/ ./frontend/
 COPY components/ ./components/
-COPY go.mod go.sum ./
+COPY go.mod go.sum go.extended.mod go.extended.sum ./
 COPY deploy/dependencies/sing-quic-integration.json ./deploy/dependencies/
 COPY deploy/dependencies/sing-box-ssm-integration.json ./deploy/dependencies/
 COPY deploy/dependencies/sing-anytls-integration.json ./deploy/dependencies/
@@ -10,7 +15,7 @@ COPY scripts/core-source-provenance.mjs ./scripts/
 COPY scripts/quic-integration-provenance.mjs ./scripts/
 COPY scripts/ssm-integration-provenance.mjs ./scripts/
 COPY scripts/anytls-integration-provenance.mjs ./scripts/
-COPY scripts/component-frontend-manifest.mjs scripts/extract-component-frontend.mjs scripts/generate-component-imports.mjs scripts/write-component-installed-metadata.mjs scripts/frontend-assets.mjs scripts/frontend-runtime-closure.mjs ./scripts/
+COPY scripts/component-source-inputs.mjs scripts/component-frontend-manifest.mjs scripts/extract-component-frontend.mjs scripts/generate-component-imports.mjs scripts/write-component-installed-metadata.mjs scripts/frontend-assets.mjs scripts/frontend-runtime-closure.mjs ./scripts/
 RUN node scripts/quic-integration-provenance.mjs manifest > QUIC_INTEGRATION.json \
     && node scripts/ssm-integration-provenance.mjs manifest > SSM_INTEGRATION.json \
     && node scripts/anytls-integration-provenance.mjs manifest > ANYTLS_INTEGRATION.json \

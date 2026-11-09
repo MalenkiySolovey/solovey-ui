@@ -2,8 +2,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { prepareComponentSources } from './component-source-inputs.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+prepareComponentSources(repoRoot)
 
 const args = process.argv.slice(2)
 

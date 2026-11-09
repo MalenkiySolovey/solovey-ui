@@ -24,7 +24,8 @@ test('Docker frontend provenance runs using its declared metadata and script inp
     fs.rmSync(actual,{recursive:true,force:true})
   })
   const root=new URL('../',import.meta.url)
-  const stage=fs.readFileSync(new URL('Dockerfile',root),'utf8').split(/^FROM /m)[1]
+  const stage=fs.readFileSync(new URL('Dockerfile',root),'utf8').split(/^FROM /m).find(stage=>stage.split(/\r?\n/)[0].endsWith(' AS front-builder'))
+  assert.ok(stage, 'Docker frontend builder must remain explicitly named')
   for(const line of stage.split(/\r?\n/)) {
     if(!line.startsWith('COPY ') || !/\.\/(?:scripts\/|deploy\/dependencies\/)?$/.test(line))continue
     const inputs=line.slice(5).split(/\s+/)

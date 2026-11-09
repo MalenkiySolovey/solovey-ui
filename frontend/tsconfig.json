@@ -16,6 +16,7 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
+      "@solovey/component-ui": ["./src/componentSystem/sdk.ts"],
       "@/*": ["./src/*"],
       "vue": ["./node_modules/vue"],
       "vue-i18n": ["./node_modules/vue-i18n"],

@@ -85,3 +85,6 @@ cmd/solovey-privileged-broker/components_generated.go
 
 # Local import fixtures with real production data
 test-db/
+
+# Verified generated inputs from immutable Component modules.
+.component-sources/

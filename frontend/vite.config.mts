@@ -7,9 +7,10 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { defineConfig, normalizePath, type Plugin } from 'vite'
 import { fileURLToPath, URL } from 'node:url'
+import { componentSourceRoot } from '../scripts/component-source-inputs.mjs'
 
 const isE2E = process.env.SUI_E2E === '1'
-const componentProfile = process.env.SOLOVEY_UI_PROFILE === 'core' ? 'core' : 'full'
+const componentProfile = ['core', 'minimal'].includes(process.env.SOLOVEY_UI_PROFILE || '') ? 'core' : 'full'
 const frontendRoot = fileURLToPath(new URL('.', import.meta.url))
 const repoRoot = path.resolve(frontendRoot, '..')
 const bundledComponentIDs = resolveBundledComponentIDs()
@@ -85,6 +86,7 @@ export default defineConfig({
   },
   resolve: {
     alias: [
+      { find: /^@solovey\/component-ui$/, replacement: fileURLToPath(new URL('./src/componentSystem/sdk.ts', import.meta.url)) },
       { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },
       { find: /^notivue$/, replacement: fileURLToPath(new URL('./node_modules/notivue/dist/index.js', import.meta.url)) },
       { find: /^vue$/, replacement: fileURLToPath(new URL('./node_modules/vue/dist/vue.runtime.esm-bundler.js', import.meta.url)) },
@@ -189,7 +191,7 @@ function discoverFrontendComponentIDs() {
 }
 
 function componentFrontendEntry(componentID: string) {
-  return path.join(repoRoot, 'components', componentID, 'frontend', 'index.ts')
+  return path.join(componentSourceRoot(componentID, repoRoot), 'frontend', 'index.ts')
 }
 
 function assertComponentID(id: string) {
