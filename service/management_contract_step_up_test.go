@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	wire "github.com/MalenkiySolovey/solovey-ui/contracts/management/v1"
+	wire "github.com/MalenkiySolovey/solovey-contracts/management/v1"
 )
 
 func TestManagementContractVectorsPreserveExistingStepUpBindings(t *testing.T) {

@@ -7,9 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 
+	wire "github.com/MalenkiySolovey/solovey-contracts/management/v1"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
-	wire "github.com/MalenkiySolovey/solovey-ui/contracts/management/v1"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 )
 

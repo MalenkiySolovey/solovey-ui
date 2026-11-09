@@ -10,12 +10,12 @@
     "gofmt": "go1.26.10"
   },
   "files": {
-    "README.md": "fa8bc75a9641de454dc728929fc50b42cbc639f505a85696a641e9e5ac4dedeb",
+    "README.md": "2499d9289fdcba134e705462fa28c03f738b871cd983cf2fadbe84d12583bcd5",
     "codec.go": "ccad977308ce4dd48bf4792a61fa1234cc336118d0dc6b739df6da8f82cfb442",
     "codec_test.go": "449cfa58cd884178603db8cf334e89edeca321152f28ece3c8801bee0ec96c62",
     "schema.json": "629e9397122bb06e3534cd5753137d6acd4f51016bf96a038558bb0f5e434b8b",
     "types.gen.go": "90d6b8bfd66a2167b410f4044f8b1ba05653a9dd8d971d3ef24f67b3dde35aec",
     "vectors.json": "1e3e87c62ad4bbdd47a1c34d41b0a0be156d9c76851ecef61bf2d9fde3ab90ff"
   },
-  "bundleSHA256": "4c483dfc1c1b3a2d9250c5a2b0c8b6c5a8f864f2103c91ab331733061444c922"
+  "bundleSHA256": "d4690452c43a9a3f78e19b5fd03b016ee9f8dc69e8ee376a0098f11767191610"
 }

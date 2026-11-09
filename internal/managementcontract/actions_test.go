@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	wire "github.com/MalenkiySolovey/solovey-contracts/management/v1"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
-	wire "github.com/MalenkiySolovey/solovey-ui/contracts/management/v1"
 )
 
 func TestCurrentActionCatalogParity(t *testing.T) {

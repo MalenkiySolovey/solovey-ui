@@ -14,7 +14,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	wire "github.com/MalenkiySolovey/solovey-ui/contracts/management/v1"
+	wire "github.com/MalenkiySolovey/solovey-contracts/management/v1"
 )
 
 // These fixtures use temporary SQLite rows to exercise the existing owner CAS.

@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
+	wire "github.com/MalenkiySolovey/solovey-contracts/management/v1"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
-	wire "github.com/MalenkiySolovey/solovey-ui/contracts/management/v1"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	ops "github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
@@ -55,11 +55,13 @@ func TestSharedStateVectorsThroughActualOwnerProjections(t *testing.T) {
 			t.Fatal(err)
 		}
 		counts[v.Kind]++
+		if v.Kind == "document" || v.Kind == "digest" || v.Kind == "reason" || v.Kind == "command" || v.Kind == "removal" {
+			// Executed by the external codec, Action/transition and actual
+			// supervisor removal suites, rather than empty passing subtests.
+			continue
+		}
 		t.Run(v.ID, func(t *testing.T) {
 			switch v.Kind {
-			case "document", "digest", "reason", "command", "removal":
-				// Executed by the pinned codec, Action/transition suite and actual
-				// supervisor removal suite respectively.
 			case "component":
 				m := manifest.Manifest{ID: "test-owner", Version: "1.0.0", Actions: []string{}}
 				component := state.Component{ID: m.ID, Installed: v.Installed, Enabled: v.Enabled, Active: v.Enabled, AvailableInBinary: v.Available,

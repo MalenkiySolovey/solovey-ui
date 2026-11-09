@@ -3,6 +3,7 @@ module github.com/MalenkiySolovey/solovey-ui
 go 1.26.10
 
 require (
+	github.com/MalenkiySolovey/solovey-contracts v1.0.0
 	// v1.1.0 omits its license; select the upstream CC0 source grant.
 	github.com/zeebo/assert v1.3.0 // indirect
 	github.com/coder/websocket v1.8.14
