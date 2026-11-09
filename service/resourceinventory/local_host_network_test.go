@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	identity "github.com/MalenkiySolovey/solovey-host/networkidentity"
+	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 )
 
 type networkFixtureAddress string

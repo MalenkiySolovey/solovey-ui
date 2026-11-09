@@ -8,8 +8,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	identity "github.com/MalenkiySolovey/solovey-host/networkidentity"
+	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 )
 
 func configuredNetworkEvidence(source, revision string, observedAt int64) identity.Evidence {

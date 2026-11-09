@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	identity "github.com/MalenkiySolovey/solovey-host/networkidentity"
+	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/service/resourceinventory"
 )
 
