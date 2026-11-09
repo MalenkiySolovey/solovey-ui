@@ -9,7 +9,7 @@ import (
 	"unicode/utf8"
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	identity "github.com/MalenkiySolovey/solovey-ui/internal/networkidentity"
+	identity "github.com/MalenkiySolovey/solovey-host/networkidentity"
 )
 
 func configuredNetworkEvidence(source, revision string, observedAt int64) identity.Evidence {

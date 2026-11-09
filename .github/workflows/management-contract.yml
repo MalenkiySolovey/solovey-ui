@@ -26,5 +26,8 @@ jobs:
           node-version-file: frontend/.node-version
       - run: node scripts/verify-contract-pin.mjs
       - run: node --test scripts/verify-contract-pin.test.mjs
+      - run: node scripts/verify-host-pin.mjs
+      - run: node --test scripts/verify-host-pin.test.mjs
+      - run: go test -count=1 ./internal/hostintegration ./service/resourceinventory
       - run: go test github.com/MalenkiySolovey/solovey-contracts/management/v1 ./contracts/management/v1 ./internal/managementcontract ./componenthost/supervisor
       - run: go test ./service ./service/datalifecycle -run TestManagementContract -count=1

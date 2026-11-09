@@ -1,12 +1,9 @@
-// Package hostref defines the Local Host binding shared by read contracts.
-// Remote Host registration, transport and identity resolution are not shipped.
+// Package hostref preserves the public Local Host import path.
+// Deprecated: import github.com/MalenkiySolovey/solovey-host/hostref.
 package hostref
 
-type Ref struct {
-	Kind string `json:"kind"`
-	ID   string `json:"id"`
-}
+import canonical "github.com/MalenkiySolovey/solovey-host/hostref"
 
-func Local() Ref { return Ref{Kind: "LOCAL", ID: "local"} }
+type Ref = canonical.Ref
 
-func (r Ref) IsLocal() bool { return r == Local() }
+func Local() Ref { return canonical.Local() }

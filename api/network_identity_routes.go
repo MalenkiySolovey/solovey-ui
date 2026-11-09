@@ -4,7 +4,7 @@ import (
 	"context"
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	identity "github.com/MalenkiySolovey/solovey-ui/internal/networkidentity"
+	identity "github.com/MalenkiySolovey/solovey-host/networkidentity"
 	"github.com/MalenkiySolovey/solovey-ui/service/resourceinventory"
 	"github.com/gin-gonic/gin"
 )
