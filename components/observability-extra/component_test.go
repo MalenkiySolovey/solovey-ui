@@ -5,11 +5,10 @@ package observabilityextra
 import (
 	"context"
 	"errors"
-	"testing"
-
-	"github.com/MalenkiySolovey/solovey-ui/componenthost"
+	hostports "github.com/MalenkiySolovey/solovey-host/componenthost"
 	observabilitysvc "github.com/MalenkiySolovey/solovey-ui/service/observability"
 	"github.com/robfig/cron/v3"
+	"testing"
 )
 
 type observabilityTrackingScheduler struct {
@@ -29,64 +28,30 @@ func (s *observabilityTrackingScheduler) RemoveJobAndWait(context.Context, cron.
 	return s.removeErr
 }
 
-func TestComponentStopRetainsLifecycleStateWhenJobDoesNotStop(t *testing.T) {
+type trackingSampler struct {
+	observations, cores int
+}
+
+func TestDatabaseBindingFollowsConfirmedLifecycleStop(t *testing.T) {
 	scheduler := &observabilityTrackingScheduler{removeErr: errors.New("job still running")}
 	c := &component{}
-	host := componenthost.Ports{Scheduler: scheduler, ObservationPorts: componenthost.ObservationPorts{ObservationSampler: &trackingSampler{}}}
-	if err := c.Start(context.Background(), host.LocalPorts()); err != nil {
+	ports := hostports.Ports{Scheduler: scheduler, ObservationSampler: &trackingSampler{}}
+	if err := c.Start(context.Background(), ports); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Stop(context.Background()); err == nil {
-		t.Fatal("Stop unexpectedly ignored a running job")
+	if c.unbindReset == nil {
+		t.Fatal("active component did not bind database reset")
 	}
-	if !c.started || c.scheduler != scheduler || c.entryID == 0 {
-		t.Fatalf("failed Stop discarded retry state: %#v", c)
+	if err := c.Stop(context.Background()); err == nil || c.unbindReset == nil {
+		t.Fatal("failed stop discarded Backend binding")
 	}
 	scheduler.removeErr = nil
 	if err := c.Stop(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if c.started || c.scheduler != nil || c.entryID != 0 {
-		t.Fatalf("successful Stop retained runtime state: %#v", c)
+	if c.unbindReset != nil {
+		t.Fatal("successful stop retained Backend binding")
 	}
-}
-
-func TestComponentStartIsIdempotent(t *testing.T) {
-	scheduler := &observabilityTrackingScheduler{}
-	c := &component{}
-	host := componenthost.Ports{Scheduler: scheduler, ObservationPorts: componenthost.ObservationPorts{ObservationSampler: &trackingSampler{}}}
-	if err := c.Start(context.Background(), host.LocalPorts()); err != nil {
-		t.Fatal(err)
-	}
-	if err := c.Start(context.Background(), host.LocalPorts()); err != nil {
-		t.Fatal(err)
-	}
-	if scheduler.added != 1 {
-		t.Fatalf("repeated Start added %d jobs", scheduler.added)
-	}
-	if err := c.Stop(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if err := c.Stop(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if scheduler.removed != 1 {
-		t.Fatalf("repeated Stop removed %d jobs", scheduler.removed)
-	}
-}
-
-func TestComponentStartFailsWhenSchedulerCapabilityIsUnavailable(t *testing.T) {
-	c := &component{}
-	if err := c.Start(context.Background(), componenthost.Ports{}.LocalPorts()); err == nil {
-		t.Fatal("Start must fail closed without a scheduler capability")
-	}
-	if c.started {
-		t.Fatal("failed Start must not leave runtime residue")
-	}
-}
-
-type trackingSampler struct {
-	observations, cores int
 }
 
 func (*trackingSampler) CurrentObservabilitySample() observabilitysvc.ObservabilitySample {

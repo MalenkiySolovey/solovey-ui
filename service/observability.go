@@ -2,7 +2,12 @@
 
 package service
 
-import observabilityimpl "github.com/MalenkiySolovey/solovey-ui/service/observability"
+import (
+	"time"
+
+	"github.com/MalenkiySolovey/solovey-ui/logger"
+	observabilityimpl "github.com/MalenkiySolovey/solovey-ui/service/observability"
+)
 
 type ObservabilityService struct {
 	ServerService
@@ -10,15 +15,29 @@ type ObservabilityService struct {
 }
 
 func (s *ObservabilityService) implementation() *observabilityimpl.Service {
-	return &observabilityimpl.Service{Server: &s.ServerService, Settings: &s.SettingService}
+	return &observabilityimpl.Service{
+		Snapshots: s,
+		Store:     observabilityimpl.SharedStore(),
+		Settings:  &s.SettingService,
+		Warning:   logger.Warning,
+		Warningf:  logger.Warningf,
+	}
 }
 
 func (s *ObservabilityService) CurrentObservabilitySample() observabilityimpl.ObservabilitySample {
-	return s.implementation().CurrentObservabilitySample()
+	return observabilityimpl.ObservabilitySample{
+		DateTime: time.Now().Unix(),
+		CPU:      s.ServerService.GetCpuPercent(),
+		Memory:   s.ServerService.GetMemInfo(),
+		Network:  s.ServerService.GetNetInfo(),
+	}
 }
 
 func (s *ObservabilityService) CurrentCoreSample() observabilityimpl.CoreSample {
-	return s.implementation().CurrentCoreSample()
+	return observabilityimpl.CoreSample{
+		DateTime: time.Now().Unix(),
+		Core:     s.ServerService.GetSingboxInfo(),
+	}
 }
 
 func (s *ObservabilityService) History() []observabilityimpl.ObservabilitySample {

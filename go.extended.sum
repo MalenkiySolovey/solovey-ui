@@ -1094,3 +1094,5 @@ software.sslmate.com/src/go-pkcs12 v0.7.1/go.mod h1:Qiz0EyvDRJjjxGyUQa2cCNZn/wMy
 zombiezen.com/go/capnproto2 v2.18.2+incompatible/go.mod h1:XO5Pr2SbXgqZwn0m0Ru54QBqpOf4K5AYBO+8LAOBQEQ=
 github.com/MalenkiySolovey/solovey-component-telegram v0.1.0 h1:/Bbzfvkr7IxKnqxqPS64LQnbGNh2VeLmwBZxeGiMXCk=
 github.com/MalenkiySolovey/solovey-component-telegram v0.1.0/go.mod h1:kQRT0GfOrFxV6ITK+wXQaYshFvzBKEP01xY7CgY93jE=
+github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0 h1:Qczg9jmPtsLQ5V/7hr8Wk5ErlR5E9OblzxcO4Gym2gM=
+github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0/go.mod h1:wii8Hu093M9V5KqKNB1IYHtFxbJjHMXLgWzuC7huwiI=

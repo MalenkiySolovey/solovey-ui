@@ -66,6 +66,40 @@
         "settings/validation_test.go": "63295a4b35b0d05d8ba707753c71db6a398b0441f8fabc1e8a8f117ac69079da",
         "SOURCE_PROVENANCE.json": "91ff805442cb3adbb2eacf0bdfb37acfee106ad47bf36ac0fb885491428273ed"
       }
+    },
+    {
+      "id": "observability-extra",
+      "module": "github.com/MalenkiySolovey/solovey-component-observability-extra",
+      "version": "v0.1.0",
+      "sourceCommit": "bbfc097c9ab2bdeb0e071571f7593bcedee48126",
+      "sourceTree": "d06d77f857f0d340d55f1aee02d8d9b772853571",
+      "moduleChecksum": "h1:Qczg9jmPtsLQ5V/7hr8Wk5ErlR5E9OblzxcO4Gym2gM=",
+      "goModChecksum": "h1:wii8Hu093M9V5KqKNB1IYHtFxbJjHMXLgWzuC7huwiI=",
+      "manifestSHA256": "2078a51d7dd0b5f1737ad4d710f42c0f596aa40a340fcfd19e2f2ecdc23a2591",
+      "frontendSHA256": "657faad5de8b39591cb41ca3c4c5a6cac33b635d96d7ad5e1ca131592d02e4b9",
+      "files": {
+        "HOST_UI_PIN.json": "7ab8d6f187c96b599fbed78f73ae64a10a6eb73d7d06dca49325ff185b89ced4",
+        "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+        "NOTICE": "7e8ffea7ac10fba4153652df2c8c43d83e23bee522cb4ad850a9ff00dc73a27d",
+        "SOURCE_PROVENANCE.json": "cdadf67375cca07f5fe6d31e9a841db0925d1e433aa9d24b29db1d30a6f2abf7",
+        "component.json": "2078a51d7dd0b5f1737ad4d710f42c0f596aa40a340fcfd19e2f2ecdc23a2591",
+        "frontend/composables/useDiagnosticsPage.ts": "8d9076d5d269b5aea457a777437b88c03480515685bef4f5470075b7afa65b51",
+        "frontend/contribution.test.ts": "0ba0c144362139ac88b6436074c575f131d03ac571520f27727ace000232248e",
+        "frontend/index.ts": "ba1c0990bea62524bcc3fd5267dd273e7838484f6abf017322b051328f853577",
+        "frontend/locales/en.ts": "c4a7cf2bc36e84e6e5ea0422ac8923957f1918fb39d7466ddc6aa03dc884ac8b",
+        "frontend/locales/fa.ts": "d56ddc2f31bc890885a01eb6a22c464ef5a93dbd820cd155ff804c40ca75ee72",
+        "frontend/locales/ru.ts": "812da1c4ad2f03c5ebf8ff20ce32771316c141ed324deac0f7c02aa79c858895",
+        "frontend/locales/vi.ts": "406b259432dde21c0b456d6c1d6e3054a20cf7bf7b7197a4a5c0550f8d7980fc",
+        "frontend/locales/zhcn.ts": "06f611fd6d5faebda8fd7f2e607ad6412a6c5d470ac0187ee5aae9f2c2f657ef",
+        "frontend/locales/zhtw.ts": "d672f11454e39557a022998e388e8582ada3f95e229a3e7e2ec91fae021a2ad1",
+        "frontend/tests/e2e/panel-operability.mjs": "d275fd5e833a8e57f0d37735b98b8b0937b9013201e44863a3125c92ec61a25c",
+        "frontend/views/Audit.vue": "6e85343f35ffa9d9e87efc382f5acd10bf668c0f1f557cae32167b43b53c8f58",
+        "frontend/views/Diagnostics.scss": "b40787c8cf8126750cd4904e49c1347551659d4fac9e87474f74949e561dbdf5",
+        "frontend/views/Diagnostics.vue": "5a23c655728bfa4aef4198d04c5331cd88d5118fe3af58efbd2a872cf294cdd2",
+        "frontend/vitest.config.mts": "9be78a2e970c49881643a0085f98d46eabdfbd2d18e3793846992327dc28a7d3",
+        "go.mod": "a561c251255f9044a7cda59293ba10d7a75acbcc10d88a27d75cd7ba371c7746",
+        "go.sum": "0c3eb850e1626fab1acc94d05173f760f6b5396afd478f2a73c184fbcb27aea6"
+      }
     }
   ]
 }
