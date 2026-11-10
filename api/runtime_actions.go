@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	hostcore "github.com/MalenkiySolovey/solovey-host/coreruntime"
 	apiconfig "github.com/MalenkiySolovey/solovey-ui/api/config"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -102,9 +103,12 @@ func (a *ApiService) runtimeGroupAction(c *gin.Context, probe bool) {
 			result["outcome"] = "PROBE_COMPLETED"
 		}
 	} else {
-		err = core.SelectRuntimeGroup(ctx, request.Generation, request.Group, request.Member)
+		var evidence hostcore.SelectionResult
+		evidence, err = core.SelectRuntimeGroupWithEvidence(ctx, request.Generation, request.Group, request.Member)
 		if err == nil {
 			result["outcome"] = "RUNTIME_SELECTED"
+		} else if evidence.Outcome == hostcore.SelectionRestored || evidence.Outcome == hostcore.SelectionAmbiguous {
+			result["outcome"] = string(evidence.Outcome)
 		}
 	}
 	if err != nil {

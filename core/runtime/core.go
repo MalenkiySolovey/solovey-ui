@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 
 	corebox "github.com/MalenkiySolovey/solovey-ui/core/box"
+	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/core/tracker"
 
@@ -43,6 +44,7 @@ type Core struct {
 	logSubscribers    atomic.Int32
 	snapshotReaders   atomic.Int32
 	probeSlots        chan struct{}
+	selectionProvider func() coreprovider.Identity
 }
 
 func NewCore(observers ...tracker.IPObserver) *Core {

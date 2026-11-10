@@ -32,6 +32,7 @@ const privateFixture = `{"outbounds":[{"type":"direct","tag":"direct"},{"type":"
 func startPrivateFixture(t *testing.T) *Core {
 	t.Helper()
 	c := NewCore()
+	configureSelectionProvider(t, c)
 	if err := c.Start([]byte(privateFixture)); err != nil {
 		t.Fatal(err)
 	}

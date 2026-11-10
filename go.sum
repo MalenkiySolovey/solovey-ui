@@ -541,3 +541,5 @@ github.com/MalenkiySolovey/solovey-component-telegram v0.1.0 h1:/Bbzfvkr7IxKnqxq
 github.com/MalenkiySolovey/solovey-component-telegram v0.1.0/go.mod h1:kQRT0GfOrFxV6ITK+wXQaYshFvzBKEP01xY7CgY93jE=
 github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0 h1:Qczg9jmPtsLQ5V/7hr8Wk5ErlR5E9OblzxcO4Gym2gM=
 github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0/go.mod h1:wii8Hu093M9V5KqKNB1IYHtFxbJjHMXLgWzuC7huwiI=
+github.com/MalenkiySolovey/solovey-host v0.3.0 h1:Qm0n3dlugpaINuN9G8BesNblyEu8FH00HkY4FvLmpaA=
+github.com/MalenkiySolovey/solovey-host v0.3.0/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
