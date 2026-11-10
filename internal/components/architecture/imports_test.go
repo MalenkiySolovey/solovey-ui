@@ -177,6 +177,7 @@ func componentSourceImport(imported string) string {
 
 func TestExternalComponentImportsPreserveSemanticOwnership(t *testing.T) {
 	const source = "github.com/MalenkiySolovey/solovey-component-telegram"
+	const observations = "github.com/MalenkiySolovey/solovey-component-observability-extra"
 	for _, fixture := range []struct {
 		path, imported string
 		allowed        bool
@@ -188,6 +189,13 @@ func TestExternalComponentImportsPreserveSemanticOwnership(t *testing.T) {
 		{"components/telegram/component.go", source, true},
 		{"components/telegram/service/delivery.go", source + "/service", true},
 		{"app/components_generated.go", source, true},
+		{"components/observability-extra/component.go", observations, true},
+		{"service/observability/service.go", observations + "/history", true},
+		{"service/observability/types.go", observations + "/history", true},
+		{"service/diagnostics.go", observations + "/history", false},
+		{"service/server/service.go", observations + "/history", false},
+		{"componenthost/health/registry.go", observations + "/history", false},
+		{"components/paid-subscriptions/service.go", observations + "/history", false},
 	} {
 		if got := componentImportAllowed(fixture.path, componentSourceImport(fixture.imported)); got != fixture.allowed {
 			t.Errorf("%s importing %s: allowed=%v, want %v", fixture.path, fixture.imported, got, fixture.allowed)
@@ -207,7 +215,45 @@ func TestTelegramFeatureSourceRetirement(t *testing.T) {
 	}
 }
 
+func TestObservationFeatureHasOneEditableImplementation(t *testing.T) {
+	root := moduleRoot(t)
+	for _, relative := range []string{
+		"components/observability-extra/jobs/sampling.go", "components/observability-extra/jobs/sampling_test.go",
+		"components/observability-extra/frontend/index.ts", "components/observability-extra/frontend/views/Audit.vue",
+		"components/observability-extra/frontend/views/Diagnostics.vue", "components/observability-extra/frontend/composables/useDiagnosticsPage.ts",
+		"service/observability/aggregate.go", "service/observability/service_test.go",
+	} {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(relative))); !os.IsNotExist(err) {
+			t.Errorf("retired editable history or UI returned: %s (%v)", relative, err)
+		}
+	}
+	// The compatibility facade binds state/reset and forwards queries. It cannot
+	// grow another sampling, aggregation or ring algorithm under a different name.
+	walkGoFiles(t, filepath.Join(root, "service", "observability"), func(path string) {
+		if strings.HasSuffix(path, "_test.go") {
+			return
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			switch node.(type) {
+			case *ast.ForStmt, *ast.RangeStmt:
+				t.Errorf("history compatibility facade contains algorithm loop: %s", path)
+			}
+			return true
+		})
+	})
+}
+
 func componentImportAllowed(rel, imported string) bool {
+	// Only the existing local-host compatibility facade may bind optional history.
+	// Current facts, Diagnostics, Health and other components retain their owners.
+	if imported == modulePath+"/components/observability-extra/history" &&
+		(rel == "service/observability/service.go" || rel == "service/observability/types.go") {
+		return true
+	}
 	if strings.HasPrefix(rel, "app/") || strings.HasPrefix(rel, "cmd/") {
 		return true
 	}

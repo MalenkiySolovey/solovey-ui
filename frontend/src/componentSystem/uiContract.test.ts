@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { register as registerObservability } from '../../../components/observability-extra/frontend/index'
+import { register as registerObservability } from '../../../.component-sources/observability-extra/frontend/index'
 import {
   componentRoutes, contributionFor, navItems, registerBundledComponent, registerComponent,
   registeredComponents, setComponentUIReadPermissions, unregisterComponent,

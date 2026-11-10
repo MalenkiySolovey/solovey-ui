@@ -4,24 +4,18 @@ package observabilityextra
 
 import (
 	"context"
-	_ "embed"
-	"errors"
-	hostports "github.com/MalenkiySolovey/solovey-host/componenthost"
 	"sync"
 
+	canonical "github.com/MalenkiySolovey/solovey-component-observability-extra"
+	hostports "github.com/MalenkiySolovey/solovey-host/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	observabilityhttp "github.com/MalenkiySolovey/solovey-ui/components/observability-extra/api"
-	"github.com/MalenkiySolovey/solovey-ui/components/observability-extra/jobs"
-	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
-
-	"github.com/robfig/cron/v3"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
+	"github.com/MalenkiySolovey/solovey-ui/service/observability"
 )
 
-//go:embed component.json
-var componentJSON []byte
-
-var componentManifest = manifest.MustFromJSON(componentJSON)
+var componentManifest = canonical.Manifest()
 var id = componentManifest.ID
 
 func init() {
@@ -35,51 +29,41 @@ func init() {
 	}.RegisterRoutes)
 }
 
+// component binds only the Panel database hook to the external lifecycle.
 type component struct {
-	mu        sync.Mutex
-	started   bool
-	scheduler componenthost.Scheduler
-	entryID   cron.EntryID
+	mu          sync.Mutex
+	feature     *canonical.Component
+	unbindReset func()
 }
 
-func (c *component) Start(_ context.Context, ports hostports.Ports) error {
+func (c *component) Start(ctx context.Context, ports hostports.Ports) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.started {
-		return nil
+	if c.feature == nil {
+		c.feature = canonical.New(logger.Warning)
 	}
-	if ports.Scheduler == nil {
-		return errors.New("observability-extra scheduler is unavailable")
-	}
-	if ports.ObservationSampler == nil {
-		return errors.New("observability-extra sampling owner is unavailable")
-	}
-	entryID, err := ports.Scheduler.AddJob("@every 2s", jobs.NewSamplingJob(ports.ObservationSampler))
-	if err != nil {
+	if err := c.feature.Start(ctx, ports); err != nil {
 		return err
 	}
-	c.started = true
-	c.scheduler = ports.Scheduler
-	c.entryID = entryID
+	if c.unbindReset == nil {
+		c.unbindReset = observability.BindDatabaseReset()
+	}
 	return nil
 }
-
 func (c *component) Stop(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	scheduler := c.scheduler
-	entryID := c.entryID
-	if scheduler != nil && entryID != 0 {
-		if err := scheduler.RemoveJobAndWait(ctx, entryID); err != nil {
+	if c.feature != nil {
+		if err := c.feature.Stop(ctx); err != nil {
 			return err
 		}
 	}
-	c.started = false
-	c.scheduler = nil
-	c.entryID = 0
+	if c.unbindReset != nil {
+		c.unbindReset()
+		c.unbindReset = nil
+	}
 	return nil
 }
-
 func observabilityExtraDeps(host componenthost.Ports) observabilityhttp.Deps {
 	return observabilityhttp.Deps{
 		ObservabilityService:   host.ObservationHistory,
