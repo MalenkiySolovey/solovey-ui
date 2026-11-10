@@ -23,9 +23,18 @@ const (
 	MemoryCapCacheTTL         = canonical.MemoryCapCacheTTL
 )
 
-var (
-	IsValidObservabilityMetric = canonical.IsValidObservabilityMetric
-	ParseObservabilityMetric   = canonical.ParseObservabilityMetric
-	IsValidObservabilityBucket = canonical.IsValidObservabilityBucket
-	ParseObservabilityBucket   = canonical.ParseObservabilityBucket
-)
+func IsValidObservabilityMetric(metric ObservabilityMetric) bool {
+	return canonical.IsValidObservabilityMetric(metric)
+}
+
+func ParseObservabilityMetric(raw string) (ObservabilityMetric, error) {
+	return canonical.ParseObservabilityMetric(raw)
+}
+
+func IsValidObservabilityBucket(bucket ObservabilityBucket) bool {
+	return canonical.IsValidObservabilityBucket(bucket)
+}
+
+func ParseObservabilityBucket(raw string) (ObservabilityBucket, error) {
+	return canonical.ParseObservabilityBucket(raw)
+}
