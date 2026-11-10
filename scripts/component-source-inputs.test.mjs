@@ -138,6 +138,20 @@ test('the UI export, toolchain lock and API version cannot drift from the accept
   assert.throws(() => verifyUIAPI(root,directory),/unsupported UI contribution API/)
 })
 
+test('an observation contribution can pin its narrow public UI exports without changing existing pins',t => {
+  const {root,directory} = fixture(t)
+  const file='src/componentSystem/observation.ts'
+  fs.writeFileSync(path.join(root,'frontend',file),'export const observation = true\n')
+  const pin=JSON.parse(fs.readFileSync(path.join(directory,'HOST_UI_PIN.json')))
+  pin.files[file]=digest(fs.readFileSync(path.join(root,'frontend',file)))
+  const write=()=>fs.writeFileSync(path.join(directory,'HOST_UI_PIN.json'),JSON.stringify(pin))
+  write(); verifyUIAPI(root,directory)
+  fs.appendFileSync(path.join(root,'frontend',file),'changed')
+  assert.throws(()=>verifyUIAPI(root,directory),/UI API input drift/)
+  delete pin.files[file];pin.files['src/private.ts']=digest('private');write()
+  assert.throws(()=>verifyUIAPI(root,directory),/unsupported UI API inputs/)
+})
+
 test('an offline component pack cannot substitute its canonical manifest',t => {
   const {root,directory} = fixture(t)
   const filename=path.join(directory,'component.json')
