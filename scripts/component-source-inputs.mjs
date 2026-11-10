@@ -157,8 +157,9 @@ export function verifyUIAPI(root, directory) {
   assert.equal(pin.apiVersion, '1.0', 'unsupported UI contribution API')
   assert.match(pin.sourceCommit, /^[a-f0-9]{40}$/)
   const files = ['src/componentSystem/sdk.ts','package-lock.json','.node-version']
-  assert.deepEqual(Object.keys(pin.files).sort(), files.sort(), 'unsupported UI API inputs')
-  for (const name of files)
+  const accepted = [...files, 'src/componentSystem/observation.ts']
+  assert.ok(files.every(name => Object.hasOwn(pin.files,name)) && Object.keys(pin.files).every(name => accepted.includes(name)), 'unsupported UI API inputs')
+  for (const name of Object.keys(pin.files))
     assert.equal(digest(fs.readFileSync(path.join(root,'frontend',name))), pin.files[name], `UI API input drift: ${name}`)
 }
 
