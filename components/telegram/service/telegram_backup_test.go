@@ -111,6 +111,40 @@ func TestTelegramBackupRunOnceSuccessSendsEnvelopeAndAuditsSizes(t *testing.T) {
 	}
 }
 
+func TestTelegramBackupUploadApplicationFailureIsNotReportedAsDelivery(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	configureTelegramBackupSettings(t, settingService, telegramBackupSettings{
+		TelegramEnabled: true,
+		BackupEnabled:   true,
+		Passphrase:      "synthetic backup passphrase",
+	})
+	capture := &captureRoundTripper{}
+	calls := 0
+	client := &http.Client{Timeout: time.Second, Transport: discoveryRoundTrip(func(request *http.Request) (*http.Response, error) {
+		calls++
+		response, err := capture.RoundTrip(request)
+		if err != nil {
+			return nil, err
+		}
+		_ = response.Body.Close()
+		response.Body = io.NopCloser(strings.NewReader(`{"ok":false,"error_code":401,"description":"synthetic denied"}`))
+		return response, nil
+	})}
+	owner := &telegramservice.TelegramBackupService{
+		Settings: testTelegramSettings{},
+		Telegram: &telegramservice.Service{Settings: testTelegramSettings{}, Client: client},
+		Audit:    testTelegramBackupAudit,
+	}
+	result := owner.RunOnce(t.Context(), telegramservice.TelegramBackupTriggerManual)
+	if result.Success || result.Filename != "" || result.ErrorClass != "unauthorized" || calls != 1 {
+		t.Fatalf("failed upload was not preserved: result=%+v requests=%d", result, calls)
+	}
+	if !backupenvelope.IsEnvelope(telegramDocumentFromCapture(t, capture)) {
+		t.Fatal("real backup owner did not upload an encrypted envelope")
+	}
+	assertTelegramBackupAudit(t, "tg_backup_failed", "unauthorized", result.PayloadSizeBytes, result.EnvelopeSizeBytes)
+}
+
 func TestTelegramBackupRunOnceOversizeSkipsSendAndAuditRedacts(t *testing.T) {
 	passphrase := "correct horse battery staple"
 	settingService := initSettingTestDB(t)

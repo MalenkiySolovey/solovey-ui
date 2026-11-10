@@ -1,6 +1,5 @@
 import { expect, test, type APIResponse, type Page } from '@playwright/test'
 import fs from 'node:fs'
-import { componentSourceRoot } from '../../../scripts/component-source-inputs.mjs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -62,6 +61,7 @@ export const runRegisteredComponentOperability = async (
 }
 
 const discoverComponentOperabilityScenarios = async () => {
+  const { componentSourceRoot } = await import(pathToFileURL(path.join(repoRoot, 'scripts', 'component-source-inputs.mjs')).href)
   const componentsRoot = path.join(repoRoot, 'components')
   const scenarios = new Map<string, ComponentOperabilityScenario>()
   const componentDirectories = fs.readdirSync(componentsRoot, { withFileTypes: true })
