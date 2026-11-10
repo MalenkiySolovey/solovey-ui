@@ -92,7 +92,7 @@ func TestTelegramComponentStartRequiresSchedulerWithoutRetainedState(t *testing.
 	if err := c.start(context.Background(), nil, nil, nil); err == nil {
 		t.Fatal("Start accepted a missing scheduler")
 	}
-	if c.started || c.notifier != nil || c.scheduler != nil || len(c.entryIDs) != 0 ||
+	if c.started || c.notifier != nil || c.scheduledJobs != nil ||
 		c.unregisterEvent != nil || c.unregisterContribution != nil || c.unregisterBackupCodecs != nil ||
 		c.unregisterSettings != nil || c.unregisterLogCategory != nil || c.unregisterTokenScope != nil {
 		t.Fatalf("failed Start retained component state: %#v", c)
@@ -112,7 +112,7 @@ func TestTelegramComponentStartRequiresNarrowPortsWithoutRetainedState(t *testin
 			if err := c.start(context.Background(), &telegramTrackingScheduler{}, host.OutboundHTTP, host.Audit.Recorder); err == nil {
 				t.Fatal("Start accepted a missing port")
 			}
-			if c.started || c.notifier != nil || c.scheduler != nil || len(c.entryIDs) != 0 ||
+			if c.started || c.notifier != nil || c.scheduledJobs != nil ||
 				c.unregisterEvent != nil || c.unregisterContribution != nil || c.unregisterBackupCodecs != nil ||
 				c.unregisterSettings != nil || c.unregisterLogCategory != nil || c.unregisterTokenScope != nil {
 				t.Fatalf("failed Start retained component state: %#v", c)

@@ -51,7 +51,7 @@ func TestNotificationAndDocumentRetainAdmissionUntilSendCompletes(t *testing.T) 
 						return nil, err
 					}
 				}
-				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: http.NoBody}, nil
+				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
 			})}}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()

@@ -1,92 +1,46 @@
 //go:build !minimal
 
-// Package settings owns Telegram component setting keys, defaults, and readers.
+// Package settings binds Telegram's definitions to Panel settings and SecretRef storage.
 package settings
 
 import (
 	"context"
+
+	canonical "github.com/MalenkiySolovey/solovey-component-telegram/settings"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/secretref"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
 const (
-	EnabledKey             = "telegramEnabled"
-	BotTokenKey            = "telegramBotToken"
-	ChatIDKey              = "telegramChatID"
-	ProxyURLKey            = "telegramProxyURL"
-	ProxyUsernameKey       = "telegramProxyUsername"
-	ProxyPasswordKey       = "telegramProxyPassword"
-	TransportModeKey       = "telegramTransportMode"
-	OutboundTagKey         = "telegramOutboundTag"
-	CPUThresholdKey        = "telegramCpuThreshold"
-	NotifyCPUKey           = "telegramNotifyCpu"
-	ReportKey              = "telegramReport"
-	ReportCronKey          = "telegramReportCron"
-	BackupEnabledKey       = "telegramBackupEnabled"
-	BackupPassphraseKey    = "telegramBackupPassphrase"
-	BackupCronKey          = "telegramBackupCron"
-	BackupExcludeTablesKey = "telegramBackupExcludeTables"
-	BackupMaxSizeMBKey     = "telegramBackupMaxSizeMB"
+	EnabledKey             = canonical.EnabledKey
+	BotTokenKey            = canonical.BotTokenKey
+	ChatIDKey              = canonical.ChatIDKey
+	ProxyURLKey            = canonical.ProxyURLKey
+	ProxyUsernameKey       = canonical.ProxyUsernameKey
+	ProxyPasswordKey       = canonical.ProxyPasswordKey
+	TransportModeKey       = canonical.TransportModeKey
+	OutboundTagKey         = canonical.OutboundTagKey
+	CPUThresholdKey        = canonical.CPUThresholdKey
+	NotifyCPUKey           = canonical.NotifyCPUKey
+	ReportKey              = canonical.ReportKey
+	ReportCronKey          = canonical.ReportCronKey
+	BackupEnabledKey       = canonical.BackupEnabledKey
+	BackupPassphraseKey    = canonical.BackupPassphraseKey
+	BackupCronKey          = canonical.BackupCronKey
+	BackupExcludeTablesKey = canonical.BackupExcludeTablesKey
+	BackupMaxSizeMBKey     = canonical.BackupMaxSizeMBKey
 )
 
-type Reader struct {
-	service.SettingService
-}
+type Reader struct{ service.SettingService }
 
-func Defaults() map[string]string {
-	return map[string]string{
-		EnabledKey:             "false",
-		BotTokenKey:            "",
-		ChatIDKey:              "",
-		ProxyURLKey:            "",
-		ProxyUsernameKey:       "",
-		ProxyPasswordKey:       "",
-		TransportModeKey:       "proxy",
-		OutboundTagKey:         "",
-		CPUThresholdKey:        "90",
-		NotifyCPUKey:           "false",
-		ReportKey:              "false",
-		ReportCronKey:          "",
-		BackupEnabledKey:       "false",
-		BackupPassphraseKey:    "",
-		BackupCronKey:          "",
-		BackupExcludeTablesKey: "stats,client_ips,audit_events,changes",
-		BackupMaxSizeMBKey:     "45",
-	}
-}
-
-func AllKeys() []string {
-	keys := make([]string, 0, len(Defaults()))
-	for key := range Defaults() {
-		keys = append(keys, key)
-	}
-	return keys
-}
-
-func BooleanKeys() map[string]struct{} {
-	return keySet(
-		EnabledKey,
-		NotifyCPUKey,
-		ReportKey,
-		BackupEnabledKey,
-	)
-}
-
-func EncryptedKeys() map[string]struct{} {
-	return keySet(
-		BackupPassphraseKey,
-		BotTokenKey,
-		ProxyPasswordKey,
-		ProxyURLKey,
-		ProxyUsernameKey,
-	)
-}
-
+func Defaults() map[string]string        { return canonical.Defaults() }
+func AllKeys() []string                  { return canonical.AllKeys() }
+func BooleanKeys() map[string]struct{}   { return canonical.BooleanKeys() }
+func EncryptedKeys() map[string]struct{} { return canonical.EncryptedKeys() }
 func ClearableEmptyEncryptedKeys() map[string]struct{} {
-	return keySet(BackupPassphraseKey)
+	return canonical.ClearableEmptyEncryptedKeys()
 }
-
 func (r Reader) GetTelegramCpuThreshold() (int, error) {
 	return r.GetComponentSettingInt(CPUThresholdKey)
 }
@@ -167,12 +121,4 @@ func (r Reader) GetTelegramBackupPassphraseBytes() ([]byte, error) {
 
 func (r Reader) HasTelegramBackupPassphrase() (bool, error) {
 	return r.HasComponentSettingSecret(BackupPassphraseKey)
-}
-
-func keySet(keys ...string) map[string]struct{} {
-	set := make(map[string]struct{}, len(keys))
-	for _, key := range keys {
-		set[key] = struct{}{}
-	}
-	return set
 }

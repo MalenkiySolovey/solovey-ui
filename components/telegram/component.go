@@ -4,30 +4,24 @@ package telegram
 
 import (
 	"context"
-	_ "embed"
 	"errors"
-	hostports "github.com/MalenkiySolovey/solovey-host/componenthost"
 	"strings"
 	"sync"
 
+	canonical "github.com/MalenkiySolovey/solovey-component-telegram"
+	hostports "github.com/MalenkiySolovey/solovey-host/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	telegramhttp "github.com/MalenkiySolovey/solovey-ui/components/telegram/api"
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
 	"github.com/MalenkiySolovey/solovey-ui/components/telegram/jobs"
 	telegramservice "github.com/MalenkiySolovey/solovey-ui/components/telegram/service"
-	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/diagnostics"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
-
-	"github.com/robfig/cron/v3"
 )
 
-//go:embed component.json
-var componentJSON []byte
-
-var telegramManifest = manifest.MustFromJSON(componentJSON)
+var telegramManifest = canonical.Manifest()
 var id = telegramManifest.ID
 
 func init() {
@@ -44,7 +38,7 @@ func init() {
 type component struct {
 	mu                     sync.Mutex
 	started                bool
-	scheduler              componenthost.Scheduler
+	scheduledJobs          *canonical.ScheduledJobs
 	unregisterEvent        func()
 	unregisterContribution func()
 	unregisterBackupCodecs func()
@@ -52,9 +46,6 @@ type component struct {
 	unregisterLogCategory  func()
 	unregisterTokenScope   func()
 	notifier               *telegramservice.Notifier
-	entryIDs               []cron.EntryID
-	reportScheduler        *jobs.TelegramReportScheduler
-	backupScheduler        *jobs.TelegramBackupScheduler
 }
 
 func (c *component) Start(ctx context.Context, ports hostports.Ports) error {
@@ -118,17 +109,14 @@ func (c *component) start(ctx context.Context, scheduler componenthost.Scheduler
 			return []string{"telegram"}
 		})
 	}
-	runtimeJobs, err := startTelegramRuntimeJobs(scheduler, transport, audit)
+	runtimeJobs, err := canonical.StartScheduledJobs(scheduler, jobs.NewCPUAlertJob(), jobs.NewTelegramReportScheduler(scheduler), jobs.NewTelegramBackupScheduler(scheduler, transport, func(record telegramservice.AuditRecord) error { return recordTelegramBackupAudit(audit, record) }))
 	if err != nil {
 		c.mu.Unlock()
 		_ = c.Stop(ctx)
 		return err
 	}
 
-	c.scheduler = runtimeJobs.scheduler
-	c.entryIDs = runtimeJobs.entryIDs
-	c.reportScheduler = runtimeJobs.reportScheduler
-	c.backupScheduler = runtimeJobs.backupScheduler
+	c.scheduledJobs = runtimeJobs
 	c.mu.Unlock()
 	return nil
 }
@@ -137,7 +125,7 @@ func (c *component) Stop(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	scheduler := c.scheduler
+	runtimeJobs := c.scheduledJobs
 	unregisterEvent := c.unregisterEvent
 	unregisterContribution := c.unregisterContribution
 	unregisterBackupCodecs := c.unregisterBackupCodecs
@@ -145,17 +133,10 @@ func (c *component) Stop(ctx context.Context) error {
 	unregisterLogCategory := c.unregisterLogCategory
 	unregisterTokenScope := c.unregisterTokenScope
 	notifier := c.notifier
-	entryIDs := append([]cron.EntryID(nil), c.entryIDs...)
-	reportScheduler := c.reportScheduler
-	backupScheduler := c.backupScheduler
-	if err := (telegramRuntimeJobs{
-		scheduler:       scheduler,
-		entryIDs:        entryIDs,
-		reportScheduler: reportScheduler,
-		backupScheduler: backupScheduler,
-	}).stop(ctx); err != nil {
+	if err := runtimeJobs.Stop(ctx); err != nil {
 		return err
 	}
+
 	if notifier != nil {
 		if err := notifier.Stop(ctx); err != nil {
 			return err
@@ -173,7 +154,7 @@ func (c *component) Stop(ctx context.Context) error {
 	telegramservice.ResetHTTPClient()
 
 	c.started = false
-	c.scheduler = nil
+	c.scheduledJobs = nil
 	c.unregisterEvent = nil
 	c.unregisterContribution = nil
 	c.unregisterBackupCodecs = nil
@@ -181,9 +162,6 @@ func (c *component) Stop(ctx context.Context) error {
 	c.unregisterLogCategory = nil
 	c.unregisterTokenScope = nil
 	c.notifier = nil
-	c.entryIDs = nil
-	c.reportScheduler = nil
-	c.backupScheduler = nil
 	return nil
 }
 
@@ -192,70 +170,6 @@ func (c *component) DropData(ctx context.Context, ports hostports.Ports) error {
 		return errors.New("telegram owned settings port is unavailable")
 	}
 	return ports.DropOwnedSettings(ctx)
-}
-
-type telegramRuntimeJobs struct {
-	scheduler       componenthost.Scheduler
-	entryIDs        []cron.EntryID
-	reportScheduler *jobs.TelegramReportScheduler
-	backupScheduler *jobs.TelegramBackupScheduler
-}
-
-func startTelegramRuntimeJobs(scheduler componenthost.Scheduler, transport componenthost.OutboundHTTPClientProvider, audit componenthost.AuditRecorder) (telegramRuntimeJobs, error) {
-	runtimeJobs := telegramRuntimeJobs{
-		scheduler:       scheduler,
-		entryIDs:        make([]cron.EntryID, 0, 3),
-		reportScheduler: jobs.NewTelegramReportScheduler(scheduler),
-		backupScheduler: jobs.NewTelegramBackupScheduler(scheduler, transport, func(record telegramservice.AuditRecord) error {
-			return recordTelegramBackupAudit(audit, record)
-		}),
-	}
-	runtimeJobs.reportScheduler.Run()
-	runtimeJobs.backupScheduler.Run()
-	for _, job := range []struct {
-		spec string
-		job  cron.Job
-	}{
-		{spec: "@every 12s", job: jobs.NewCPUAlertJob()},
-		{spec: "@every 1m", job: runtimeJobs.reportScheduler},
-		{spec: "@every 1m", job: runtimeJobs.backupScheduler},
-	} {
-		if err := runtimeJobs.add(job.spec, job.job); err != nil {
-			_ = runtimeJobs.stop(context.Background())
-			return telegramRuntimeJobs{}, err
-		}
-	}
-	return runtimeJobs, nil
-}
-
-func (j *telegramRuntimeJobs) add(spec string, job cron.Job) error {
-	entryID, err := j.scheduler.AddJob(spec, job)
-	if err != nil {
-		return err
-	}
-	j.entryIDs = append(j.entryIDs, entryID)
-	return nil
-}
-
-func (j telegramRuntimeJobs) stop(ctx context.Context) error {
-	if j.scheduler != nil {
-		for i := len(j.entryIDs) - 1; i >= 0; i-- {
-			if err := j.scheduler.RemoveJobAndWait(ctx, j.entryIDs[i]); err != nil {
-				return err
-			}
-		}
-	}
-	if j.reportScheduler != nil {
-		if err := j.reportScheduler.StopContext(ctx); err != nil {
-			return err
-		}
-	}
-	if j.backupScheduler != nil {
-		if err := j.backupScheduler.StopContext(ctx); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func callUnregisters(unregisters ...func()) {

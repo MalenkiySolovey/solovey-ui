@@ -13,9 +13,7 @@
     "lint": "eslint .",
     "prebuild": "node ../scripts/component-source-inputs.mjs prepare",
     "predev": "node ../scripts/component-source-inputs.mjs prepare",
-    "pretypecheck": "node ../scripts/component-source-inputs.mjs prepare",
-    "pretest": "node ../scripts/component-source-inputs.mjs prepare",
-    "pretest:unit": "node ../scripts/component-source-inputs.mjs prepare"
+    "pretypecheck": "node ../scripts/component-source-inputs.mjs prepare"
   },
   "dependencies": {
     "@mdi/js": "7.4.47",

@@ -1,5 +1,6 @@
 import { expect, test, type APIResponse, type Page } from '@playwright/test'
 import fs from 'node:fs'
+import { componentSourceRoot } from '../../../scripts/component-source-inputs.mjs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -69,7 +70,7 @@ const discoverComponentOperabilityScenarios = async () => {
 
   for (const directory of componentDirectories) {
     const manifestPath = path.join(componentsRoot, directory.name, 'component.json')
-    const scenarioPath = path.join(componentsRoot, directory.name, scenarioRelativePath)
+    const scenarioPath = path.join(componentSourceRoot(directory.name, repoRoot), scenarioRelativePath)
     if (!fs.existsSync(manifestPath) || !fs.existsSync(scenarioPath)) continue
 
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as ComponentManifest

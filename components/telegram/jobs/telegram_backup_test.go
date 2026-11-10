@@ -28,8 +28,8 @@ func TestTelegramBackupSchedulerReplansFromSettings(t *testing.T) {
 	c := cron.New()
 	scheduler := NewTelegramBackupScheduler(testEntryScheduler{Cron: c}, nil)
 	scheduler.Run()
-	firstEntry := scheduler.entryID
-	if firstEntry == 0 || scheduler.currentSpec != "*/5 * * * *" {
+	firstEntry := activeEntryID(c)
+	if firstEntry == 0 || !activeScheduleMatches(c, "*/5 * * * *") {
 		t.Fatalf("scheduler did not add backup job: %#v", scheduler)
 	}
 
@@ -37,11 +37,11 @@ func TestTelegramBackupSchedulerReplansFromSettings(t *testing.T) {
 		"telegramBackupCron": "*/10 * * * *",
 	})
 	scheduler.Run()
-	if scheduler.entryID == 0 || scheduler.entryID == firstEntry || scheduler.currentSpec != "*/10 * * * *" {
+	if activeEntryID(c) == 0 || activeEntryID(c) == firstEntry || !activeScheduleMatches(c, "*/10 * * * *") {
 		t.Fatalf("scheduler did not replan backup job: %#v", scheduler)
 	}
 	scheduler.Stop()
-	if scheduler.entryID != 0 || scheduler.currentSpec != "" {
+	if activeEntryID(c) != 0 || !activeScheduleMatches(c, "") {
 		t.Fatalf("scheduler did not stop backup job: %#v", scheduler)
 	}
 	scheduler.Run()
@@ -50,7 +50,7 @@ func TestTelegramBackupSchedulerReplansFromSettings(t *testing.T) {
 		"telegramBackupEnabled": "false",
 	})
 	scheduler.Run()
-	if scheduler.entryID != 0 || scheduler.currentSpec != "" {
+	if activeEntryID(c) != 0 || !activeScheduleMatches(c, "") {
 		t.Fatalf("scheduler did not remove disabled backup job: %#v", scheduler)
 	}
 }
@@ -69,7 +69,7 @@ func TestTelegramBackupSchedulerNoopWhenTelegramDisabled(t *testing.T) {
 	c := cron.New()
 	scheduler := NewTelegramBackupScheduler(testEntryScheduler{Cron: c}, nil)
 	scheduler.Run()
-	if scheduler.entryID != 0 || scheduler.currentSpec != "" {
+	if activeEntryID(c) != 0 || !activeScheduleMatches(c, "") {
 		t.Fatalf("scheduler planned while telegram disabled: %#v", scheduler)
 	}
 }
@@ -85,14 +85,15 @@ func TestTelegramBackupSchedulerStopsWhenSettingIsInvalid(t *testing.T) {
 		"telegramBackupEnabled": "true",
 		"telegramBackupCron":    "*/5 * * * *",
 	})
-	scheduler := NewTelegramBackupScheduler(testEntryScheduler{Cron: cron.New()}, nil)
+	c := cron.New()
+	scheduler := NewTelegramBackupScheduler(testEntryScheduler{Cron: c}, nil)
 	scheduler.Run()
-	if scheduler.entryID == 0 {
+	if activeEntryID(c) == 0 {
 		t.Fatal("backup scheduler did not establish the initial job")
 	}
 	updateTelegramBackupSchedulerSettings(t, map[string]string{"telegramBackupEnabled": "invalid"})
 	scheduler.Run()
-	if scheduler.entryID != 0 || scheduler.currentSpec != "" {
+	if activeEntryID(c) != 0 || !activeScheduleMatches(c, "") {
 		t.Fatalf("backup scheduler retained a job after a settings failure: %#v", scheduler)
 	}
 }

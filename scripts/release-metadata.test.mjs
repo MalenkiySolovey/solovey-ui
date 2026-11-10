@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import test from 'node:test'
-import { coreSourceProperties, mergeProviderModuleGraphs, verifyProviderInventory } from './release-metadata.mjs'
+import { coreSourceProperties, componentSourceProperties, mergeProviderModuleGraphs, verifyProviderInventory, verifyComponentInventory } from './release-metadata.mjs'
 import { resolveProviderSource } from './core-provider-build.mjs'
 
 const sum = label => 'h1:' + crypto.createHash('sha256').update(label).digest('base64')
@@ -107,5 +107,27 @@ test('disclosure verification requires both exact graphs, source content sums an
   ]) {
     const value = structuredClone(fixture); mutate(value)
     assert.throws(() => verifyProviderInventory(value.provenance, value.bom, fixture.inventory))
+  }
+})
+
+test('component provenance rejects a substituted pin, missing source or altered frontend identity', () => {
+  const input = { id: 'fixture', module: 'example.org/component', version: 'v1.0.0', sourceCommit: '1'.repeat(40), sourceTree: '2'.repeat(40), manifestSHA256: '3'.repeat(64), frontendSHA256: '4'.repeat(64), moduleChecksum: sum('module'), goModChecksum: sum('metadata') }
+  const expected = { inputDigest: '5'.repeat(64), sources: [input] }
+  const original = { provenance: { componentInputs: expected }, bom: { metadata: { component: { properties: [{ name: 'solovey:componentInputDigest', value: expected.inputDigest }] } }, components: [{ name: input.module, version: input.version, properties: componentSourceProperties(input) }] }, inventory: { modules: [{ name: input.module, version: input.version, moduleSum: input.moduleChecksum, goModSum: input.goModChecksum }] } }
+  verifyComponentInventory(original.provenance, original.bom, original.inventory, expected)
+  for (const corrupt of [
+    value => { value.provenance.componentInputs.sources[0].sourceCommit = '0'.repeat(40) },
+    value => { value.provenance.componentInputs.inputDigest = '0'.repeat(64) },
+    value => { value.bom.metadata.component.properties = [] },
+    value => { value.bom.components = [] },
+    value => { value.inventory.modules = [] },
+    value => { value.inventory.modules[0].moduleSum = sum('substitution') },
+    value => { value.inventory.modules[0].goModSum = sum('substitution') },
+    value => { value.bom.components[0].properties.find(item => item.name === 'solovey:frontendSourceSHA256').value = '0'.repeat(64) },
+    value => { value.bom.components[0].properties.push(value.bom.components[0].properties[0]) },
+  ]) {
+    const fixture = structuredClone(original)
+    corrupt(fixture)
+    assert.throws(() => verifyComponentInventory(fixture.provenance, fixture.bom, fixture.inventory, expected))
   }
 })
