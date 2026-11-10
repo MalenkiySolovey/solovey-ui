@@ -2,10 +2,10 @@
   "schema": "solovey.host.consumer-pin/v1",
   "canonicalRepository": "MalenkiySolovey/solovey-host",
   "module": "github.com/MalenkiySolovey/solovey-host",
-  "version": "v0.2.0",
-  "sourceCommit": "3a716ed738133a976fd7132ac458fce38b634ada",
-  "sourceTree": "cddf14c51ab9b4710ca01fa5af5bbed72503a42f",
-  "moduleChecksum": "h1:aHILNCSiIh6EUuCC+jWQpk/Wh2D3ZTO0I29SzHzrF+Q=",
+  "version": "v0.3.0",
+  "sourceCommit": "405a924c87a3c718e371c7e17ac53a5679105db3",
+  "sourceTree": "af1110525b0de03d1d10c73eca31f2075ed12e08",
+  "moduleChecksum": "h1:Qm0n3dlugpaINuN9G8BesNblyEu8FH00HkY4FvLmpaA=",
   "goModChecksum": "h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=",
   "fixturesSHA256": "ff83fc9c0b5a7d64d35d37ede09b530aafa07d3fe420e3e0bd055278c15b8eb3",
   "valuesSHA256": "1d4d7f29ba8c1f3c57fd2c66ee3423ea45efe3947686f5c53de753362b865a0c",
@@ -21,7 +21,8 @@
     "observation",
     "componentkit/telegram",
     "redact",
-    "httpheader"
+    "httpheader",
+    "coreruntime"
   ],
   "dependencies": {
     "github.com/robfig/cron/v3": "v3.0.1"
@@ -30,7 +31,7 @@
     "go.mod": "ef51164a22ed0a25c894a038ddfb872d6c44aa4765806dd8ee8e7c78a8e62845",
     "go.sum": "623cd8fb33831e0d4bcfd81a5869833cac49e94d0ed84321453e9374b720c7c9",
     "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
-    "SOURCE_PROVENANCE.json": "ca4648f3aa3aea63bca3240bf6a6aebba1e3755f21074f1a8f39b3432141cda6",
+    "SOURCE_PROVENANCE.json": "b605538158805777e505720e73bedfd7c1a1d8e49ff79309b990a6105efb320f",
     "networkidentity/testdata/snapshots.json": "ff83fc9c0b5a7d64d35d37ede09b530aafa07d3fe420e3e0bd055278c15b8eb3",
     "qualification/testdata/values.json": "1d4d7f29ba8c1f3c57fd2c66ee3423ea45efe3947686f5c53de753362b865a0c",
     "auditrecord/event.go": "98e2195668a32f8d03f8bec85578aafbbe1ee39d179abd7f3c1fc4870244159c",
@@ -51,6 +52,8 @@
     "operationref/reference.go": "ebd5233f183c61019839a9bfc754de105d1e3f5c50fc42ff95e2b5fa8b366e65",
     "redact/redact.go": "57324fa334cf73a37d3a61e1d54c20f8f2cbe53e6227095dd4cce613223e834c",
     "scheduler/managed_job.go": "e64309aedf5b9ef26724d1df3d586c0c898c0df4eb434183abf0b56d2c436f02",
-    "secretref/reference.go": "bd94e1bd66a776769908f917dc50199dfe542ee93e7dc797bdda4993a0da18bb"
+    "secretref/reference.go": "bd94e1bd66a776769908f917dc50199dfe542ee93e7dc797bdda4993a0da18bb",
+    "componenthost/reconcile.go": "1e098503b1413851ee192115c2ac4909addb2012bcaf03955e6f8dba29550429",
+    "coreruntime/selection.go": "f7e76bbd00ed92b611e88deeba7e45a0f60fcae3286ae44ec6c57edbf6f07aad"
   }
 }

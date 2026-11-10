@@ -6,7 +6,7 @@ require (
 	github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0
 	github.com/MalenkiySolovey/solovey-component-telegram v0.1.0
 	github.com/MalenkiySolovey/solovey-contracts v1.0.0
-	github.com/MalenkiySolovey/solovey-host v0.2.0
+	github.com/MalenkiySolovey/solovey-host v0.3.0
 	// v1.1.0 omits its license; select the upstream CC0 source grant.
 	github.com/zeebo/assert v1.3.0 // indirect
 	github.com/redis/go-redis/v9 v9.8.0 // indirect

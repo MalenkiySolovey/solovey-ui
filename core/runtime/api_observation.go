@@ -98,48 +98,53 @@ func (c *Core) Groups(ctx context.Context, generation string) (GroupSnapshot, er
 		return result, ErrStaleGeneration
 	}
 	err := c.withPrivateAPI(ctx, generation, func(ctx context.Context, api *privateAPI) error {
-		stream, err := api.rpc.SubscribeGroups(ctx, &emptypb.Empty{})
-		if err != nil {
-			return ErrRuntimeAPIUnavailable
-		}
-		snapshot, err := stream.Recv()
-		if err != nil {
-			return ErrRuntimeAPIUnavailable
-		}
-		if len(snapshot.Group) > 128 {
-			return ErrRuntimeLimit
-		}
-		for _, group := range snapshot.Group {
-			if len(group.Items) > 256 {
-				return ErrRuntimeLimit
-			}
-			view := RuntimeGroup{Tag: group.Tag, Type: group.Type, Selectable: group.Selectable, Selected: group.Selected, Items: []GroupItem{}}
-			for _, item := range group.Items {
-				view.Items = append(view.Items, GroupItem{Tag: item.Tag, Type: item.Type, TestedAt: item.UrlTestTime, Delay: item.UrlTestDelay})
-			}
-			result.Groups = append(result.Groups, view)
-		}
-		result.Generation, result.ObservedAt = api.generation, time.Now().UnixMilli()
-		return nil
+		var err error
+		result, err = readRuntimeGroups(ctx, api)
+		return err
 	})
 	return result, err
+}
+
+// Caller holds the existing lifecycle lease. Shared selection uses this same
+// bounded reader without recursively acquiring a lease while a restart waits.
+func readRuntimeGroups(ctx context.Context, api *privateAPI) (GroupSnapshot, error) {
+	result := GroupSnapshot{Groups: []RuntimeGroup{}}
+	stream, err := api.rpc.SubscribeGroups(ctx, &emptypb.Empty{})
+	if err != nil {
+		return result, ErrRuntimeAPIUnavailable
+	}
+	snapshot, err := stream.Recv()
+	if err != nil || snapshot == nil {
+		return result, ErrRuntimeAPIUnavailable
+	}
+	if len(snapshot.Group) > 128 {
+		return result, ErrRuntimeLimit
+	}
+	for _, group := range snapshot.Group {
+		if group == nil {
+			return result, ErrRuntimeAPIUnavailable
+		}
+		if len(group.Items) > 256 {
+			return result, ErrRuntimeLimit
+		}
+		view := RuntimeGroup{Tag: group.Tag, Type: group.Type, Selectable: group.Selectable, Selected: group.Selected, Items: []GroupItem{}}
+		for _, item := range group.Items {
+			if item == nil {
+				return result, ErrRuntimeAPIUnavailable
+			}
+			view.Items = append(view.Items, GroupItem{Tag: item.Tag, Type: item.Type, TestedAt: item.UrlTestTime, Delay: item.UrlTestDelay})
+		}
+		result.Groups = append(result.Groups, view)
+	}
+	result.Generation, result.ObservedAt = api.generation, time.Now().UnixMilli()
+	return result, nil
 }
 
 // Runtime selection never edits Solovey's desired config. The upstream selector
 // may remember its own runtime cache choice; DB/config ownership stays separate.
 func (c *Core) SelectRuntimeGroup(ctx context.Context, generation, group, member string) error {
-	if generation == "" {
-		return ErrStaleGeneration
-	}
-	c.mutation.Lock()
-	defer c.mutation.Unlock()
-	return c.withPrivateAPI(ctx, generation, func(ctx context.Context, api *privateAPI) error {
-		_, err := api.rpc.SelectOutbound(ctx, &daemon.SelectOutboundRequest{GroupTag: group, OutboundTag: member})
-		if err != nil {
-			return ErrRuntimeAPIUnavailable
-		}
-		return nil
-	})
+	_, err := c.SelectRuntimeGroupWithEvidence(ctx, generation, group, member)
+	return err
 }
 
 type RuntimeLogEvent struct {

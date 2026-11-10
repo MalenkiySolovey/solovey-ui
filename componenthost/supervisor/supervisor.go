@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sync"
 
+	hostlifecycle "github.com/MalenkiySolovey/solovey-host/componenthost"
+
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
@@ -147,64 +149,15 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	var joined error
 	active, err := s.active()
 	if err != nil {
 		return err
 	}
 
-	activeByID := make(map[string]registry.Component, len(active))
-	for _, component := range active {
-		activeByID[component.Manifest.ID] = component
-	}
-
-	runningByID := make(map[string]registry.Component, len(s.running))
-	for _, component := range s.running {
-		runningByID[component.Manifest.ID] = component
-	}
-
-	stopFailed := make(map[string]struct{})
-	for i := len(s.running) - 1; i >= 0; i-- {
-		component := s.running[i]
-		if _, ok := activeByID[component.Manifest.ID]; ok {
-			continue
-		}
-		stopErr := safeCall(component.Manifest.ID, "stop", func() error {
-			return component.Lifecycle.Stop(ctx)
-		})
-		s.observations.RecordStop(component.Manifest.ID, stopErr == nil)
-		if stopErr != nil {
-			joined = errors.Join(joined, stopErr)
-			stopFailed[component.Manifest.ID] = struct{}{}
-		}
-	}
-
-	nextRunning := make([]registry.Component, 0, len(active)+len(stopFailed))
-	for _, component := range active {
-		if running, ok := runningByID[component.Manifest.ID]; ok {
-			nextRunning = append(nextRunning, running)
-			continue
-		}
-		startErr := safeCall(component.Manifest.ID, "start", func() error {
-			return component.Lifecycle.Start(ctx, lifecycle.Context{Host: s.host})
-		})
-		s.observations.RecordStart(component.Manifest.ID, startErr == nil)
-		if startErr != nil {
-			joined = errors.Join(joined, startErr)
-			continue
-		}
-		nextRunning = append(nextRunning, component)
-	}
-	// Preserve the original start order for inactive components whose Stop
-	// failed, so a later reconciliation retries them deterministically.
-	for _, component := range s.running {
-		if _, failed := stopFailed[component.Manifest.ID]; failed {
-			nextRunning = append(nextRunning, component)
-		}
-	}
-	s.running = nextRunning
+	next, err := hostlifecycle.Reconcile(ctx, s.lifecycleEntries(s.running), s.lifecycleEntries(active), s.observations)
+	s.running = componentsFromEntries(next)
 	state.InvalidateActiveCache()
-	return joined
+	return err
 }
 
 func (s *Supervisor) installed() ([]registry.Component, error) {
@@ -269,27 +222,9 @@ func (s *Supervisor) Stop(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	var joined error
-	failed := make(map[string]struct{})
-	for i := len(s.running) - 1; i >= 0; i-- {
-		component := s.running[i]
-		stopErr := safeCall(component.Manifest.ID, "stop", func() error {
-			return component.Lifecycle.Stop(ctx)
-		})
-		s.observations.RecordStop(component.Manifest.ID, stopErr == nil)
-		if stopErr != nil {
-			joined = errors.Join(joined, stopErr)
-			failed[component.Manifest.ID] = struct{}{}
-		}
-	}
-	remaining := make([]registry.Component, 0, len(failed))
-	for _, component := range s.running {
-		if _, stopFailed := failed[component.Manifest.ID]; stopFailed {
-			remaining = append(remaining, component)
-		}
-	}
-	s.running = remaining
-	return joined
+	next, err := hostlifecycle.Stop(ctx, s.lifecycleEntries(s.running), s.observations)
+	s.running = componentsFromEntries(next)
+	return err
 }
 
 func safeCall(componentID string, action string, call func() error) (err error) {
