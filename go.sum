@@ -537,3 +537,5 @@ lukechampine.com/blake3 v1.4.1 h1:I3Smz7gso8w4/TunLKec6K2fn+kyKtDxr/xcQEN84Wg=
 lukechampine.com/blake3 v1.4.1/go.mod h1:QFosUxmjB8mnrWFSNwKmvxHpfY72bmD2tQ0kBMM3kwo=
 software.sslmate.com/src/go-pkcs12 v0.7.1 h1:bxkUPRsvTPNRBZa4M/aSX4PyMOEbq3V8I6hbkG4F4Q8=
 software.sslmate.com/src/go-pkcs12 v0.7.1/go.mod h1:Qiz0EyvDRJjjxGyUQa2cCNZn/wMyzrRJ/qcDXOQazLI=
+github.com/MalenkiySolovey/solovey-component-telegram v0.1.0 h1:/Bbzfvkr7IxKnqxqPS64LQnbGNh2VeLmwBZxeGiMXCk=
+github.com/MalenkiySolovey/solovey-component-telegram v0.1.0/go.mod h1:kQRT0GfOrFxV6ITK+wXQaYshFvzBKEP01xY7CgY93jE=

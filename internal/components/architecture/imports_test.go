@@ -21,7 +21,8 @@ func TestComponentImportsStayBehindCompositionPackages(t *testing.T) {
 	walkProductGoFiles(t, root, func(path string) {
 		rel := filepath.ToSlash(mustRel(t, root, path))
 		for _, imported := range fileImports(t, path) {
-			if !strings.HasPrefix(imported, prefix) || componentImportAllowed(rel, imported) {
+			ownedImport := componentSourceImport(imported)
+			if !strings.HasPrefix(ownedImport, prefix) || componentImportAllowed(rel, ownedImport) {
 				continue
 			}
 			violations = append(violations, rel+" imports "+imported)
@@ -162,6 +163,46 @@ func TestRetiredServerProtectionMutationSurfacesStayAbsent(t *testing.T) {
 	for _, route := range []string{"/ports/prepare", "/ports/apply", "/ports/rollback"} {
 		if bytes.Contains(routes, []byte(route)) {
 			t.Errorf("retired mutation route exists: %s", route)
+		}
+	}
+}
+
+func componentSourceImport(imported string) string {
+	const external = "github.com/MalenkiySolovey/solovey-component-"
+	if strings.HasPrefix(imported, external) {
+		return modulePath + "/components/" + strings.TrimPrefix(imported, external)
+	}
+	return imported
+}
+
+func TestExternalComponentImportsPreserveSemanticOwnership(t *testing.T) {
+	const source = "github.com/MalenkiySolovey/solovey-component-telegram"
+	for _, fixture := range []struct {
+		path, imported string
+		allowed        bool
+	}{
+		{"components/paid-subscriptions/telegram/bot.go", source, false},
+		{"components/paid-subscriptions/telegram/bot.go", source + "/service", false},
+		{"service/notifications.go", source + "/service", false},
+		{"componentkit/telegram/transport.go", source + "/service", false},
+		{"components/telegram/component.go", source, true},
+		{"components/telegram/service/delivery.go", source + "/service", true},
+		{"app/components_generated.go", source, true},
+	} {
+		if got := componentImportAllowed(fixture.path, componentSourceImport(fixture.imported)); got != fixture.allowed {
+			t.Errorf("%s importing %s: allowed=%v, want %v", fixture.path, fixture.imported, got, fixture.allowed)
+		}
+	}
+}
+
+func TestTelegramFeatureSourceRetirement(t *testing.T) {
+	for _, relative := range []string{
+		"components/telegram/frontend/index.ts", "components/telegram/frontend/views/TelegramSettings.vue",
+		"components/telegram/jobs/cpu_alert.go", "components/telegram/jobs/telegram_report.go", "components/telegram/jobs/telegram_backup.go",
+		"components/telegram/service/botapi.go", "components/telegram/service/discovery.go", "components/telegram/service/notification.go",
+	} {
+		if _, err := os.Stat(filepath.Join(moduleRoot(t), filepath.FromSlash(relative))); !os.IsNotExist(err) {
+			t.Errorf("retired editable feature source returned: %s (stat: %v)", relative, err)
 		}
 	}
 }

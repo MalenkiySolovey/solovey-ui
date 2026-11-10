@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
+import { componentSourceRoot, prepareComponentSources } from '../component-source-inputs.mjs'
 
 const require = createRequire(new URL('../../frontend/package.json', import.meta.url))
 const ts = require('typescript')
@@ -54,7 +55,7 @@ export function inspectFrontendPolicy(root) {
   }
   visit(path.join(root, 'frontend/src'))
   for (const entry of fs.readdirSync(path.join(root, 'components'), { withFileTypes: true })) {
-    const frontend = path.join(root, 'components', entry.name, 'frontend')
+    const frontend = path.join(componentSourceRoot(entry.name, root), 'frontend')
     if (entry.isDirectory() && fs.existsSync(frontend)) visit(frontend)
   }
   return sites.sort((a, b) => a.path.localeCompare(b.path) || a.expression.localeCompare(b.expression))
@@ -82,6 +83,7 @@ export function unreviewedFrontendPolicy(sites) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const root = fileURLToPath(new URL('../../', import.meta.url))
+  prepareComponentSources(root)
   const added = unreviewedFrontendPolicy(inspectFrontendPolicy(root))
   if (added.length) throw Error(`Unreviewed Direct fallback policy: ${JSON.stringify(added)}`)
   console.log('Frontend Direct fallback budget passed')

@@ -20,7 +20,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts', 'src/**/*.spec.ts', '../components/*/frontend/**/*.test.ts', '../components/*/frontend/**/*.spec.ts'],
+    include: ['src/**/*.test.ts', 'src/**/*.spec.ts', '../components/*/frontend/**/*.test.ts', '../components/*/frontend/**/*.spec.ts', '../.component-sources/*/frontend/**/*.test.ts', '../.component-sources/*/frontend/**/*.spec.ts'],
     css: false,
     testTimeout: 30000,
     // Transform Vuetify through Vite (not Node's ESM loader) so its side-effect

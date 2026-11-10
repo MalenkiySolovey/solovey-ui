@@ -61,6 +61,7 @@ export const runRegisteredComponentOperability = async (
 }
 
 const discoverComponentOperabilityScenarios = async () => {
+  const { componentSourceRoot } = await import(pathToFileURL(path.join(repoRoot, 'scripts', 'component-source-inputs.mjs')).href)
   const componentsRoot = path.join(repoRoot, 'components')
   const scenarios = new Map<string, ComponentOperabilityScenario>()
   const componentDirectories = fs.readdirSync(componentsRoot, { withFileTypes: true })
@@ -69,7 +70,7 @@ const discoverComponentOperabilityScenarios = async () => {
 
   for (const directory of componentDirectories) {
     const manifestPath = path.join(componentsRoot, directory.name, 'component.json')
-    const scenarioPath = path.join(componentsRoot, directory.name, scenarioRelativePath)
+    const scenarioPath = path.join(componentSourceRoot(directory.name, repoRoot), scenarioRelativePath)
     if (!fs.existsSync(manifestPath) || !fs.existsSync(scenarioPath)) continue
 
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as ComponentManifest

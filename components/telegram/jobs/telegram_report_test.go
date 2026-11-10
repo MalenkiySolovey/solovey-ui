@@ -29,12 +29,12 @@ func TestTelegramReportSchedulerReplansFromSettings(t *testing.T) {
 	c := cron.New()
 	scheduler := NewTelegramReportScheduler(testEntryScheduler{Cron: c})
 	scheduler.Run()
-	if scheduler.entryID == 0 || scheduler.currentSpec != "*/5 * * * *" {
+	if activeEntryID(c) == 0 || !activeScheduleMatches(c, "*/5 * * * *") {
 		t.Fatalf("scheduler did not add report job: %#v", scheduler)
 	}
 
 	scheduler.Stop()
-	if scheduler.entryID != 0 || scheduler.currentSpec != "" {
+	if activeEntryID(c) != 0 || !activeScheduleMatches(c, "") {
 		t.Fatalf("scheduler did not stop report job: %#v", scheduler)
 	}
 
@@ -43,7 +43,7 @@ func TestTelegramReportSchedulerReplansFromSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	scheduler.Run()
-	if scheduler.entryID != 0 || scheduler.currentSpec != "" {
+	if activeEntryID(c) != 0 || !activeScheduleMatches(c, "") {
 		t.Fatalf("scheduler did not remove report job: %#v", scheduler)
 	}
 }
@@ -63,16 +63,17 @@ func TestTelegramReportSchedulerStopsWhenTelegramSettingIsInvalid(t *testing.T) 
 			t.Fatal(err)
 		}
 	}
-	scheduler := NewTelegramReportScheduler(testEntryScheduler{Cron: cron.New()})
+	c := cron.New()
+	scheduler := NewTelegramReportScheduler(testEntryScheduler{Cron: c})
 	scheduler.Run()
-	if scheduler.entryID == 0 {
+	if activeEntryID(c) == 0 {
 		t.Fatal("report scheduler did not establish the initial job")
 	}
 	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "telegramEnabled").Update("value", "invalid").Error; err != nil {
 		t.Fatal(err)
 	}
 	scheduler.Run()
-	if scheduler.entryID != 0 || scheduler.currentSpec != "" {
+	if activeEntryID(c) != 0 || !activeScheduleMatches(c, "") {
 		t.Fatalf("report scheduler retained a job after a settings failure: %#v", scheduler)
 	}
 }

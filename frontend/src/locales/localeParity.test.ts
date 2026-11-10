@@ -36,7 +36,7 @@ const withOptionalMessages = (
   ...Object.assign({}, ...optional),
 })
 
-const componentLocaleModules = import.meta.glob('../../../components/*/frontend/locales/*.ts', {
+const componentLocaleModules = import.meta.glob(['../../../components/*/frontend/locales/*.ts', '../../../.component-sources/*/frontend/locales/*.ts'], {
   eager: true,
   import: 'default',
 }) as Record<string, Record<string, unknown>>

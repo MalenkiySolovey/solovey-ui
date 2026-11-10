@@ -12,6 +12,18 @@ generated `.component-sources/<id>` build inputs. Local replacements, workspace
 substitution, source drift, unlisted frontend files and symlinks fail closed.
 The existing `component.json` parser remains the runtime manifest authority.
 
+The resolver also reconstructs the downloaded module's complete Git tree and
+checks the contribution's `HOST_UI_PIN.json` against the product's public UI
+exports, frontend dependency lock and Node version. The installed pack verifier
+derives entry identity from the accepted lock, so offline pack verification
+does not require the producer checkout or a module cache. Frontend policy
+ratchets inspect the verified external source alongside local contributions.
+
+The canonical source/NOTICE/SBOM producer includes the component module archive,
+original license and notice, source commit/tree, frontend source digest and
+product input digest. These records extend the existing provenance output;
+the product release channel and in-process installation model are unchanged.
+
 Frontend builds run preparation automatically. Vite compiles verified external
 entries into the same application and packaging walks their dynamic imports,
 CSS and locale chunks. Core/minimal selection excludes those entries. External

@@ -3,14 +3,18 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import {digest, frontendDigest, validateSourceLock, validateModuleResolution, validateModuleRequirement, verifySourceFiles, componentSourceRoot, componentManifestKey, validateBuildEnvironment} from './component-source-inputs.mjs'
+import {execFileSync} from 'node:child_process'
+import {digest, frontendDigest, validateSourceLock, validateModuleResolution, validateModuleRequirement, verifySourceFiles, componentSourceRoot, componentManifestKey, validateBuildEnvironment, regularSourceTree, verifyModuleSource, verifyUIAPI, verifyComponentManifest} from './component-source-inputs.mjs'
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(),'component sources '))
   t.after(() => fs.rmSync(root,{recursive:true,force:true}))
   const source = {id:'telegram',module:'github.com/MalenkiySolovey/solovey-component-telegram',version:'v0.1.0',sourceCommit:'1'.repeat(40),sourceTree:'2'.repeat(40),moduleChecksum:`h1:${'a'.repeat(43)}=`,goModChecksum:`h1:${'b'.repeat(43)}=`,manifestSHA256:'',frontendSHA256:'',files:{}}
   const directory = path.join(root,'.component-sources/telegram')
-  const content = {'go.mod':'module example\n','go.sum':'sum\n','LICENSE':'GPL-3.0\n','NOTICE':'Attribution\n','SOURCE_PROVENANCE.json':'{}\n','component.json':JSON.stringify({id:'telegram',frontend:{entries:['frontend/index.ts']}}),'frontend/index.ts':'export const register = () => import("./view.ts")\n','frontend/view.ts':'export default true\n'}
+  const apiFiles = {'src/componentSystem/sdk.ts':'export const register = () => {}\n','package-lock.json':'{}\n','.node-version':'25.9.0\n'}
+  for (const [name,bytes] of Object.entries(apiFiles)) { fs.mkdirSync(path.dirname(path.join(root,'frontend',name)),{recursive:true}); fs.writeFileSync(path.join(root,'frontend',name),bytes) }
+  const apiPin = {repository:'MalenkiySolovey/solovey-ui',apiVersion:'1.0',sourceCommit:'1'.repeat(40),files:Object.fromEntries(Object.entries(apiFiles).map(([name,bytes])=>[name,digest(bytes)]))}
+  const content = {'go.mod':'module example\n','go.sum':'sum\n','LICENSE':'GPL-3.0\n','NOTICE':'Attribution\n','SOURCE_PROVENANCE.json':'{}\n','HOST_UI_PIN.json':JSON.stringify(apiPin),'component.json':JSON.stringify({id:'telegram',frontend:{entries:['frontend/index.ts']}}),'frontend/index.ts':'export const register = () => import("./view.ts")\n','frontend/view.ts':'export default true\n'}
   for (const [name, bytes] of Object.entries(content)) {
     fs.mkdirSync(path.dirname(path.join(directory,name)),{recursive:true})
     fs.writeFileSync(path.join(directory,name),bytes)
@@ -101,4 +105,43 @@ for (const env of [{GOWORK:'../go.work'},{GOWORK:'auto'},{GOFLAGS:'-overlay=shad
 }
 test('the canonical Extended selector cannot override explicit per-provider resolver checks',() => {
   validateBuildEnvironment({GOWORK:'off',GOFLAGS:'-mod=readonly -modfile=go.extended.mod'})
+})
+
+test('the regular module archive reconstructs the actual Git tree and rejects a wrong tree identity',t => {
+  const {root,directory,source} = fixture(t)
+  const metadata = path.join(root,'git-metadata')
+  execFileSync('git',['init','--bare','--quiet',metadata],{stdio:'pipe'})
+  const git = args => execFileSync('git',[`--git-dir=${metadata}`,`--work-tree=${directory}`,'-c','core.autocrlf=false',...args],{encoding:'utf8',stdio:'pipe'}).trim()
+  git(['add','--all'])
+  source.sourceTree = git(['write-tree'])
+  assert.equal(regularSourceTree(directory),source.sourceTree)
+  verifyModuleSource(directory,source)
+  source.sourceTree = '0'.repeat(40)
+  assert.throws(() => verifyModuleSource(directory,source),/Git source tree mismatch/)
+})
+
+test('offline pack keys require the accepted lock and do not depend on staged source',t => {
+  const {root,directory} = fixture(t)
+  fs.rmSync(directory,{recursive:true,force:true})
+  assert.equal(componentManifestKey('telegram','frontend/index.ts',root),'../.component-sources/telegram/frontend/index.ts')
+  assert.throws(() => componentSourceRoot('telegram',root))
+})
+
+test('the UI export, toolchain lock and API version cannot drift from the accepted producer contract',t => {
+  const {root,directory} = fixture(t)
+  verifyUIAPI(root,directory)
+  fs.appendFileSync(path.join(root,'frontend/src/componentSystem/sdk.ts'),'changed')
+  assert.throws(() => verifyUIAPI(root,directory),/UI API input drift/)
+  const pin = JSON.parse(fs.readFileSync(path.join(directory,'HOST_UI_PIN.json')))
+  pin.apiVersion='2.0'
+  fs.writeFileSync(path.join(directory,'HOST_UI_PIN.json'),JSON.stringify(pin))
+  assert.throws(() => verifyUIAPI(root,directory),/unsupported UI contribution API/)
+})
+
+test('an offline component pack cannot substitute its canonical manifest',t => {
+  const {root,directory} = fixture(t)
+  const filename=path.join(directory,'component.json')
+  verifyComponentManifest('telegram',filename,root)
+  fs.appendFileSync(filename,' ')
+  assert.throws(() => verifyComponentManifest('telegram',filename,root),/manifest drift/)
 })

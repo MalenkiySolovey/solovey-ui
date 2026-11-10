@@ -8,6 +8,9 @@ import (
 	"context"
 	"net/http"
 	"time"
+
+	canonical "github.com/MalenkiySolovey/solovey-component-telegram/service"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 type Settings interface {
@@ -30,13 +33,7 @@ type BackupSettings interface {
 	GetTelegramBackupPassphraseBytes() ([]byte, error)
 }
 
-type AuditRecord struct {
-	Actor    string
-	Event    string
-	Resource string
-	Severity string
-	Details  map[string]any
-}
+type AuditRecord = canonical.AuditRecord
 
 type RuntimeProvider interface {
 	CoreHTTPClient(tag string, timeout time.Duration) (*http.Client, error)
@@ -49,8 +46,11 @@ type Service struct {
 	Client   *http.Client
 }
 
-type Result struct {
-	Success    bool          `json:"success"`
-	ErrorClass string        `json:"errorClass,omitempty"`
-	RetryAfter time.Duration `json:"-"`
+type Result = canonical.Result
+
+func (s *Service) feature() *canonical.Service {
+	if s == nil {
+		return nil
+	}
+	return &canonical.Service{Settings: s.Settings, Operations: dbsqlite.AcquireOperation, ResolveClient: s.httpClient, Notifier: s.Notifier, Client: s.Client}
 }

@@ -43,7 +43,7 @@ export function validateSourceLock(lock) {
       safeSourcePath(name)
       assert.match(hash, /^[0-9a-f]{64}$/)
     }
-    for (const name of ['go.mod','go.sum','LICENSE','NOTICE','SOURCE_PROVENANCE.json','component.json','frontend/index.ts'])
+    for (const name of ['go.mod','go.sum','LICENSE','NOTICE','SOURCE_PROVENANCE.json','HOST_UI_PIN.json','component.json','frontend/index.ts'])
       assert.ok(source.files[name], `missing source provenance: ${name}`)
     assert.equal(source.files['component.json'], source.manifestSHA256)
     assert.equal(frontendDigest(source.files), source.frontendSHA256, 'frontend input digest mismatch')
@@ -120,6 +120,59 @@ export function validateModuleRequirement(metadata, source) {
   assert.ok(!(metadata.Replace ?? []).some(item => item.Old.Path === source.module), 'component replace rejected')
 }
 
+// The pilot module contains regular 0644 source files. Go's archive preserves
+// their bytes and full tree, so reconstruct the actual Git identity locally.
+// Executable/symlink source trees require explicit support rather than guessing.
+export function regularSourceTree(directory) {
+  let count = 0, total = 0
+  const walk = (directory, depth = 0) => {
+    assert.ok(depth <= 16, 'source tree depth exceeds bound')
+    const entries = fs.readdirSync(directory, {withFileTypes:true}).sort((a,b) =>
+      Buffer.compare(Buffer.from(a.name + (a.isDirectory() ? '/' : '')), Buffer.from(b.name + (b.isDirectory() ? '/' : ''))))
+    const parts = []
+    for (const entry of entries) {
+      assert.ok(!entry.isSymbolicLink() && !['.git','.hg','.svn','.bzr','node_modules'].includes(entry.name), 'unsupported source tree entry')
+      let hash, mode
+      if (entry.isDirectory()) { hash = walk(path.join(directory,entry.name), depth + 1); mode = '40000' }
+      else {
+        assert.ok(entry.isFile() && ++count <= 1024, 'invalid source tree file count')
+        const filename = path.join(directory,entry.name)
+        total += fs.statSync(filename).size
+        assert.ok(total <= 16 * 1024 * 1024, 'source tree exceeds bound')
+        const bytes = fs.readFileSync(filename)
+        hash = createHash('sha1').update(Buffer.from(`blob ${bytes.length}\0`)).update(bytes).digest('hex')
+        mode = '100644'
+      }
+      parts.push(Buffer.from(`${mode} ${entry.name}\0`), Buffer.from(hash,'hex'))
+    }
+    const bytes = Buffer.concat(parts)
+    return createHash('sha1').update(Buffer.from(`tree ${bytes.length}\0`)).update(bytes).digest('hex')
+  }
+  return walk(directory)
+}
+
+export function verifyUIAPI(root, directory) {
+  const pin = JSON.parse(fs.readFileSync(path.join(directory,'HOST_UI_PIN.json'), 'utf8'))
+  assert.equal(pin.repository, 'MalenkiySolovey/solovey-ui', 'unapproved UI API owner')
+  assert.equal(pin.apiVersion, '1.0', 'unsupported UI contribution API')
+  assert.match(pin.sourceCommit, /^[a-f0-9]{40}$/)
+  const files = ['src/componentSystem/sdk.ts','package-lock.json','.node-version']
+  assert.deepEqual(Object.keys(pin.files).sort(), files.sort(), 'unsupported UI API inputs')
+  for (const name of files)
+    assert.equal(digest(fs.readFileSync(path.join(root,'frontend',name))), pin.files[name], `UI API input drift: ${name}`)
+}
+
+export function verifyModuleSource(directory, source) {
+  verifySourceFiles(directory, source)
+  assert.equal(regularSourceTree(directory), source.sourceTree, 'component Git source tree mismatch')
+  return source
+}
+
+export function verifyComponentManifest(id, filename, root = productRoot) {
+  const source = readSourceLock(root).sources.find(source => source.id === id)
+  if (source) assert.equal(digest(fs.readFileSync(filename)), source.manifestSHA256, 'generated component manifest drift')
+}
+
 function stageRoot(root) {
   const directory = path.join(root, '.component-sources')
   if (fs.existsSync(directory)) assert.ok(!fs.lstatSync(directory).isSymbolicLink(), 'source staging symlink rejected')
@@ -131,12 +184,16 @@ export function componentSourceRoot(id, root = productRoot) {
   if (!source) return path.join(root, 'components', id)
   const directory = path.join(stageRoot(root), id)
   verifySourceFiles(directory, source)
-  assert.equal(digest(fs.readFileSync(path.join(root,'components',id,'component.json'))), source.manifestSHA256, 'generated component manifest drift')
+  verifyComponentManifest(id, path.join(root,'components',id,'component.json'), root)
+  verifyUIAPI(root, directory)
   return directory
 }
 
 export function componentManifestKey(id, entry, root = productRoot) {
-  return path.relative(path.join(root,'frontend'), path.join(componentSourceRoot(id,root), safeSourcePath(entry))).replaceAll(path.sep, '/')
+  // Offline pack verification derives the key from the accepted lock and does
+  // not require a module cache or an editable checkout of its producer.
+  const external = readSourceLock(root).sources.some(source => source.id === id)
+  return `../${external ? '.component-sources' : 'components'}/${id}/${safeSourcePath(entry)}`
 }
 
 export function validateBuildEnvironment(env) {
@@ -154,7 +211,8 @@ export function prepareComponentSources(root = productRoot) {
   for (const source of lock.sources) {
     const downloaded = go(['mod','download','-json',`${source.module}@${source.version}`])
     validateModuleResolution(downloaded, source)
-    verifySourceFiles(downloaded.Dir, source)
+    verifyModuleSource(downloaded.Dir, source)
+    verifyUIAPI(root, downloaded.Dir)
     for (const modfile of ['go.mod','go.extended.mod'].filter(name => fs.existsSync(path.join(root,name)))) {
       validateModuleRequirement(go(['mod','edit','-json',`-modfile=${modfile}`]), source)
       const selected = go(['list','-m','-json','-mod=readonly',`-modfile=${modfile}`,source.module])

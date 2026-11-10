@@ -6,13 +6,14 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	telegramschedule "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/schedule"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
-
 	"github.com/robfig/cron/v3"
 )
 
@@ -65,4 +66,22 @@ func removeTempDir(t *testing.T, dir string) {
 		time.Sleep(time.Duration(attempt+1) * 10 * time.Millisecond)
 	}
 	t.Errorf("remove telegram jobs temp dir %q: %v", dir, err)
+}
+
+// Owner integration assertions observe the real common scheduler after the
+// feature's reconciliation state moved to its independent source tests.
+func activeEntryID(c *cron.Cron) cron.EntryID {
+	entries := c.Entries()
+	if len(entries) == 0 {
+		return 0
+	}
+	return entries[0].ID
+}
+func activeScheduleMatches(c *cron.Cron, spec string) bool {
+	entries := c.Entries()
+	if spec == "" {
+		return len(entries) == 0
+	}
+	expected, err := telegramschedule.Parse(spec)
+	return err == nil && len(entries) == 1 && reflect.DeepEqual(entries[0].Schedule, expected)
 }

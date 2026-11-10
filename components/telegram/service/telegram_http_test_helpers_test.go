@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync/atomic"
 )
 
@@ -17,7 +18,7 @@ func (r *countingRoundTripper) RoundTrip(*http.Request) (*http.Response, error) 
 	r.count.Add(1)
 	return &http.Response{
 		StatusCode: http.StatusOK,
-		Body:       http.NoBody,
+		Body:       io.NopCloser(strings.NewReader(`{"ok":true}`)),
 		Header:     http.Header{},
 	}, nil
 }
@@ -33,7 +34,7 @@ type statusRoundTripper struct {
 func (r statusRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
 	return &http.Response{
 		StatusCode: r.status,
-		Body:       http.NoBody,
+		Body:       io.NopCloser(strings.NewReader(`{"ok":true}`)),
 		Header:     http.Header{},
 	}, nil
 }
@@ -64,7 +65,7 @@ func (r *captureRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	r.body = body
 	return &http.Response{
 		StatusCode: http.StatusOK,
-		Body:       http.NoBody,
+		Body:       io.NopCloser(strings.NewReader(`{"ok":true}`)),
 		Header:     http.Header{},
 	}, nil
 }
