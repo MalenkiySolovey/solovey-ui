@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
-	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -28,8 +27,11 @@ type runtimeProbe struct {
 }
 
 func (s *Service) RuntimeHealth() RuntimeHealth {
-	settings := coreservice.SettingService{}
-	adminBasePath, err := settings.GetWebPath()
+	reserved, err := s.reservedPaths()
+	adminBasePath := ""
+	if len(reserved) > 0 {
+		adminBasePath = reserved[0]
+	}
 	if strings.TrimSpace(adminBasePath) == "" {
 		adminBasePath = "/app/"
 	}

@@ -14,10 +14,8 @@ import (
 	"sync"
 	"time"
 
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/fallback-html/authority"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
-	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 	"gorm.io/gorm"
 )
 
@@ -26,7 +24,7 @@ type Service struct {
 	runtime          *Runtime
 	templateHTTP     *http.Client
 	remoteCatalogURL string
-	resourceSnapshot func(context.Context) hostresources.ResourceSnapshot
+	hostFacts        HostFacts
 	templateMu       sync.RWMutex
 }
 
@@ -83,11 +81,11 @@ type PreviewResult struct {
 	Warnings []string `json:"warnings"`
 }
 
-func New(db *gorm.DB, runtime *Runtime) *Service {
+func NewWithHost(db *gorm.DB, runtime *Runtime, facts HostFacts) *Service {
 	if runtime == nil {
 		runtime = DefaultRuntime
 	}
-	return &Service{db: db, runtime: runtime, resourceSnapshot: hostresources.Snapshot}
+	return &Service{db: db, runtime: runtime, hostFacts: facts}
 }
 
 func HandleRestorePostOpen(ctx context.Context, db *gorm.DB) error {
@@ -672,22 +670,19 @@ func replaceStylesheetLink(html string, href string, style string) string {
 }
 
 func (s *Service) reservedPaths() ([]string, error) {
-	settings := coreservice.SettingService{}
-	webPath, err := settings.GetWebPath()
-	if err != nil {
-		return nil, err
+	if s.hostFacts == nil {
+		return nil, errors.New("host facts are unavailable")
 	}
-	subPath, err := settings.GetSubPath()
-	if err != nil {
-		return nil, err
-	}
-	return []string{webPath, subPath}, nil
+	return s.hostFacts.ReservedPaths(context.Background())
 }
 
 func (s *Service) safetyForSite(site fallbackdomain.Site) (SafetyReport, error) {
 	var warnings []string
-	settings := coreservice.SettingService{}
-	webPath, err := settings.GetWebPath()
+	reserved, err := s.reservedPaths()
+	webPath := ""
+	if len(reserved) > 0 {
+		webPath = reserved[0]
+	}
 	if err != nil {
 		return SafetyReport{}, err
 	}
@@ -696,10 +691,6 @@ func (s *Service) safetyForSite(site fallbackdomain.Site) (SafetyReport, error) 
 	}
 	if webPath == "/app/" {
 		warnings = append(warnings, "admin web path is still the default /app/")
-	}
-	reserved, err := s.reservedPaths()
-	if err != nil {
-		return SafetyReport{}, err
 	}
 	hasHome := false
 	for _, page := range site.Pages {

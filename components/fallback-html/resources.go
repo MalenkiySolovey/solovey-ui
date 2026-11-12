@@ -11,7 +11,7 @@ import (
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
-	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
+	fallbackservice "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/service"
 	"gorm.io/gorm"
 )
 
@@ -53,36 +53,13 @@ func siteResourceTarget(site fallbackdomain.Site) (fallbackdomain.RuntimeTarget,
 		}
 		return targets[0], warnings, nil
 	}
-	settings := &coreservice.SettingService{}
-	listen, err := settings.GetListen()
-	if err != nil {
-		return fallbackdomain.RuntimeTarget{}, nil, err
-	}
-	port, err := settings.GetPort()
-	if err != nil {
-		return fallbackdomain.RuntimeTarget{}, nil, err
-	}
-	host, err := settings.GetWebDomain()
-	if err != nil {
-		return fallbackdomain.RuntimeTarget{}, nil, err
-	}
-	certFile, err := settings.GetCertFile()
-	if err != nil {
-		return fallbackdomain.RuntimeTarget{}, nil, err
-	}
-	keyFile, err := settings.GetKeyFile()
+	current, err := fallbackservice.BackendHostFacts().CurrentWebTarget(context.Background())
 	if err != nil {
 		return fallbackdomain.RuntimeTarget{}, nil, err
 	}
 	return fallbackdomain.RuntimeTarget{
-		SiteID:   site.ID,
-		Kind:     "web-current",
-		Host:     strings.TrimSpace(host),
-		Listen:   strings.TrimSpace(listen),
-		Port:     port,
-		RootPath: "/",
-		Runtime:  "gin",
-		TLS:      strings.TrimSpace(certFile) != "" && strings.TrimSpace(keyFile) != "",
+		SiteID: site.ID, Kind: current.Kind, Host: current.Host, Listen: current.Listen, Port: current.Port,
+		RootPath: current.RootPath, Runtime: current.Runtime, TLS: current.TLS,
 	}, []string{"site uses the current panel listener because no explicit runtime target is stored"}, nil
 }
 
@@ -98,20 +75,12 @@ func publicSiteResource(site fallbackdomain.Site, target fallbackdomain.RuntimeT
 	if strings.EqualFold(strings.TrimSpace(target.Kind), "web-current") {
 		routeHints = append(routeHints, "shares-listener:web-publicsurface")
 	}
-	revision := hostresources.Revision(struct {
-		SiteID    uint
-		TargetID  uint
-		Kind      string
-		Listen    string
-		Port      int
-		TLS       bool
-		UpdatedAt int64
-	}{site.ID, target.ID, target.Kind, normalized.Value, target.Port, target.TLS, target.UpdatedAt})
+	revision := fallbackservice.ConfiguredTargetIdentity(site.ID, target).DesiredRevision
 	name := strings.TrimSpace(site.Name)
 	if name == "" {
 		name = "Public site " + strconv.FormatUint(uint64(site.ID), 10)
 	}
-	return hostresources.ProtectableResource{
+	resource := hostresources.ProtectableResource{
 		ID:          "component:fallback-html:site:" + strconv.FormatUint(uint64(site.ID), 10),
 		Kind:        "public_site",
 		Owner:       id,
@@ -138,6 +107,8 @@ func publicSiteResource(site fallbackdomain.Site, target fallbackdomain.RuntimeT
 		},
 		Warnings: warnings,
 	}
+	resource.Identity = hostresources.LocalConfiguredIdentity(resource)
+	return resource
 }
 
 func fallbackTLSMode(enabled bool) string {

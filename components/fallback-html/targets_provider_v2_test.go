@@ -17,6 +17,7 @@ import (
 	"time"
 
 	neutral "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
+	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/fallback-html/authority"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
@@ -289,8 +290,8 @@ func TestTargetProviderV2ReservationLifecycleReplayAndGuards(t *testing.T) {
 		t.Fatalf("start runtime: %v", err)
 	}
 	t.Cleanup(runtime.Stop)
-	now := time.Unix(1_800_000_100, 0).UTC()
-	provider := targetProvider{db: db, runtime: runtime, now: func() time.Time { return now }}
+	now := time.Now().UTC()
+	provider := targetProvider{db: db, runtime: runtime, observer: providerObserver(t, runtime), now: func() time.Time { return now }}
 	target := onlyActionableTarget(t, provider)
 	if neutral.EffectiveReadinessV2(target.Health, time.Unix(target.Health.ExpiresAt+1, 0)) != neutral.ReadinessStale {
 		t.Fatalf("ready health did not become stale")
@@ -360,7 +361,7 @@ func TestTargetProviderV2ReservationLifecycleReplayAndGuards(t *testing.T) {
 }
 
 func TestTargetProviderV2OmitsManagementUnsafeModesAndReportsExhaustion(t *testing.T) {
-	now := time.Unix(1_800_000_150, 0).UTC()
+	now := time.Now().UTC()
 	t.Run("management unsafe mode", func(t *testing.T) {
 		db := openProviderDB(t, "management-unsafe")
 		_, target := createProviderFixture(t, db, false, "", 18080)
@@ -381,7 +382,7 @@ func TestTargetProviderV2OmitsManagementUnsafeModesAndReportsExhaustion(t *testi
 			t.Fatalf("start runtime: %v", err)
 		}
 		t.Cleanup(runtime.Stop)
-		provider := targetProvider{db: db, runtime: runtime, now: func() time.Time { return now }}
+		provider := targetProvider{db: db, runtime: runtime, observer: providerObserver(t, runtime), now: func() time.Time { return now }}
 		target := onlyActionableTarget(t, provider)
 		reference, _ := neutral.ReferenceV2FromTarget(target)
 		for index := uint32(0); index < authority.SlotsPerTarget; index++ {
@@ -409,8 +410,8 @@ func TestTargetProviderV2CancellationDoesNotWriteReservation(t *testing.T) {
 		t.Fatalf("start runtime: %v", err)
 	}
 	t.Cleanup(runtime.Stop)
-	now := time.Unix(1_800_000_175, 0).UTC()
-	provider := targetProvider{db: db, runtime: runtime, now: func() time.Time { return now }}
+	now := time.Now().UTC()
+	provider := targetProvider{db: db, runtime: runtime, observer: providerObserver(t, runtime), now: func() time.Time { return now }}
 	target := onlyActionableTarget(t, provider)
 	reference, _ := neutral.ReferenceV2FromTarget(target)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -433,8 +434,8 @@ func TestTargetProviderV2StorageFailureRollsBackReservationAndRedactsError(t *te
 		t.Fatalf("start runtime: %v", err)
 	}
 	t.Cleanup(runtime.Stop)
-	now := time.Unix(1_800_000_180, 0).UTC()
-	provider := targetProvider{db: db, runtime: runtime, now: func() time.Time { return now }}
+	now := time.Now().UTC()
+	provider := targetProvider{db: db, runtime: runtime, observer: providerObserver(t, runtime), now: func() time.Time { return now }}
 	target := onlyActionableTarget(t, provider)
 	reference, _ := neutral.ReferenceV2FromTarget(target)
 	if err := db.Exec("CREATE TRIGGER fail_reservation_replay BEFORE INSERT ON fallback_html_target_reservation_requests BEGIN SELECT RAISE(ABORT, 'injected storage path C:/secret.db'); END").Error; err != nil {
@@ -458,8 +459,8 @@ func TestTargetProviderV2EnforcesGlobalAuthorityLimit(t *testing.T) {
 		t.Fatalf("start runtime: %v", err)
 	}
 	t.Cleanup(runtime.Stop)
-	now := time.Unix(1_800_000_185, 0).UTC()
-	provider := targetProvider{db: db, runtime: runtime, now: func() time.Time { return now }}
+	now := time.Now().UTC()
+	provider := targetProvider{db: db, runtime: runtime, observer: providerObserver(t, runtime), now: func() time.Time { return now }}
 	target := onlyActionableTarget(t, provider)
 	reference, _ := neutral.ReferenceV2FromTarget(target)
 	rows := make([]authority.ReservationModel, 0, neutral.MaxReservationsV2)
@@ -490,8 +491,8 @@ func TestTargetProviderV2RejectsRenewOfExpiredActiveReservation(t *testing.T) {
 		t.Fatalf("start runtime: %v", err)
 	}
 	t.Cleanup(runtime.Stop)
-	now := time.Unix(1_800_000_190, 0).UTC()
-	provider := targetProvider{db: db, runtime: runtime, now: func() time.Time { return now }}
+	now := time.Now().UTC()
+	provider := targetProvider{db: db, runtime: runtime, observer: providerObserver(t, runtime), now: func() time.Time { return now }}
 	target := onlyActionableTarget(t, provider)
 	reference, _ := neutral.ReferenceV2FromTarget(target)
 	reserved, providerErr := provider.Reserve(context.Background(), neutral.ReserveRequestV1{RequestID: "expired-reserve", HolderID: "holder", Purpose: neutral.ReservationPurposeNativeFallback, ExactTargetReference: reference, FreshnessDurationSecs: 60})
@@ -524,8 +525,8 @@ func TestTargetProviderV2ConcurrentFinalActionableSlotDoesNotOversubscribe(t *te
 		t.Fatalf("start runtime: %v", err)
 	}
 	t.Cleanup(runtime.Stop)
-	now := time.Unix(1_800_000_200, 0).UTC()
-	provider := targetProvider{db: db, runtime: runtime, now: func() time.Time { return now }}
+	now := time.Now().UTC()
+	provider := targetProvider{db: db, runtime: runtime, observer: providerObserver(t, runtime), now: func() time.Time { return now }}
 	for index := 0; index < 2; index++ {
 		target := onlyActionableTarget(t, provider)
 		reference, _ := neutral.ReferenceV2FromTarget(target)
@@ -683,4 +684,23 @@ func equalProtocols(left, right []neutral.ApplicationProtocol) bool {
 
 func providerTestUintString(value uint) string {
 	return strconv.FormatUint(uint64(value), 10)
+}
+
+func providerObserver(t *testing.T, runtime *fallbackservice.Runtime) targetResourceObserver {
+	t.Helper()
+	registry := componenthealth.NewRegistry()
+	unregister, err := registry.Register(fallbackHealthChecker{runtime: runtime, facts: providerHostFacts{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(unregister)
+	return targetResourceObserver{runtime: runtime, health: registry}
+}
+
+// The standalone fixture has no Panel DB; its explicit host composition retains
+// the same reserved admin/subscription paths used by its real runtime probes.
+type providerHostFacts struct{ fallbackservice.HostFacts }
+
+func (providerHostFacts) ReservedPaths(context.Context) ([]string, error) {
+	return []string{"/app/", "/sub/"}, nil
 }

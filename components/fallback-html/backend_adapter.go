@@ -147,7 +147,7 @@ func registerRuntimeHooks() error {
 		runtimeHooks.unregisterHealth = unregister
 	}
 	if runtimeHooks.unregisterTargetsV2 == nil {
-		unregister, err := neutralfallback.Default.RegisterV2(targetProvider{db: dbsqlite.DB(), runtime: fallbackservice.DefaultRuntime})
+		unregister, err := neutralfallback.Default.RegisterV2(targetProvider{db: dbsqlite.DB(), runtime: fallbackservice.DefaultRuntime, observer: targetResourceObserver{runtime: fallbackservice.DefaultRuntime, health: componenthealth.Default}})
 		if err != nil {
 			return err
 		}
@@ -182,7 +182,7 @@ func rebindDatabaseOwners(ctx context.Context) error {
 		return err
 	}
 	runtimeHooks.unregisterResources = unregister
-	unregister, err = neutralfallback.Default.RegisterV2(targetProvider{db: database, runtime: fallbackservice.DefaultRuntime})
+	unregister, err = neutralfallback.Default.RegisterV2(targetProvider{db: database, runtime: fallbackservice.DefaultRuntime, observer: targetResourceObserver{runtime: fallbackservice.DefaultRuntime, health: componenthealth.Default}})
 	if err != nil {
 		return err
 	}

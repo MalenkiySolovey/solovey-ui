@@ -18,6 +18,7 @@ import (
 type targetProvider struct {
 	db                    *gorm.DB
 	runtime               *fallbackservice.Runtime
+	observer              fallbackservice.TargetObserver
 	now                   func() time.Time
 	tlsServerNameVerified func(string) bool
 }

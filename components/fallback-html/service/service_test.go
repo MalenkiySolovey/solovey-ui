@@ -100,7 +100,7 @@ func TestSafetyBlocksRootAdminPath(t *testing.T) {
 	t.Setenv("SUI_DB_FOLDER", dbDir)
 	setSetting(t, db, "webPath", "/")
 	service := New(db, NewRuntime())
-	service.resourceSnapshot = func(context.Context) hostresources.ResourceSnapshot { return hostresources.ResourceSnapshot{} }
+	service.hostFacts = backendHostFacts{snapshot: func(context.Context) hostresources.ResourceSnapshot { return hostresources.ResourceSnapshot{} }}
 	site, err := service.SaveSite(SiteInput{Name: "Example Portal"}, "tester")
 	if err != nil {
 		t.Fatalf("SaveSite: %v", err)
@@ -169,7 +169,7 @@ func TestTargetsUseCurrentManagedWebListener(t *testing.T) {
 	setSetting(t, db, "webListen", "127.0.0.1")
 	setSetting(t, db, "webPort", "24443")
 	service := New(db, NewRuntime())
-	service.resourceSnapshot = func(context.Context) hostresources.ResourceSnapshot { return hostresources.ResourceSnapshot{} }
+	service.hostFacts = backendHostFacts{snapshot: func(context.Context) hostresources.ResourceSnapshot { return hostresources.ResourceSnapshot{} }}
 	site, err := service.SaveSite(SiteInput{Name: "Example Portal"}, "tester")
 	if err != nil {
 		t.Fatalf("SaveSite: %v", err)
@@ -218,12 +218,12 @@ func TestPortCandidatesReportInboundAndExternalBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SaveSite: %v", err)
 	}
-	service.resourceSnapshot = func(context.Context) hostresources.ResourceSnapshot {
+	service.hostFacts = backendHostFacts{snapshot: func(context.Context) hostresources.ResourceSnapshot {
 		return hostresources.ResourceSnapshot{Resources: []hostresources.ProtectableResource{{
 			ID: "core:inbound:1", Owner: "core", Kind: "inbound", Name: "vless-in",
 			InboundTag: "vless-in", Listen: "127.0.0.1", Port: 32221,
 		}}}
-	}
+	}}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("occupy test port: %v", err)
