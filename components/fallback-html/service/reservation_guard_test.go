@@ -115,7 +115,9 @@ func TestRestorePostOpenMovesActiveAuthorityToReconcileRequiredIdempotently(t *t
 	if err != nil || reservation.State != neutral.ReservationReconcileRequired || !reservation.Status(time.Now().UTC()).BlocksMutation {
 		t.Fatalf("restored reservation = %#v, %v", reservation, err)
 	}
-	DefaultRuntime.Stop()
+	if err := DefaultRuntime.Stop(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func guardedServiceFixture(t *testing.T) (*Service, *gorm.DB, fallbackdomain.Site) {

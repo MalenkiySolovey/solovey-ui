@@ -85,9 +85,18 @@ func publishHTTPFixture(t *testing.T, service *Service, siteID uint) PublishResu
 	return result
 }
 
-func httpFixtureResponse(t *testing.T, client *http.Client, base, path string) (*http.Response, string) {
+type httpFixtureResult struct {
+	StatusCode int
+	TLS        *tls.ConnectionState
+}
+
+func httpFixtureResponse(t *testing.T, client *http.Client, base, path string) (httpFixtureResult, string) {
 	t.Helper()
-	response, err := client.Get(base + path)
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +105,7 @@ func httpFixtureResponse(t *testing.T, client *http.Client, base, path string) (
 	if err != nil {
 		t.Fatal(err)
 	}
-	return response, string(data)
+	return httpFixtureResult{StatusCode: response.StatusCode, TLS: response.TLS}, string(data)
 }
 
 func writeHTTPTestCertificate(t *testing.T, serial int64) (string, string, *x509.CertPool) {
@@ -365,7 +374,12 @@ func TestShutdownFailureRetainsAuthorityAndRetryDrainsActiveResponses(t *testing
 			if standalone {
 				go func() {
 					client := &http.Client{Timeout: 3 * time.Second}
-					response, err := client.Get("http://" + net.JoinHostPort(target.Listen, strconv.Itoa(target.Port)) + "/")
+					request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+net.JoinHostPort(target.Listen, strconv.Itoa(target.Port))+"/", nil)
+					if err != nil {
+						completed <- err
+						return
+					}
+					response, err := client.Do(request)
 					if err == nil {
 						_, err = io.Copy(io.Discard, response.Body)
 						response.Body.Close()

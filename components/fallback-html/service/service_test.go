@@ -793,7 +793,9 @@ func TestRestorePostOpenDeactivatesPublishes(t *testing.T) {
 	DefaultRuntime = runtime
 	t.Cleanup(func() {
 		DefaultRuntime = oldDefaultRuntime
-		runtime.Stop()
+		if err := runtime.Stop(); err != nil {
+			t.Error(err)
+		}
 	})
 	service := New(db, runtime)
 	site, err := service.SaveSite(SiteInput{Name: "Example Portal"}, "tester")
