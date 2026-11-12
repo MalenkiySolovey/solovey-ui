@@ -100,7 +100,7 @@ ENTRYPOINT ["/app/entrypoint.sh"]
 FROM backend-builder AS native-cronet-probe-builder
 RUN --mount=type=cache,id=solovey-ui-go-build,target=/root/.cache/go-build,sharing=locked \
     --mount=type=cache,id=solovey-ui-go-mod,target=/go/pkg/mod,sharing=locked \
-    go build -mod=readonly -modfile="$(node -p 'require("/tmp/core-provider-build.json").modFile')" \
+    CGO_LDFLAGS_ALLOW='^-l:libcronet[.]a$' go build -mod=readonly -modfile="$(node -p 'require("/tmp/core-provider-build.json").modFile')" \
     -tags with_musl -ldflags="-w -s -linkmode external -extldflags '-fuse-ld=lld'" \
     -o /native-cronet-probe ./tests/installer/native-cronet
 
