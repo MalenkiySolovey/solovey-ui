@@ -110,7 +110,7 @@ func TestTypedDurableCandidateRejectsLiveAndPreparationFailurePreservesLive(t *t
 			}
 		}
 		// Read-only immutable opening avoids a second WAL namespace for the hard link.
-		other, err := gorm.Open(sqlite.Open(filename+"?mode=ro&immutable=1"), &gorm.Config{})
+		other, err := gorm.Open(sqlite.Open("file:"+filepath.ToSlash(filename)+"?mode=ro&immutable=1"), &gorm.Config{})
 		if err != nil {
 			t.Fatal(err)
 		}

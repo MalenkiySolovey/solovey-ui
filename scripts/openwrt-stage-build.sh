@@ -192,6 +192,8 @@ go_environment=(
 	'CGO_CXXFLAGS=-O2 -g'
 	'CGO_FFLAGS=-O2 -g'
 	'CGO_LDFLAGS=-fuse-ld=lld'
+	# Only the checksum-bound native Cronet archive uses GNU's exact-name flag.
+	'CGO_LDFLAGS_ALLOW=^-l:libcronet[.]a$'
 	'GOFLAGS=-mod=readonly'
 	'GOENV=off'
 	'GOWORK=off'
@@ -460,6 +462,7 @@ const facts = {
     cxxflags: '-O2 -g',
     fflags: '-O2 -g',
     ldflags: '-fuse-ld=lld',
+    ldflagsAllow: '^-l:libcronet[.]a$',
     pkgConfig: 'disabled',
   },
   cronet: { commit: e.BF_CRONET_COMMIT },

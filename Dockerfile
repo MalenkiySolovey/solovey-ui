@@ -70,7 +70,7 @@ RUN --mount=type=cache,id=solovey-ui-go-build,target=/root/.cache/go-build,shari
     if [ "$TARGETARCH" = "arm" ]; then export GOARM=7; [ "$TARGETVARIANT" = "v6" ] && export GOARM=6; fi; \
     readarray -t GO_ARGS < <(node -e 'console.log(require("/tmp/core-provider-build.json").goArgs.join("\n"))'); \
     BUILD_TAGS="$(node -p 'require("/tmp/core-provider-build.json").tags')"; \
-    go build "${GO_ARGS[@]}" -trimpath -buildvcs=false \
+    CGO_LDFLAGS_ALLOW='^-l:libcronet[.]a$' go build "${GO_ARGS[@]}" -trimpath -buildvcs=false \
     -ldflags="-buildid= -w -s -checklinkname=0 -linkmode external -extldflags '-fuse-ld=lld' -X github.com/MalenkiySolovey/solovey-ui/config/update.ReleaseTrustRootsBase64=$SUI_RELEASE_TRUST_ROOTS_B64" \
     -tags "$BUILD_TAGS" -o solovey-ui main.go; \
     node -e 'console.log(JSON.stringify(require("/tmp/core-provider-build.json").source))' > /tmp/core-provider-source.json; \
