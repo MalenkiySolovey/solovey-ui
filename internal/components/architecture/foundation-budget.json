@@ -219,8 +219,8 @@
     },
     {
       "rule": "component-model-mutation",
-      "path": "components/fallback-html/component.go",
-      "symbol": "component.DropData",
+      "path": "components/fallback-html/backend_adapter.go",
+      "symbol": "backendDrop",
       "digest": "dd1de1f1557df96e1e733bbee1896762e3a08e852aacd85bc2378f340c211054"
     },
     {

@@ -7,9 +7,9 @@ set -Eeuo pipefail
 # builds the frontend before Go embedding, compiles the nine target programs,
 # and closes the result with a source-bound payload manifest.
 
-readonly GO_VERSION='go1.26.10'
-readonly GO_TOOLCHAIN_FILENAME='go1.26.10.linux-amd64.tar.gz'
-readonly GO_TOOLCHAIN_SHA256='ccfe7ae822d2c2f41f4fe7c956199967a4dac22d0ee0d2b2bfdb440aab3b20c5'
+readonly GO_VERSION='go1.26.11'
+readonly GO_TOOLCHAIN_FILENAME='go1.26.11.linux-amd64.tar.gz'
+readonly GO_TOOLCHAIN_SHA256='9849f4e04ee35303714e34fbc3ac8ab44ea3e448a95aa182f91e3b9b79c710ec'
 # Align the compiler/sysroot authority with the canonical 150.0.7871.63 native
 # archive producer used by the selected provider locks and Linux release path.
 readonly CRONET_TOOLCHAIN_COMMIT='7e27f60f7f04a1c762b6bb69b4a44d7b24cd7a5d'
@@ -29,7 +29,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/openwrt-target-profile.sh"
 
 usage() {
 	cat <<'EOF'
-Usage: scripts/openwrt-stage-build.sh --source <current-source> --out <new-stage-root> --trust-roots-file <public-base64-file> --go-toolchain-archive <go1.26.10.linux-amd64.tar.gz> [--target-profile <x86-64|rockchip-armv8>] [--core-provider <sing-box|shtorm-extended>]
+Usage: scripts/openwrt-stage-build.sh --source <current-source> --out <new-stage-root> --trust-roots-file <public-base64-file> --go-toolchain-archive <go1.26.11.linux-amd64.tar.gz> [--target-profile <x86-64|rockchip-armv8>] [--core-provider <sing-box|shtorm-extended>]
 
 Required environment: the project-pinned Go and Node toolchains plus
 GOOS=linux, the profile's GOARCH, CGO_ENABLED=1 and the OpenWrt-musl CC/CXX compiler
@@ -192,6 +192,8 @@ go_environment=(
 	'CGO_CXXFLAGS=-O2 -g'
 	'CGO_FFLAGS=-O2 -g'
 	'CGO_LDFLAGS=-fuse-ld=lld'
+	# Only the checksum-bound native Cronet archive uses GNU's exact-name flag.
+	'CGO_LDFLAGS_ALLOW=^-l:libcronet[.]a$'
 	'GOFLAGS=-mod=readonly'
 	'GOENV=off'
 	'GOWORK=off'
@@ -460,6 +462,7 @@ const facts = {
     cxxflags: '-O2 -g',
     fflags: '-O2 -g',
     ldflags: '-fuse-ld=lld',
+    ldflagsAllow: '^-l:libcronet[.]a$',
     pkgConfig: 'disabled',
   },
   cronet: { commit: e.BF_CRONET_COMMIT },

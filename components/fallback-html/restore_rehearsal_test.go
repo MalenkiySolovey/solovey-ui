@@ -44,7 +44,7 @@ func testRestorePublicationRebind(t *testing.T, decision string) {
 		_ = (component{}).Stop(context.Background())
 		fallbackservice.DefaultRuntime = previousRuntime
 	})
-	if err := (component{}).Migrate(context.Background(), lifecycle.Context{}); err != nil {
+	if err := durableBindingForTest(t).Migrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	setComponentTestSetting(t, "webPath", "/private-panel/")

@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca AS component-source-tools
+FROM --platform=$BUILDPLATFORM golang:1.26.11-alpine@sha256:ae52b5bc6ed045a9ed26ab03dc19327a802a9cc9aa8b27ed57f5c6b60579b0bb AS component-source-tools
 
 FROM --platform=$BUILDPLATFORM node:alpine@sha256:3ad34ca6292aec4a91d8ddeb9229e29d9c2f689efd0dd242860889ac71842eba AS front-builder
 COPY --from=component-source-tools /usr/local/go/ /usr/local/go/
@@ -28,7 +28,7 @@ RUN node scripts/quic-integration-provenance.mjs manifest > QUIC_INTEGRATION.jso
     && node scripts/frontend-assets.mjs publish --dist frontend/dist --destination web/html --components-dir component-packs \
     && node scripts/generate-component-imports.mjs --profile full --out generated/components_generated.go --cmd-out generated/optional_commands_generated.go
 
-FROM --platform=$TARGETPLATFORM golang:1.26.10-alpine@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca AS backend-builder
+FROM --platform=$TARGETPLATFORM golang:1.26.11-alpine@sha256:ae52b5bc6ed045a9ed26ab03dc19327a802a9cc9aa8b27ed57f5c6b60579b0bb AS backend-builder
 WORKDIR /app
 ARG TARGETARCH
 ARG TARGETVARIANT
@@ -70,7 +70,7 @@ RUN --mount=type=cache,id=solovey-ui-go-build,target=/root/.cache/go-build,shari
     if [ "$TARGETARCH" = "arm" ]; then export GOARM=7; [ "$TARGETVARIANT" = "v6" ] && export GOARM=6; fi; \
     readarray -t GO_ARGS < <(node -e 'console.log(require("/tmp/core-provider-build.json").goArgs.join("\n"))'); \
     BUILD_TAGS="$(node -p 'require("/tmp/core-provider-build.json").tags')"; \
-    go build "${GO_ARGS[@]}" -trimpath -buildvcs=false \
+    CGO_LDFLAGS_ALLOW='^-l:libcronet[.]a$' go build "${GO_ARGS[@]}" -trimpath -buildvcs=false \
     -ldflags="-buildid= -w -s -checklinkname=0 -linkmode external -extldflags '-fuse-ld=lld' -X github.com/MalenkiySolovey/solovey-ui/config/update.ReleaseTrustRootsBase64=$SUI_RELEASE_TRUST_ROOTS_B64" \
     -tags "$BUILD_TAGS" -o solovey-ui main.go; \
     node -e 'console.log(JSON.stringify(require("/tmp/core-provider-build.json").source))' > /tmp/core-provider-source.json; \
@@ -100,7 +100,7 @@ ENTRYPOINT ["/app/entrypoint.sh"]
 FROM backend-builder AS native-cronet-probe-builder
 RUN --mount=type=cache,id=solovey-ui-go-build,target=/root/.cache/go-build,sharing=locked \
     --mount=type=cache,id=solovey-ui-go-mod,target=/go/pkg/mod,sharing=locked \
-    go build -mod=readonly -modfile="$(node -p 'require("/tmp/core-provider-build.json").modFile')" \
+    CGO_LDFLAGS_ALLOW='^-l:libcronet[.]a$' go build -mod=readonly -modfile="$(node -p 'require("/tmp/core-provider-build.json").modFile')" \
     -tags with_musl -ldflags="-w -s -linkmode external -extldflags '-fuse-ld=lld'" \
     -o /native-cronet-probe ./tests/installer/native-cronet
 

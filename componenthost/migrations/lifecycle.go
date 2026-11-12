@@ -161,3 +161,22 @@ func FinishStep(db *gorm.DB, step Step, migrationErr error) error {
 	}
 	return nil
 }
+
+// RecordValidationFailure retains an APPLIED owner's postcondition debt. It
+// never changes the accepted checksum or erases the installed owner.
+func RecordValidationFailure(db *gorm.DB, step Step) error {
+	if db == nil {
+		return errors.New("component migration journal database is not initialized")
+	}
+	result := db.Model(&model.MigrationJournal{}).
+		Where("scope = ? AND owner_id = ? AND step_id = ? AND checksum = ? AND state = ?", ScopeComponent, step.OwnerID, step.StepID, step.Checksum, "APPLIED").
+		Updates(map[string]any{"state": "RECOVERY_REQUIRED", "compatibility_state": "POSTCONDITION_FAILED",
+			"error_code": "component_schema_validation_failed", "updated_at": time.Now().Unix()})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return errors.New("component validation journal changed concurrently")
+	}
+	return nil
+}

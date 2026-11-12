@@ -127,7 +127,7 @@ jobs:
 
   fe-e2e:
     name: fe-e2e
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: fe-install
     continue-on-error: true
     timeout-minutes: 25
@@ -174,7 +174,7 @@ jobs:
 
   accessibility:
     name: accessibility
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: fe-install
     continue-on-error: true
     timeout-minutes: 25
