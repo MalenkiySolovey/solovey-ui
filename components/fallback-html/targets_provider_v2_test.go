@@ -289,7 +289,11 @@ func TestTargetProviderV2ReservationLifecycleReplayAndGuards(t *testing.T) {
 	if err := runtime.Start(db); err != nil {
 		t.Fatalf("start runtime: %v", err)
 	}
-	t.Cleanup(runtime.Stop)
+	t.Cleanup(func() {
+		if err := runtime.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 	now := time.Now().UTC()
 	provider := targetProvider{db: db, runtime: runtime, observer: providerObserver(t, runtime), now: func() time.Time { return now }}
 	target := onlyActionableTarget(t, provider)
@@ -381,7 +385,11 @@ func TestTargetProviderV2OmitsManagementUnsafeModesAndReportsExhaustion(t *testi
 		if err := runtime.Start(db); err != nil {
 			t.Fatalf("start runtime: %v", err)
 		}
-		t.Cleanup(runtime.Stop)
+		t.Cleanup(func() {
+			if err := runtime.Stop(); err != nil {
+				t.Error(err)
+			}
+		})
 		provider := targetProvider{db: db, runtime: runtime, observer: providerObserver(t, runtime), now: func() time.Time { return now }}
 		target := onlyActionableTarget(t, provider)
 		reference, _ := neutral.ReferenceV2FromTarget(target)
@@ -409,7 +417,11 @@ func TestTargetProviderV2CancellationDoesNotWriteReservation(t *testing.T) {
 	if err := runtime.Start(db); err != nil {
 		t.Fatalf("start runtime: %v", err)
 	}
-	t.Cleanup(runtime.Stop)
+	t.Cleanup(func() {
+		if err := runtime.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 	now := time.Now().UTC()
 	provider := targetProvider{db: db, runtime: runtime, observer: providerObserver(t, runtime), now: func() time.Time { return now }}
 	target := onlyActionableTarget(t, provider)
@@ -433,7 +445,11 @@ func TestTargetProviderV2StorageFailureRollsBackReservationAndRedactsError(t *te
 	if err := runtime.Start(db); err != nil {
 		t.Fatalf("start runtime: %v", err)
 	}
-	t.Cleanup(runtime.Stop)
+	t.Cleanup(func() {
+		if err := runtime.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 	now := time.Now().UTC()
 	provider := targetProvider{db: db, runtime: runtime, observer: providerObserver(t, runtime), now: func() time.Time { return now }}
 	target := onlyActionableTarget(t, provider)
@@ -458,7 +474,11 @@ func TestTargetProviderV2EnforcesGlobalAuthorityLimit(t *testing.T) {
 	if err := runtime.Start(db); err != nil {
 		t.Fatalf("start runtime: %v", err)
 	}
-	t.Cleanup(runtime.Stop)
+	t.Cleanup(func() {
+		if err := runtime.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 	now := time.Now().UTC()
 	provider := targetProvider{db: db, runtime: runtime, observer: providerObserver(t, runtime), now: func() time.Time { return now }}
 	target := onlyActionableTarget(t, provider)
@@ -490,7 +510,11 @@ func TestTargetProviderV2RejectsRenewOfExpiredActiveReservation(t *testing.T) {
 	if err := runtime.Start(db); err != nil {
 		t.Fatalf("start runtime: %v", err)
 	}
-	t.Cleanup(runtime.Stop)
+	t.Cleanup(func() {
+		if err := runtime.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 	now := time.Now().UTC()
 	provider := targetProvider{db: db, runtime: runtime, observer: providerObserver(t, runtime), now: func() time.Time { return now }}
 	target := onlyActionableTarget(t, provider)
@@ -524,7 +548,11 @@ func TestTargetProviderV2ConcurrentFinalActionableSlotDoesNotOversubscribe(t *te
 	if err := runtime.Start(db); err != nil {
 		t.Fatalf("start runtime: %v", err)
 	}
-	t.Cleanup(runtime.Stop)
+	t.Cleanup(func() {
+		if err := runtime.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 	now := time.Now().UTC()
 	provider := targetProvider{db: db, runtime: runtime, observer: providerObserver(t, runtime), now: func() time.Time { return now }}
 	for index := 0; index < 2; index++ {

@@ -25,7 +25,11 @@ func TestTargetObservationRejectsForeignStaleAndMissingAuthority(t *testing.T) {
 	if err := runtime.Start(db); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(runtime.Stop)
+	t.Cleanup(func() {
+		if err := runtime.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 	observer := providerObserver(t, runtime)
 	request := fallbackservice.TargetObservationRequest{Resource: fallbackservice.ConfiguredTargetIdentity(site.ID, target),
 		PublicationRevision: "publish-1", ExpectedGeneration: observer.Generation()}
@@ -97,7 +101,11 @@ func TestTargetObservationRequiresCanonicalFreshExactHealth(t *testing.T) {
 	if err := runtime.Start(db); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(runtime.Stop)
+	t.Cleanup(func() {
+		if err := runtime.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 	state := runtime.PublicationState()
 	request := fallbackservice.TargetObservationRequest{Resource: fallbackservice.ConfiguredTargetIdentity(site.ID, target), PublicationRevision: "publish-1", ExpectedGeneration: state.Generation}
 	for _, test := range []struct {
@@ -173,7 +181,11 @@ func TestReservationHealthNeedsNoAdditionalDatabaseConnection(t *testing.T) {
 	if err := runtime.Start(db); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(runtime.Stop)
+	t.Cleanup(func() {
+		if err := runtime.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 	provider := targetProvider{db: db, runtime: runtime, observer: providerObserver(t, runtime)}
 	target := onlyActionableTarget(t, provider)
 	reference, err := neutral.ReferenceV2FromTarget(target)
@@ -194,7 +206,11 @@ func TestReservationReleaseRejectsUnknownAndStaleCleanup(t *testing.T) {
 	if err := runtime.Start(db); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(runtime.Stop)
+	t.Cleanup(func() {
+		if err := runtime.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 	provider := targetProvider{db: db, runtime: runtime, observer: providerObserver(t, runtime)}
 	target := onlyActionableTarget(t, provider)
 	reference, err := neutral.ReferenceV2FromTarget(target)

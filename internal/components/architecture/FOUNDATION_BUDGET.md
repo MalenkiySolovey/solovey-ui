@@ -329,3 +329,13 @@ and SecretRef keep their existing ownership; there is no runtime Parser
 resource, raw-link credential owner, additional scheduler or default fallback.
 Existing parser/URI/format/source suites cover conversion and rejection. Only
 this changed AST digest replaces its predecessor.
+
+Fallback publication serving moves the existing standalone server launch into
+backendHTTP.startStandalone with digest f9406e3e891c5b80f409ea1a2f9bbe195d231c095ea90800f97f808b9757124b.
+The same Backend owner owns its listener, immutable publication handler and
+configured TLS material. Each server has a completion signal; bounded Shutdown
+stops admission, drains active standalone and Gin responses and joins serving
+before successful Stop. A failed drain retains handles, publication identity
+and observation hooks for retry. The detached Runtime.Shutdown goroutine is
+retired. No replacement supervisor or ticker is admitted; unrelated budget
+entries and the original base identity remain unchanged.

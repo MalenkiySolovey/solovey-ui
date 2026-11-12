@@ -90,13 +90,12 @@ func NewWithHost(db *gorm.DB, runtime *Runtime, facts HostFacts) *Service {
 
 func HandleRestorePostOpen(ctx context.Context, db *gorm.DB) error {
 	if db == nil {
-		DefaultRuntime.Stop()
-		return nil
+		return DefaultRuntime.Shutdown(ctx)
 	}
 	if err := NormalizeRestoredData(ctx, db); err != nil {
 		return err
 	}
-	return DefaultRuntime.Rebuild(db)
+	return DefaultRuntime.RebuildContext(ctx, db)
 }
 
 // NormalizeRestoredData only changes the supplied database. Rehearsal invokes
@@ -723,7 +722,7 @@ func (s *Service) safetyForSite(site fallbackdomain.Site) (SafetyReport, error) 
 			warnings = append(warnings, "publish target "+target.Kind+" is "+target.Status+": "+target.Reason)
 		}
 		if target.Kind == "web-current" {
-			if fallback, reason := addressWouldFallback(target.Listen); fallback {
+			if fallback, reason := s.hostFacts.AddressFallback(context.Background(), target.Listen); fallback {
 				warnings = append(warnings, "publish target would use loopback fallback: "+reason)
 			}
 		}

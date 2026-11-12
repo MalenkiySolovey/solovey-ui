@@ -6,6 +6,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -18,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
 	"gorm.io/gorm"
 )
@@ -267,6 +269,14 @@ func (s *Service) GetPublishArtifact(siteID uint, version string) (ArtifactArchi
 	}, nil
 }
 
+func (s *Service) PublishSiteContext(ctx context.Context, siteID uint, actor string) (PublishResult, error) {
+	if err := ctx.Err(); err != nil {
+		return PublishResult{}, err
+	}
+	scoped := NewWithHost(s.db.WithContext(ctx), s.runtime, s.hostFacts)
+	return scoped.PublishSite(siteID, actor)
+}
+
 func (s *Service) PublishSite(siteID uint, actor string) (PublishResult, error) {
 	site, err := s.GetSite(siteID)
 	if err != nil {
@@ -288,6 +298,12 @@ func (s *Service) PublishSite(siteID uint, actor string) (PublishResult, error) 
 	}
 	version := strconv.FormatInt(time.Now().UnixNano(), 10)
 	root := publishRoot(siteID, version)
+	committed := false
+	defer func() {
+		if !committed {
+			_ = removeOwnedPublishRoot(siteID, root)
+		}
+	}()
 	files, err := buildPublishFiles(root, site)
 	if err != nil {
 		return PublishResult{}, err
@@ -307,6 +323,12 @@ func (s *Service) PublishSite(siteID uint, actor string) (PublishResult, error) 
 		return PublishResult{}, err
 	}
 	err = s.guardedRuntimeMutation(siteID, func(tx *gorm.DB) error {
+		if err := s.validatePublicationCandidate(tx, site); err != nil {
+			return err
+		}
+		if err := ensureNoActivePublishConflict(tx, siteID); err != nil {
+			return err
+		}
 		if err := tx.Model(&fallbackdomain.Publish{}).Where("site_id = ?", siteID).Update("active", false).Error; err != nil {
 			return err
 		}
@@ -340,7 +362,23 @@ func (s *Service) PublishSite(siteID uint, actor string) (PublishResult, error) 
 		_ = os.RemoveAll(root)
 		return PublishResult{}, err
 	}
+	committed = true
 	return PublishResult{SiteID: siteID, Version: version, Files: len(files)}, nil
+}
+
+func (s *Service) validatePublicationCandidate(tx *gorm.DB, expected fallbackdomain.Site) error {
+	scoped := NewWithHost(tx, s.runtime, s.hostFacts)
+	current, err := scoped.GetSite(expected.ID)
+	if err != nil {
+		return err
+	}
+	if err := scoped.loadAssets(&current); err != nil {
+		return err
+	}
+	if hostresources.Revision(current) != hostresources.Revision(expected) {
+		return errors.New("fallback-html site or target changed while publication was prepared")
+	}
+	return nil
 }
 
 func blockingSafetyWarnings(warnings []string) []string {
@@ -358,9 +396,20 @@ func blockingSafetyWarnings(warnings []string) []string {
 	return blockers
 }
 
+func (s *Service) RollbackSiteContext(ctx context.Context, siteID uint, input RollbackInput, actor string) (PublishResult, error) {
+	if err := ctx.Err(); err != nil {
+		return PublishResult{}, err
+	}
+	scoped := NewWithHost(s.db.WithContext(ctx), s.runtime, s.hostFacts)
+	return scoped.RollbackSite(siteID, input, actor)
+}
+
 func (s *Service) RollbackSite(siteID uint, input RollbackInput, actor string) (PublishResult, error) {
 	site, err := s.GetSite(siteID)
 	if err != nil {
+		return PublishResult{}, err
+	}
+	if err := s.loadAssets(&site); err != nil {
 		return PublishResult{}, err
 	}
 	if err := s.ensureNoActiveGinPublishConflict(site.ID); err != nil {
@@ -387,6 +436,12 @@ func (s *Service) RollbackSite(siteID uint, input RollbackInput, actor string) (
 	}
 	now := time.Now().Unix()
 	err = s.guardedRuntimeMutation(siteID, func(tx *gorm.DB) error {
+		if err := s.validatePublicationCandidate(tx, site); err != nil {
+			return err
+		}
+		if err := ensureNoActivePublishConflict(tx, siteID); err != nil {
+			return err
+		}
 		if err := tx.Model(&fallbackdomain.Publish{}).Where("site_id = ?", siteID).Update("active", false).Error; err != nil {
 			return err
 		}
@@ -405,8 +460,12 @@ func (s *Service) RollbackSite(siteID uint, input RollbackInput, actor string) (
 }
 
 func (s *Service) ensureNoActiveGinPublishConflict(siteID uint) error {
+	return ensureNoActivePublishConflict(s.db, siteID)
+}
+
+func ensureNoActivePublishConflict(db *gorm.DB, siteID uint) error {
 	var conflict fallbackdomain.Site
-	err := s.db.
+	err := db.
 		Model(&fallbackdomain.Site{}).
 		Select("fallback_html_sites.*").
 		Joins("JOIN fallback_html_publishes ON fallback_html_publishes.site_id = fallback_html_sites.id").
@@ -420,6 +479,13 @@ func (s *Service) ensureNoActiveGinPublishConflict(siteID uint) error {
 		return err
 	}
 	return fmt.Errorf("fallback-html site %q is already published on the managed Gin listener; unpublish it before publishing another site", conflict.Name)
+}
+
+func (s *Service) UnpublishSiteContext(ctx context.Context, siteID uint, actor string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return NewWithHost(s.db.WithContext(ctx), s.runtime, s.hostFacts).UnpublishSite(siteID, actor)
 }
 
 func (s *Service) UnpublishSite(siteID uint, actor string) error {

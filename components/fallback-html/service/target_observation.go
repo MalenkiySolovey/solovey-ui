@@ -39,6 +39,8 @@ type PublicationState struct {
 	PublicationRevision string
 	Generation          uint64
 	ListenerReady       bool
+	ListenerRequired    bool
+	Draining            bool
 }
 
 func (s PublicationState) EvidenceRevision() string {
@@ -75,8 +77,10 @@ func (r *Runtime) PublicationState() PublicationState {
 		return PublicationState{}
 	}
 	state := snap.state
+	state.Draining = r.draining.Load()
+	state.ListenerRequired = snap.targetKey != ""
 	if snap.targetKey != "" {
-		_, state.ListenerReady = r.listeners[snap.targetKey]
+		state.ListenerReady = !r.draining.Load() && r.serving.OwnsKey(snap.targetKey)
 	}
 	return state
 }

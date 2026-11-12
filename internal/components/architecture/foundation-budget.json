@@ -2296,15 +2296,9 @@
     },
     {
       "rule": "worker-lifetime",
-      "path": "components/fallback-html/service/runtime.go",
-      "symbol": "*Runtime.Shutdown",
-      "digest": "72b9cc61eb112a5f1404209dbeec9a0968fc65959478e48beeee834f720a667a"
-    },
-    {
-      "rule": "worker-lifetime",
-      "path": "components/fallback-html/service/runtime.go",
-      "symbol": "*Runtime.startStandaloneLocked",
-      "digest": "0bfa8eff4edab36f418707f0418a69b9761f4f91c122781c1b5a44c91a40799b"
+      "path": "components/fallback-html/service/backend_http.go",
+      "symbol": "*backendHTTP.startStandalone",
+      "digest": "f9406e3e891c5b80f409ea1a2f9bbe195d231c095ea90800f97f808b9757124b"
     },
     {
       "rule": "worker-lifetime",

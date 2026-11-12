@@ -5,14 +5,12 @@ package service
 import (
 	"context"
 	"fmt"
-	"net"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
-	"github.com/MalenkiySolovey/solovey-ui/network/bind"
 	"gorm.io/gorm"
 )
 
@@ -139,12 +137,12 @@ func (s *Service) PortCandidates(ctx context.Context) ([]PortCandidate, error) {
 		Status:  "managed",
 		Reason:  "current panel web listener owns this port",
 	}
-	if fallback, reason := addressWouldFallback(current.Listen); fallback {
+	if fallback, reason := s.hostFacts.AddressFallback(context.Background(), current.Listen); fallback {
 		currentCandidate.Status = "loopback-fallback"
 		currentCandidate.Reason = reason
 	}
 	candidates := []PortCandidate{currentCandidate}
-	if candidate, ok := defaultHTTPSPortCandidate(current); ok {
+	if candidate, ok := s.defaultHTTPSPortCandidate(current); ok {
 		candidates = append(candidates, candidate)
 	}
 	saved, err := s.savedTargetPortCandidates(current)
@@ -157,7 +155,7 @@ func (s *Service) PortCandidates(ctx context.Context) ([]PortCandidate, error) {
 		return nil, err
 	}
 	candidates = append(candidates, inbounds...)
-	if free, ok := freeLoopbackPortCandidate(current.TLS); ok {
+	if free, ok := s.hostFacts.FreeLoopbackPort(context.Background(), current.TLS); ok {
 		candidates = append(candidates, free)
 	}
 	sortPortCandidates(candidates)
@@ -243,7 +241,7 @@ func normalizeTargetInput(siteID uint, input TargetInput, current TargetView, no
 	}
 }
 
-func defaultHTTPSPortCandidate(current TargetView) (PortCandidate, bool) {
+func (s *Service) defaultHTTPSPortCandidate(current TargetView) (PortCandidate, bool) {
 	listen := preferredExactListen(current)
 	if current.Port == 443 && listen == strings.TrimSpace(current.Listen) {
 		return PortCandidate{}, false
@@ -255,7 +253,7 @@ func defaultHTTPSPortCandidate(current TargetView) (PortCandidate, bool) {
 		Runtime: "gin",
 		TLS:     current.TLS,
 	}
-	status, reason := probeBind(candidate.Listen, candidate.Port)
+	status, reason := s.hostFacts.PortAvailability(context.Background(), candidate.Listen, candidate.Port)
 	candidate.Status = status
 	candidate.Reason = reason
 	return candidate, true
@@ -280,7 +278,7 @@ func (s *Service) savedTargetPortCandidates(current TargetView) ([]PortCandidate
 			continue
 		}
 		seen[key] = true
-		candidate := probeTargetPortCandidate(target, current)
+		candidate := s.probeTargetPortCandidate(target, current)
 		out = append(out, candidate)
 	}
 	return out, nil
@@ -296,7 +294,7 @@ func (s *Service) inboundPortCandidates(ctx context.Context) ([]PortCandidate, e
 	return s.hostFacts.InboundPorts(ctx)
 }
 
-func probeTargetPortCandidate(target fallbackdomain.RuntimeTarget, current TargetView) PortCandidate {
+func (s *Service) probeTargetPortCandidate(target fallbackdomain.RuntimeTarget, current TargetView) PortCandidate {
 	candidate := PortCandidate{
 		Kind:    target.Kind,
 		Listen:  strings.TrimSpace(target.Listen),
@@ -315,63 +313,10 @@ func probeTargetPortCandidate(target fallbackdomain.RuntimeTarget, current Targe
 		candidate.Reason = "current panel web listener owns this port"
 		return candidate
 	}
-	status, reason := probeBind(candidate.Listen, candidate.Port)
+	status, reason := s.hostFacts.PortAvailability(context.Background(), candidate.Listen, candidate.Port)
 	candidate.Status = status
 	candidate.Reason = reason
 	return candidate
-}
-
-func freeLoopbackPortCandidate(tls bool) (PortCandidate, bool) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return PortCandidate{}, false
-	}
-	defer listener.Close()
-	addr, ok := listener.Addr().(*net.TCPAddr)
-	if !ok {
-		return PortCandidate{}, false
-	}
-	return PortCandidate{
-		Kind:    "free",
-		Listen:  "127.0.0.1",
-		Port:    addr.Port,
-		Runtime: "gin",
-		TLS:     tls,
-		Status:  "free",
-		Reason:  "available on loopback at the time of the check",
-	}, true
-}
-
-func probeBind(listen string, port int) (string, string) {
-	host := strings.TrimSpace(listen)
-	if host == "" {
-		host = "127.0.0.1"
-	}
-	result, err := bind.ListenWithFallbackResult(net.JoinHostPort(host, strconv.Itoa(port)), host, strconv.Itoa(port))
-	if err != nil {
-		return "blocked-external", "could not bind this port during a non-destructive availability check"
-	}
-	defer result.Listener.Close()
-	if result.Fallback {
-		return "loopback-fallback", "requested listen address is not available on this host; panel would fall back to loopback"
-	}
-	return "free", "available at the time of the check"
-}
-
-func addressWouldFallback(listen string) (bool, string) {
-	host := strings.TrimSpace(listen)
-	if host == "" || host == "0.0.0.0" || host == "::" {
-		return false, ""
-	}
-	result, err := bind.ListenWithFallbackResult(net.JoinHostPort(host, "0"), host, "0")
-	if err != nil {
-		return false, ""
-	}
-	defer result.Listener.Close()
-	if result.Fallback {
-		return true, "configured listen address is not available on this host; panel would fall back to loopback"
-	}
-	return false, ""
 }
 
 func targetMatchesCurrent(listen string, port int, runtime string, current TargetView) bool {
@@ -461,8 +406,7 @@ func (s *Service) targetView(target fallbackdomain.RuntimeTarget, current Target
 			return view
 		}
 		if view.TLS {
-			certFile, keyFile := runtimeTLSFiles()
-			if certFile == "" || keyFile == "" {
+			if !s.hostFacts.TLSConfigured(context.Background()) {
 				view.Status = "blocked-external"
 				view.Reason = "TLS target requires panel certificate and key settings"
 				return view
@@ -473,7 +417,7 @@ func (s *Service) targetView(target fallbackdomain.RuntimeTarget, current Target
 			view.Reason = "fallback-html currently owns this listener"
 			return view
 		}
-		view.Status, view.Reason = probeBind(view.Listen, view.Port)
+		view.Status, view.Reason = s.hostFacts.PortAvailability(context.Background(), view.Listen, view.Port)
 		return view
 	}
 	if view.Kind != "web-current" {

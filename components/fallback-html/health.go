@@ -33,6 +33,12 @@ func (c fallbackHealthChecker) Check(ctx context.Context) componenthealth.Result
 		return componenthealth.Result{Status: componenthealth.StatusMissingCapability, Check: "fallback_runtime", FactCode: "fallback_runtime_unavailable"}
 	}
 	before := c.runtime.PublicationState()
+	if before.Draining {
+		return componenthealth.Result{Status: componenthealth.StatusDegraded, Check: "fallback_runtime", FactCode: "fallback_runtime_draining"}
+	}
+	if before.ListenerRequired && !before.ListenerReady {
+		return componenthealth.Result{Status: componenthealth.StatusDegraded, Check: "fallback_runtime", FactCode: "fallback_listener_unavailable"}
+	}
 	status := c.runtime.Status()
 	if !status.Active {
 		return componenthealth.Result{Status: componenthealth.StatusDegraded, Check: "fallback_runtime", FactCode: "fallback_site_inactive"}
