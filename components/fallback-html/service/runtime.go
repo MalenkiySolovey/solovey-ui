@@ -6,14 +6,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,8 +20,6 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
-	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/security"
-	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/ratelimit"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -42,7 +38,12 @@ type Runtime struct {
 	generation uint64
 	db         *gorm.DB
 	unregister func()
-	listeners  map[string]*runtimeListener
+	serving    HTTPServing
+	stopped    bool
+	draining   atomic.Bool
+	workMu     sync.Mutex
+	active     uint64
+	idle       chan struct{}
 	limiter    *ratelimit.FixedWindow[string]
 	snapshot   atomic.Value // *snapshot
 }
@@ -82,60 +83,100 @@ type publishedRedirect struct {
 	external   bool
 }
 
-type standaloneTargetConfig struct {
-	key         string
-	address     string
-	tls         bool
-	certFile    string
-	keyFile     string
-	tlsRevision string
-	certificate *tls.Certificate
-}
+var ErrRuntimeDraining = errors.New("fallback-html runtime must finish draining before activation")
 
-type runtimeListener struct {
-	config standaloneTargetConfig
-	server *http.Server
-}
+const runtimeDrainTimeout = 5 * time.Second
 
-func NewRuntime() *Runtime {
-	r := &Runtime{limiter: newPublicSiteLimiter(), listeners: map[string]*runtimeListener{}}
-	r.snapshot.Store((*snapshot)(nil))
-	return r
-}
+func (r *Runtime) Start(db *gorm.DB) error { return r.StartContext(context.Background(), db) }
 
-func (r *Runtime) Start(db *gorm.DB) error {
-	r.mu.Lock()
+func (r *Runtime) StartContext(ctx context.Context, db *gorm.DB) error {
+	if err := r.lockContext(ctx); err != nil {
+		return err
+	}
 	defer r.mu.Unlock()
-	r.db = db
-	if r.unregister == nil {
+	if r.draining.Load() && !r.stopped {
+		return ErrRuntimeDraining
+	}
+	wasStopped := r.stopped
+	r.draining.Store(false)
+	registered := r.unregister == nil
+	if registered {
 		unregister, err := publicsurface.Register("fallback-public-site", r)
 		if err != nil {
+			r.draining.Store(wasStopped)
 			return err
 		}
 		r.unregister = unregister
 	}
-	if err := r.rebuildLocked(r.db); err != nil {
-		r.unregister()
-		r.unregister = nil
-		r.db = nil
+	database := db
+	if database != nil {
+		database = database.WithContext(ctx)
+	}
+	if err := r.rebuildLocked(database); err != nil {
+		if registered {
+			r.unregister()
+			r.unregister = nil
+		}
+		r.draining.Store(wasStopped)
+		return err
+	}
+	r.db = db
+	r.stopped = false
+	return nil
+}
+
+// Stop has a bounded default for legacy callers. Lifecycle owners pass their
+// own cancellation deadline through Shutdown and must propagate its result.
+func (r *Runtime) Stop() error { return r.Shutdown(context.Background()) }
+
+// lockContext bounds contention with a publication or restore already using
+// the same runtime; cancellation never leaves a background Stop running.
+func (r *Runtime) lockContext(ctx context.Context) error { return acquireRuntimeLock(ctx, &r.mu) }
+
+func acquireRuntimeLock(ctx context.Context, mu *sync.Mutex) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	for !mu.TryLock() {
+		timer := time.NewTimer(time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		mu.Unlock()
 		return err
 	}
 	return nil
 }
 
-func (r *Runtime) Stop() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.unregister != nil {
-		r.unregister()
-		r.unregister = nil
+// beginRequest pins immutable bytes until the response and its observation
+// finish. Admission and the idle signal share a lock with the drain gate.
+func (r *Runtime) beginRequest() (*snapshot, func(), bool) {
+	r.workMu.Lock()
+	defer r.workMu.Unlock()
+	if r.draining.Load() {
+		return nil, nil, false
 	}
-	r.db = nil
-	if r.limiter != nil {
-		r.limiter.ResetAll()
+	snap := r.snapshot.Load().(*snapshot)
+	if snap == nil {
+		return nil, nil, false
 	}
-	r.stopStandaloneLocked()
-	r.snapshot.Store((*snapshot)(nil))
+	if r.active == 0 {
+		r.idle = make(chan struct{})
+	}
+	r.active++
+	return snap, func() {
+		r.workMu.Lock()
+		defer r.workMu.Unlock()
+		r.active--
+		if r.active == 0 {
+			close(r.idle)
+		}
+	}, true
 }
 
 func (r *Runtime) Rebuild(db *gorm.DB) error {
@@ -145,8 +186,13 @@ func (r *Runtime) Rebuild(db *gorm.DB) error {
 // RebuildContext uses the restore capability only for temporary reads; the
 // cached base DB remains ordinary after acceptance or exact fallback recovery.
 func (r *Runtime) RebuildContext(ctx context.Context, db *gorm.DB) error {
-	r.mu.Lock()
+	if err := r.lockContext(ctx); err != nil {
+		return err
+	}
 	defer r.mu.Unlock()
+	if r.draining.Load() {
+		return ErrRuntimeDraining
+	}
 	if db != nil {
 		r.db = db
 	}
@@ -171,7 +217,9 @@ func (r *Runtime) Status() RuntimeStatus {
 
 func (r *Runtime) rebuildLocked(database *gorm.DB) error {
 	if database == nil {
-		r.stopStandaloneLocked()
+		if err := r.serving.Drain(databaseContext(database)); err != nil {
+			return err
+		}
 		r.snapshot.Store((*snapshot)(nil))
 		return nil
 	}
@@ -184,7 +232,9 @@ func (r *Runtime) rebuildLocked(database *gorm.DB) error {
 		Order("fallback_html_publishes.id DESC").
 		First(&publish).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		r.stopStandaloneLocked()
+		if err := r.serving.Drain(databaseContext(database)); err != nil {
+			return err
+		}
 		r.snapshot.Store((*snapshot)(nil))
 		return nil
 	}
@@ -238,7 +288,11 @@ func (r *Runtime) rebuildLocked(database *gorm.DB) error {
 	if err != nil {
 		return err
 	}
-	if err := r.applyStandaloneTargetsLocked(targets); err != nil {
+	binding, err := r.prepareHTTPBinding(database, publish.SiteID, publish.Version, targets)
+	if err != nil {
+		return err
+	}
+	if err := binding.Bind(database.Statement.Context, binding.Scope()); err != nil {
 		return err
 	}
 	r.generation++
@@ -257,10 +311,14 @@ func (r *Runtime) rebuildLocked(database *gorm.DB) error {
 }
 
 func (r *Runtime) Owns(listen string, port int) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	_, ok := r.listeners[runtimeTargetKey(listen, port)]
-	return ok
+	return !r.draining.Load() && r.serving.Owns(listen, port)
+}
+
+func databaseContext(database *gorm.DB) context.Context {
+	if database == nil {
+		return context.Background()
+	}
+	return database.Statement.Context
 }
 
 func (r *Runtime) activeStandaloneTargets(database *gorm.DB, siteID uint) ([]fallbackdomain.RuntimeTarget, error) {
@@ -269,194 +327,6 @@ func (r *Runtime) activeStandaloneTargets(database *gorm.DB, siteID uint) ([]fal
 		return nil, err
 	}
 	return targets, nil
-}
-
-func (r *Runtime) applyStandaloneTargetsLocked(targets []fallbackdomain.RuntimeTarget) error {
-	desired := make(map[string]standaloneTargetConfig, len(targets))
-	for _, target := range targets {
-		config, ok, err := standaloneConfigForTarget(target)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			continue
-		}
-		if _, duplicate := desired[config.key]; duplicate {
-			return fmt.Errorf("fallback-html runtime target %s is duplicated", config.address)
-		}
-		desired[config.key] = config
-	}
-
-	next := make(map[string]*runtimeListener, len(desired))
-	started := make([]*runtimeListener, 0, len(desired))
-	closed := make(map[string]*runtimeListener)
-	rollback := func(cause error) error {
-		for _, state := range started {
-			_ = state.server.Close()
-		}
-		restored := make(map[string]*runtimeListener, len(r.listeners))
-		for key, state := range r.listeners {
-			restored[key] = state
-		}
-		var restoreErr error
-		for key, state := range closed {
-			replacement, err := r.startStandaloneLocked(state.config)
-			if err != nil {
-				delete(restored, key)
-				restoreErr = errors.Join(restoreErr, fmt.Errorf("restore listener %s: %w", state.config.address, err))
-				continue
-			}
-			restored[key] = replacement
-		}
-		r.listeners = restored
-		return errors.Join(cause, restoreErr)
-	}
-
-	for key, config := range desired {
-		current := r.listeners[key]
-		if current != nil && sameStandaloneConfig(current.config, config) {
-			next[key] = current
-			continue
-		}
-		if current != nil {
-			continue
-		}
-		state, err := r.startStandaloneLocked(config)
-		if err != nil {
-			return rollback(fmt.Errorf("fallback-html cannot publish on %s: %w", config.address, err))
-		}
-		started = append(started, state)
-		next[key] = state
-	}
-
-	for key, config := range desired {
-		current := r.listeners[key]
-		if current == nil || sameStandaloneConfig(current.config, config) {
-			continue
-		}
-		_ = current.server.Close()
-		closed[key] = current
-		state, err := r.startStandaloneLocked(config)
-		if err != nil {
-			return rollback(fmt.Errorf("fallback-html cannot replace listener %s: %w", config.address, err))
-		}
-		started = append(started, state)
-		next[key] = state
-	}
-
-	for key, state := range r.listeners {
-		if next[key] != state {
-			_ = state.server.Close()
-		}
-	}
-	r.listeners = next
-	return nil
-}
-
-func standaloneConfigForTarget(target fallbackdomain.RuntimeTarget) (standaloneTargetConfig, bool, error) {
-	if target.Port <= 0 {
-		return standaloneTargetConfig{}, false, nil
-	}
-	listen := strings.TrimSpace(target.Listen)
-	if listen == "" {
-		listen = "127.0.0.1"
-	}
-	config := standaloneTargetConfig{
-		key:     runtimeTargetKey(listen, target.Port),
-		address: net.JoinHostPort(listen, strconv.Itoa(target.Port)),
-		tls:     target.TLS,
-	}
-	if !target.TLS {
-		return config, true, nil
-	}
-	config.certFile, config.keyFile = runtimeTLSFiles()
-	if config.certFile == "" || config.keyFile == "" {
-		return standaloneTargetConfig{}, false, fmt.Errorf("fallback-html cannot publish TLS target %s: panel certificate and key are required", config.address)
-	}
-	certificate, revision, err := loadRuntimeTLSMaterial(config.certFile, config.keyFile)
-	if err != nil {
-		return standaloneTargetConfig{}, false, fmt.Errorf("fallback-html TLS target %s is invalid: %w", config.address, err)
-	}
-	config.certificate = &certificate
-	config.tlsRevision = revision
-	return config, true, nil
-}
-
-func loadRuntimeTLSMaterial(certFile, keyFile string) (tls.Certificate, string, error) {
-	certificate, err := tls.LoadX509KeyPair(certFile, keyFile)
-	if err != nil {
-		return tls.Certificate{}, "", err
-	}
-	certInfo, err := os.Stat(certFile)
-	if err != nil {
-		return tls.Certificate{}, "", err
-	}
-	keyInfo, err := os.Stat(keyFile)
-	if err != nil {
-		return tls.Certificate{}, "", err
-	}
-	revision := fmt.Sprintf("%d:%d:%d:%d", certInfo.Size(), certInfo.ModTime().UnixNano(), keyInfo.Size(), keyInfo.ModTime().UnixNano())
-	return certificate, revision, nil
-}
-
-func sameStandaloneConfig(left, right standaloneTargetConfig) bool {
-	return left.key == right.key && left.address == right.address && left.tls == right.tls &&
-		left.certFile == right.certFile && left.keyFile == right.keyFile && left.tlsRevision == right.tlsRevision
-}
-
-func (r *Runtime) startStandaloneLocked(config standaloneTargetConfig) (*runtimeListener, error) {
-	listener, err := net.Listen("tcp", config.address)
-	if err != nil {
-		return nil, err
-	}
-	server := &http.Server{
-		Addr:              config.address,
-		Handler:           http.HandlerFunc(r.serveHTTPPublic),
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-	state := &runtimeListener{config: config, server: server}
-	go func() {
-		var serveErr error
-		if config.tls {
-			server.TLSConfig = &tls.Config{
-				Certificates: []tls.Certificate{*config.certificate},
-				MinVersion:   tls.VersionTLS12,
-			}
-			serveErr = server.ServeTLS(listener, "", "")
-		} else {
-			serveErr = server.Serve(listener)
-		}
-		if serveErr == nil || errors.Is(serveErr, http.ErrServerClosed) {
-			return
-		}
-		r.mu.Lock()
-		if r.listeners[config.key] == state {
-			delete(r.listeners, config.key)
-		}
-		r.mu.Unlock()
-	}()
-	return state, nil
-}
-
-func (r *Runtime) stopStandaloneLocked() {
-	if len(r.listeners) == 0 {
-		r.listeners = map[string]*runtimeListener{}
-		return
-	}
-	for _, state := range r.listeners {
-		_ = state.server.Close()
-	}
-	r.listeners = map[string]*runtimeListener{}
-}
-
-func runtimeTLSFiles() (string, string) {
-	settings := coreservice.SettingService{}
-	certFile, certErr := settings.GetCertFile()
-	keyFile, keyErr := settings.GetKeyFile()
-	if certErr != nil || keyErr != nil {
-		return "", ""
-	}
-	return strings.TrimSpace(certFile), strings.TrimSpace(keyFile)
 }
 
 func runtimeTargetKey(listen string, port int) string {
@@ -468,11 +338,12 @@ func runtimeTargetKey(listen string, port int) string {
 }
 
 func (r *Runtime) serveHTTPPublic(w http.ResponseWriter, req *http.Request) {
-	snap := r.snapshot.Load().(*snapshot)
-	if snap == nil {
+	snap, done, ok := r.beginRequest()
+	if !ok {
 		http.NotFound(w, req)
 		return
 	}
+	defer done()
 	started := time.Now()
 	observed := &observationResponseWriter{ResponseWriter: w}
 	r.serveHTTPPublicResponse(observed, req, snap)
@@ -586,20 +457,31 @@ func setPublicHTTPHeaders(w http.ResponseWriter, csp string) {
 }
 
 func (r *Runtime) ServePublic(c *gin.Context, ctx publicsurface.Context) bool {
-	snap := r.snapshot.Load().(*snapshot)
+	snap, done, ok := r.beginRequest()
+	if !ok {
+		return false
+	}
+	defer done()
 	started := time.Now()
-	handled := r.servePublic(c, ctx, true)
-	if handled && snap != nil {
+	handled := r.servePublicSnapshot(c, ctx, true, snap)
+	if handled {
 		emitGinObservation(c, snap.siteID, time.Since(started))
 	}
 	return handled
 }
 
 func (r *Runtime) servePublic(c *gin.Context, ctx publicsurface.Context, enforceRateLimit bool) bool {
+	if r.draining.Load() {
+		return false
+	}
 	snap := r.snapshot.Load().(*snapshot)
 	if snap == nil {
 		return false
 	}
+	return r.servePublicSnapshot(c, ctx, enforceRateLimit, snap)
+}
+
+func (r *Runtime) servePublicSnapshot(c *gin.Context, ctx publicsurface.Context, enforceRateLimit bool, snap *snapshot) bool {
 	requestPath := c.Request.URL.Path
 	if requestPath == "" {
 		requestPath = "/"
@@ -667,7 +549,7 @@ func (r *Runtime) allowPublicRequest(c *gin.Context, csp string) bool {
 	if decision.Allowed {
 		return true
 	}
-	securitymiddleware.SetPublicSiteHeadersWithCSP(c, csp)
+	setPublicHTTPHeaders(c.Writer, csp)
 	retryAfter := int((decision.RetryAfter + time.Second - 1) / time.Second)
 	if retryAfter < 1 {
 		retryAfter = 1
@@ -683,13 +565,13 @@ func newPublicSiteLimiter() *ratelimit.FixedWindow[string] {
 }
 
 func (r *Runtime) redirect(c *gin.Context, target string, status int, csp string) {
-	securitymiddleware.SetPublicSiteHeadersWithCSP(c, csp)
+	setPublicHTTPHeaders(c.Writer, csp)
 	c.Header("Cache-Control", "no-store")
 	c.Redirect(status, target)
 }
 
 func (r *Runtime) serveFile(c *gin.Context, file publishedFile, status int, csp string) {
-	securitymiddleware.SetPublicSiteHeadersWithCSP(c, csp)
+	setPublicHTTPHeaders(c.Writer, csp)
 	if cache := file.cache; cache != "" {
 		c.Header("Cache-Control", cache)
 	} else {
@@ -781,18 +663,42 @@ func appendUnique(items []string, value string) []string {
 	return append(items, value)
 }
 
+// Shutdown stops accepting feature requests and drains both standalone and
+// shared Gin work. Failed drain retains snapshots, handles and registrations
+// for observation and a later retry; durable publication authority is untouched.
 func (r *Runtime) Shutdown(ctx context.Context) error {
-	done := make(chan struct{})
-	go func() {
-		r.Stop()
-		close(done)
-	}()
+	ctx, cancel := context.WithTimeout(ctx, runtimeDrainTimeout)
+	defer cancel()
+	if err := r.lockContext(ctx); err != nil {
+		return err
+	}
+	defer r.mu.Unlock()
+	r.workMu.Lock()
+	r.draining.Store(true)
+	idle := r.idle
+	r.workMu.Unlock()
+	if err := r.serving.Drain(ctx); err != nil {
+		return err
+	}
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-done:
-		return nil
+	case <-idle:
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if r.unregister != nil {
+		r.unregister()
+		r.unregister = nil
+	}
+	r.snapshot.Store((*snapshot)(nil))
+	r.db = nil
+	r.stopped = true
+	if r.limiter != nil {
+		r.limiter.ResetAll()
+	}
+	return nil
 }
 
 type observationResponseWriter struct {

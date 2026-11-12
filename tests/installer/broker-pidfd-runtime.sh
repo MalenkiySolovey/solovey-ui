@@ -6,7 +6,9 @@ if [[ $(cat /proc/1/comm) != systemd ]]; then
 fi
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 build_root=$(mktemp -d)
-probe_root="/run/solovey-pidfd-proof-$$"
+# Keep the executable outside /run, which may be noexec on the CI host.
+# This matches the systemd netlink fixture without changing broker hardening.
+probe_root="/usr/local/lib/solovey-pidfd-proof-$$"
 privileged=()
 if (( EUID != 0 )); then privileged=(sudo -n); fi
 cleanup() {

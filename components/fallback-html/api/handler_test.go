@@ -176,7 +176,11 @@ func newFallbackAPITestRouter(t *testing.T, allowed bool) (*gin.Engine, *fallbac
 	db := openFallbackAPITestDB(t)
 	setFallbackAPISetting(t, db, "webPath", "/secret-panel/")
 	runtime := fallbackservice.NewRuntime()
-	t.Cleanup(runtime.Stop)
+	t.Cleanup(func() {
+		if err := runtime.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
 	service := fallbackservice.New(db, runtime)
 	router := gin.New()
 	RegisterRoutes(router.Group("/api"), Deps{

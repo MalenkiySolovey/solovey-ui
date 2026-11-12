@@ -17,7 +17,9 @@ func TestSystemNFTExecutorUsesCommonTextCLIContract(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("root-owned Linux executable fixture is required")
 	}
-	root, err := os.MkdirTemp("/run", "solovey-nft-cli-")
+	// The trusted executable fixture must reside on an executable mount.
+	// /run may be noexec; keep root ownership and ancestry checks unchanged.
+	root, err := os.MkdirTemp("/usr/local/lib", "solovey-nft-cli-")
 	if err != nil {
 		t.Fatal(err)
 	}

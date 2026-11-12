@@ -77,7 +77,9 @@ func backendDrop(ctx context.Context, db *gorm.DB) error {
 				return err
 			}
 		}
-		fallbackservice.DefaultRuntime.Stop()
+		if err := fallbackservice.DefaultRuntime.Shutdown(ctx); err != nil {
+			return err
+		}
 		var joined error
 		if db != nil && db.Migrator().HasTable(&model.InboundDraft{}) {
 			joined = errors.Join(joined, db.Where("source LIKE ?", "fallback-html:%").Delete(&model.InboundDraft{}).Error)
@@ -90,23 +92,29 @@ func backendDrop(ctx context.Context, db *gorm.DB) error {
 }
 
 func startBackend(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := registerRuntimeHooks(); err != nil {
-		unregisterRuntimeHooks()
-		return err
-	}
-	if err := fallbackservice.DefaultRuntime.Start(dbsqlite.DB()); err != nil {
-		unregisterRuntimeHooks()
-		return err
-	}
-	return nil
+	return authority.WithMutationLockContext(ctx, func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := registerRuntimeHooks(); err != nil {
+			unregisterRuntimeHooks()
+			return err
+		}
+		if err := fallbackservice.DefaultRuntime.StartContext(ctx, dbsqlite.DB()); err != nil {
+			if !errors.Is(err, fallbackservice.ErrRuntimeDraining) && !fallbackservice.DefaultRuntime.Status().Active {
+				unregisterRuntimeHooks()
+			}
+			return err
+		}
+		return nil
+	})
 }
 
-func stopBackend(context.Context) error {
+func stopBackend(ctx context.Context) error {
+	if err := fallbackservice.DefaultRuntime.Shutdown(ctx); err != nil {
+		return err
+	}
 	unregisterRuntimeHooks()
-	fallbackservice.DefaultRuntime.Stop()
 	return nil
 }
 

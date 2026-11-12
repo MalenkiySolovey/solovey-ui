@@ -654,7 +654,7 @@ func (h Handler) publish(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := h.deps.Service.PublishSite(id, h.deps.Actor(c))
+	result, err := h.deps.Service.PublishSiteContext(c.Request.Context(), id, h.deps.Actor(c))
 	h.deps.JSONObj(c, result, err)
 }
 
@@ -671,7 +671,7 @@ func (h Handler) rollback(c *gin.Context) {
 		h.deps.JSONMsg(c, "fallbackHtml", err)
 		return
 	}
-	result, err := h.deps.Service.RollbackSite(id, input, h.deps.Actor(c))
+	result, err := h.deps.Service.RollbackSiteContext(c.Request.Context(), id, input, h.deps.Actor(c))
 	h.deps.JSONObj(c, result, err)
 }
 
@@ -683,7 +683,7 @@ func (h Handler) unpublish(c *gin.Context) {
 	if !ok {
 		return
 	}
-	h.deps.JSONMsg(c, "update", h.deps.Service.UnpublishSite(id, h.deps.Actor(c)))
+	h.deps.JSONMsg(c, "update", h.deps.Service.UnpublishSiteContext(c.Request.Context(), id, h.deps.Actor(c)))
 }
 
 func pathUint(c *gin.Context, name string) (uint, bool) {

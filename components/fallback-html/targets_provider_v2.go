@@ -423,6 +423,10 @@ func (p targetProvider) targetV2FromSite(ctx context.Context, db *gorm.DB, site 
 		addressFamily = hostresources.AddressFamilyIPv4
 		canonicalAddress = address.To4().String()
 	}
+	observationGeneration := uint64(0)
+	if p.observer != nil {
+		observationGeneration = p.observer.Generation()
+	}
 	protocols := []neutral.ApplicationProtocol{neutral.ApplicationProtocolHTTP11}
 	transportSecurity := neutral.TransportSecurityPlaintext
 	serverNames := []string{}
@@ -435,11 +439,13 @@ func (p targetProvider) targetV2FromSite(ctx context.Context, db *gorm.DB, site 
 		if host == "" {
 			return neutral.FallbackTargetV2{}, "tls_server_name_invalid", nil
 		}
-		verified := p.tlsServerNameVerified
-		if verified == nil {
-			verified = fallbackservice.RuntimeTLSAcceptsServerName
+		verified := false
+		if p.tlsServerNameVerified != nil {
+			verified = p.tlsServerNameVerified(host)
+		} else if p.runtime != nil {
+			verified = p.runtime.TLSAcceptsServerName(target.Listen, target.Port, host)
 		}
-		if !verified(host) {
+		if !verified {
 			return neutral.FallbackTargetV2{}, "tls_server_name_unverified", nil
 		}
 		serverNames = append(serverNames, host)
@@ -449,7 +455,7 @@ func (p targetProvider) targetV2FromSite(ctx context.Context, db *gorm.DB, site 
 	if p.observer != nil {
 		observation, observeErr := p.observer.ObserveTarget(ctx, fallbackservice.TargetObservationRequest{
 			Resource: fallbackservice.ConfiguredTargetIdentity(site.ID, target), PublicationRevision: publish.Version,
-			ExpectedGeneration: p.observer.Generation(),
+			ExpectedGeneration: observationGeneration,
 		})
 		if observeErr == nil && observation.Availability == hostresources.CapabilityYes {
 			readiness, healthReasons = neutral.ReadinessReady, nil
