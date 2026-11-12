@@ -15,7 +15,6 @@ import (
 
 	neutral "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/fallback-html/authority"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
@@ -38,7 +37,7 @@ func TestDropDataRemovesSchemaAndStorage(t *testing.T) {
 	t.Cleanup(func() { _ = dbsqlite.Close() })
 
 	ctx := context.Background()
-	if err := (component{}).Migrate(ctx, lifecycle.Context{}); err != nil {
+	if err := durableBindingForTest(t).Migrate(ctx); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	db := dbsqlite.DB()
@@ -82,7 +81,7 @@ func TestDropDataRemovesSchemaAndStorage(t *testing.T) {
 		t.Fatalf("write sibling storage: %v", err)
 	}
 
-	if err := (component{}).DropData(ctx, lifecycle.Context{}); err != nil {
+	if err := authorizedDropForTest(t, ctx); err != nil {
 		t.Fatalf("DropData: %v", err)
 	}
 	if db.Migrator().HasTable(&fallbackdomain.Site{}) {
@@ -119,7 +118,7 @@ func TestDropDataRefusesGuardingProviderReservationUntilVerifiedRelease(t *testi
 	}
 	t.Cleanup(func() { _ = dbsqlite.Close() })
 	ctx := context.Background()
-	if err := (component{}).Migrate(ctx, lifecycle.Context{}); err != nil {
+	if err := durableBindingForTest(t).Migrate(ctx); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	db := dbsqlite.DB()
@@ -153,7 +152,7 @@ func TestDropDataRefusesGuardingProviderReservationUntilVerifiedRelease(t *testi
 	if err := db.Create(&row).Error; err != nil {
 		t.Fatalf("create reservation: %v", err)
 	}
-	if err := (component{}).DropData(ctx, lifecycle.Context{}); err == nil {
+	if err := authorizedDropForTest(t, ctx); err == nil {
 		t.Fatalf("DropData succeeded with active reservation")
 	}
 	if !db.Migrator().HasTable(&fallbackdomain.Site{}) {
@@ -169,7 +168,7 @@ func TestDropDataRefusesGuardingProviderReservationUntilVerifiedRelease(t *testi
 	if err := db.Save(&releasedRow).Error; err != nil {
 		t.Fatalf("save released reservation: %v", err)
 	}
-	if err := (component{}).DropData(ctx, lifecycle.Context{}); err != nil {
+	if err := authorizedDropForTest(t, ctx); err != nil {
 		t.Fatalf("DropData after release: %v", err)
 	}
 }
@@ -189,7 +188,7 @@ func TestBackupIncludesProviderAuthorityWithoutHostPathsOrSecrets(t *testing.T) 
 		t.Fatalf("init sqlite: %v", err)
 	}
 	t.Cleanup(func() { _ = dbsqlite.Close() })
-	if err := (component{}).Migrate(context.Background(), lifecycle.Context{}); err != nil {
+	if err := durableBindingForTest(t).Migrate(context.Background()); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	now := time.Now().UTC()
@@ -267,7 +266,7 @@ func TestProviderV2RegistrationFollowsRuntimeHookLifecycle(t *testing.T) {
 		t.Fatalf("init sqlite: %v", err)
 	}
 	t.Cleanup(func() { _ = dbsqlite.Close() })
-	if err := (component{}).Migrate(context.Background(), lifecycle.Context{}); err != nil {
+	if err := durableBindingForTest(t).Migrate(context.Background()); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	if err := registerRuntimeHooks(); err != nil {

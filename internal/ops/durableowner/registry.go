@@ -42,6 +42,9 @@ func RegisterWithHooks(item manifest.Manifest, hooks Hooks) {
 		panic(err)
 	}
 	item = cloneManifest(item.Normalized())
+	if hooks.Typed != nil && (!hooks.Typed.Matches(item) || hooks.MigrateStaged != nil || hooks.RehearseRestore != nil || hooks.NonportableBackupTables != nil) {
+		panic("typed durable owner conflicts with manifest or legacy hooks")
+	}
 
 	catalog.Lock()
 	hookCatalog.Lock()

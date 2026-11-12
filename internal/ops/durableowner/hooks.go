@@ -12,6 +12,7 @@ import (
 )
 
 type Hooks struct {
+	Typed                   *Binding
 	MigrateStaged           func(context.Context, *gorm.DB) error
 	RehearseRestore         func(context.Context, *gorm.DB) error
 	NonportableBackupTables func() []string
@@ -70,6 +71,9 @@ func RunStagedRestore(ctx context.Context, ownerID string, db *gorm.DB) error {
 	hookCatalog.RLock()
 	hooks, hooksAvailable := hookCatalog.items[ownerID]
 	hookCatalog.RUnlock()
+	if hooks.Typed != nil {
+		return hooks.Typed.RunCandidate(ctx, db)
+	}
 	if len(item.Database.Tables) > 0 && (!hooksAvailable || hooks.MigrateStaged == nil) {
 		return fmt.Errorf("durable owner %q has tables but no staged migration hook", ownerID)
 	}

@@ -260,6 +260,24 @@ func IsMaintenanceContext(ctx context.Context) bool {
 	return owner != nil && maintenance == owner && !owner.expired
 }
 
+// IsPrivateDatabase identifies the already opened restore generation. Merely
+// holding maintenance authority does not turn the previous live DB into a
+// candidate. This observation grants no database or promotion capability.
+func IsPrivateDatabase(ctx context.Context, candidate *gorm.DB) bool {
+	if candidate == nil {
+		return false
+	}
+	pool, err := candidate.DB()
+	if err != nil {
+		return false
+	}
+	dbMu.RLock()
+	defer dbMu.RUnlock()
+	owner := maintenanceFrom(ctx)
+	return owner != nil && owner == maintenance && !owner.expired && activeGeneration != nil &&
+		activeGeneration.phase == generationPrivate && activeGeneration.pool == pool
+}
+
 func IsOpen() bool {
 	dbMu.RLock()
 	defer dbMu.RUnlock()

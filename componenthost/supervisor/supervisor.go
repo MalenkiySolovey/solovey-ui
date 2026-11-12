@@ -46,6 +46,11 @@ func (s *Supervisor) Migrate(ctx context.Context) error {
 	}
 	componentMigrationMu.Lock()
 	defer componentMigrationMu.Unlock()
+	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	var joined error
 	if err := componentmigrations.EnsureJournal(dbsqlite.DB()); err != nil {
 		return err
@@ -74,11 +79,18 @@ func (s *Supervisor) Migrate(ctx context.Context) error {
 			return fmt.Errorf("component %q migration admission failed: %w", component.Manifest.ID, err)
 		}
 		if !run {
+			if component.Durable != nil {
+				if err := component.Durable.ValidateLive(ctx); err != nil {
+					joined = errors.Join(joined, err, componentmigrations.RecordValidationFailure(dbsqlite.DB(), step))
+				}
+			}
 			continue
 		}
 		migrator, ok := component.Lifecycle.(lifecycle.Migrator)
 		var migrationErr error
-		if ok {
+		if component.Durable != nil {
+			migrationErr = safeCall(component.Manifest.ID, "migrate", func() error { return component.Durable.Migrate(ctx) })
+		} else if ok {
 			migrationErr = safeCall(component.Manifest.ID, "migrate", func() error {
 				return migrator.Migrate(ctx, lifecycle.Context{Host: s.host})
 			})
@@ -117,10 +129,14 @@ func (s *Supervisor) DropData(ctx context.Context, componentID string) error {
 
 	var joined error
 	dropper, canDrop := component.Lifecycle.(lifecycle.DataDropper)
-	if component.Manifest.Database.Declared() && !canDrop {
+	if component.Manifest.Database.Declared() && !canDrop && component.Durable == nil {
 		return fmt.Errorf("component %q declares durable data but has no data-drop lifecycle", componentID)
 	}
-	if canDrop {
+	if component.Durable != nil {
+		if err := safeCall(component.Manifest.ID, "drop data", func() error { return component.Durable.DropData(ctx) }); err != nil {
+			return err
+		}
+	} else if canDrop {
 		if err := safeCall(component.Manifest.ID, "drop data", func() error {
 			return dropper.DropData(ctx, lifecycle.Context{Host: s.host})
 		}); err != nil {

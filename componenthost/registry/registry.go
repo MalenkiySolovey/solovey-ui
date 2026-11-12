@@ -18,6 +18,7 @@ type Component struct {
 	Manifest      manifest.Manifest
 	Lifecycle     lifecycle.Lifecycle
 	PortLifecycle lifecycle.PortLifecycle
+	Durable       *durableowner.Binding
 }
 
 type APIRouteRegistrar func(*gin.RouterGroup, componenthost.APIDeps) error
@@ -44,7 +45,7 @@ func newRegistry() *registry {
 }
 
 func Register(component Component) {
-	hooks := durableowner.Hooks{}
+	hooks := durableowner.Hooks{Typed: component.Durable}
 	if migrator, ok := component.Lifecycle.(lifecycle.StagedMigrator); ok {
 		hooks.MigrateStaged = migrator.MigrateStaged
 	}
@@ -136,6 +137,20 @@ func (r *registry) registerWith(component Component, admit func(manifest.Manifes
 	}
 	if component.Lifecycle == nil {
 		panic(fmt.Errorf("component %q lifecycle is required", component.Manifest.ID))
+	}
+	if component.Durable != nil {
+		if !component.Durable.Matches(component.Manifest) {
+			panic("typed durable owner manifest mismatch")
+		}
+		_, migrate := component.Lifecycle.(lifecycle.Migrator)
+		_, staged := component.Lifecycle.(lifecycle.StagedMigrator)
+		_, restore := component.Lifecycle.(lifecycle.RestoreRehearser)
+		_, inspect := component.Lifecycle.(lifecycle.DropAuthorityInspector)
+		_, drop := component.Lifecycle.(lifecycle.DataDropper)
+		_, backup := component.Lifecycle.(lifecycle.BackupExclusions)
+		if migrate || staged || restore || inspect || drop || backup {
+			panic("typed durable owner cannot also register legacy data hooks")
+		}
 	}
 
 	r.mu.Lock()

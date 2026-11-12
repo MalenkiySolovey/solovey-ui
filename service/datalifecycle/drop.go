@@ -159,7 +159,7 @@ func (m *Manager) preview(ctx context.Context, ownerID string, presenceOnly, ins
 	} else if preview.Enabled {
 		preview.Blockers = append(preview.Blockers, "owner_is_enabled")
 	}
-	if _, ok := component.Lifecycle.(lifecycle.DataDropper); !ok {
+	if _, ok := component.Lifecycle.(lifecycle.DataDropper); !ok && component.Durable == nil {
 		preview.Blockers = append(preview.Blockers, "owner_drop_contract_unavailable")
 	}
 	ownerManifest, manifestAvailable := durableowner.Lookup(ownerID)
@@ -343,7 +343,11 @@ func (m *Manager) Execute(ctx context.Context, request ExecuteRequest) (model.Da
 	if err != nil {
 		return operation, err
 	}
-	if err := m.Drop(ctx, request.OwnerID); err != nil {
+	dropContext, err := durableowner.ContextForDrop(ctx, m.database(), request.OwnerID, operation.OperationID, operation.Revision)
+	if err != nil {
+		return m.recovery(ctx, operation, "owner_drop_admission_failed", err)
+	}
+	if err := m.Drop(dropContext, request.OwnerID); err != nil {
 		return m.recovery(ctx, operation, "owner_drop_failed", err)
 	}
 	operation, err = m.advance(ctx, operation, "VERIFYING", "owner_drop_verifying", "")
@@ -540,6 +544,13 @@ func activeOwnerLeases(db *gorm.DB, ownerID string, now time.Time) (int64, error
 }
 
 func externalAuthority(ctx context.Context, component componentregistry.Component, db *gorm.DB, now time.Time) (string, []string) {
+	if component.Durable != nil {
+		status, err := component.Durable.Inspect(ctx, db, now)
+		if err != nil {
+			return "UNAVAILABLE", []string{"external_authority_unavailable"}
+		}
+		return status.State, append([]string(nil), status.ReasonCodes...)
+	}
 	inspector, ok := component.Lifecycle.(lifecycle.DropAuthorityInspector)
 	if !ok {
 		return "NOT_REQUIRED", []string{}
