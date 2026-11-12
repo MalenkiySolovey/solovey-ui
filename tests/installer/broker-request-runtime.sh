@@ -13,7 +13,8 @@ if [[ -e /run/solovey-ui ]]; then
   exit 77
 fi
 build_root=$(mktemp -d)
-probe_root="/run/solovey-request-proof-$$"
+# Executable fixtures use the persistent library mount; /run may be noexec.
+probe_root="/usr/local/lib/solovey-request-proof-$$"
 prefix="solovey-request-proof-$$"
 broker="$prefix.service"
 client="$prefix-client.service"

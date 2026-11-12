@@ -22,7 +22,8 @@ func TestRealProcessFenceUsesRawExecutableContentIdentityAndObjectGeneration(t *
 	if os.Geteuid() != 0 {
 		t.Skip("root-owned real Linux executable fixture is required")
 	}
-	root, err := os.MkdirTemp("/run", "solovey-process-identity-")
+	// This fixture executes the copied object; /run may be mounted noexec.
+	root, err := os.MkdirTemp("/usr/local/lib", "solovey-process-identity-")
 	if err != nil {
 		t.Fatal(err)
 	}
