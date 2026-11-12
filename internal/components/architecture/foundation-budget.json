@@ -2298,7 +2298,7 @@
       "rule": "worker-lifetime",
       "path": "components/fallback-html/service/backend_http.go",
       "symbol": "*backendHTTP.startStandalone",
-      "digest": "f9406e3e891c5b80f409ea1a2f9bbe195d231c095ea90800f97f808b9757124b"
+      "digest": "e4feb4ed6901dc796e09034e57d9cca74b767c51cfe4376edabe72a68d30d1cc"
     },
     {
       "rule": "worker-lifetime",
