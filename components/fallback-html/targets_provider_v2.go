@@ -12,7 +12,6 @@ import (
 	"time"
 
 	neutral "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/fallback-html/authority"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
@@ -445,20 +444,18 @@ func (p targetProvider) targetV2FromSite(ctx context.Context, db *gorm.DB, site 
 		}
 		serverNames = append(serverNames, host)
 	}
-	status := fallbackservice.RuntimeStatus{}
-	healthStatus := fallbackservice.RuntimeHealth{}
 	readiness := neutral.ReadinessUnknown
 	healthReasons := []string{"runtime_status_unknown"}
-	if p.runtime != nil {
-		status = p.runtime.Status()
-		healthStatus = p.runtime.Health(publicsurface.Context{AdminBasePath: "/app/"})
-		readiness = neutral.ReadinessNotReady
-		healthReasons = []string{"runtime_target_not_ready"}
-		if status.Active && status.SiteID == site.ID && healthStatus.OK && p.runtime.Owns(canonicalAddress, target.Port) {
-			readiness = neutral.ReadinessReady
-			healthReasons = nil
+	if p.observer != nil {
+		observation, observeErr := p.observer.ObserveTarget(ctx, fallbackservice.TargetObservationRequest{
+			Resource: fallbackservice.ConfiguredTargetIdentity(site.ID, target), PublicationRevision: publish.Version,
+			ExpectedGeneration: p.observer.Generation(),
+		})
+		if observeErr == nil && observation.Availability == hostresources.CapabilityYes {
+			readiness, healthReasons = neutral.ReadinessReady, nil
 		}
 	}
+
 	targetID := "site:" + strconv.FormatUint(uint64(site.ID), 10)
 	used := uint32(0)
 	if knownUsed != nil {

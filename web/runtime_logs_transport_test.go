@@ -37,6 +37,7 @@ func TestRuntimeLogsProductionMiddlewarePreservesTransportDeadlines(t *testing.T
 				}
 				t.Cleanup(func() { _ = core.Stop() })
 				runtime := service.NewRuntime(core)
+				t.Cleanup(func() { stopWebRouterTestWriters(t, runtime) })
 				users := service.UserService{Runtime: runtime}
 				password := rand.Text()
 				if namespace == "api" {

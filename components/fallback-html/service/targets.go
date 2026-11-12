@@ -4,7 +4,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"sort"
@@ -12,10 +11,8 @@ import (
 	"strings"
 	"time"
 
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
 	"github.com/MalenkiySolovey/solovey-ui/network/bind"
-	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 	"gorm.io/gorm"
 )
 
@@ -290,45 +287,13 @@ func (s *Service) savedTargetPortCandidates(current TargetView) ([]PortCandidate
 }
 
 func (s *Service) inboundPortCandidates(ctx context.Context) ([]PortCandidate, error) {
+	if s.hostFacts == nil {
+		return nil, fmt.Errorf("host facts are unavailable")
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	snapshotter := s.resourceSnapshot
-	if snapshotter == nil {
-		snapshotter = hostresources.Snapshot
-	}
-	snapshot := snapshotter(ctx)
-	if len(snapshot.Errors) > 0 {
-		return nil, errors.New("host resource inventory is unavailable")
-	}
-	out := make([]PortCandidate, 0)
-	seen := map[string]bool{}
-	for _, inbound := range snapshot.Resources {
-		if inbound.Owner != "core" || inbound.Kind != "inbound" || inbound.Port <= 0 {
-			continue
-		}
-		key := portCandidateKey("inbound", inbound.Listen, inbound.Port)
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		tag := strings.TrimSpace(inbound.InboundTag)
-		if tag == "" {
-			tag = strings.TrimSpace(inbound.Name)
-		}
-		if tag == "" {
-			tag = inbound.ID
-		}
-		out = append(out, PortCandidate{
-			Kind:    "inbound",
-			Listen:  inbound.Listen,
-			Port:    inbound.Port,
-			Runtime: "sing-box",
-			Status:  "blocked-inbound",
-			Reason:  "sing-box inbound " + tag + " already uses this port",
-		})
-	}
-	return out, nil
+	return s.hostFacts.InboundPorts(ctx)
 }
 
 func probeTargetPortCandidate(target fallbackdomain.RuntimeTarget, current TargetView) PortCandidate {
@@ -519,39 +484,10 @@ func (s *Service) targetView(target fallbackdomain.RuntimeTarget, current Target
 }
 
 func (s *Service) currentWebTarget() (TargetView, error) {
-	settings := coreservice.SettingService{}
-	listen, err := settings.GetListen()
-	if err != nil {
-		return TargetView{}, err
+	if s.hostFacts == nil {
+		return TargetView{}, fmt.Errorf("host facts are unavailable")
 	}
-	port, err := settings.GetPort()
-	if err != nil {
-		return TargetView{}, err
-	}
-	host, err := settings.GetWebDomain()
-	if err != nil {
-		return TargetView{}, err
-	}
-	certFile, err := settings.GetCertFile()
-	if err != nil {
-		return TargetView{}, err
-	}
-	keyFile, err := settings.GetKeyFile()
-	if err != nil {
-		return TargetView{}, err
-	}
-	return TargetView{
-		Kind:     "web-current",
-		Host:     strings.TrimSpace(host),
-		Listen:   strings.TrimSpace(listen),
-		Port:     port,
-		RootPath: "/",
-		Runtime:  "gin",
-		TLS:      certFile != "" && keyFile != "",
-		Status:   "available",
-		Reason:   "uses the current managed panel web listener",
-		Current:  true,
-	}, nil
+	return s.hostFacts.CurrentWebTarget(context.Background())
 }
 
 func targetFromView(siteID uint, view TargetView, now int64) fallbackdomain.RuntimeTarget {

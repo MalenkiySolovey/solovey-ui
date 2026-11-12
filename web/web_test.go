@@ -1,15 +1,18 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -96,14 +99,14 @@ func initWebRouterTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("SUI_DB_FOLDER", dir)
-	_ = dbsqlite.Close()
+	closeWebRouterTestDB(t)
 	if err := dbsqlite.Init(filepath.Join(dir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = dbsqlite.Close() })
+	t.Cleanup(func() { closeWebRouterTestDB(t) })
 	return dbsqlite.DB()
 }
 
@@ -122,4 +125,30 @@ func performWebRouterRequest(router http.Handler, path string) *httptest.Respons
 	request := httptest.NewRequest(http.MethodGet, path, nil)
 	router.ServeHTTP(response, request)
 	return response
+}
+
+// Router tests use the actual asynchronous audit and token writers. Join them
+// before retiring the global database so they cannot enter the next fixture
+// while its schema and indexes are being initialized.
+func stopWebRouterTestWriters(t *testing.T, runtime *service.Runtime) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	previous := service.DefaultRuntime()
+	service.SetDefaultRuntime(runtime)
+	defer service.SetDefaultRuntime(previous)
+	if err := service.StopTokenUseDebouncer(ctx); err != nil {
+		t.Errorf("stop router test token writer: %v", err)
+	}
+	if err := runtime.StopAuditWriter(ctx); err != nil {
+		t.Errorf("drain router test audit writer: %v", err)
+	}
+}
+
+func closeWebRouterTestDB(t *testing.T) {
+	t.Helper()
+	stopWebRouterTestWriters(t, service.DefaultRuntime())
+	if err := dbsqlite.Close(); err != nil {
+		t.Errorf("close router test database: %v", err)
+	}
 }

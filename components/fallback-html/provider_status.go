@@ -10,6 +10,7 @@ import (
 	"time"
 
 	neutral "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
+	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	fallbackapi "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/api"
 	"github.com/MalenkiySolovey/solovey-ui/components/fallback-html/authority"
 	fallbackservice "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/service"
@@ -34,7 +35,7 @@ func fallbackProviderStatus(ctx context.Context, db *gorm.DB, runtime *fallbacks
 		Reservations:       []fallbackapi.ProviderReservationStateView{},
 		ReasonCodes:        []string{},
 	}
-	provider := targetProvider{db: db, runtime: runtime, now: func() time.Time { return now }}
+	provider := targetProvider{db: db, runtime: runtime, observer: targetResourceObserver{runtime: runtime, health: componenthealth.Default}, now: func() time.Time { return now }}
 	inventory, providerErr := provider.InventoryV2(ctx, neutral.InventoryV2Request{Limit: neutral.MaxTargetsV2})
 	if providerErr != nil {
 		view.ReasonCodes = append(view.ReasonCodes, providerErr.ReasonCode)

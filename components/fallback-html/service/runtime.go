@@ -39,6 +39,7 @@ const (
 
 type Runtime struct {
 	mu         sync.Mutex
+	generation uint64
 	db         *gorm.DB
 	unregister func()
 	listeners  map[string]*runtimeListener
@@ -54,6 +55,8 @@ type RuntimeStatus struct {
 }
 
 type snapshot struct {
+	state       PublicationState
+	targetKey   string
 	siteID      uint
 	pages       map[string]publishedFile
 	redirects   map[string]publishedRedirect
@@ -237,6 +240,17 @@ func (r *Runtime) rebuildLocked(database *gorm.DB) error {
 	}
 	if err := r.applyStandaloneTargetsLocked(targets); err != nil {
 		return err
+	}
+	r.generation++
+	next.state.Generation = r.generation
+	next.state.PublicationRevision = publish.Version
+	if len(targets) == 1 {
+		next.state.Resource = ConfiguredTargetIdentity(publish.SiteID, targets[0])
+		next.targetKey = runtimeTargetKey(targets[0].Listen, targets[0].Port)
+	} else {
+		// Shared-listener publication still identifies its site; no standalone
+		// listener observation is inferred from the configured panel endpoint.
+		next.state.Resource = ConfiguredTargetIdentity(publish.SiteID, fallbackdomain.RuntimeTarget{})
 	}
 	r.snapshot.Store(next)
 	return nil
