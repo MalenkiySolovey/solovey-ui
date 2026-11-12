@@ -1,6 +1,6 @@
 module github.com/MalenkiySolovey/solovey-ui
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0

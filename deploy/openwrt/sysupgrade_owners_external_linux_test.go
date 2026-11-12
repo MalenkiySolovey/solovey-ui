@@ -11,9 +11,11 @@ import (
 	"time"
 
 	_ "github.com/MalenkiySolovey/solovey-ui/app"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/supervisor"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -127,10 +129,10 @@ func TestSysupgradeProductionOwnerChild(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer dbsqlite.Close()
-		for _, owner := range installed.Components {
-			if err := durableowner.RunStagedRestore(ctx, owner.ID, dbsqlite.DB()); err != nil {
-				t.Fatal(err)
-			}
+		// Fresh live storage follows the production migration admission. Restore
+		// rehearsal is reserved for an isolated candidate.
+		if err := supervisor.New(componenthost.Deps{}).Migrate(ctx); err != nil {
+			t.Fatal(err)
 		}
 		if err := dbsqlite.DB().Exec("PRAGMA journal_mode=WAL").Error; err != nil {
 			t.Fatal(err)
