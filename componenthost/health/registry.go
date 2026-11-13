@@ -4,31 +4,23 @@ package health
 import (
 	"context"
 	"errors"
+	canonical "github.com/MalenkiySolovey/solovey-host/componenthost/health"
 	"strings"
 	"sync"
 	"time"
 )
 
-type Status string
+type Status = canonical.Status
 
 const (
-	StatusOK                Status = "ok"
-	StatusDegraded          Status = "degraded"
-	StatusMissingCapability Status = "missing_capability"
+	StatusOK                = canonical.StatusOK
+	StatusDegraded          = canonical.StatusDegraded
+	StatusMissingCapability = canonical.StatusMissingCapability
 )
-
 const DefaultTimeout = 5 * time.Second
 const maxHealthCheckers = 256
 
-// Result intentionally contains only stable codes: health output is safe for
-// diagnostics and recovery artifacts and cannot disclose listener paths.
-type Result struct {
-	ResourceID string    `json:"resourceId"`
-	Status     Status    `json:"status"`
-	Check      string    `json:"check"`
-	FactCode   string    `json:"factCode"`
-	Evidence   *Evidence `json:"evidence,omitempty"`
-}
+type Result = canonical.Result
 
 type Checker interface {
 	ResourceID() string

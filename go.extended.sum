@@ -48,12 +48,16 @@ github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762 h1:0x0
 github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762/go.mod h1:rJFeVxbEej2iuyeCJ3drKW+p5rOgtLIW3XhZ6ty7Fig=
 github.com/MalenkiySolovey/sing-quic v0.7.2-0.20261025183737-9034c2c10c63 h1:kRQoFAgCMnYrjyyejCWtJd7Sc08t40HMHY4x58Es88c=
 github.com/MalenkiySolovey/sing-quic v0.7.2-0.20261025183737-9034c2c10c63/go.mod h1:rJFeVxbEej2iuyeCJ3drKW+p5rOgtLIW3XhZ6ty7Fig=
+github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0 h1:De1pv/fpu8uoM0pfkAJX5roZ8WPCxlHZ4OpALNq+jFI=
+github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0/go.mod h1:JsuupXylmHWCSHtBJAqbHHEXzPfk/JeI4r4ytBjErQk=
 github.com/MalenkiySolovey/solovey-contracts v1.0.0 h1:me6uddB3lN19zfYkGp6iuOT46LOshbSelIECAt4Y7aY=
 github.com/MalenkiySolovey/solovey-contracts v1.0.0/go.mod h1:2fPj6/IiP0jvioVnW2OKurqGPwilJ+gcXNs74aX1VcI=
 github.com/MalenkiySolovey/solovey-host v0.1.0 h1:V6KsxPOAxi+3d2J2qSyfL5fSQ7YjNBridu0Yu5Kf6F8=
 github.com/MalenkiySolovey/solovey-host v0.1.0/go.mod h1:BYWYcRbRalG4iX4DOcfLbq4NgKYUadcY5d9dc724dK8=
 github.com/MalenkiySolovey/solovey-host v0.2.0 h1:aHILNCSiIh6EUuCC+jWQpk/Wh2D3ZTO0I29SzHzrF+Q=
 github.com/MalenkiySolovey/solovey-host v0.2.0/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
+github.com/MalenkiySolovey/solovey-host v0.4.0 h1:T+SSi01LwyI00KarblddtvuK/jq57Jtud5Z8Iw3VcnQ=
+github.com/MalenkiySolovey/solovey-host v0.4.0/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
 github.com/OneOfOne/xxhash v1.2.8 h1:31czK/TI9sNkxIKfaUfGlU47BAxQ0ztGgd9vPyqimf8=
 github.com/OneOfOne/xxhash v1.2.8/go.mod h1:eZbhyaAYD41SGSSsnmcpxVoRiQ/MPUTjUdIIOT9Um7Q=
 github.com/RyuaNerin/go-krypto v1.3.0 h1:smavTzSMAx8iuVlGb4pEwl9MD2qicqMzuXR2QWp2/Pg=
@@ -1096,5 +1100,3 @@ github.com/MalenkiySolovey/solovey-component-telegram v0.1.0 h1:/Bbzfvkr7IxKnqxq
 github.com/MalenkiySolovey/solovey-component-telegram v0.1.0/go.mod h1:kQRT0GfOrFxV6ITK+wXQaYshFvzBKEP01xY7CgY93jE=
 github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0 h1:Qczg9jmPtsLQ5V/7hr8Wk5ErlR5E9OblzxcO4Gym2gM=
 github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0/go.mod h1:wii8Hu093M9V5KqKNB1IYHtFxbJjHMXLgWzuC7huwiI=
-github.com/MalenkiySolovey/solovey-host v0.3.0 h1:Qm0n3dlugpaINuN9G8BesNblyEu8FH00HkY4FvLmpaA=
-github.com/MalenkiySolovey/solovey-host v0.3.0/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=

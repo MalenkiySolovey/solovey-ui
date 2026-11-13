@@ -13,7 +13,7 @@ func evidenceResult(revision string, at time.Time) Result {
 		"core", RuntimeReady, "panel_listener", revision, at, 30*time.Second)
 }
 func requirement(revision string) Requirement {
-	return Requirement{"core", "panel_listener", RuntimeReady, revision, 5 * time.Second}
+	return Requirement{Owner: "core", Source: "panel_listener", ProofKind: RuntimeReady, DesiredRevision: revision, MaxAge: 5 * time.Second}
 }
 
 func TestProofIsPropositionSpecificFreshAndRevisionBound(t *testing.T) {
@@ -24,10 +24,10 @@ func TestProofIsPropositionSpecificFreshAndRevisionBound(t *testing.T) {
 		t.Fatal("fresh matching owner proof rejected")
 	}
 	for _, request := range []Requirement{
-		{"foreign", "panel_listener", RuntimeReady, revision, 5 * time.Second},
-		{"core", "panel_listener", DataPlaneVerified, revision, 5 * time.Second},
-		{"core", "panel_listener", RuntimeReady, Revision("replacement"), 5 * time.Second},
-		{"core", "panel_listener", RuntimeReady, "", 5 * time.Second},
+		{Owner: "foreign", Source: "panel_listener", ProofKind: RuntimeReady, DesiredRevision: revision, MaxAge: 5 * time.Second},
+		{Owner: "core", Source: "panel_listener", ProofKind: DataPlaneVerified, DesiredRevision: revision, MaxAge: 5 * time.Second},
+		{Owner: "core", Source: "panel_listener", ProofKind: RuntimeReady, DesiredRevision: Revision("replacement"), MaxAge: 5 * time.Second},
+		{Owner: "core", Source: "panel_listener", ProofKind: RuntimeReady, MaxAge: 5 * time.Second},
 	} {
 		if result.Satisfies(request, now) {
 			t.Fatalf("unproven proposition promoted: %+v", request)

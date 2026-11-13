@@ -339,3 +339,15 @@ before successful Stop. A failed drain retains handles, publication identity
 and observation hooks for retry. The detached Runtime.Shutdown goroutine is
 retired. No replacement supervisor or ticker is admitted; unrelated budget
 entries and the original base identity remain unchanged.
+
+Fallback source extraction retains the existing concrete GORM operations in
+backendStore and restore normalization in backend_restore.go. The reviewed
+component-model-mutation entries bind only those exact Fallback operations: site,
+page, redirect, asset, publication, template, target, safety and event rows. They
+retain the existing site/revision predicates, transaction handles and reservation
+locks. The portable feature receives typed operations and cannot supply SQL,
+table names or database handles. Candidate normalization still changes only the
+supplied candidate. The source-derived operation map and affected race suites
+qualify this relocation. The standalone worker entry remains exactly
+e4feb4ed6901dc796e09034e57d9cca74b767c51cfe4376edabe72a68d30d1cc; no
+worker or unrelated budget entry is added or regenerated.

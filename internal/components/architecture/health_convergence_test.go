@@ -10,7 +10,8 @@ import (
 
 func TestCommonHealthCannotImportRepairOrSemanticOwnerExecutors(t *testing.T) {
 	allowed := map[string]bool{"context": true, "errors": true, "strings": true, "sync": true,
-		"time": true, "crypto/sha256": true, "encoding/hex": true, modulePath + "/componenthost/hostref": true}
+		"time": true, "crypto/sha256": true, "encoding/hex": true, modulePath + "/componenthost/hostref": true,
+		"github.com/MalenkiySolovey/solovey-host/componenthost/health": true}
 	for _, relative := range []string{"componenthost/health/registry.go", "componenthost/health/evidence.go"} {
 		for _, imported := range fileImports(t, filepath.Join(moduleRoot(t), filepath.FromSlash(relative))) {
 			if !allowed[imported] {

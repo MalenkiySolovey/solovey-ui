@@ -100,7 +100,7 @@ func TestSafetyBlocksRootAdminPath(t *testing.T) {
 	t.Setenv("SUI_DB_FOLDER", dbDir)
 	setSetting(t, db, "webPath", "/")
 	service := New(db, NewRuntime())
-	service.hostFacts = backendHostFacts{snapshot: func(context.Context) hostresources.ResourceSnapshot { return hostresources.ResourceSnapshot{} }}
+	service = NewWithHost(db, service.runtime, backendHostFacts{snapshot: func(context.Context) hostresources.ResourceSnapshot { return hostresources.ResourceSnapshot{} }})
 	site, err := service.SaveSite(SiteInput{Name: "Example Portal"}, "tester")
 	if err != nil {
 		t.Fatalf("SaveSite: %v", err)
@@ -169,7 +169,7 @@ func TestTargetsUseCurrentManagedWebListener(t *testing.T) {
 	setSetting(t, db, "webListen", "127.0.0.1")
 	setSetting(t, db, "webPort", "24443")
 	service := New(db, NewRuntime())
-	service.hostFacts = backendHostFacts{snapshot: func(context.Context) hostresources.ResourceSnapshot { return hostresources.ResourceSnapshot{} }}
+	service = NewWithHost(db, service.runtime, backendHostFacts{snapshot: func(context.Context) hostresources.ResourceSnapshot { return hostresources.ResourceSnapshot{} }})
 	site, err := service.SaveSite(SiteInput{Name: "Example Portal"}, "tester")
 	if err != nil {
 		t.Fatalf("SaveSite: %v", err)
@@ -218,12 +218,12 @@ func TestPortCandidatesReportInboundAndExternalBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SaveSite: %v", err)
 	}
-	service.hostFacts = backendHostFacts{snapshot: func(context.Context) hostresources.ResourceSnapshot {
+	service = NewWithHost(db, service.runtime, backendHostFacts{snapshot: func(context.Context) hostresources.ResourceSnapshot {
 		return hostresources.ResourceSnapshot{Resources: []hostresources.ProtectableResource{{
 			ID: "core:inbound:1", Owner: "core", Kind: "inbound", Name: "vless-in",
 			InboundTag: "vless-in", Listen: "127.0.0.1", Port: 32221,
 		}}}
-	}}
+	}})
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("occupy test port: %v", err)
@@ -393,14 +393,22 @@ func TestPublishArtifactAndRollback(t *testing.T) {
 			t.Fatalf("artifact archive missing %s, entries=%v", name, sortedKeys(entries))
 		}
 	}
-	var nodeArtifact nodeArtifactContract
+	var nodeArtifact struct {
+		Schema    string
+		Signature struct {
+			Mode     string
+			Required bool
+		}
+		Apply                struct{ AtomicSwap bool }
+		RequiredCapabilities []struct{ ID, Version string }
+	}
 	if err := json.Unmarshal(entries["node-artifact.json"], &nodeArtifact); err != nil {
 		t.Fatalf("decode node artifact: %v", err)
 	}
-	if nodeArtifact.Schema != nodeArtifactSchema || nodeArtifact.Signature.Mode != nodeSignatureMode || !nodeArtifact.Signature.Required || !nodeArtifact.Apply.AtomicSwap || len(nodeArtifact.RequiredCapabilities) != 1 {
+	if nodeArtifact.Schema != "solovey-ui/fallback-html-node-artifact/v1" || nodeArtifact.Signature.Mode != "orchestrator-channel" || !nodeArtifact.Signature.Required || !nodeArtifact.Apply.AtomicSwap || len(nodeArtifact.RequiredCapabilities) != 1 {
 		t.Fatalf("unexpected node artifact contract: %#v", nodeArtifact)
 	}
-	if nodeArtifact.RequiredCapabilities[0].ID != nodeCapabilityPublicSite || nodeArtifact.RequiredCapabilities[0].Version != nodeCapabilityVersion {
+	if nodeArtifact.RequiredCapabilities[0].ID != "public-site-runtime" || nodeArtifact.RequiredCapabilities[0].Version != "v1" {
 		t.Fatalf("unexpected node capability requirement: %#v", nodeArtifact.RequiredCapabilities)
 	}
 	var safetyRows int64
@@ -557,38 +565,6 @@ func TestPrunePublishesKeepsActiveAndRecentRollbackVersions(t *testing.T) {
 	}
 	if events != 1 {
 		t.Fatalf("prune events = %d, want 1", events)
-	}
-}
-
-func TestLegacySelfStealDecoderIsBoundedStrictAndNonActionable(t *testing.T) {
-	raw := legacySelfStealPayload()
-	inspection, err := DecodeLegacySelfStealPayload(raw)
-	if err != nil || inspection.Classification != "RETIRED_NON_ACTIONABLE" ||
-		!containsString(inspection.ReasonCodes, LegacySelfStealRetiredReason) {
-		t.Fatalf("inspection=%#v err=%v", inspection, err)
-	}
-	encoded, err := json.Marshal(inspection)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, forbidden := range []string{"secret-key", "/private/path", "203.0.113.10", "443", "tlsRecordId"} {
-		if strings.Contains(string(encoded), forbidden) {
-			t.Fatalf("inspection leaked %q: %s", forbidden, encoded)
-		}
-	}
-	for _, invalid := range []json.RawMessage{
-		json.RawMessage(`{"schema":"solovey-ui/fallback-html-self-steal-draft/v1","source":"fallback-html:self-steal","unknown":true}`),
-		json.RawMessage(`{"schema":"solovey-ui/fallback-html-self-steal-draft/v1","source":"other"}`),
-		json.RawMessage(`{`),
-	} {
-		inspection, err = DecodeLegacySelfStealPayload(invalid)
-		if err == nil || inspection.Classification != "LEGACY_INVALID_NON_ACTIONABLE" {
-			t.Fatalf("invalid payload became actionable: %#v err=%v", inspection, err)
-		}
-	}
-	oversized := make(json.RawMessage, maxLegacySelfStealPayloadBytes+1)
-	if _, err := DecodeLegacySelfStealPayload(oversized); err == nil {
-		t.Fatal("oversized legacy payload was accepted")
 	}
 }
 
@@ -1145,9 +1121,9 @@ func TestBuiltInTemplatesAreSeededAndApplied(t *testing.T) {
 		if !strings.Contains(preview.HTML, tc.marker) {
 			t.Fatalf("%s template marker missing: %s", tc.id, preview.HTML)
 		}
-		definition, err := templateDefinitionByID(tc.id)
-		if err != nil {
-			t.Fatalf("templateDefinitionByID %s: %v", tc.id, err)
+		var definition fallbackdomain.TemplateSource
+		if err := db.Where("template_id = ?", tc.id).First(&definition).Error; err != nil {
+			t.Fatalf("template source %s: %v", tc.id, err)
 		}
 		if definition.ContentTypeProfile != tc.profile {
 			t.Fatalf("%s profile = %q, want %q", tc.id, definition.ContentTypeProfile, tc.profile)
@@ -1204,9 +1180,7 @@ func TestRemoteTemplateCatalogInstallCreatePublishAndDelete(t *testing.T) {
 	defer server.Close()
 
 	runtime := NewRuntime()
-	service := New(db, runtime)
-	service.remoteCatalogURL = server.URL + "/templates/catalog.json"
-	service.templateHTTP = server.Client()
+	service := newBackendService(db, runtime, BackendHostFacts(), server.Client(), server.URL+"/templates/catalog.json")
 
 	catalog, err := service.ListRemoteTemplateCatalog(context.Background())
 	if err != nil {
@@ -1289,19 +1263,6 @@ func TestRemoteTemplateCatalogInstallCreatePublishAndDelete(t *testing.T) {
 	}
 }
 
-func TestRemoteTemplateURLStaysOnCatalogHost(t *testing.T) {
-	if _, err := resolveRemoteTemplateURL("https://raw.githubusercontent.com/MalenkiySolovey/solovey-fallback-pages/main/templates/catalog.json", "https://example.com/template/manifest.json"); err == nil {
-		t.Fatalf("absolute cross-host remote template URL should be rejected")
-	}
-	resolved, err := resolveRemoteTemplateURL("https://raw.githubusercontent.com/MalenkiySolovey/solovey-fallback-pages/main/templates/catalog.json", "webmail-workspace/manifest.json")
-	if err != nil {
-		t.Fatalf("same-host relative template URL: %v", err)
-	}
-	if !strings.Contains(resolved, "/templates/webmail-workspace/manifest.json") {
-		t.Fatalf("unexpected resolved URL: %s", resolved)
-	}
-}
-
 func TestRemoteTemplateFilesystemRestoresWhenDatabaseTransactionFails(t *testing.T) {
 	db, dbDir := openFallbackDB(t)
 	t.Setenv("SUI_DB_FOLDER", dbDir)
@@ -1320,9 +1281,7 @@ func TestRemoteTemplateFilesystemRestoresWhenDatabaseTransactionFails(t *testing
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	service := New(db, NewRuntime())
-	service.remoteCatalogURL = server.URL + "/templates/catalog.json"
-	service.templateHTTP = server.Client()
+	service := newBackendService(db, NewRuntime(), BackendHostFacts(), server.Client(), server.URL+"/templates/catalog.json")
 	if _, err := service.InstallRemoteTemplate(context.Background(), "atomic-template", "tester"); err != nil {
 		t.Fatalf("initial InstallRemoteTemplate: %v", err)
 	}
@@ -1360,34 +1319,6 @@ func TestRemoteTemplateFilesystemRestoresWhenDatabaseTransactionFails(t *testing
 	}
 	if !bytes.Equal(afterDelete, original) {
 		t.Fatalf("failed delete did not restore the previous template: %s", afterDelete)
-	}
-}
-
-func TestRemoteTemplateMetadataIsStrictAndBounded(t *testing.T) {
-	var catalog remoteCatalogFile
-	if err := decodeRemoteJSON([]byte(`{"schema":"solovey-ui/fallback-decoy-catalog/v1","templates":[],"unexpected":true}`), &catalog); err == nil {
-		t.Fatal("unknown remote catalog fields should be rejected")
-	}
-	if err := decodeRemoteJSON([]byte(`{"schema":"solovey-ui/fallback-decoy-catalog/v1","templates":[]} {}`), &catalog); err == nil {
-		t.Fatal("multiple remote catalog documents should be rejected")
-	}
-	manifest := remoteTemplateManifest{
-		Schema: "solovey-ui/fallback-decoy-template/v1",
-		ID:     "unsafe/id",
-		Name:   "Unsafe",
-		Pages:  []string{"pages/index.html"},
-		Assets: []string{"assets/decoy-interactivity.js"},
-	}
-	if err := validateRemoteManifest(manifest.ID, manifest); err == nil {
-		t.Fatal("unsafe remote template ids should be rejected")
-	}
-	manifest.ID = "bounded-template"
-	manifest.Pages = make([]string, maxRemoteTemplateFiles)
-	for index := range manifest.Pages {
-		manifest.Pages[index] = fmt.Sprintf("pages/page-%d.html", index)
-	}
-	if err := validateRemoteManifest(manifest.ID, manifest); err == nil {
-		t.Fatal("remote templates with too many files should be rejected")
 	}
 }
 
@@ -1439,8 +1370,8 @@ func TestAssetsAreValidatedAndPublished(t *testing.T) {
 		t.Fatalf("asset status = %d, want 200", status)
 	}
 	response := recordPublic(t, runtime, asset.LogicalPath)
-	if got := response.Header().Get("Cache-Control"); got != assetCachePolicy {
-		t.Fatalf("asset cache policy = %q, want %q", got, assetCachePolicy)
+	if got := response.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
+		t.Fatalf("asset cache policy = %q, want %q", got, "public, max-age=31536000, immutable")
 	}
 }
 
@@ -1453,9 +1384,10 @@ func TestAssetStorageEnforcesPerSiteQuota(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SaveSite: %v", err)
 	}
-	oldLimit := maxSiteAssetBytes
-	maxSiteAssetBytes = int64(len("body{color:#111827}") + 4)
-	t.Cleanup(func() { maxSiteAssetBytes = oldLimit })
+	// Exercise the real quota using existing persisted usage without allocating large assets.
+	if err := db.Create(&fallbackdomain.Asset{SiteID: site.ID, LogicalPath: "/assets/existing.txt", SizeBytes: 16*1024*1024 - int64(len("body{color:#111827}")) - 4}).Error; err != nil {
+		t.Fatal(err)
+	}
 	if _, err := service.SaveAsset(site.ID, "first.css", []byte("body{color:#111827}"), "tester"); err != nil {
 		t.Fatalf("SaveAsset first: %v", err)
 	}
@@ -1632,8 +1564,8 @@ func TestRuntimeStatusAndCacheValidators(t *testing.T) {
 	if got := response.Header().Get("Last-Modified"); got == "" {
 		t.Fatalf("Last-Modified was not set")
 	}
-	if got := response.Header().Get("Cache-Control"); got != htmlCachePolicy {
-		t.Fatalf("html cache policy = %q, want %q", got, htmlCachePolicy)
+	if got := response.Header().Get("Cache-Control"); got != "public, max-age=60, must-revalidate" {
+		t.Fatalf("html cache policy = %q, want %q", got, "public, max-age=60, must-revalidate")
 	}
 	notModified := recordPublicWithHeader(t, runtime, "/", "If-None-Match", etag)
 	if notModified.Code != http.StatusNotModified {
@@ -1741,13 +1673,9 @@ func setSetting(t *testing.T, db *gorm.DB, key string, value string) {
 
 func expectedAssetPath(t *testing.T, siteID uint, filename string, data []byte) string {
 	t.Helper()
-	safeName, _, err := validateAssetFile(filename, data)
-	if err != nil {
-		t.Fatalf("validate asset file: %v", err)
-	}
 	sum := sha256.Sum256(data)
 	sha := hex.EncodeToString(sum[:])
-	return filepath.Join(assetRoot(siteID), sha[:12]+"-"+safeName)
+	return filepath.Join(assetRoot(siteID), sha[:12]+"-"+filename)
 }
 
 func containsWarning(warnings []string, needle string) bool {

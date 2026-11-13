@@ -2581,6 +2581,222 @@
       "path": "internal/entities/outbounds/failover.go",
       "symbol": "failoverOptions.finalChoice",
       "digest": "84f158f7ee8a64539d5573feab7a61f17657db76de1e6935704cee0d3e9c2cb9"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_restore.go",
+      "symbol": "NormalizeRestoredData",
+      "digest": "3cb2e61e05c9d9ea658967a655faa94057519ef83308aae58733ce87da0f4d04"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_restore.go",
+      "symbol": "NormalizeRestoredData",
+      "digest": "75c1fa16a3cccb84d9fdaaaf217425594aced94578a2801b797005be04170da2"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.ActivatePublish",
+      "digest": "ccc27bc97941f3b94a024303a3313a0899d2aa469748faf952e4d06e6253d6c9"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.ClearOtherHomePages",
+      "digest": "18d0d4a54d264663fc08d787c7d3d900b738758021498857e0fa48d8be5f15d0"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.CreateAsset",
+      "digest": "2f98bdcbf0dd510714d8644882861a66ea28445afa9b1d663f3e07d50d469375"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.CreateEvent",
+      "digest": "9db6682d6dce2fd17bf3526b34e905e7b7adab04443aa12310afb199c1984ed3"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.CreatePages",
+      "digest": "1520fa12645f299737bea9a70db71e868ac1d8a9c8391c8b445579a082cb8d6c"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.CreatePublish",
+      "digest": "b72c9490ba658df9e1610b9ae12fbecaa0b0eef8612d4a89805dbd5db67c355e"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.CreatePublishFiles",
+      "digest": "025a87cf9101bbedbfc4fb5d5bf0360af3047a1d43d4e47608cd4f8ac136bceb"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.CreatePublishRedirects",
+      "digest": "5639e9fc55c01c38914db7323b9bd777e23545dce9bf68a6e8bf3ad6d1cb1ad9"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.CreateRedirects",
+      "digest": "5639e9fc55c01c38914db7323b9bd777e23545dce9bf68a6e8bf3ad6d1cb1ad9"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.CreateSafetyReport",
+      "digest": "232b86cd2733a685145d19047d8b005e6af329aaec02ce40b96b8c8bf7d9940e"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.CreateSite",
+      "digest": "624e55f4c5c1a58866ddc47b88fa8255acf5d7de44ea33f5d0fedecdd9e1a6a8"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.CreateTarget",
+      "digest": "e25e7d8c8ab16aaaa999396fa5d00668dfe8f2c1a3c19fdd98f91a469cf3ff0f"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.DeactivatePublishes",
+      "digest": "493d3d8a227ac6531f4c3fa20e51ba5ec6588848c5a0520f865c00432413eb4f"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.DeleteAsset",
+      "digest": "9bd28e0ab66aae9975d0a1a5ce0ef54aecc677dcf728d823214abf085846f1eb"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.DeleteExternalResource",
+      "digest": "a5308137a4ecced9a6bcb8009f1278b0637a2254a8934e993817934bf076a1b5"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.DeleteInactivePublishes",
+      "digest": "c68025aff26704436ddbe9c45d57184cb9de1f9dffde1c65d58c58d6678484ab"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.DeleteOtherTargets",
+      "digest": "2fa0e7f2ab3852af40c17eb161c3f791c2d578d28b4efeea9d66c55372efc86d"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.DeletePage",
+      "digest": "bf926e0392f4429e2f952bfdcdd34744af98d271313457d12d18c741847d2dc1"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.DeletePages",
+      "digest": "cb023a3e4a9786aa4cc25a63e7ec322ec09575c36c3107cc14d0c6bc83c0a218"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.DeletePublishFiles",
+      "digest": "06c6703c0d833689f47481c047e581b91b882235d292f15f99796a4abf5756d8"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.DeletePublishRedirects",
+      "digest": "a480c93f8216390c164f6c92b6a85e2b6f2529e1c1e23f15266ee9da91d2c0a7"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.DeleteRedirect",
+      "digest": "9fa46824302f704c6f758f0b570974482479a5e1da7d1c6922ad6d2bb1c50089"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.DeleteRedirects",
+      "digest": "561110f30a9092e9c69158ebc5049594525b904ab2807dceed2ef1f586261dc5"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.DeleteSite",
+      "digest": "5589dae93df5fc03753ba0a10dcab572332662480c71424224ef64e145836ec0"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.DeleteTarget",
+      "digest": "5b56a29f6ae146b10997024f7b59c33cfd9ce2ab22203488b9d1e8ff3a1f6ba5"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.DeleteTemplateSource",
+      "digest": "912cdc75d41085e68ebe9e9e940655389aba07946993e96f460615f3a0f84265"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.ResetTemplateSource",
+      "digest": "b08eae533aad5769e46ae3599932105c5ef5a725270c7dcff2272f3e6e125767"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.SaveExternalResource",
+      "digest": "7d1aff8f17987fd460d6d3f98806d9a8c24b550aaabba1f18e2c79f922c49d10"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.SavePage",
+      "digest": "92fefd04c8d17ba4ce128223c812145a16d9c9c45273d45aebbf5a41be78a0a2"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.SaveRedirect",
+      "digest": "be6bd55cb67ef1e6beadfe627e2a0b6309dd51cc38bd4ecfeb4f65d64bd319c9"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.SaveSite",
+      "digest": "39635944dc557de430e40b29fab45872076e59e8480bbc83197966c0b95c0fb5"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.SaveTarget",
+      "digest": "d3c5a462681203d9a3addce0e9286fc2a1e71809f307a25e8c51bb6e68e82faa"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.SetSiteDisabled",
+      "digest": "7f1fdba3d52339f65f48d51961a9c5231d4db27072907ef7910e49d2a0e426f7"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backend_store.go",
+      "symbol": "*backendStore.SetSitePublication",
+      "digest": "093db87a3773c97485b5586a1baf0df62c66e470644a3c570c8f365a7f113c2a"
     }
   ]
 }
