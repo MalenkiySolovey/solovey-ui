@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	canonical "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/deploymentidentity"
 )
@@ -10,12 +11,12 @@ type ExpectedApplicationOwnerV1 = deploymentidentity.ExpectedApplicationOwnerV1
 
 const ExpectedApplicationOwnerSchemaV1 = deploymentidentity.ExpectedApplicationOwnerSchemaV1
 
-type CapabilityValue string
+type CapabilityValue = canonical.CapabilityValue
 
 const (
-	CapabilityUnknown CapabilityValue = "unknown"
-	CapabilityYes     CapabilityValue = "yes"
-	CapabilityNo      CapabilityValue = "no"
+	CapabilityUnknown = canonical.CapabilityUnknown
+	CapabilityYes     = canonical.CapabilityYes
+	CapabilityNo      = canonical.CapabilityNo
 )
 
 type ProtectableResourceCapabilities struct {

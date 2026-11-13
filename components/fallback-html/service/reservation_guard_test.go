@@ -152,7 +152,7 @@ func guardedServiceFixture(t *testing.T) (*Service, *gorm.DB, fallbackdomain.Sit
 func insertGuardReservation(t *testing.T, db *gorm.DB, siteID uint, state neutral.ReservationState, now time.Time) {
 	t.Helper()
 	target, err := neutral.FinalizeFallbackTargetV2(neutral.FallbackTargetV2{
-		Identity:         neutral.TargetIdentity{ProviderID: reservationProviderID, TargetID: "site:" + uintString(siteID)},
+		Identity:         neutral.TargetIdentity{ProviderID: authority.ProviderID, TargetID: "site:" + uintString(siteID)},
 		Publish:          neutral.PublishFactsV2{Revision: "publish-guard", ContentDigest: strings.Repeat("a", 64)},
 		Endpoint:         neutral.EndpointV2{EndpointID: "endpoint-guard", Network: hostresources.NetworkTCP, AddressFamily: hostresources.AddressFamilyIPv4, Address: "127.0.0.1", Port: 8080, Local: true, TransportSecurity: neutral.TransportSecurityPlaintext, ApplicationProtocols: []neutral.ApplicationProtocol{neutral.ApplicationProtocolHTTP11}, ProxyProtocol: hostresources.CapabilityNo, CanReachManagement: hostresources.CapabilityNo},
 		Health:           neutral.HealthV2{Readiness: neutral.ReadinessReady, ObservedAt: now.Unix(), ExpiresAt: now.Add(time.Minute).Unix()},

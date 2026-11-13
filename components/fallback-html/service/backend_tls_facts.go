@@ -10,9 +10,6 @@ import (
 
 // TLS facts come from the certificate actually installed on the exact owned
 // listener; changed settings alone cannot authenticate an effective endpoint.
-func (r *Runtime) TLSAcceptsServerName(listen string, port int, serverName string) bool {
-	return !r.draining.Load() && r.serving.TLSAcceptsServerName(listen, port, serverName)
-}
 
 func (h *backendHTTP) TLSAcceptsServerName(listen string, port int, serverName string) bool {
 	h.mu.Lock()

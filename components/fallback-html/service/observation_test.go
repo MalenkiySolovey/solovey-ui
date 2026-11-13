@@ -19,15 +19,9 @@ func TestServePublicEmitsOnlySanitizedObservationClasses(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer unregister()
-	runtime := NewRuntime()
-	runtime.snapshot.Store(&snapshot{
-		siteID: 42,
-		pages: map[string]publishedFile{
-			"/": {publicPath: "/", mimeType: "text/html", sha256: "fixture", data: []byte("ok")},
-		},
-		redirects: map[string]publishedRedirect{},
-		csp:       "default-src 'self'",
-	})
+	service, _, site, _ := httpPublicationFixture(t, false)
+	publishHTTPFixture(t, service, site.ID)
+	runtime := service.runtime
 	recorder := httptest.NewRecorder()
 	context, _ := gin.CreateTestContext(recorder)
 	context.Request = httptest.NewRequest(http.MethodTrace, "/?token=must-not-leak", nil)
@@ -38,7 +32,7 @@ func TestServePublicEmitsOnlySanitizedObservationClasses(t *testing.T) {
 	}
 	select {
 	case observation := <-subscription.Observations():
-		if observation.ResourceID != "component:fallback-html:site:42" || observation.PathClass != "fallback_path" || observation.UserAgentClass != "ua_scanner" || observation.MethodClass != "unexpected" {
+		if observation.ResourceID != "component:fallback-html:site:"+uintString(site.ID) || observation.PathClass != "fallback_path" || observation.UserAgentClass != "ua_scanner" || observation.MethodClass != "unexpected" {
 			t.Fatalf("observation = %#v", observation)
 		}
 		if observation.SourceIP != "203.0.113.10" {

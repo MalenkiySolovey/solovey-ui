@@ -183,6 +183,9 @@ func TestExternalComponentImportsPreserveSemanticOwnership(t *testing.T) {
 		allowed        bool
 	}{
 		{"components/paid-subscriptions/telegram/bot.go", source, false},
+		{"components/fallback-html/service/backend_host.go", "github.com/MalenkiySolovey/solovey-component-fallback-html/service", true},
+		{"components/paid-subscriptions/service.go", "github.com/MalenkiySolovey/solovey-component-fallback-html/service", false},
+		{"componenthost/health/registry.go", "github.com/MalenkiySolovey/solovey-component-fallback-html/service", false},
 		{"components/paid-subscriptions/telegram/bot.go", source + "/service", false},
 		{"service/notifications.go", source + "/service", false},
 		{"componentkit/telegram/transport.go", source + "/service", false},

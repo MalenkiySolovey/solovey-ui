@@ -60,22 +60,18 @@ type backendPublicationBinding struct {
 	consumed atomic.Bool
 }
 
-func NewRuntime() *Runtime {
-	r := &Runtime{limiter: newPublicSiteLimiter(), idle: make(chan struct{})}
-	close(r.idle)
-	r.snapshot.Store((*snapshot)(nil))
-	r.serving = &backendHTTP{listeners: map[string]*runtimeListener{}, handler: http.HandlerFunc(r.serveHTTPPublic)}
-	return r
-}
-
 // Called under the runtime lock after the existing storage owner has read the
 // candidate targets and verified the immutable publication bytes.
 func (r *Runtime) prepareHTTPBinding(database *gorm.DB, siteID uint, revision string, targets []fallbackdomain.RuntimeTarget) (PublicationBinding, error) {
+	return r.prepareHTTPBindingAt(database, siteID, revision, targets, r.PublicationState().Generation)
+}
+
+func (r *Runtime) prepareHTTPBindingAt(database *gorm.DB, siteID uint, revision string, targets []fallbackdomain.RuntimeTarget, generation uint64) (PublicationBinding, error) {
 	host, ok := r.serving.(*backendHTTP)
 	if !ok {
 		return nil, errors.New("fallback-html HTTP owner is unavailable")
 	}
-	scope := HTTPBindingScope{Resource: ConfiguredTargetIdentity(siteID, fallbackdomain.RuntimeTarget{}), PublicationRevision: revision, ExpectedGeneration: r.generation}
+	scope := HTTPBindingScope{Resource: ConfiguredTargetIdentity(siteID, fallbackdomain.RuntimeTarget{}), PublicationRevision: revision, ExpectedGeneration: generation}
 	if len(targets) == 1 {
 		scope.Resource = ConfiguredTargetIdentity(siteID, targets[0])
 	}
@@ -115,7 +111,7 @@ func (b *backendPublicationBinding) Bind(ctx context.Context, scope HTTPBindingS
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if !reflect.DeepEqual(scope, b.scope) || scope.PublicationRevision == "" || !scope.Resource.Host.IsLocal() || scope.Resource.Owner != "fallback-html" || b.runtime.generation != scope.ExpectedGeneration || b.runtime.draining.Load() {
+	if !reflect.DeepEqual(scope, b.scope) || scope.PublicationRevision == "" || !scope.Resource.Host.IsLocal() || scope.Resource.Owner != "fallback-html" || !b.runtime.BindingCurrent(scope) {
 		return errors.New("fallback-html HTTP binding scope is missing, stale or foreign")
 	}
 	if !b.consumed.CompareAndSwap(false, true) {

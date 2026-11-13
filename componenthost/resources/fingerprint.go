@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	canonical "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 	"sort"
 	"strings"
 
@@ -49,11 +50,7 @@ func Fingerprint(resource ProtectableResource) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func Revision(value any) string {
-	payload, _ := json.Marshal(value)
-	sum := sha256.Sum256(payload)
-	return hex.EncodeToString(sum[:])
-}
+func Revision(value any) string { return canonical.Revision(value) }
 
 func normalizeToken(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))

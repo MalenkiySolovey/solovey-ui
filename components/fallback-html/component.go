@@ -4,7 +4,8 @@ package fallbackhtml
 
 import (
 	"context"
-	_ "embed"
+
+	canonical "github.com/MalenkiySolovey/solovey-component-fallback-html"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
@@ -15,8 +16,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/durableowner"
 )
 
-//go:embed component.json
-var componentJSON []byte
+var componentJSON = canonical.ManifestJSON()
 
 var componentManifest = manifest.MustFromJSON(componentJSON)
 var id = componentManifest.ID

@@ -2,6 +2,7 @@ package publicsurface
 
 import (
 	"errors"
+	canonical "github.com/MalenkiySolovey/solovey-host/componenthost/publicsurface"
 	"net/http"
 	"strings"
 	"sync"
@@ -12,9 +13,7 @@ import (
 
 // Context describes the managed web listener surface that public handlers may
 // use to avoid stealing admin, API, asset, ACME, or subscription paths.
-type Context struct {
-	AdminBasePath string
-}
+type Context = canonical.Context
 
 // Handler serves a public NoRoute request. It returns true when the request was
 // handled and the web server must not continue to the admin fallback.

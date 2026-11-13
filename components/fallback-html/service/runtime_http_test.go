@@ -236,8 +236,6 @@ func TestHTTPBindingRejectsForeignStaleCancelledAndReplayedScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtime := service.runtime
-	runtime.mu.Lock()
-	defer runtime.mu.Unlock()
 	binding, err := runtime.prepareHTTPBinding(db, site.ID, result.Version, site.Targets)
 	if err != nil {
 		t.Fatal(err)
@@ -272,7 +270,9 @@ func TestHTTPBindingRejectsForeignStaleCancelledAndReplayedScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime.generation++
+	if err := runtime.Rebuild(db); err != nil {
+		t.Fatal(err)
+	}
 	if err := stale.Bind(context.Background(), stale.Scope()); err == nil {
 		t.Fatal("old generation binding was admitted")
 	}
@@ -307,11 +307,13 @@ func TestHTTPBindFailureCompensatesPartialPlan(t *testing.T) {
 	}
 	defer listeners[1].Close()
 	before := service.runtime.PublicationState()
-	err := service.guardedRuntimeMutation(site.ID, func(tx *gorm.DB) error {
-		return tx.Create(&[]fallbackdomain.RuntimeTarget{
-			{SiteID: site.ID, Kind: "standalone", Listen: "127.0.0.1", Port: freePort, Runtime: "gin"},
-			{SiteID: site.ID, Kind: "standalone", Listen: "127.0.0.1", Port: occupiedPort, Runtime: "gin"},
-		}).Error
+	err := db.Transaction(func(tx *gorm.DB) error {
+		for _, port := range []int{freePort, occupiedPort} {
+			if err := tx.Create(&fallbackdomain.RuntimeTarget{SiteID: site.ID, Kind: "standalone", Listen: "127.0.0.1", Port: port, Runtime: "gin"}).Error; err != nil {
+				return err
+			}
+		}
+		return service.runtime.Rebuild(tx)
 	})
 	if err == nil {
 		t.Fatal("occupied target accepted")
@@ -410,7 +412,7 @@ func TestShutdownFailureRetainsAuthorityAndRetryDrainsActiveResponses(t *testing
 			if !errors.Is(err, context.DeadlineExceeded) {
 				t.Fatalf("failed drain reported success: %v", err)
 			}
-			if !service.runtime.Status().Active || !service.runtime.PublicationState().Draining || service.runtime.unregister == nil {
+			if !service.runtime.Status().Active || !service.runtime.PublicationState().Draining || !service.runtime.surface.registered.Load() {
 				t.Fatal("failed stop erased recovery evidence")
 			}
 			if service.runtime.Health(publicsurface.Context{AdminBasePath: "/private-panel/"}).OK {
@@ -434,7 +436,7 @@ func TestShutdownFailureRetainsAuthorityAndRetryDrainsActiveResponses(t *testing
 			if err := service.runtime.Shutdown(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			if service.runtime.Status().Active || service.runtime.unregister != nil {
+			if service.runtime.Status().Active || service.runtime.surface.registered.Load() {
 				t.Fatal("successful retry did not stop runtime")
 			}
 			var reservationAfter authority.ReservationModel
@@ -448,7 +450,7 @@ func TestShutdownFailureRetainsAuthorityAndRetryDrainsActiveResponses(t *testing
 			if err := db.Model(&fallbackdomain.Publish{}).Where("active = ?", true).Count(&active).Error; err != nil || active != 1 {
 				t.Fatal("stop unpublished durable revision")
 			}
-			if err := verifyPublishFiles(publish.RootDir, publish.Files); err != nil {
+			if _, err := service.GetPublishArtifact(site.ID, publish.Version); err != nil {
 				t.Fatal(err)
 			}
 			if standalone {
@@ -466,21 +468,6 @@ func TestShutdownFailureRetainsAuthorityAndRetryDrainsActiveResponses(t *testing
 				}
 			}
 		})
-	}
-}
-
-func TestShutdownCancellationDoesNotContinueBehindCaller(t *testing.T) {
-	runtime := NewRuntime()
-	runtime.mu.Lock()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-	err := runtime.Shutdown(ctx)
-	cancel()
-	runtime.mu.Unlock()
-	if !errors.Is(err, context.DeadlineExceeded) || runtime.draining.Load() {
-		t.Fatalf("contended cancellation changed runtime: %v", err)
-	}
-	if err := runtime.Stop(); err != nil {
-		t.Fatal(err)
 	}
 }
 

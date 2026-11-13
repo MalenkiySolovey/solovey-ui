@@ -76,6 +76,12 @@ jobs:
       - name: Native lifecycle, management and semantic boundary race regressions
         shell: bash
         run: go test -race -count=1 -timeout=10m -tags "$EXTENDED_TAGS" github.com/sagernet/sing-box/adapter ./core/... ./internal/entities/capabilities ./internal/entities/capabilityview ./internal/singbox/apply ./service/coreinboundcontrol ./components/server-protection/service/nativefallback ./service/update ./app ./internal/singbox/validation ./cmd/internal/corecheck ./internal/release ./cmd/solovey-artifact-info
+      - name: External Fallback workflows and Core lifecycle regressions
+        shell: bash
+        run: |
+          go test -race -count=1 -timeout=5m -tags "$EXTENDED_TAGS" ./components/fallback-html/... ./componenthost/durable ./componenthost/resources ./componenthost/health ./componenthost/publicsurface
+          go test -race -count=1 -timeout=5m -tags "$EXTENDED_TAGS,minimal" ./internal/components/... ./api ./app ./web
+
       - name: Native shared configuration and maintenance owner regressions
         shell: bash
         run: go test -race -count=1 -timeout=5m -tags "$EXTENDED_TAGS" -run '^Test(ProviderConfiguration|ProviderDesiredRevision|Maintenance)' ./service
@@ -135,6 +141,20 @@ jobs:
               "$go_binary" test -race -tags "$EXTENDED_TAGS" -count=1 -timeout=5m \
               -run '^Test(ProviderMaintenance|PreparedProviderActual)' ./internal/ops/updatebroker
           done
+
+      - name: Custom Fallback native backend composition
+        shell: bash
+        run: |
+          node scripts/generate-component-imports.mjs --profile full --selected-ids fallback-html
+          go list -tags "$EXTENDED_TAGS" -deps ./app > "$RUNNER_TEMP/fallback-custom-deps.txt"
+          grep -Fxq 'github.com/MalenkiySolovey/solovey-component-fallback-html/service' "$RUNNER_TEMP/fallback-custom-deps.txt"
+          if grep -E 'github.com/MalenkiySolovey/solovey-ui/components/(import-xui|observability-extra|paid-subscriptions|panel-update-ui|remote-outbound-subscriptions|server-protection|telegram)' "$RUNNER_TEMP/fallback-custom-deps.txt"; then
+            echo "custom app depends on unselected components" >&2
+            exit 1
+          fi
+          go test -race -count=1 -timeout=5m -tags "$EXTENDED_TAGS" ./app ./api ./web
+          go build -tags "$EXTENDED_TAGS" -o "$RUNNER_TEMP/solovey-extended-fallback-custom${{ runner.os == 'Windows' && '.exe' || '' }}" main.go
+          node scripts/generate-component-imports.mjs --profile full
 
   docker-native-cronet:
     name: Docker native Cronet (${{ matrix.arch }})
@@ -317,6 +337,20 @@ jobs:
 
       - name: Core profile build
         run: go build -tags minimal -o /tmp/solovey-ui-core main.go
+
+      - name: Custom Fallback backend composition
+        shell: bash
+        run: |
+          node scripts/generate-component-imports.mjs --profile full --selected-ids fallback-html
+          go list -deps ./app > "$RUNNER_TEMP/fallback-custom-deps.txt"
+          grep -Fxq 'github.com/MalenkiySolovey/solovey-component-fallback-html/service' "$RUNNER_TEMP/fallback-custom-deps.txt"
+          if grep -E 'github.com/MalenkiySolovey/solovey-ui/components/(import-xui|observability-extra|paid-subscriptions|panel-update-ui|remote-outbound-subscriptions|server-protection|telegram)' "$RUNNER_TEMP/fallback-custom-deps.txt"; then
+            echo "custom app depends on unselected components" >&2
+            exit 1
+          fi
+          go test -race -count=1 -timeout=5m ./app ./api ./web
+          go build -o "$RUNNER_TEMP/solovey-fallback-custom" main.go
+          node scripts/generate-component-imports.mjs --profile full
 
   quic-integration:
     name: QUIC lifecycle (${{ matrix.os }})
@@ -514,9 +548,23 @@ jobs:
       - name: Frontend component pack extraction scan
         run: node scripts/extract-component-frontend.mjs --dist frontend/dist --components-dir components --out-dir .release/components --prune-dist
 
+      - name: Frontend packaged runtime closure
+        run: |
+          node scripts/write-component-installed-metadata.mjs --components-dir .release/components
+          node scripts/frontend-runtime-closure.mjs --dist frontend/dist --components-dir .release/components
+
       - name: Frontend core build
         working-directory: frontend
         run: SOLOVEY_UI_PROFILE=core npm run build
 
       - name: Frontend core profile scan
         run: node scripts/check-frontend-profile.mjs --profile core --dist frontend/dist
+
+      - name: Frontend custom Fallback build
+        working-directory: frontend
+        run: SOLOVEY_UI_PROFILE=full SOLOVEY_UI_COMPONENT_IDS=fallback-html npm run build
+
+      - name: Frontend custom Fallback profile and asset closure
+        run: |
+          node scripts/check-frontend-profile.mjs --profile full --selected-ids fallback-html --dist frontend/dist
+          node scripts/frontend-assets.mjs verify --dist frontend/dist

@@ -7,10 +7,14 @@ package service
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
+	"time"
 
+	feature "github.com/MalenkiySolovey/solovey-component-fallback-html/service"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
+	"github.com/MalenkiySolovey/solovey-ui/util/ssrf"
 	"gorm.io/gorm"
 )
 
@@ -122,4 +126,21 @@ func (backendHostFacts) ReservedPaths(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	return []string{web, sub}, nil
+}
+
+func NewWithHost(db *gorm.DB, runtime *Runtime, facts HostFacts) *Service {
+	return newBackendService(db, runtime, facts, ssrf.NewHTTPClient(15*time.Second, "https"), "")
+}
+
+// Service retains only Backend composition and compatibility entry points.
+type Service struct {
+	*feature.Service
+	runtime *Runtime
+}
+
+func newBackendService(db *gorm.DB, runtime *Runtime, facts HostFacts, client *http.Client, catalog string) *Service {
+	if runtime == nil {
+		runtime = DefaultRuntime
+	}
+	return &Service{Service: feature.New(backendStoreFor(db, runtime), runtime.Runtime, facts, backendContent{}, client, catalog), runtime: runtime}
 }

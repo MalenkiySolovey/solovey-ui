@@ -27,7 +27,7 @@ func TestDurableContractsAndFeatureHooksHaveNoBackendDependencies(t *testing.T) 
 			}
 			for _, spec := range parsed.Imports {
 				name, _ := strconv.Unquote(spec.Path.Value)
-				if name == "context" || name == "errors" || name == "time" || name == "github.com/MalenkiySolovey/solovey-host/hostref" || name == "github.com/MalenkiySolovey/solovey-ui/componenthost/durable" {
+				if name == "github.com/MalenkiySolovey/solovey-host/componenthost/durable" || name == "github.com/MalenkiySolovey/solovey-component-fallback-html/lifecycle" || name == "context" || name == "errors" || name == "time" || name == "github.com/MalenkiySolovey/solovey-host/hostref" || name == "github.com/MalenkiySolovey/solovey-ui/componenthost/durable" {
 					continue
 				}
 				t.Errorf("Backend or unreviewed dependency in %s: %s", file, name)

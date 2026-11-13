@@ -5,6 +5,7 @@ package fallbackhtml
 import (
 	"context"
 	"errors"
+	feature "github.com/MalenkiySolovey/solovey-component-fallback-html/targets"
 	"net"
 	"sort"
 	"strconv"
@@ -528,25 +529,6 @@ func parseSiteTargetID(value string) (uint, bool) {
 	return uint(parsed), err == nil && parsed > 0
 }
 
-func canonicalServerName(value string) string {
-	value = strings.ToLower(strings.TrimSpace(strings.TrimSuffix(value, ".")))
-	if value == "" || len(value) > 253 || net.ParseIP(value) != nil {
-		return ""
-	}
-	for _, label := range strings.Split(value, ".") {
-		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
-			return ""
-		}
-		for _, character := range label {
-			if (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9') || character == '-' {
-				continue
-			}
-			return ""
-		}
-	}
-	return value
-}
-
 func canonicalProviderReasons(values []string) []string {
 	sort.Strings(values)
 	out := values[:0]
@@ -628,3 +610,5 @@ func classifyReservationError(ctx context.Context, err error) *neutral.ProviderC
 		return providerDatabaseError(ctx)
 	}
 }
+
+var canonicalServerName = feature.CanonicalServerName

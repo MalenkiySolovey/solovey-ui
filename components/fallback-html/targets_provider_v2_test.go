@@ -22,6 +22,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/components/fallback-html/authority"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
 	fallbackservice "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/service"
+	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -606,6 +607,7 @@ func TestTargetProviderV2ConcurrentFinalActionableSlotDoesNotOversubscribe(t *te
 
 func openProviderDB(t *testing.T, name string) *gorm.DB {
 	t.Helper()
+	t.Setenv("SUI_DB_FOLDER", t.TempDir())
 	dsn := "file:fallback-provider-" + name + "?mode=memory&cache=shared&_busy_timeout=10000&_foreign_keys=on"
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
@@ -636,7 +638,10 @@ func createProviderFixture(t *testing.T, db *gorm.DB, tls bool, host string, por
 	if err := db.Create(&target).Error; err != nil {
 		t.Fatalf("create target: %v", err)
 	}
-	root := t.TempDir()
+	root := filepath.Join(configstorage.GetDBFolderPath(), "fallback-html", "publishes", "site-"+providerTestUintString(site.ID), "publish-1")
+	if err := os.MkdirAll(root, 0o750); err != nil {
+		t.Fatal(err)
+	}
 	publish := fallbackdomain.Publish{SiteID: site.ID, Version: "publish-1", RootDir: root, Active: true, CreatedAt: 1}
 	if err := db.Create(&publish).Error; err != nil {
 		t.Fatalf("create publish: %v", err)
