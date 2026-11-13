@@ -86,6 +86,7 @@ export default defineConfig({
   },
   resolve: {
     alias: [
+      { find: /^@solovey\/component-ui\/api$/, replacement: fileURLToPath(new URL('./src/componentSystem/api.ts', import.meta.url)) },
       { find: /^@solovey\/component-ui\/observation$/, replacement: fileURLToPath(new URL('./src/componentSystem/observation.ts', import.meta.url)) },
       { find: /^@solovey\/component-ui$/, replacement: fileURLToPath(new URL('./src/componentSystem/sdk.ts', import.meta.url)) },
       { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },

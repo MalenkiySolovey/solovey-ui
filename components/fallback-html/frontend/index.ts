@@ -1,4 +1,4 @@
-import { registerComponent } from '@/componentSystem/registry'
+import { registerComponent } from '@solovey/component-ui'
 
 export function register() {
   registerComponent({
