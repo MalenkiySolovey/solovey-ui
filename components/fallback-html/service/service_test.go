@@ -969,15 +969,6 @@ func sortedKeys(values map[string][]byte) []string {
 	return keys
 }
 
-func containsString(values []string, needle string) bool {
-	for _, value := range values {
-		if value == needle {
-			return true
-		}
-	}
-	return false
-}
-
 func hasPortCandidate(values []PortCandidate, kind string, status string, port int) bool {
 	for _, value := range values {
 		if value.Kind == kind && value.Status == status && value.Port == port {

@@ -4,7 +4,6 @@ import canonical "github.com/MalenkiySolovey/solovey-host/componenthost/resource
 
 const ResourceIdentitySchemaV1 = canonical.ResourceIdentitySchemaV1
 const ResourceObservationUnknown = canonical.ResourceObservationUnknown
-const configuredResourceNotObserved = "configured_resource_not_observed"
 
 // ResourceIdentityV1 retains Product Inventory's ValidFor adapter while using
 // the shared configured identity value and validation implementation.

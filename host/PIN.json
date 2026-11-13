@@ -2,10 +2,10 @@
   "schema": "solovey.host.consumer-pin/v1",
   "canonicalRepository": "MalenkiySolovey/solovey-host",
   "module": "github.com/MalenkiySolovey/solovey-host",
-  "version": "v0.3.0",
-  "sourceCommit": "405a924c87a3c718e371c7e17ac53a5679105db3",
-  "sourceTree": "af1110525b0de03d1d10c73eca31f2075ed12e08",
-  "moduleChecksum": "h1:Qm0n3dlugpaINuN9G8BesNblyEu8FH00HkY4FvLmpaA=",
+  "version": "v0.4.0",
+  "sourceCommit": "77ba91d194e3fce0d77a5506e03f73fb5a1124f9",
+  "sourceTree": "cde66bdf4a1287c32e4e830d03dc6edb4c1874a6",
+  "moduleChecksum": "h1:T+SSi01LwyI00KarblddtvuK/jq57Jtud5Z8Iw3VcnQ=",
   "goModChecksum": "h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=",
   "fixturesSHA256": "ff83fc9c0b5a7d64d35d37ede09b530aafa07d3fe420e3e0bd055278c15b8eb3",
   "valuesSHA256": "1d4d7f29ba8c1f3c57fd2c66ee3423ea45efe3947686f5c53de753362b865a0c",
@@ -22,7 +22,11 @@
     "componentkit/telegram",
     "redact",
     "httpheader",
-    "coreruntime"
+    "coreruntime",
+    "componenthost/durable",
+    "componenthost/resources",
+    "componenthost/health",
+    "componenthost/publicsurface"
   ],
   "dependencies": {
     "github.com/robfig/cron/v3": "v3.0.1"
@@ -31,7 +35,7 @@
     "go.mod": "ef51164a22ed0a25c894a038ddfb872d6c44aa4765806dd8ee8e7c78a8e62845",
     "go.sum": "623cd8fb33831e0d4bcfd81a5869833cac49e94d0ed84321453e9374b720c7c9",
     "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
-    "SOURCE_PROVENANCE.json": "b605538158805777e505720e73bedfd7c1a1d8e49ff79309b990a6105efb320f",
+    "SOURCE_PROVENANCE.json": "4fd41431bf7249bed4f30875193d6634f75f7ca01b64970f615524710e8809a6",
     "networkidentity/testdata/snapshots.json": "ff83fc9c0b5a7d64d35d37ede09b530aafa07d3fe420e3e0bd055278c15b8eb3",
     "qualification/testdata/values.json": "1d4d7f29ba8c1f3c57fd2c66ee3423ea45efe3947686f5c53de753362b865a0c",
     "auditrecord/event.go": "98e2195668a32f8d03f8bec85578aafbbe1ee39d179abd7f3c1fc4870244159c",
@@ -54,6 +58,16 @@
     "scheduler/managed_job.go": "e64309aedf5b9ef26724d1df3d586c0c898c0df4eb434183abf0b56d2c436f02",
     "secretref/reference.go": "bd94e1bd66a776769908f917dc50199dfe542ee93e7dc797bdda4993a0da18bb",
     "componenthost/reconcile.go": "1e098503b1413851ee192115c2ac4909addb2012bcaf03955e6f8dba29550429",
-    "coreruntime/selection.go": "f7e76bbd00ed92b611e88deeba7e45a0f60fcae3286ae44ec6c57edbf6f07aad"
+    "coreruntime/selection.go": "f7e76bbd00ed92b611e88deeba7e45a0f60fcae3286ae44ec6c57edbf6f07aad",
+    "componenthost/durable/ports.go": "44c9cf1c32d9b068cd78b5a2a0f8e539d887a5c25c87e2188ae7807b52992aeb",
+    "componenthost/durable/ports_test.go": "862508c147b187f394c3ef71c9e06b65ec50ef4273780082c6ee82341c90c11a",
+    "componenthost/resources/identity.go": "7e9285124a04b3f04aadd983fa5782e0f97eff979ba8e37957c1b09ab5eea009",
+    "componenthost/resources/identity_test.go": "f4e1b34f656c201dcf25014d093d5b47f740f7b01ec34b6cc9a7d4f17d43c5e3",
+    "componenthost/resources/listen.go": "a610e624611bb41aad76f71d366f32b0aae32ac8f1ed7c0bc6d4b88664341aef",
+    "componenthost/health/evidence.go": "ffce22f02dd615eb0b36e6c203c1cd3b4146a96c6e503814be7d316dfb1708cd",
+    "componenthost/health/evidence_test.go": "4f9b16381d621b6b2df7c2a86b09f5d851632beccdfcecfe0b5cd62bac5950bd",
+    "componenthost/publicsurface/classifier.go": "154dac95496bd7bf42962d49ee2323bc8f1bee85212e6e944e26b44a14b173e1",
+    "componenthost/publicsurface/classifier_test.go": "1088e54d26a56d54a0df6ced687120d6568cd66c0d51b246fb2f7a1f90397a0c",
+    "componenthost/publicsurface/types.go": "2034dd0e7ce2494b6008b3c5d978d39b4933c749f64737752eb80c8540ad4608"
   }
 }
