@@ -6,6 +6,8 @@ the typed request consumed by Network Planner. Native and external evidence
 share the existing lifetime bounds and contribution identity.
 
 `AdmitActions` checks the contract, source class, scope and lifetime.
+Its opaque `AdmittedAction` values stay in memory; restored action data must
+pass admission again. Zero values cannot produce contributions.
 `BindActions` checks the canonical target revisions before combining equivalent
 contributions. `NetworkIntent` translates those contributions, management
 exemptions and bounded UDP policy into `network/intent` values. None of these

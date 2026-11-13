@@ -39,10 +39,13 @@ type EndpointActionInput struct {
 	SourceClass string
 }
 
+// AdmittedAction is an immutable, in-memory result of AdmitActions. Restored
+// action data must pass admission again before it can be bound to a target.
 type AdmittedAction struct {
-	Action       domain.AppliedActionV1
-	SourceClass  string
-	Contribution EndpointContribution
+	action       domain.AppliedActionV1
+	sourceClass  string
+	contribution EndpointContribution
+	admitted     bool
 }
 
 // Target binds a contribution to the current canonical resource and exact
@@ -83,11 +86,11 @@ func AdmitActions(values []EndpointActionInput, actionScopeRevision string, now 
 			ttl = limits.MaxTTLSeconds
 		}
 		contribution := EndpointContribution{ContributionID: action.ActionID, ActionID: action.ActionID, ActionIDs: []string{action.ActionID}, DecisionID: action.DecisionID, DecisionIDs: []string{action.DecisionID}, RefCount: 1, Subject: subject, Intent: action.ResolvedIntent, ExpiresAt: action.ExpiresAt.UTC().Unix(), TTLSeconds: ttl, SourceClass: value.SourceClass, SourceClasses: []string{value.SourceClass}}
-		result[action.EndpointRevision] = append(result[action.EndpointRevision], AdmittedAction{Action: action, SourceClass: value.SourceClass, Contribution: contribution})
+		result[action.EndpointRevision] = append(result[action.EndpointRevision], AdmittedAction{action: action, sourceClass: value.SourceClass, contribution: contribution, admitted: true})
 	}
 	for endpointRevision := range result {
 		sort.Slice(result[endpointRevision], func(i, j int) bool {
-			return result[endpointRevision][i].Action.ActionID < result[endpointRevision][j].Action.ActionID
+			return result[endpointRevision][i].action.ActionID < result[endpointRevision][j].action.ActionID
 		})
 	}
 	return result, uniqueSorted(reasons)
@@ -99,13 +102,17 @@ func BindActions(target Target, actions []AdmittedAction) ([]EndpointContributio
 	values := make([]EndpointContribution, 0)
 	reasons := make([]string, 0)
 	for _, action := range actions {
-		if action.Action.ResourceID != target.ResourceID || action.Action.GraphRevision != target.ActionScopeRevision ||
-			action.Action.EndpointRevision != target.EndpointRevision || action.Action.ResourceRevision != target.ResourceRevision ||
-			action.Action.ConfigurationRevision != target.ConfigurationRevision {
+		if !action.admitted {
+			reasons = append(reasons, "action_contract_invalid")
+			continue
+		}
+		if action.action.ResourceID != target.ResourceID || action.action.GraphRevision != target.ActionScopeRevision ||
+			action.action.EndpointRevision != target.EndpointRevision || action.action.ResourceRevision != target.ResourceRevision ||
+			action.action.ConfigurationRevision != target.ConfigurationRevision {
 			reasons = append(reasons, "action_revision_stale")
 			continue
 		}
-		values = append(values, action.Contribution)
+		values = append(values, action.contribution)
 	}
 	return collapseContributions(target.ResourceID+"\x00"+target.EndpointRevision, values), uniqueSorted(reasons)
 }

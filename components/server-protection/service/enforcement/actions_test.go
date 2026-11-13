@@ -1,6 +1,7 @@
 package enforcement_test
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -92,6 +93,38 @@ func TestCurrentTargetMustMatchEveryActionRevision(t *testing.T) {
 			bound, reasons := enforcement.BindActions(bad, actions[value.Action.EndpointRevision])
 			if len(bound) != 0 || !reflect.DeepEqual(reasons, []string{"action_revision_stale"}) {
 				t.Fatalf("foreign or stale target admitted: %+v %v", bound, reasons)
+			}
+		})
+	}
+}
+
+func TestBindingRequiresFreshActionAdmission(t *testing.T) {
+	value := actionFixture()
+	admitted, reasons := enforcement.AdmitActions([]enforcement.EndpointActionInput{value}, value.Action.GraphRevision, actionTime, actionLimits())
+	if len(reasons) != 0 {
+		t.Fatal(reasons)
+	}
+	target := enforcement.Target{ResourceID: value.Action.ResourceID, ActionScopeRevision: value.Action.GraphRevision,
+		EndpointRevision: value.Action.EndpointRevision, ResourceRevision: value.Action.ResourceRevision, ConfigurationRevision: value.Action.ConfigurationRevision}
+	data, err := json.Marshal(admitted[value.Action.EndpointRevision])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restored []enforcement.AdmittedAction
+	if err := json.Unmarshal(data, &restored); err != nil {
+		t.Fatal(err)
+	}
+	for name, test := range map[string]struct {
+		target  enforcement.Target
+		actions []enforcement.AdmittedAction
+	}{
+		"restored data": {target, restored},
+		"zero value":    {enforcement.Target{}, []enforcement.AdmittedAction{{}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bound, reasons := enforcement.BindActions(test.target, test.actions)
+			if len(bound) != 0 || !reflect.DeepEqual(reasons, []string{"action_contract_invalid"}) {
+				t.Fatalf("data bypassed action admission: %+v %v", bound, reasons)
 			}
 		})
 	}

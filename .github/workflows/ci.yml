@@ -84,7 +84,13 @@ jobs:
 
       - name: Protection policy, Planner and broker boundary regressions
         shell: bash
-        run: node scripts/go-test.mjs -race -count=1 -timeout=10m -tags "$EXTENDED_TAGS" -- ./components/server-protection/... ./network/... ./componenthost/... ./internal/ops/privilegedbroker ./internal/ops/operationcoordination ./internal/components/architecture
+        run: |
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            findmnt -no TARGET,OPTIONS --target /run
+            findmnt -no TARGET,OPTIONS --target /tmp
+          fi
+          # Bound concurrent disk-backed SQLite fixtures while retaining race checks.
+          node scripts/go-test.mjs -race -p 1 -count=1 -timeout=10m -tags "$EXTENDED_TAGS" -- ./components/server-protection/... ./network/... ./componenthost/... ./internal/ops/privilegedbroker ./internal/ops/operationcoordination ./internal/components/architecture
 
       - name: Native shared configuration and maintenance owner regressions
         shell: bash

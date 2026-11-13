@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -216,7 +217,39 @@ func TestUnprivilegedManifestSubstitutionIsRejected(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("credential transition requires root")
 	}
-	base, _, path := runtimeManifestFixture(t, 0o750, 65534)
+	for _, mask := range []string{"022", "077"} {
+		t.Run("umask_"+mask, func(t *testing.T) {
+			command := exec.Command(os.Args[0], "-test.run=^TestManifestSubstitutionFixtureHelper$", "-test.v")
+			command.Env = append(os.Environ(), "SUI_MANIFEST_SUBSTITUTION_UMASK="+mask)
+			if output, err := command.CombinedOutput(); err != nil {
+				t.Fatalf("manifest fixture assertion failed: %v: %s", err, output)
+			}
+		})
+	}
+}
+
+func TestManifestSubstitutionFixtureHelper(t *testing.T) {
+	mask := os.Getenv("SUI_MANIFEST_SUBSTITUTION_UMASK")
+	if mask == "" {
+		t.Skip("helper process only")
+	}
+	value, err := strconv.ParseUint(mask, 8, 9)
+	if err != nil || os.Geteuid() != 0 {
+		t.Fatalf("invalid root fixture umask %q: %v", mask, err)
+	}
+	// Isolate the process-wide umask from other tests in the package.
+	syscall.Umask(int(value))
+	_, _, path := runtimeManifestFixture(t, 0o750, 65534)
+	// /run holds the protected data and may be mounted noexec. The shared test
+	// executor already requires an executable /tmp; keep the helper there too.
+	base, err := os.MkdirTemp("/tmp", "solovey-manifest-helper-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(base) })
+	if err := os.Chmod(base, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	helper := filepath.Join(base, "manifest-substitution-helper")
 	copyManifestTestHelper(t, helper)
 	command := exec.Command(helper, "-test.run=^TestManifestSubstitutionHelper$")
@@ -246,12 +279,21 @@ func copyManifestTestHelper(t *testing.T, path string) {
 	if copyErr != nil || closeErr != nil {
 		t.Fatal(errors.Join(copyErr, closeErr))
 	}
+	if err := os.Chmod(path, 0o555); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestManifestSubstitutionHelper(t *testing.T) {
 	path := os.Getenv("SUI_MANIFEST_SUBSTITUTION_PATH")
 	if path == "" {
 		t.Skip("helper process only")
+	}
+	if os.Geteuid() != 65534 || os.Getegid() != 65534 {
+		t.Fatalf("unexpected substitution credentials: uid=%d gid=%d", os.Geteuid(), os.Getegid())
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("unprivileged helper cannot traverse the manifest fixture: %v", err)
 	}
 	if err := os.Rename(path, path+".attacker"); err == nil || !errors.Is(err, os.ErrPermission) {
 		t.Fatalf("unprivileged rename error=%v", err)
@@ -274,6 +316,9 @@ func runtimeManifestFixture(t *testing.T, parentMode os.FileMode, parentGID int)
 	platformRun := filepath.Join(base, "run")
 	parent := filepath.Join(platformRun, "solovey-ui")
 	if err := os.Mkdir(platformRun, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(platformRun, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Mkdir(parent, parentMode); err != nil {
