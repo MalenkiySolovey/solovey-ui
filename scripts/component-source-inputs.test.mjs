@@ -172,4 +172,3 @@ test('a component HTTP contribution can pin its narrow public UI exports without
   delete pin.files[file];pin.files['src/private.ts']=digest('private');write()
   assert.throws(()=>verifyUIAPI(root,directory),/unsupported UI API inputs/)
 })
-
