@@ -37,11 +37,12 @@ type standaloneTargetConfig struct {
 }
 
 type runtimeListener struct {
-	config  standaloneTargetConfig
-	server  *http.Server
-	done    chan struct{}
-	ready   atomic.Bool
-	failure atomic.Value // unexpected Serve error, retained until recovery
+	config   standaloneTargetConfig
+	server   *http.Server
+	listener net.Listener
+	done     chan struct{}
+	ready    atomic.Bool
+	failure  atomic.Value // unexpected Serve error, retained until recovery
 }
 
 type backendHTTP struct {
@@ -161,7 +162,7 @@ func (h *backendHTTP) apply(ctx context.Context, desired map[string]standaloneTa
 		defer cancel()
 		for _, state := range started {
 			h.retired = append(h.retired, state)
-			cause = errors.Join(cause, state.server.Close())
+			cause = errors.Join(cause, state.closeAndWait(recoveryCtx))
 		}
 		restored := make(map[string]*runtimeListener, len(h.listeners))
 		for key, state := range h.listeners {
@@ -214,7 +215,7 @@ func (h *backendHTTP) apply(ctx context.Context, desired map[string]standaloneTa
 		}
 		closed[key] = current
 		h.retired = append(h.retired, current)
-		if err := current.server.Close(); err != nil {
+		if err := current.closeAndWait(ctx); err != nil {
 			return rollback(fmt.Errorf("replace listener %s: %w", current.config.address, err))
 		}
 		state, err := h.startStandalone(ctx, config)
@@ -229,7 +230,7 @@ func (h *backendHTTP) apply(ctx context.Context, desired map[string]standaloneTa
 		if next[key] != state {
 			closed[key] = state
 			h.retired = append(h.retired, state)
-			if err := state.server.Close(); err != nil {
+			if err := state.closeAndWait(ctx); err != nil {
 				return rollback(fmt.Errorf("close listener %s: %w", state.config.address, err))
 			}
 		}
@@ -298,11 +299,12 @@ func (h *backendHTTP) startStandalone(ctx context.Context, config standaloneTarg
 	if config.tls {
 		server.TLSConfig = &tls.Config{Certificates: []tls.Certificate{*config.certificate}, MinVersion: tls.VersionTLS12}
 	}
-	state := &runtimeListener{config: config, server: server, done: make(chan struct{})}
+	state := &runtimeListener{config: config, server: server, listener: listener, done: make(chan struct{})}
 	state.ready.Store(true)
 	go func() {
 		defer close(state.done)
 		defer state.ready.Store(false)
+		defer listener.Close()
 		var err error
 		if config.tls {
 			err = server.ServeTLS(listener, "", "")
@@ -314,6 +316,20 @@ func (h *backendHTTP) startStandalone(ctx context.Context, config standaloneTarg
 		}
 	}()
 	return state, nil
+}
+
+// Close may run before Serve registers the acquired listener with http.Server.
+// Retain and close the exact socket, then join the serving worker before reuse.
+func (state *runtimeListener) closeAndWait(ctx context.Context) error {
+	joined := state.server.Close()
+	if err := state.listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		joined = errors.Join(joined, err)
+	}
+	select {
+	case <-state.done:
+	case <-ctx.Done():
+	}
+	return errors.Join(joined, ctx.Err())
 }
 
 func (h *backendHTTP) Drain(ctx context.Context) error {
