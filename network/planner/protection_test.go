@@ -10,7 +10,8 @@ import (
 func protectionFixture() (ProtectionEnforcementIntent, Facts) {
 	binding, facts := fixture()
 	intent := ProtectionEnforcementIntent{Binding: binding, ArtifactRevision: binding.DesiredRevision, Mode: ProtectionEndpointMode,
-		Limits: ProtectionLimits{4096, 14400, 86400}, Rates: ProtectionRates{PacketLimit{5, 10}, PacketLimit{20, 40}, PacketLimit{2, 4}}}
+		Limits: ProtectionLimits{MaxElements: 4096, DefaultTTLSeconds: 14400, MaxTTLSeconds: 86400},
+		Rates:  ProtectionRates{Gray: PacketLimit{Rate: 5, Burst: 10}, Rate: PacketLimit{Rate: 20, Burst: 40}, Quarantine: PacketLimit{Rate: 2, Burst: 4}}}
 	for index, resource := range binding.Resources {
 		intent.Endpoints = append(intent.Endpoints, ProtectionEndpoint{Binding: resource,
 			Key:           hostresources.PublicEndpointKey{Network: hostresources.NetworkTCP, AddressFamily: hostresources.AddressFamilyIPv4, BindAddress: "0.0.0.0", Port: uint16(443 + index)},

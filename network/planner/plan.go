@@ -12,16 +12,17 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
 	platform "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
+	networkintent "github.com/MalenkiySolovey/solovey-ui/network/intent"
 )
 
 const Schema = "solovey-ui/network-plan/v1"
 
-// The initial allocator owns the existing coexistence table only. There is no
-// arbitrary table, mark, queue, route, command or global host reset operation.
-const ProtectionAllocation = "inet:solovey_protection"
-const ProtectionFamily = "inet"
-const ProtectionTable = "solovey_protection"
-const ProtectionTableCLI = ProtectionFamily + " " + ProtectionTable
+// Allocation vocabulary is shared with typed requests; this package retains
+// the single allocator and all accepted-plan authority.
+const ProtectionAllocation = networkintent.ProtectionAllocation
+const ProtectionFamily = networkintent.ProtectionFamily
+const ProtectionTable = networkintent.ProtectionTable
+const ProtectionTableCLI = networkintent.ProtectionTableCLI
 
 type Reason string
 
@@ -47,26 +48,8 @@ type Conflict struct {
 
 func (c *Conflict) Error() string { return fmt.Sprintf("network plan %s: %s", c.Reason, c.ResourceRef) }
 
-// ResourceBinding references a canonical owner resource. EndpointRevision is
-// the owner's exact effective socket identity, never a primary copied port ID.
-type ResourceBinding struct {
-	ResourceRef      string `json:"resourceRef"`
-	Owner            string `json:"owner"`
-	DesiredRevision  string `json:"desiredRevision"`
-	EndpointRevision string `json:"endpointRevision"`
-	Management       bool   `json:"management"`
-}
-
-type Intent struct {
-	HostRef               hostref.Ref       `json:"hostRef"`
-	Owner                 string            `json:"owner"`
-	ResourceRef           string            `json:"resourceRef"`
-	DesiredRevision       string            `json:"desiredRevision"`
-	ConfigurationRevision string            `json:"configurationRevision,omitempty"`
-	InputRevision         string            `json:"inputRevision"`
-	Purpose               string            `json:"purpose"`
-	Resources             []ResourceBinding `json:"resources"`
-}
+type ResourceBinding = networkintent.ResourceBinding
+type Intent = networkintent.Intent
 
 type Ownership struct {
 	HostRef      hostref.Ref `json:"hostRef"`

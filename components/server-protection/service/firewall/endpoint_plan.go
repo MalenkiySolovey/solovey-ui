@@ -13,22 +13,14 @@ import (
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/enforcement"
 	protectionpolicy "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/policy"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
 	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
 
-type EndpointActionInput struct {
-	Action      domain.AppliedActionV1
-	SourceClass string
-}
-
-type normalizedEndpointAction struct {
-	Action       domain.AppliedActionV1
-	SourceClass  string
-	Contribution EndpointContribution
-}
+type EndpointActionInput = enforcement.EndpointActionInput
 
 type EndpointPlanInput struct {
 	InputRevision  string
@@ -80,7 +72,7 @@ func BuildEndpointPlan(input EndpointPlanInput) FirewallPlan {
 		key := hostresources.PublicEndpointKey{Network: endpoint.Network, AddressFamily: endpoint.Family, BindAddress: hostresources.NormalizeListen(endpoint.Bind).Value, Port: endpoint.Port}
 		managementByKey[endpointKeyString(key)] = append(managementByKey[endpointKeyString(key)], endpoint)
 	}
-	actions, actionReasons := normalizeActionInputs(input.Actions, actionScopeRevision, now, plan.Limits)
+	actions, actionReasons := enforcement.AdmitActions(input.Actions, actionScopeRevision, now, plan.Limits)
 	if len(actionReasons) > 0 {
 		plan.ApplyBlocked = true
 		plan.ReasonCodes = append(plan.ReasonCodes, actionReasons...)
@@ -99,16 +91,18 @@ func BuildEndpointPlan(input EndpointPlanInput) FirewallPlan {
 			plannedKeys[endpointKeyString(key)] = struct{}{}
 			management := len(managementByResource[resource.ID]) > 0 || len(managementByKey[endpointKeyString(key)]) > 0
 			policy := EndpointPolicy{EndpointRevision: configuredEndpointRevision(resource, key, strategy), Key: key, ResourceID: resource.ID, Owner: resource.Owner, OwnerRevision: resource.Capabilities.OwnerRevision, ConfigurationRevision: resource.Capabilities.ConfigRevision, Strategy: strategy, Management: management, DesiredStatus: "MANAGED_ENDPOINT", SelectedStatus: "PLANNED", ActualStatus: "NOT_APPLIED", Contributions: []EndpointContribution{}}
-			for _, action := range actions[policy.EndpointRevision] {
-				if action.Action.ResourceID != resource.ID || action.Action.GraphRevision != actionScopeRevision || action.Action.ResourceRevision != EndpointActionResourceRevision(resource) || action.Action.ConfigurationRevision != resource.Capabilities.ConfigRevision {
-					plan.ApplyBlocked = true
-					plan.ReasonCodes = append(plan.ReasonCodes, "action_revision_stale")
-					continue
-				}
-				policy.Contributions = append(policy.Contributions, action.Contribution)
+			contributions, bindingReasons := enforcement.BindActions(enforcement.Target{
+				ResourceID: resource.ID, ActionScopeRevision: actionScopeRevision, EndpointRevision: policy.EndpointRevision,
+				ResourceRevision: EndpointActionResourceRevision(resource), ConfigurationRevision: resource.Capabilities.ConfigRevision,
+			}, actions[policy.EndpointRevision])
+			policy.Contributions = contributions
+			if len(bindingReasons) > 0 {
+				plan.ApplyBlocked = true
+				plan.ReasonCodes = append(plan.ReasonCodes, bindingReasons...)
+			}
+			if len(contributions) > 0 {
 				seenActionEndpoints[policy.EndpointRevision] = struct{}{}
 			}
-			policy.Contributions = collapseContributions(resource.ID+"\x00"+policy.EndpointRevision, policy.Contributions)
 			if len(policy.Contributions) > plan.Limits.MaxElements {
 				plan.ApplyBlocked = true
 				plan.ReasonCodes = append(plan.ReasonCodes, "endpoint_contribution_limit_exceeded")
@@ -282,147 +276,6 @@ func revisionSortKey(value any) string {
 	return string(payload)
 }
 
-func normalizeActionInputs(values []EndpointActionInput, actionScopeRevision string, now time.Time, limits DynamicSetLimits) (map[string][]normalizedEndpointAction, []string) {
-	result := make(map[string][]normalizedEndpointAction)
-	reasons := make([]string, 0)
-	seen := make(map[string]struct{})
-	for _, value := range values {
-		action := value.Action
-		if !action.ExpiresAt.After(now) {
-			continue
-		}
-		if err := action.Validate(now); err != nil || action.State != domain.ActionPlanned && action.State != domain.ActionVerified || action.GraphRevision != actionScopeRevision || action.ExpiresAt.After(now.Add(time.Duration(limits.MaxTTLSeconds)*time.Second)) || value.SourceClass != "native" && value.SourceClass != "external" {
-			reasons = append(reasons, "action_contract_invalid")
-			continue
-		}
-		subject := canonicalActionSubject(action.Subject)
-		if subject == "" || !materializedIntent(action.ResolvedIntent) {
-			reasons = append(reasons, "action_contract_invalid")
-			continue
-		}
-		if _, exists := seen[action.ActionID]; exists {
-			continue
-		}
-		seen[action.ActionID] = struct{}{}
-		ttl := int(action.ExpiresAt.Sub(now) / time.Second)
-		if ttl < 1 {
-			ttl = 1
-		}
-		if ttl > limits.MaxTTLSeconds {
-			ttl = limits.MaxTTLSeconds
-		}
-		contribution := EndpointContribution{ContributionID: action.ActionID, ActionID: action.ActionID, ActionIDs: []string{action.ActionID}, DecisionID: action.DecisionID, DecisionIDs: []string{action.DecisionID}, RefCount: 1, Subject: subject, Intent: action.ResolvedIntent, ExpiresAt: action.ExpiresAt.UTC().Unix(), TTLSeconds: ttl, SourceClass: value.SourceClass, SourceClasses: []string{value.SourceClass}}
-		result[action.EndpointRevision] = append(result[action.EndpointRevision], normalizedEndpointAction{Action: action, SourceClass: value.SourceClass, Contribution: contribution})
-	}
-	for endpointRevision := range result {
-		sort.Slice(result[endpointRevision], func(i, j int) bool {
-			return result[endpointRevision][i].Action.ActionID < result[endpointRevision][j].Action.ActionID
-		})
-	}
-	return result, uniqueSorted(reasons)
-}
-
-func collapseContributions(resourceID string, values []EndpointContribution) []EndpointContribution {
-	groups := make(map[string]EndpointContribution)
-	actions := make(map[string]map[string]struct{})
-	decisions := make(map[string]map[string]struct{})
-	sources := make(map[string]map[string]struct{})
-	for _, value := range values {
-		key := value.Subject + "\x00" + string(value.Intent)
-		group := groups[key]
-		if group.Subject == "" {
-			payload, _ := json.Marshal(struct{ ResourceID, Subject, Intent string }{resourceID, value.Subject, string(value.Intent)})
-			sum := sha256.Sum256(payload)
-			group = value
-			group.ContributionID = hex.EncodeToString(sum[:])
-			group.ActionID = ""
-			group.ActionIDs = nil
-			group.DecisionID = ""
-			group.DecisionIDs = nil
-			group.RefCount = 0
-			actions[key] = make(map[string]struct{})
-			decisions[key] = make(map[string]struct{})
-			sources[key] = make(map[string]struct{})
-		}
-		if value.DecisionID != "" {
-			decisions[key][value.DecisionID] = struct{}{}
-		}
-		for _, actionID := range append([]string{value.ActionID}, value.ActionIDs...) {
-			if actionID != "" {
-				actions[key][actionID] = struct{}{}
-			}
-		}
-		if value.SourceClass != "" {
-			sources[key][value.SourceClass] = struct{}{}
-		}
-		if value.ExpiresAt > group.ExpiresAt {
-			group.ExpiresAt = value.ExpiresAt
-		}
-		if value.TTLSeconds > group.TTLSeconds {
-			group.TTLSeconds = value.TTLSeconds
-		}
-		groups[key] = group
-	}
-	result := make([]EndpointContribution, 0, len(groups))
-	keys := make([]string, 0, len(groups))
-	for key := range groups {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, key := range keys {
-		group := groups[key]
-		for actionID := range actions[key] {
-			group.ActionIDs = append(group.ActionIDs, actionID)
-		}
-		for decisionID := range decisions[key] {
-			group.DecisionIDs = append(group.DecisionIDs, decisionID)
-		}
-		for sourceClass := range sources[key] {
-			group.SourceClasses = append(group.SourceClasses, sourceClass)
-		}
-		sort.Strings(group.SourceClasses)
-		group.SourceClass = ""
-		if len(group.SourceClasses) > 0 {
-			group.SourceClass = group.SourceClasses[0]
-		}
-		sort.Strings(group.DecisionIDs)
-		sort.Strings(group.ActionIDs)
-		group.RefCount = len(group.ActionIDs)
-		if group.RefCount == 0 {
-			group.RefCount = 1
-		}
-		result = append(result, group)
-	}
-	return result
-}
-
-func materializedIntent(value domain.ResponseIntent) bool {
-	return value == domain.IntentSoftGraylist || value == domain.IntentRateLimit || value == domain.IntentTemporaryQuarantine || value == domain.IntentTemporaryBlock
-}
-
-func canonicalActionSubject(value domain.SignalSubjectV2) string {
-	switch value.Type {
-	case "ip":
-		address, err := netip.ParseAddr(value.Value)
-		if err != nil || address.Unmap().String() != value.Value {
-			return ""
-		}
-		bits := 128
-		if address.Is4() {
-			bits = 32
-		}
-		return netip.PrefixFrom(address, bits).String()
-	case "prefix":
-		prefix, err := netip.ParsePrefix(value.Value)
-		if err != nil || prefix.Masked().String() != value.Value {
-			return ""
-		}
-		return prefix.String()
-	default:
-		return ""
-	}
-}
-
 func buildManagementExemptions(endpoints []hostresources.ManagementEndpointV1, paths []hostresources.RecoveryPathV1, trusted []string, now time.Time) []ManagementExemption {
 	result := make([]ManagementExemption, 0)
 	for _, endpoint := range endpoints {
@@ -578,7 +431,7 @@ func preflightEndpointPlan(plan FirewallPlan) error {
 		for _, contribution := range endpoint.Contributions {
 			prefix, prefixErr := netip.ParsePrefix(contribution.Subject)
 			familyMatches := prefixErr == nil && ((endpoint.Key.AddressFamily == hostresources.AddressFamilyIPv4) == prefix.Addr().Is4())
-			if contribution.ContributionID == "" || !materializedIntent(contribution.Intent) || canonicalPrefix(contribution.Subject) == "" || !familyMatches || contribution.TTLSeconds < 1 || contribution.TTLSeconds > plan.Limits.MaxTTLSeconds || contribution.RefCount < 1 || contribution.RefCount > plan.Limits.MaxElements || len(contribution.ActionIDs) != contribution.RefCount || len(contribution.DecisionIDs) > contribution.RefCount {
+			if contribution.ContributionID == "" || !enforcement.Materializes(contribution.Intent) || canonicalPrefix(contribution.Subject) == "" || !familyMatches || contribution.TTLSeconds < 1 || contribution.TTLSeconds > plan.Limits.MaxTTLSeconds || contribution.RefCount < 1 || contribution.RefCount > plan.Limits.MaxElements || len(contribution.ActionIDs) != contribution.RefCount || len(contribution.DecisionIDs) > contribution.RefCount {
 				return fmt.Errorf("%w: endpoint contribution is invalid", ErrUnsafeResource)
 			}
 			for _, id := range append(append([]string(nil), contribution.ActionIDs...), contribution.DecisionIDs...) {
