@@ -41,7 +41,7 @@ func newProductionFrontingSemanticSource(workflow *protectionfronting.Workflow) 
 	return &productionFrontingSemanticSource{
 		backends: hostresources.DefaultFrontingBackendsV1, fallbacks: neutralfallback.Default,
 		resources: func(ctx context.Context) protectionresources.InventorySnapshot {
-			return protectionresources.Snapshot(ctx, false)
+			return protectionresources.Snapshot(ctx, false, hostresources.Default)
 		},
 		surfaces: hostfacts.Default.Snapshot,
 		runtime: func(ctx context.Context, managementRevision string, now time.Time) (protectionfronting.NginxRuntimeIdentityV2, error) {

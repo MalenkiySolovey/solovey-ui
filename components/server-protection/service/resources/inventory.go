@@ -3,7 +3,7 @@ package resources
 import (
 	"context"
 
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 )
 
 type InventorySnapshot struct {
@@ -14,12 +14,22 @@ type InventorySnapshot struct {
 	Errors      []hostresources.ResourceError       `json:"errors,omitempty"`
 }
 
-func Snapshot(ctx context.Context, refresh bool) InventorySnapshot {
+// InventoryReader is the existing owner's read-only inventory view. The feature
+// receives it from composition and owns no registration, cache or discovery.
+type InventoryReader interface {
+	Snapshot(context.Context) hostresources.ResourceSnapshot
+	Refresh(context.Context) hostresources.ResourceSnapshot
+}
+
+func Snapshot(ctx context.Context, refresh bool, reader InventoryReader) InventorySnapshot {
+	if reader == nil {
+		return FromHostSnapshot(hostresources.ResourceSnapshot{Errors: []hostresources.ResourceError{{Owner: "registry", Message: "resource inventory is unavailable"}}})
+	}
 	var source hostresources.ResourceSnapshot
 	if refresh {
-		source = hostresources.Refresh(ctx)
+		source = reader.Refresh(ctx)
 	} else {
-		source = hostresources.Snapshot(ctx)
+		source = reader.Snapshot(ctx)
 	}
 	return FromHostSnapshot(source)
 }

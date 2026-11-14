@@ -2,6 +2,8 @@
 
 package api
 
+import hostinventory "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+
 import (
 	"context"
 	"errors"
@@ -25,7 +27,7 @@ func (h Handler) status(c *gin.Context) {
 		h.deps.JSONObj(c, nil, err)
 		return
 	}
-	inventory := protectionresources.Snapshot(c.Request.Context(), false)
+	inventory := protectionresources.Snapshot(c.Request.Context(), false, hostinventory.Default)
 	_, profileCount, profileErr := h.deps.Repository.ListProfiles(c.Request.Context(), protectionrepository.ProfileFilter{PageQuery: protectionrepository.PageQuery{Page: 1, Limit: 1}})
 	_, eventCount, eventErr := h.deps.Repository.ListEvents(c.Request.Context(), protectionrepository.EventFilter{PageQuery: protectionrepository.PageQuery{Page: 1, Limit: 1}})
 	if profileErr != nil || eventErr != nil {

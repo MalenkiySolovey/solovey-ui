@@ -87,6 +87,8 @@ jobs:
           cache-dependency-path: go.sum
       - name: Generate backend component imports
         run: node scripts/generate-component-imports.mjs --profile full
+      - name: Qualify independent protection policy source
+        run: node scripts/verify-protection-source.mjs
       - name: Ensure make on Windows
         if: runner.os == 'Windows'
         shell: pwsh

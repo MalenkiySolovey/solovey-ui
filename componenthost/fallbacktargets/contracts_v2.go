@@ -1,5 +1,7 @@
 package fallbacktargets
 
+import canonical "github.com/MalenkiySolovey/solovey-host/componenthost/fallbacktargets"
+
 import (
 	"crypto/sha256"
 	"encoding/hex"
@@ -16,7 +18,7 @@ import (
 
 const (
 	TargetSchemaV2              = "solovey-ui/fallback-target/v2"
-	TargetReferenceSchemaV2     = "solovey-ui/fallback-target-reference/v2"
+	TargetReferenceSchemaV2     = canonical.TargetReferenceSchemaV2
 	MaxProvidersV2              = 128
 	MaxTargetsV2                = 4096
 	MaxReservationsV2           = 4096
@@ -24,7 +26,7 @@ const (
 	MaxAcceptedServerNamesV2    = 32
 	MaxReasonCodesV2            = 32
 	MaxReasonCodeLengthV2       = 64
-	MaxOpaqueIDLengthV2         = 128
+	MaxOpaqueIDLengthV2         = canonical.MaxOpaqueIDLengthV2
 	MaxSourceLengthV2           = 64
 	MaxConnectFirstByteP95MSV2  = 300_000
 	MaxReservationListPageV2    = 256
@@ -112,18 +114,7 @@ type FallbackTargetV2 struct {
 	CanonicalTargetRevision string         `json:"canonicalTargetRevision"`
 }
 
-type FallbackTargetReferenceV2 struct {
-	Schema                 string `json:"schema"`
-	ProviderID             string `json:"providerId"`
-	TargetID               string `json:"targetId"`
-	PublishRevision        string `json:"publishRevision"`
-	ContentDigest          string `json:"contentDigest"`
-	EndpointID             string `json:"endpointId"`
-	EndpointRevision       string `json:"endpointRevision"`
-	ProviderHealthRevision string `json:"providerHealthRevision"`
-	CapacityRevision       string `json:"capacityRevision"`
-	ProviderRevision       string `json:"providerRevision"`
-}
+type FallbackTargetReferenceV2 = canonical.FallbackTargetReferenceV2
 
 func (t FallbackTargetV2) Validate() error {
 	_, err := validatedCanonicalTargetV2(t)
@@ -154,17 +145,6 @@ func ReferenceV2FromTarget(target FallbackTargetV2) (FallbackTargetReferenceV2, 
 		EndpointRevision: target.Endpoint.EndpointRevision, ProviderHealthRevision: target.Health.Revision,
 		CapacityRevision: target.Capacity.Revision, ProviderRevision: target.ProviderRevision,
 	}, nil
-}
-
-func (r FallbackTargetReferenceV2) Validate() error {
-	if r.Schema != TargetReferenceSchemaV2 || !validOpaqueID(r.ProviderID, MaxOpaqueIDLengthV2) ||
-		!validOpaqueID(r.TargetID, MaxOpaqueIDLengthV2) || !validOpaqueID(r.PublishRevision, MaxOpaqueIDLengthV2) ||
-		!isSHA256(r.ContentDigest) || !validOpaqueID(r.EndpointID, MaxOpaqueIDLengthV2) ||
-		!isSHA256(r.EndpointRevision) || !isSHA256(r.ProviderHealthRevision) ||
-		!isSHA256(r.CapacityRevision) || !validOpaqueID(r.ProviderRevision, MaxOpaqueIDLengthV2) {
-		return errors.New("fallback_target_reference_v2_invalid")
-	}
-	return nil
 }
 
 func ResolveExactV2(reference FallbackTargetReferenceV2, target FallbackTargetV2, now time.Time) error {

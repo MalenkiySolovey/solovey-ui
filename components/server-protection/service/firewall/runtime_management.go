@@ -25,7 +25,7 @@ func (s *BaselineService) RuntimeManagement(ctx context.Context) (RuntimeManagem
 		return RuntimeManagement{}, ErrWorkflowDisabled
 	}
 	ctx = s.SSH.WithCurrentPosture(ctx)
-	inventory := protectionresources.Snapshot(ctx, true)
+	inventory := protectionresources.Snapshot(ctx, true, hostresources.Default)
 	if err := InventoryReady(inventory); err != nil {
 		return RuntimeManagement{}, err
 	}

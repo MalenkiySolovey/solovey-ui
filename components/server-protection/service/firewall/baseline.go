@@ -199,7 +199,7 @@ func (s *BaselineService) Snapshot(ctx context.Context, refresh bool, selected m
 	if s.SSH != nil {
 		ctx = s.SSH.WithCurrentPosture(ctx)
 	}
-	inventory := protectionresources.Snapshot(ctx, refresh)
+	inventory := protectionresources.Snapshot(ctx, refresh, hostresources.Default)
 	if err := InventoryReady(inventory); err != nil {
 		return BaselineState{}, err
 	}

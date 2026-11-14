@@ -67,7 +67,7 @@ func TestLogicalRestoreRebindsApplicationResourceOwners(t *testing.T) {
 				for _, resource := range snapshot.Resources {
 					ids[resource.ID] = true
 					if resource.ID == "core:panel:web" || resource.ID == "core:subscription:default" {
-						if !resource.Identity.ValidFor(resource) || resource.Identity.Owner != "core" || !resource.Identity.Host.IsLocal() || resource.Identity.ObservationStatus != hostresources.ResourceObservationUnknown {
+						if !resource.Identity.ValidFor(resource.ConfiguredResource()) || resource.Identity.Owner != "core" || !resource.Identity.Host.IsLocal() || resource.Identity.ObservationStatus != hostresources.ResourceObservationUnknown {
 							t.Fatalf("restored listener lost its canonical Local owner: %+v", resource)
 						}
 						identities[resource.ID] = *resource.Identity

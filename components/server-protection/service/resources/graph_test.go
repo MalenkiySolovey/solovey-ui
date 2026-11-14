@@ -1,14 +1,15 @@
 package resources
 
 import (
+	"github.com/MalenkiySolovey/solovey-host/componenthost/deploymentidentity"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
-	hostsurface "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	hostsurface "github.com/MalenkiySolovey/solovey-host/componenthost/hostsurface"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 )
 
 func TestLocalIdentityMetadataPreservesSocketOwnershipGraph(t *testing.T) {
@@ -20,8 +21,8 @@ func TestLocalIdentityMetadataPreservesSocketOwnershipGraph(t *testing.T) {
 	}
 	surfaces := []hostsurface.HostSurfaceFactV1{graphSurface(resource, now)}
 	legacy := BuildSocketOwnershipGraph(SocketGraphInput{Resources: []hostresources.ProtectableResource{resource}, Surfaces: surfaces, Now: now})
-	resource.Identity = hostresources.LocalConfiguredIdentity(resource)
-	if !resource.Identity.ValidFor(resource) {
+	resource.Identity = hostresources.LocalConfiguredIdentity(resource.ConfiguredResource())
+	if !resource.Identity.ValidFor(resource.ConfiguredResource()) {
 		t.Fatal("fixture has no bound Local identity")
 	}
 	for _, stale := range []bool{false, true} {
@@ -185,7 +186,7 @@ func TestSocketGraphSharingRequiresExplicitAdapterMultiplexingContract(t *testin
 func graphResource(id string, network hostresources.Network, family hostresources.AddressFamily, bind string, port uint16) hostresources.ProtectableResource {
 	ownerRevision, configRevision := strings.Repeat("b", 64), strings.Repeat("c", 64)
 	expected := hostresources.ExpectedApplicationOwnerV1{
-		Schema: hostresources.ExpectedApplicationOwnerSchemaV1, ContractRevision: strings.Repeat("a", 64),
+		Schema: deploymentidentity.ExpectedApplicationOwnerSchemaV1, ContractRevision: strings.Repeat("a", 64),
 		InstanceID: "00112233-4455-4677-8899-aabbccddeeff", SourceRevision: "src-" + strings.Repeat("2", 64),
 		ArtifactRevision: "art-" + strings.Repeat("3", 64), DeploymentID: "dep-" + strings.Repeat("4", 64),
 		RuntimeRootBindingRevision: strings.Repeat("5", 64), ServiceIdentity: "solovey-ui.panel",

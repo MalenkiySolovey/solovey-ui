@@ -3,81 +3,30 @@ package resources
 import (
 	"context"
 	canonical "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
-
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/deploymentidentity"
 )
 
-type ExpectedApplicationOwnerV1 = deploymentidentity.ExpectedApplicationOwnerV1
+type ExpectedApplicationOwnerV1 = canonical.ExpectedApplicationOwnerV1
 
 const ExpectedApplicationOwnerSchemaV1 = deploymentidentity.ExpectedApplicationOwnerSchemaV1
 
 type CapabilityValue = canonical.CapabilityValue
 
-const (
-	CapabilityUnknown = canonical.CapabilityUnknown
-	CapabilityYes     = canonical.CapabilityYes
-	CapabilityNo      = canonical.CapabilityNo
-)
+const CapabilityUnknown = canonical.CapabilityUnknown
 
-type ProtectableResourceCapabilities struct {
-	Known                    bool                                          `json:"known"`
-	AcceptsProxyProtocol     CapabilityValue                               `json:"acceptsProxyProtocol"`
-	SupportsGracefulDrain    CapabilityValue                               `json:"supportsGracefulDrain"`
-	CanServeFallback         CapabilityValue                               `json:"canServeFallback"`
-	RequiresACMEHTTP01       CapabilityValue                               `json:"requiresAcmeHttp01"`
-	RequiresTLSALPN01        CapabilityValue                               `json:"requiresTlsAlpn01"`
-	PublicHostnames          []string                                      `json:"publicHostnames,omitempty"`
-	RouteHints               []string                                      `json:"routeHints,omitempty"`
-	TLSMode                  string                                        `json:"tlsMode,omitempty"`
-	FallbackTargetID         string                                        `json:"fallbackTargetId,omitempty"`
-	OwnerRevision            string                                        `json:"ownerRevision,omitempty"`
-	ConfigRevision           string                                        `json:"configRevision,omitempty"`
-	ExpectedApplicationOwner deploymentidentity.ExpectedApplicationOwnerV1 `json:"expectedApplicationOwner,omitempty"`
-}
+const CapabilityYes = canonical.CapabilityYes
 
-type ProtectableResource struct {
-	ID                  string                          `json:"id"`
-	Kind                string                          `json:"kind"`
-	Owner               string                          `json:"owner"`
-	Name                string                          `json:"name"`
-	Protocol            string                          `json:"protocol"`
-	Listen              string                          `json:"listen"`
-	Port                int                             `json:"port"`
-	Public              bool                            `json:"public"`
-	TLS                 bool                            `json:"tls"`
-	Source              string                          `json:"source"`
-	Identity            *ResourceIdentityV1             `json:"identity,omitempty"`
-	InboundTag          string                          `json:"inboundTag,omitempty"`
-	ComponentID         string                          `json:"componentId,omitempty"`
-	Fingerprint         string                          `json:"fingerprint"`
-	Capabilities        ProtectableResourceCapabilities `json:"capabilities"`
-	ListenIntent        ConfiguredListenIntentV1        `json:"listenIntent"`
-	ListenIntents       []ConfiguredListenIntentV1      `json:"listenIntents,omitempty"`
-	Endpoints           []PublicEndpoint                `json:"endpoints"`
-	SocketCoverage      *SocketCoverageV1               `json:"socketCoverage,omitempty"`
-	ManagementEndpoints []ManagementEndpointV1          `json:"managementEndpoints,omitempty"`
-	AdvertisedEndpoints []AdvertisedEndpoint            `json:"advertisedEndpoints,omitempty"`
-	Warnings            []string                        `json:"warnings,omitempty"`
-}
+const CapabilityNo = canonical.CapabilityNo
 
-type ResourceWarning struct {
-	Owner      string `json:"owner"`
-	ResourceID string `json:"resourceId,omitempty"`
-	Code       string `json:"code"`
-	Message    string `json:"message"`
-}
+type ProtectableResourceCapabilities = canonical.ProtectableResourceCapabilities
 
-type ResourceError struct {
-	Owner   string `json:"owner"`
-	Message string `json:"message"`
-}
+type ProtectableResource = canonical.ProtectableResource
 
-type ResourceSnapshot struct {
-	GeneratedAt int64                 `json:"generatedAt"`
-	Resources   []ProtectableResource `json:"resources"`
-	Warnings    []ResourceWarning     `json:"warnings,omitempty"`
-	Errors      []ResourceError       `json:"errors,omitempty"`
-}
+type ResourceWarning = canonical.ResourceWarning
+
+type ResourceError = canonical.ResourceError
+
+type ResourceSnapshot = canonical.ResourceSnapshot
 
 type ResourceContributor interface {
 	Owner() string

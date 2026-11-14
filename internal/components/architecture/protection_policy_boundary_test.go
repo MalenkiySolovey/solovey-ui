@@ -13,15 +13,16 @@ func TestProtectionPolicyCannotAcquireConcreteBackendOrNetworkExecution(t *testi
 	root := moduleRoot(t)
 	feature := modulePath + "/components/server-protection/"
 	allowed := map[string]bool{
-		modulePath + "/componenthost/hostref":         true,
-		modulePath + "/componenthost/resources":       true,
-		modulePath + "/componenthost/hostsurface":     true,
-		modulePath + "/componenthost/fallbacktargets": true,
-		modulePath + "/network/intent":                true,
-		feature + "domain":                            true,
-		feature + "service/scoring":                   true,
-		feature + "service/policy":                    true,
-		feature + "service/resources":                 true,
+		"github.com/MalenkiySolovey/solovey-host/hostref":                          true,
+		"github.com/MalenkiySolovey/solovey-host/componenthost/resources":          true,
+		"github.com/MalenkiySolovey/solovey-host/componenthost/hostsurface":        true,
+		"github.com/MalenkiySolovey/solovey-host/componenthost/fallbacktargets":    true,
+		"github.com/MalenkiySolovey/solovey-host/componenthost/deploymentidentity": true,
+		"github.com/MalenkiySolovey/solovey-host/network/intent":                   true,
+		feature + "domain":            true,
+		feature + "service/scoring":   true,
+		feature + "service/policy":    true,
+		feature + "service/resources": true,
 	}
 	for _, relative := range []string{
 		"components/server-protection/domain", "components/server-protection/service/decision",
@@ -34,7 +35,10 @@ func TestProtectionPolicyCannotAcquireConcreteBackendOrNetworkExecution(t *testi
 				return
 			}
 			for _, imported := range fileImports(t, path) {
-				if strings.HasPrefix(imported, modulePath+"/") && !allowed[imported] ||
+				if strings.HasPrefix(imported, modulePath+"/componenthost/") || imported == modulePath+"/network/intent" {
+					t.Errorf("portable policy retained a Product-private contract: %s imports %s", path, imported)
+				}
+				if (strings.HasPrefix(imported, modulePath+"/") || strings.HasPrefix(imported, "github.com/MalenkiySolovey/solovey-host/")) && !allowed[imported] ||
 					imported == "os" || imported == "os/exec" || imported == "database/sql" ||
 					strings.HasPrefix(imported, "gorm.io/") || strings.HasPrefix(imported, "github.com/gin-gonic/") {
 					t.Errorf("portable policy acquired concrete authority: %s imports %s", path, imported)

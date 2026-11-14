@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 )
 
 type CollisionSeverity string

@@ -19,7 +19,7 @@ func TestConfiguredListenerIdentityUsesExistingCoreOwnerAndRevisions(t *testing.
 		resource := items[0]
 		wantID := []string{"core:panel:web", "core:subscription:default"}[index]
 		if resource.ID != wantID || resource.Owner != contributor.Owner() || resource.Owner != "core" ||
-			!resource.Identity.ValidFor(resource) || resource.Identity.Host != hostref.Local() ||
+			!resource.Identity.ValidFor(resource.ConfiguredResource()) || resource.Identity.Host != hostref.Local() ||
 			resource.Identity.DesiredRevision != resource.Capabilities.OwnerRevision ||
 			resource.Identity.ObservationStatus != hostresources.ResourceObservationUnknown || resource.Identity.ObservedRevision != "" {
 			t.Fatalf("listener identity: %+v", resource)
@@ -29,7 +29,7 @@ func TestConfiguredListenerIdentityUsesExistingCoreOwnerAndRevisions(t *testing.
 			t.Fatal(err)
 		}
 		var decoded hostresources.ProtectableResource
-		if err := json.Unmarshal(payload, &decoded); err != nil || decoded.ID != wantID || !decoded.Identity.ValidFor(decoded) {
+		if err := json.Unmarshal(payload, &decoded); err != nil || decoded.ID != wantID || !decoded.Identity.ValidFor(decoded.ConfiguredResource()) {
 			t.Fatal("listener ID roundtrip changed", err)
 		}
 		legacy := resource
@@ -43,7 +43,7 @@ func TestConfiguredListenerIdentityUsesExistingCoreOwnerAndRevisions(t *testing.
 func TestConfiguredListenerIdentityRegeneratesFromDesiredSettings(t *testing.T) {
 	first := listenerFromSettings(listenerSettings{id: "core:panel:web", kind: "panel_web", listen: "127.0.0.1", port: 2095})
 	second := listenerFromSettings(listenerSettings{id: first.ID, kind: first.Kind, listen: first.Listen, port: 2096})
-	if !second.Identity.ValidFor(second) || first.Identity.ValidFor(second) || first.ID != second.ID || first.Owner != second.Owner || first.Identity.DesiredRevision == second.Identity.DesiredRevision {
+	if !second.Identity.ValidFor(second.ConfiguredResource()) || first.Identity.ValidFor(second.ConfiguredResource()) || first.ID != second.ID || first.Owner != second.Owner || first.Identity.DesiredRevision == second.Identity.DesiredRevision {
 		t.Fatal("changed configuration reused stale metadata or changed identity")
 	}
 }
