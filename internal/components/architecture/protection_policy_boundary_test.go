@@ -19,6 +19,7 @@ func TestProtectionPolicyCannotAcquireConcreteBackendOrNetworkExecution(t *testi
 		"github.com/MalenkiySolovey/solovey-host/componenthost/fallbacktargets":    true,
 		"github.com/MalenkiySolovey/solovey-host/componenthost/deploymentidentity": true,
 		"github.com/MalenkiySolovey/solovey-host/network/intent":                   true,
+		"github.com/MalenkiySolovey/solovey-host/network/nftcontract":              true,
 		feature + "domain":            true,
 		feature + "service/scoring":   true,
 		feature + "service/policy":    true,
@@ -29,6 +30,7 @@ func TestProtectionPolicyCannotAcquireConcreteBackendOrNetworkExecution(t *testi
 		"components/server-protection/service/scoring", "components/server-protection/service/policy",
 		"components/server-protection/service/response", "components/server-protection/service/enforcement",
 		"components/server-protection/service/resources", "network/intent",
+		"components/server-protection/service/helpercontract",
 	} {
 		walkGoFiles(t, filepath.Join(root, filepath.FromSlash(relative)), func(path string) {
 			if strings.HasSuffix(path, "_test.go") {
