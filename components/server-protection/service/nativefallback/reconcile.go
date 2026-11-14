@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 
-	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
+	neutralfallback "github.com/MalenkiySolovey/solovey-host/componenthost/fallbacktargets"
+	coreinboundcontrol "github.com/MalenkiySolovey/solovey-host/coreruntime/inboundcontrol"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
-	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 )
 
 // Reconcile implements the operation manager's kind-specific restart backend.

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
+	neutralfallback "github.com/MalenkiySolovey/solovey-host/componenthost/fallbacktargets"
 )
 
 func providerCallError(contractError *neutralfallback.ProviderContractError, panicked bool) error {

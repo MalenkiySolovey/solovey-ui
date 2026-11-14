@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
+	"github.com/MalenkiySolovey/solovey-host/componenthost/fallbacktargets"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 )
 

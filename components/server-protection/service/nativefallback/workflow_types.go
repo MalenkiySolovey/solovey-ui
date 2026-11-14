@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
+	neutralfallback "github.com/MalenkiySolovey/solovey-host/componenthost/fallbacktargets"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 )

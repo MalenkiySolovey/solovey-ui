@@ -6,11 +6,11 @@ import (
 	"errors"
 	"strings"
 
-	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
+	neutralfallback "github.com/MalenkiySolovey/solovey-host/componenthost/fallbacktargets"
+	coreinboundcontrol "github.com/MalenkiySolovey/solovey-host/coreruntime/inboundcontrol"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
-	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 )
 
 // Rollback is the manual, revision-fenced entry point for the existing
