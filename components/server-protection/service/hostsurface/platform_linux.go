@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
+	hostfacts "github.com/MalenkiySolovey/solovey-host/componenthost/hostsurface"
 	processevidence "github.com/MalenkiySolovey/solovey-ui/internal/ops/processevidence"
 )
 

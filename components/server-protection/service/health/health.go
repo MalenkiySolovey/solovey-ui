@@ -4,8 +4,8 @@ import (
 	"context"
 	"sort"
 
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	sshdomain "github.com/MalenkiySolovey/solovey-ui/internal/sshmanagement"
 	sshservice "github.com/MalenkiySolovey/solovey-ui/service/sshmanagement"
 )

@@ -6,9 +6,9 @@ import (
 	"errors"
 	"time"
 
-	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	componenthealth "github.com/MalenkiySolovey/solovey-host/componenthost/health"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
+	"github.com/MalenkiySolovey/solovey-host/hostref"
 	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	helper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	platform "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
