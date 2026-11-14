@@ -12,7 +12,7 @@ assert.match(hostVersion ?? '', /^v\d+\.\d+\.\d+$/);
 assert.ok(!(metadata.Replace ?? []).some(item => item.Old.Path === hostModule), 'Host must use published source');
 const identity = 'example.invalid/protection-source-check';
 const prefix = 'github.com/MalenkiySolovey/solovey-ui/components/server-protection/';
-const portable = ['domain', ...['decision', 'scoring', 'policy', 'response', 'enforcement', 'resources', 'events', 'observationio', 'observation', 'durable', 'operations', 'helpercontract'].map(name => 'service/' + name)];
+const portable = ['domain', ...['decision', 'scoring', 'policy', 'response', 'enforcement', 'resources', 'events', 'observationio', 'observation', 'durable', 'operations', 'helpercontract', 'health', 'graylist'].map(name => 'service/' + name)];
 // These cases exercise real Product owners in the normal Product suite. Every
 // portable production file and independent feature test is included below.
 const productIntegrationTests = new Set([

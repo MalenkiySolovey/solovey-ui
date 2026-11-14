@@ -9,8 +9,8 @@ import (
 	"errors"
 	"net/http"
 
+	protectionhealth "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendhealth"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
-	protectionhealth "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/health"
 	protectionobservation "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/observation"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
