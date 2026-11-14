@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	"github.com/MalenkiySolovey/solovey-host/componenthost/fallbacktargets"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 )
 
 type FallbackReservationDirectoryV2 interface {
 	ProviderV2(string) (fallbacktargets.ProviderV2, bool)
-	ListReservationsV2(context.Context, fallbacktargets.ListReservationsQueryV1) (fallbacktargets.RegistryReservationsV2, error)
+	ListReservationsV2(context.Context, fallbacktargets.ListReservationsQueryV1) (fallbacktargets.ReservationSnapshotV2, error)
 }
 
 type targetAuthorityKindV2 string

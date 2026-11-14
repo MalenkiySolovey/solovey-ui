@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-host/componenthost/fallbacktargets"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifactcontract"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helpercontract"

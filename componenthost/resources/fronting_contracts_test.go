@@ -63,8 +63,8 @@ func TestFrontingBackendReferenceExactFreshAndRedacted(t *testing.T) {
 					t.Fatalf("reference leaked %q: %s", forbidden, encoded)
 				}
 			}
-			if jsonContainsNumber(decoded, float64(fact.port)) {
-				t.Fatalf("reference leaked backend port %d: %s", fact.port, encoded)
+			if jsonContainsNumber(decoded, 9443) {
+				t.Fatalf("reference leaked fixture backend port 9443: %s", encoded)
 			}
 		})
 	}
@@ -125,7 +125,7 @@ func TestFrontingBackendReferenceRejectsStalePublicManagementAndProxyMismatch(t 
 	reference, _ := ReferenceFrontingBackendV1(fact, ProxyModeOff, now)
 	stale := fact
 	stale.ProviderRevision = "provider-v2"
-	if ResolveExactFrontingBackendV1(reference, stale, now) == nil || ResolveExactFrontingBackendV1(reference, fact, fact.ExpiresAtTime()) == nil {
+	if ResolveExactFrontingBackendV1(reference, stale, now) == nil || ResolveExactFrontingBackendV1(reference, fact, time.Unix(fact.ExpiresAt, 0)) == nil {
 		t.Fatal("stale exact reference was accepted")
 	}
 	unsafeFact := fact
@@ -169,8 +169,6 @@ func frontingFactFixtureForKindNoFail(now time.Time, address string, family Addr
 		ObservedAt: now.Unix(), ExpiresAt: now.Add(time.Minute).Unix()}, resource, endpoint)
 	return err
 }
-
-func (f FrontingBackendFactV1) ExpiresAtTime() time.Time { return time.Unix(f.ExpiresAt, 0) }
 
 func TestEndpointLeasePureCASAndTransitionRules(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0).UTC()

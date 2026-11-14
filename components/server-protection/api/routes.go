@@ -5,6 +5,8 @@ package api
 import (
 	"context"
 
+	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
+	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
@@ -88,7 +90,7 @@ func RegisterRoutes(group *gin.RouterGroup, deps Deps) {
 		deps.LocalProxy = &protectionlocalproxy.Controller{}
 	}
 	if deps.Interception == nil {
-		deps.Interception = protectioninterception.New()
+		deps.Interception = protectioninterception.New(hostresources.DefaultInterceptionsV1, hostresources.DefaultIngressScopesV1, componenthealth.DefaultInterceptionProbesV1)
 	}
 	handler := Handler{deps: deps}
 	routes := group.Group("/components/server-protection")

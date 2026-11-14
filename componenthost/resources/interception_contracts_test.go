@@ -119,7 +119,8 @@ func TestInterceptionRegistryResolvesOnlyExactCurrentRevision(t *testing.T) {
 		t.Fatalf("resolve exact reference: %v", err)
 	}
 	reference.RuntimeRevision = Revision("stale")
-	reference.CanonicalReferenceRevision = Revision(interceptionReferenceRevisionInput(reference))
+	reference.CanonicalReferenceRevision = ""
+	reference.CanonicalReferenceRevision = Revision(reference)
 	if _, err := registry.ResolveV1(context.Background(), reference, now); err == nil {
 		t.Fatal("stale runtime reference resolved")
 	}

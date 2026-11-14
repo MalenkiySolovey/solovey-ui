@@ -51,8 +51,13 @@ func localProxyFactFixture(inboundType string, exposure LocalProxyExposureV1, au
 		ManagementCollision: CapabilityNo, RecoveryPathCollision: CapabilityNo,
 		ObservedAt: now.Unix(), ExpiresAt: now.Add(time.Minute).Unix(), ReasonCodes: []string{},
 	}
-	fact.FactRevision = Revision(localProxyFactRevisionInput(fact))
+	fact.FactRevision = Revision(localProxyFixtureSemanticInput(fact))
 	return fact
+}
+
+func localProxyFixtureSemanticInput(value LocalProxyFactV1) LocalProxyFactV1 {
+	value.ObservedAt, value.ExpiresAt, value.FactRevision = 0, 0, ""
+	return value
 }
 
 func TestLocalProxyEligibilityMatrixAndExactReferenceBoundary(t *testing.T) {
@@ -116,7 +121,9 @@ func TestLocalProxyFactSeparatesFreshnessFromSemanticRevisionAndFailsClosedOnDri
 	offline.RuntimeReady = false
 	offline.HealthCapabilityReady = false
 	offline.ReasonCodes = []string{"RUNTIME_CONFIGURATION_UNPROVEN"}
-	offline.FactRevision = Revision(localProxyFactRevisionInput(offline))
+	semantic := offline
+	semantic.ObservedAt, semantic.ExpiresAt, semantic.FactRevision = 0, 0, ""
+	offline.FactRevision = Revision(semantic)
 	if err := offline.Validate(now); err != nil {
 		t.Fatalf("diagnostic offline fact rejected: %v", err)
 	}
@@ -143,7 +150,7 @@ func TestLocalProxyFactRejectsIncompleteProtocolAndUDPOrSystemProxyClaims(t *tes
 	tests[3].fact.SystemProxy = LocalProxySystemProxyEnabled
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.fact.FactRevision = Revision(localProxyFactRevisionInput(test.fact))
+			test.fact.FactRevision = Revision(localProxyFixtureSemanticInput(test.fact))
 			if test.diagnostic {
 				if err := test.fact.Validate(now); err != nil {
 					t.Fatalf("diagnostic fact must remain valid: %v", err)

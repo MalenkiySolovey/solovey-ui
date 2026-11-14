@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	componenthealth "github.com/MalenkiySolovey/solovey-host/componenthost/health"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 )
@@ -33,14 +33,15 @@ type Service interface {
 type Controller struct {
 	Repository           StateRepository
 	Operations           operationManager
-	Providers            *hostresources.LocalProxyRegistryV1
-	Probes               *componenthealth.LocalProxyProbeRegistryV1
+	Providers            ProviderDirectory
+	Probes               ProbeSource
+	Surface              SurfaceSource
 	Now                  func() time.Time
 	LeaseActivityChanged func()
 }
 
 func (c *Controller) ready() error {
-	if c == nil || c.Repository == nil || c.Operations == nil || c.Providers == nil || c.Probes == nil {
+	if c == nil || c.Repository == nil || c.Operations == nil || c.Providers == nil || c.Probes == nil || c.Surface == nil {
 		return serviceError(CodeInternalFailure)
 	}
 	return nil

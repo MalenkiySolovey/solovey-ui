@@ -12,6 +12,7 @@ import (
 
 	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendcore"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
@@ -143,7 +144,7 @@ func newPlannerFixture(t *testing.T) plannerFixture {
 	targets := &fakeTargetReader{target: target}
 	management := &fakeManagementReader{result: ManagementIsolationResultV1{State: "ISOLATED", Revision: strings.Repeat("7", 64), ExpiresAt: now.Add(90 * time.Second)}}
 	request := requestFor(snapshot, reference)
-	planner := Planner{Core: core, Targets: targets, Management: management, Now: func() time.Time { return now }}
+	planner := Planner{Core: core, Admission: backendcore.Admission{}, Targets: targets, Management: management, Now: func() time.Time { return now }}
 	return plannerFixture{now: now, core: core, targets: targets, management: management, planner: planner, request: request}
 }
 

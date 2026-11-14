@@ -5,8 +5,7 @@ import (
 	"errors"
 	"time"
 
-	hostsurface "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 )
@@ -19,7 +18,7 @@ func (r Reconciler) Reconcile(ctx context.Context, operation protectionrepositor
 	if r.Controller == nil || r.Controller.ready() != nil {
 		return protectionoperations.ReconcileDecision{}, errors.New("local proxy reconciler unavailable")
 	}
-	hostsurface.Default.Reconcile(ctx)
+	r.Controller.Surface.Reconcile(ctx)
 	state, err := r.Controller.Repository.LocalProxyStateByOperation(ctx, operation.OperationID)
 	if err != nil {
 		return r.reconcileWithoutMirror(ctx, operation)

@@ -3,7 +3,7 @@ package localproxy
 import (
 	"testing"
 
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
+	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 )
 
 func TestReceiptExpiredReceiptHasExplicitLocalProxyContractCode(t *testing.T) {

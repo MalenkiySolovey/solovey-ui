@@ -6,8 +6,7 @@ import (
 	"strings"
 	"time"
 
-	hostsurface "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 )
 
@@ -16,7 +15,7 @@ func (c *Controller) Status(ctx context.Context, refresh bool) (StatusV1, error)
 		return StatusV1{}, err
 	}
 	if refresh {
-		hostsurface.Default.Reconcile(ctx)
+		c.Surface.Reconcile(ctx)
 	}
 	now := c.currentTime()
 	facts, err := c.Providers.FactsV1(ctx, now)

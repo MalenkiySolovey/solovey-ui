@@ -12,7 +12,7 @@ assert.match(hostVersion ?? '', /^v\d+\.\d+\.\d+$/);
 assert.ok(!(metadata.Replace ?? []).some(item => item.Old.Path === hostModule), 'Host must use published source');
 const identity = 'example.invalid/protection-source-check';
 const prefix = 'github.com/MalenkiySolovey/solovey-ui/components/server-protection/';
-const portable = ['domain', ...['decision', 'scoring', 'policy', 'response', 'enforcement', 'resources', 'events', 'observationio', 'observation', 'durable', 'operations', 'helpercontract', 'health', 'graylist'].map(name => 'service/' + name)];
+const portable = ['domain', ...['decision', 'scoring', 'policy', 'response', 'enforcement', 'resources', 'events', 'observationio', 'observation', 'durable', 'operations', 'helpercontract', 'health', 'graylist', 'interception', 'localproxy'].map(name => 'service/' + name)];
 // These cases exercise real Product owners in the normal Product suite. Every
 // portable production file and independent feature test is included below.
 const productIntegrationTests = new Set([
@@ -20,6 +20,9 @@ const productIntegrationTests = new Set([
   'service/observation/worker_test.go',
   'service/operations/manager_test.go',
   'service/operations/runtime_recovery_test.go',
+  'service/interception/service_test.go',
+  'service/interception/performance_test.go',
+  'service/localproxy/localproxy_test.go',
 ]);
 const systemModule = 'golang.org/x/sys';
 const systemVersion = metadata.Require.find(item => item.Path === systemModule)?.Version;

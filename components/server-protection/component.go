@@ -17,9 +17,11 @@ import (
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
+	managementregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/management"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	protectionapi "github.com/MalenkiySolovey/solovey-ui/components/server-protection/api"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendcore"
 	protectionhealth "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendhealth"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendnetwork"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendobservation"
@@ -442,6 +444,7 @@ func protectionDeps(host componenthost.APIDeps) protectionapi.Deps {
 		UDPGuard: &protectionudpguard.Controller{
 			Repository: repository, Operations: manager, Firewall: workflow, Baseline: baseline,
 			Transports: hostresources.DefaultInboundTransportsV2,
+			Probes:     componenthealth.DefaultProtocolProbesV1,
 		},
 		Fronting:       frontingAdapter,
 		FrontingV2:     &protectionfronting.SemanticServiceV2{Workflow: frontingWorkflow, Repository: repository, Source: hooks.frontingSemanticSource},
@@ -449,7 +452,7 @@ func protectionDeps(host componenthost.APIDeps) protectionapi.Deps {
 		LocalProxy:     localProxyController,
 		Interception: protectioninterception.NewWithKernelCapability(protectioninterception.KernelInterceptionCapabilityV1{
 			ReasonCode: "KERNEL_INTERCEPTION_CAPABILITY_NOT_PROVEN",
-		}),
+		}, hostresources.DefaultInterceptionsV1, hostresources.DefaultIngressScopesV1, componenthealth.DefaultInterceptionProbesV1),
 	}
 }
 
@@ -621,7 +624,8 @@ func ensureNativeFallbackWorkflowLocked(runtime *coreservice.Runtime) (*protecti
 	}
 	planner := protectionnativefallback.Planner{
 		Core: coreControl, Targets: protectionnativefallback.RegistryTargetReader{Registry: neutralfallback.Default},
-		Management: protectionnativefallback.InventoryManagementReader{},
+		Admission:  backendcore.Admission{},
+		Management: protectionnativefallback.InventoryManagementReader{Endpoints: managementregistry.CurrentEndpoints, Resources: hostresources.Snapshot},
 	}
 	workflow := &protectionnativefallback.Workflow{
 		Operations: ensureOperationManagerLocked(hooks.runtime), Journal: repository, Planner: planner, Core: coreControl,
@@ -638,6 +642,7 @@ func ensureLocalProxyControllerLocked() *protectionlocalproxy.Controller {
 	hooks.localProxyController = &protectionlocalproxy.Controller{
 		Repository: backendstore.New(protectionrepository.New(dbsqlite.DB())), Operations: ensureOperationManagerLocked(hooks.runtime),
 		Providers: hostresources.DefaultLocalProxiesV1, Probes: componenthealth.DefaultLocalProxyProbesV1,
+		Surface:              hostfacts.Default,
 		LeaseActivityChanged: notifyLocalProxyLeaseActivity,
 	}
 	return hooks.localProxyController

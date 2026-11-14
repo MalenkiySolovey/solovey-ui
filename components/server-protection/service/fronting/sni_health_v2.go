@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 )
 
 const SNIPrereadHealthSchemaV2 = "solovey-ui/sni-preread-health/v2"

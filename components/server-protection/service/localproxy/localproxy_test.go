@@ -392,7 +392,8 @@ func TestPreviewIsZeroWritePrepareOnlyReservesAndRestartCancelsPrepared(t *testi
 	}
 	controller := &Controller{
 		Repository: repository, Operations: manager, Providers: providers,
-		Probes: componenthealth.NewLocalProxyProbeRegistryV1(), Now: func() time.Time { return now },
+		Surface: &surfaceOwnerFixture{},
+		Probes:  componenthealth.NewLocalProxyProbeRegistryV1(), Now: func() time.Time { return now },
 	}
 	reference := PlanReferenceV1{ResourceID: fact.ResourceID, EndpointID: fact.EndpointID, FactRevision: fact.FactRevision}
 	plan, err := controller.Preview(t.Context(), reference)
@@ -553,7 +554,7 @@ func TestLeaseRenewerExitsImmediatelyWhenDefaultOffHasNoActiveLease(t *testing.T
 	}
 	repository := backendstore.New(protectionrepository.New(db))
 	manager := protectionoperations.NewManager(repository, protectionoperations.Options{InstanceID: "local-proxy-idle-test", PID: 4242, Now: func() time.Time { return now }})
-	controller := &Controller{Repository: repository, Operations: manager, Providers: hostresources.NewLocalProxyRegistryV1(), Probes: componenthealth.NewLocalProxyProbeRegistryV1(), Now: func() time.Time { return now }}
+	controller := &Controller{Repository: repository, Operations: manager, Providers: hostresources.NewLocalProxyRegistryV1(), Probes: componenthealth.NewLocalProxyProbeRegistryV1(), Surface: &surfaceOwnerFixture{}, Now: func() time.Time { return now }}
 	done := make(chan struct{})
 	go func() {
 		RunLeaseRenewer(context.Background(), controller, make(chan struct{}))
@@ -603,7 +604,8 @@ func TestRestartDistrustsActiveHistoryAndRetainsFreshMarkerOnHealthFailure(t *te
 	}
 	controller := &Controller{
 		Repository: repository, Operations: manager, Providers: providers, Probes: probes,
-		Now: func() time.Time { return now },
+		Surface: &surfaceOwnerFixture{},
+		Now:     func() time.Time { return now },
 	}
 	plan, err := controller.Preview(t.Context(), PlanReferenceV1{
 		ResourceID: fact.ResourceID, EndpointID: fact.EndpointID, FactRevision: fact.FactRevision,
