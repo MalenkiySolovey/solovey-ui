@@ -7,7 +7,6 @@ import canonical "github.com/MalenkiySolovey/solovey-ui/components/server-protec
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -281,29 +280,6 @@ func validateNginxListeners(listeners []NginxListener) error {
 		if err != nil || address.IsMulticast() || listener.Port < 1 || listener.Port > 65535 {
 			return errors.New("nginx listener is invalid")
 		}
-	}
-	return nil
-}
-
-func readBounded(reader io.Reader, limit int) ([]byte, error) {
-	data, err := io.ReadAll(io.LimitReader(reader, int64(limit)+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(data) > limit {
-		return nil, errors.New("input exceeds allowed size")
-	}
-	return data, nil
-}
-
-func decodeStrict(data []byte, target any) error {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return err
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return errors.New("multiple JSON values are forbidden")
 	}
 	return nil
 }
