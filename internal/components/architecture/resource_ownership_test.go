@@ -71,12 +71,56 @@ func TestGenericOwnerConsumersDoNotSelectInstalledSupervisorSchemas(t *testing.T
 func TestListenerProofRequestIsSupervisorNeutral(t *testing.T) {
 	root := moduleRoot(t)
 	fields := namedStructFields(t,
-		filepath.Join(root, "components", "server-protection", "service", "helper", "protocol.go"),
+		filepath.Join(root, "components", "server-protection", "service", "helpercontract", "protocol.go"),
 		"ListenerOwnerObserveRequest")
 	for field := range fields {
 		lower := strings.ToLower(field)
 		if strings.Contains(lower, "systemd") || strings.Contains(lower, "procd") || strings.Contains(lower, "supervisor") {
 			t.Errorf("listener proof request exposes supervisor selector %s", field)
+		}
+	}
+}
+
+func TestHelperFacadeAliasesTheCanonicalOperationDeclarations(t *testing.T) {
+	path := filepath.Join(moduleRoot(t), "components", "server-protection", "service", "helper", "protocol.go")
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalImport := false
+	for _, imported := range file.Imports {
+		if imported.Name != nil && imported.Name.Name == "canonical" && imported.Path.Value == `"`+modulePath+`/components/server-protection/service/helpercontract"` {
+			canonicalImport = true
+		}
+	}
+	if !canonicalImport {
+		t.Fatal("helper facade does not bind the canonical declarations")
+	}
+	found := map[string]bool{}
+	for _, declaration := range file.Decls {
+		group, ok := declaration.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, spec := range group.Specs {
+			value, ok := spec.(*ast.TypeSpec)
+			if !ok || !ast.IsExported(value.Name.Name) {
+				continue
+			}
+			selector, ok := value.Type.(*ast.SelectorExpr)
+			if !ok || !value.Assign.IsValid() || selector.Sel.Name != value.Name.Name {
+				t.Fatalf("helper facade gained an editable declaration: %s", value.Name.Name)
+			}
+			owner, ok := selector.X.(*ast.Ident)
+			if !ok || owner.Name != "canonical" {
+				t.Fatalf("helper facade changed its declaration owner: %s", value.Name.Name)
+			}
+			found[value.Name.Name] = true
+		}
+	}
+	for _, required := range []string{"Request", "Response", "ListenerOwnerObserveRequest", "SSHRecoveryObserveRequest"} {
+		if !found[required] {
+			t.Fatalf("canonical helper alias missing: %s", required)
 		}
 	}
 }
