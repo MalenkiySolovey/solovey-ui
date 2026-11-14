@@ -205,7 +205,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { InboundSlotContext } from '@/componentSystem/types'
+import type { InboundSlotContext } from '@solovey/component-ui/contributions'
 import { ProtectionAPIError, protectionAPI } from '../api'
 import {
   nativeActionAvailability,
