@@ -9,6 +9,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendobservation"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	"gorm.io/driver/sqlite"
@@ -16,7 +17,7 @@ import (
 )
 
 func TestWorkerStopDeadlineIsRetryableWithoutBlockingPastDeadline(t *testing.T) {
-	worker := NewWorker()
+	worker := NewWorker(Options{Source: backendobservation.Source{}, Inventory: hostresources.Default})
 	release := make(chan struct{})
 	done := make(chan struct{})
 	worker.running.Store(true)
@@ -39,7 +40,7 @@ func TestWorkerStopDeadlineIsRetryableWithoutBlockingPastDeadline(t *testing.T) 
 	if !retained {
 		t.Fatal("timed out Stop forgot the still-running worker")
 	}
-	if err := worker.Start(protectionrepository.New(nil)); !errors.Is(err, ErrWorkerStopping) {
+	if err := worker.Start(backendobservation.NewStore(protectionrepository.New(nil))); !errors.Is(err, ErrWorkerStopping) {
 		t.Fatalf("Start while Stop is incomplete = %v", err)
 	}
 	close(release)
@@ -107,8 +108,8 @@ func TestWorkerFinalFlushPersistsSanitizedEventsAndStopsIntake(t *testing.T) {
 	if err := db.Create(&protectionrepository.IPAllowlistModel{IPCIDR: "198.51.100.9/32", Reason: "test allowlist", CreatedBy: "tester", CreatedAt: now, UpdatedAt: now}).Error; err != nil {
 		t.Fatal(err)
 	}
-	worker := NewWorker()
-	if err := worker.Start(repository); err != nil {
+	worker := NewWorker(Options{Source: backendobservation.Source{}, Inventory: hostresources.Default})
+	if err := worker.Start(backendobservation.NewStore(repository)); err != nil {
 		t.Fatal(err)
 	}
 	publicsurface.EmitObservation(publicsurface.Observation{

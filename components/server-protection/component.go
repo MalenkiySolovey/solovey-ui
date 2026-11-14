@@ -18,6 +18,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	protectionapi "github.com/MalenkiySolovey/solovey-ui/components/server-protection/api"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendobservation"
 	protectiondeployment "github.com/MalenkiySolovey/solovey-ui/components/server-protection/deploymentadapter"
 	protectionruntime "github.com/MalenkiySolovey/solovey-ui/components/server-protection/runtimecontract"
 	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifacts"
@@ -77,6 +78,9 @@ var hooks = struct {
 }{}
 
 func init() {
+	protectionobservation.DefaultWorker = protectionobservation.NewWorker(protectionobservation.Options{
+		Source: backendobservation.Source{}, Inventory: hostresources.Default,
+	})
 	registry.Register(registry.Component{Manifest: componentManifest, Lifecycle: &component{}})
 	registry.RegisterAPIRoutes(componentID, componenthost.RouteAdapter[protectionapi.Deps]{
 		Build:    protectionDeps,
@@ -269,7 +273,7 @@ func (component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) erro
 		_, _ = pruner.Prune(ctx, settings.ArtifactRetentionCount, settings.ArtifactRetentionDays)
 	}
 	startLocalProxyRenewerLocked(localProxyController)
-	if err := protectionobservation.DefaultWorker.Start(protectionrepository.New(dbsqlite.DB())); err != nil {
+	if err := protectionobservation.DefaultWorker.Start(backendobservation.NewStore(protectionrepository.New(dbsqlite.DB()))); err != nil {
 		_ = manager.Stop(context.Background())
 		hooks.operationManager = nil
 		cleanupHooksLocked()

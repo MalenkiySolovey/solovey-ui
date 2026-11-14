@@ -10,14 +10,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	"github.com/MalenkiySolovey/solovey-host/componenthost/publicsurface"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/events"
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/observationio"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/scoring"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 const (
@@ -43,8 +42,9 @@ type Status struct {
 
 type Worker struct {
 	mu          sync.Mutex
-	repository  *protectionrepository.Repository
-	sub         *publicsurface.Subscription
+	options     Options
+	repository  observationio.Store
+	sub         observationio.Subscription
 	unregister  func()
 	cancel      context.CancelFunc
 	done        chan struct{}
@@ -59,14 +59,22 @@ type Worker struct {
 	lastDrop    atomic.Value // string
 }
 
-func NewWorker() *Worker {
+type Options struct {
+	Source    observationio.Source
+	Inventory protectionresources.InventoryReader
+}
+
+func NewWorker(options ...Options) *Worker {
 	worker := &Worker{}
+	if len(options) > 0 {
+		worker.options = options[0]
+	}
 	worker.lastError.Store("")
 	worker.lastDrop.Store("")
 	return worker
 }
 
-func (w *Worker) Start(repository *protectionrepository.Repository) error {
+func (w *Worker) Start(repository observationio.Store) error {
 	if repository == nil {
 		return errors.New("server-protection observation repository is required")
 	}
@@ -86,9 +94,18 @@ func (w *Worker) Start(repository *protectionrepository.Repository) error {
 		w.repository = repository
 		return nil
 	}
-	subscription, unregister, err := publicsurface.SubscribeObservations(settings.ObservationBufferSize)
+	if w.options.Source == nil || w.options.Inventory == nil {
+		return errors.New("server-protection observation owner ports are unavailable")
+	}
+	subscription, unregister, err := w.options.Source.SubscribeObservations(settings.ObservationBufferSize)
 	if err != nil {
 		return err
+	}
+	if subscription == nil || unregister == nil {
+		if unregister != nil {
+			unregister()
+		}
+		return errors.New("server-protection observation subscription is unavailable")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	w.repository = repository
@@ -237,20 +254,24 @@ func (w *Worker) flush(ctx context.Context, batch []publicsurface.Observation) {
 }
 
 func (w *Worker) processBatch(ctx context.Context, observations []publicsurface.Observation) (int, error) {
-	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	cycle, err := w.repository.BeginObservation(ctx)
 	if err != nil {
 		return 0, err
 	}
-	defer release()
-	settings, _, err := w.repository.LoadSettings(ctx)
+	if cycle == nil {
+		return 0, errors.New("server-protection observation cycle is unavailable")
+	}
+	defer cycle.Close()
+	ctx = cycle.Context()
+	settings, _, err := cycle.LoadSettings()
 	if err != nil || !settings.Enabled {
 		return 0, err
 	}
-	profiles, _, err := w.repository.ListProfiles(ctx, protectionrepository.ProfileFilter{PageQuery: protectionrepository.PageQuery{Page: 1, Limit: 1000}, Status: "active"})
+	profiles, err := cycle.ActiveProfiles()
 	if err != nil {
 		return 0, err
 	}
-	profilesByResource := make(map[string]protectionrepository.ProfileModel, len(profiles))
+	profilesByResource := make(map[string]observationio.ProfileSnapshot, len(profiles))
 	for _, profile := range profiles {
 		if profile.Enabled && profile.Mode == string(domain.ProfileModeRecordOnly) {
 			profilesByResource[profile.ResourceID] = profile
@@ -259,12 +280,12 @@ func (w *Worker) processBatch(ctx context.Context, observations []publicsurface.
 	if len(profilesByResource) == 0 {
 		return 0, nil
 	}
-	allowlist, err := w.repository.ActiveIPAllowlist(ctx, time.Now())
+	allowlist, err := cycle.ActiveIPAllowlist(time.Now())
 	if err != nil {
 		return 0, err
 	}
 	currentResources := make(map[string]hostresources.ProtectableResource)
-	for _, resource := range protectionresources.Snapshot(ctx, false, hostresources.Default).Resources {
+	for _, resource := range protectionresources.Snapshot(ctx, false, w.options.Inventory).Resources {
 		currentResources[resource.ID] = resource
 	}
 	states := make(map[string]scoring.ScoreState)
@@ -319,8 +340,8 @@ func (w *Worker) processBatch(ctx context.Context, observations []publicsurface.
 		stateKey := key.ResourceID + "\x00" + key.Prefix.String()
 		state := states[stateKey]
 		if !loaded[stateKey] {
-			state, err = w.repository.LoadScore(ctx, key)
-			if errors.Is(err, protectionrepository.ErrScoreNotFound) {
+			state, err = cycle.LoadScore(key)
+			if errors.Is(err, observationio.ErrScoreNotFound) {
 				state, err = scoring.ScoreState{}, nil
 			}
 			if err != nil {
@@ -358,7 +379,7 @@ func (w *Worker) processBatch(ctx context.Context, observations []publicsurface.
 		return 0, nil
 	}
 	if err := persistWithRetry(ctx, func() error {
-		return w.repository.PersistObservationBatch(ctx, stateBatch, eventBatch, clear)
+		return cycle.PersistObservationBatch(stateBatch, eventBatch, clear)
 	}); err != nil {
 		return 0, err
 	}
@@ -369,18 +390,22 @@ func (w *Worker) processBatch(ctx context.Context, observations []publicsurface.
 }
 
 func (w *Worker) purge(ctx context.Context) {
-	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	cycle, err := w.repository.BeginObservation(ctx)
 	if err != nil {
 		w.lastError.Store(err.Error())
 		return
 	}
-	defer release()
-	settings, _, err := w.repository.LoadSettings(ctx)
+	if cycle == nil {
+		w.lastError.Store("server-protection observation cycle is unavailable")
+		return
+	}
+	defer cycle.Close()
+	settings, _, err := cycle.LoadSettings()
 	if err != nil {
 		w.lastError.Store(err.Error())
 		return
 	}
-	_, err = w.repository.Purge(ctx, events.RetentionPolicy{GlobalLimit: settings.RetentionGlobalLimit, PerResourceLimit: settings.RetentionPerResourceLimit})
+	_, err = cycle.Purge(events.RetentionPolicy{GlobalLimit: settings.RetentionGlobalLimit, PerResourceLimit: settings.RetentionPerResourceLimit})
 	if err != nil {
 		w.lastError.Store(err.Error())
 	}
@@ -458,8 +483,7 @@ func isBusyError(err error) bool {
 	if err == nil {
 		return false
 	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "database is locked") || strings.Contains(message, "database is busy") || strings.Contains(message, "sqlite_busy")
+	return errors.Is(err, observationio.ErrWriteBusy)
 }
 
 var DefaultWorker = NewWorker()
