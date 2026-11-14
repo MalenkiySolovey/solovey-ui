@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/deploymentidentity"
-	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
+	"github.com/MalenkiySolovey/solovey-host/componenthost/deploymentidentity"
+	hostfacts "github.com/MalenkiySolovey/solovey-host/componenthost/hostsurface"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
+	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helpercontract"
 )
 
 type OwnerAvailability string

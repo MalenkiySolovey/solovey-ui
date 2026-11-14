@@ -23,7 +23,7 @@ func TestFirewallBaselineSecurityCases33Through40(t *testing.T) {
 	t.Run("35_shell_and_raw_command_unavailable", func(t *testing.T) {
 		request := validListenerOwnerRequest()
 		request.Operation = Operation("shell.execute")
-		if err := request.Validate(root); err == nil || !strings.Contains(err.Error(), "not allowlisted") {
+		if err := ValidateRequest(request, root); err == nil || !strings.Contains(err.Error(), "not allowlisted") {
 			t.Fatalf("raw command escaped the allowlist: %v", err)
 		}
 	})
@@ -75,7 +75,7 @@ func TestListenerOwnerObservationHasExplicitBoundedHashWindow(t *testing.T) {
 func TestListenerOwnerRequestDoesNotCarrySupervisorProof(t *testing.T) {
 	root := testManagedRoot(t)
 	request := validListenerOwnerRequest()
-	if err := request.Validate(root); err != nil {
+	if err := ValidateRequest(request, root); err != nil {
 		t.Fatalf("valid semantic listener owner request was rejected: %v", err)
 	}
 	data, err := json.Marshal(request.ListenerOwnerObserve)

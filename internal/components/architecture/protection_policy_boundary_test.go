@@ -16,19 +16,26 @@ func TestProtectionPolicyCannotAcquireConcreteBackendOrNetworkExecution(t *testi
 		"github.com/MalenkiySolovey/solovey-host/hostref":                          true,
 		"github.com/MalenkiySolovey/solovey-host/componenthost/resources":          true,
 		"github.com/MalenkiySolovey/solovey-host/componenthost/hostsurface":        true,
+		"github.com/MalenkiySolovey/solovey-host/componenthost/health":             true,
 		"github.com/MalenkiySolovey/solovey-host/componenthost/fallbacktargets":    true,
 		"github.com/MalenkiySolovey/solovey-host/componenthost/deploymentidentity": true,
 		"github.com/MalenkiySolovey/solovey-host/network/intent":                   true,
+		"github.com/MalenkiySolovey/solovey-host/network/nftcontract":              true,
 		feature + "domain":            true,
 		feature + "service/scoring":   true,
 		feature + "service/policy":    true,
 		feature + "service/resources": true,
+		feature + "service/response":  true,
+		feature + "service/decision":  true,
 	}
 	for _, relative := range []string{
 		"components/server-protection/domain", "components/server-protection/service/decision",
 		"components/server-protection/service/scoring", "components/server-protection/service/policy",
 		"components/server-protection/service/response", "components/server-protection/service/enforcement",
 		"components/server-protection/service/resources", "network/intent",
+		"components/server-protection/service/helpercontract",
+		"components/server-protection/service/health",
+		"components/server-protection/service/graylist",
 	} {
 		walkGoFiles(t, filepath.Join(root, filepath.FromSlash(relative)), func(path string) {
 			if strings.HasSuffix(path, "_test.go") {

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	hostsurface "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	hostsurface "github.com/MalenkiySolovey/solovey-host/componenthost/hostsurface"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 	protectionpolicy "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/policy"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 )

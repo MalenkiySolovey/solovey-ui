@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
+	"github.com/MalenkiySolovey/solovey-host/hostref"
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
@@ -1263,9 +1263,10 @@ func (w Workflow) call(ctx context.Context, operation protectionrepository.Opera
 		return nil, err
 	}
 	if !response.OK {
-		switch response.NetworkReason {
+		reason := networkplan.Reason(response.NetworkReason)
+		switch reason {
 		case networkplan.ResourceConflict, networkplan.StalePlan, networkplan.CandidateChanged:
-			return nil, &networkplan.Conflict{Reason: response.NetworkReason, ResourceRef: networkplan.ProtectionResourceRef, Allocation: networkplan.ProtectionAllocation}
+			return nil, &networkplan.Conflict{Reason: reason, ResourceRef: networkplan.ProtectionResourceRef, Allocation: networkplan.ProtectionAllocation}
 		}
 		if response.Code == protectionhelper.CodeMissingCapability {
 			return nil, fmt.Errorf("%w: %s", ErrMissingCapability, response.Reason)

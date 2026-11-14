@@ -17,6 +17,9 @@ type ProtectionHealth struct {
 	Now    func() time.Time
 }
 
+// ResourceKind identifies the existing SSH owner's configured resource values.
+func (ProtectionHealth) ResourceKind() string { return domain.ProtectionResourceKind }
+
 func (h ProtectionHealth) Check(ctx context.Context, planned []hostresources.ProtectableResource) []componenthealth.Result {
 	ctx, cancel := context.WithTimeout(ctx, componenthealth.DefaultTimeout)
 	defer cancel()

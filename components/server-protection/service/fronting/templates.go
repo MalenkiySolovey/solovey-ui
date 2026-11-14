@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 )
 
 // renderNginx emits a generated include only. Selector values are fixed

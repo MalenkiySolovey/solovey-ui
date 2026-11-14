@@ -26,7 +26,7 @@ func TestArbitraryOperationRejected(t *testing.T) {
 		Operation:       Operation("shell.execute"),
 		Capabilities:    &CapabilitiesRequest{},
 	}
-	if err := request.Validate(root); err == nil || !strings.Contains(err.Error(), "not allowlisted") {
+	if err := ValidateRequest(request, root); err == nil || !strings.Contains(err.Error(), "not allowlisted") {
 		t.Fatalf("arbitrary operation was not rejected: %v", err)
 	}
 }
@@ -305,7 +305,7 @@ func TestHelperVersionPolicy(t *testing.T) {
 func TestManagedTableObservationIsBoundedAndReadOnly(t *testing.T) {
 	root := testManagedRoot(t)
 	request := Request{ProtocolVersion: ProtocolVersion, Correlation: Correlation{OperationID: "observe-managed-table", InstanceID: "instance"}, Operation: OperationNFTObserve, NFTObserve: &NFTObserveRequest{}}
-	if err := request.Validate(root); err != nil {
+	if err := ValidateRequest(request, root); err != nil {
 		t.Fatalf("read-only managed-table observation required a mutation lock: %v", err)
 	}
 	if !request.UnlockedReadOnly() {
@@ -338,7 +338,7 @@ func TestManagedNFTTableIsStrict(t *testing.T) {
 		Operation:       OperationNFTApply,
 		NFTApply:        &NFTApplyRequest{CandidatePath: "missing.nft", RollbackArtifactPath: "rollback.json", ExpectedTable: "inet user_table"},
 	}
-	if err := request.Validate(root); err == nil || !strings.Contains(err.Error(), "solovey_protection") {
+	if err := ValidateRequest(request, root); err == nil || !strings.Contains(err.Error(), "solovey_protection") {
 		t.Fatalf("arbitrary nft table was not rejected: %v", err)
 	}
 }

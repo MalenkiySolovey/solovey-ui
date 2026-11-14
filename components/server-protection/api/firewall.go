@@ -9,9 +9,9 @@ import (
 	"net/http"
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	protectionhealth "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendhealth"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
-	protectionhealth "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/health"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionobservation "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/observation"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"

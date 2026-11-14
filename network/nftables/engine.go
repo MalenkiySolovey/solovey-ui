@@ -49,7 +49,7 @@ func (e Engine) Validate(ctx context.Context, correlation Correlation, request N
 	if err := e.ready(ctx, correlation); err != nil {
 		return nil, err
 	}
-	if err := request.Validate(e.root); err != nil {
+	if err := ValidateRequest(request, e.root); err != nil {
 		return nil, err
 	}
 	path, err := e.root.Resolve(request.CandidatePath, true)
@@ -125,7 +125,7 @@ func (e Engine) Apply(ctx context.Context, correlation Correlation, request NFTA
 	if err := e.ready(ctx, correlation); err != nil {
 		return nil, err
 	}
-	if err := request.Validate(e.root); err != nil {
+	if err := ValidateApplyRequest(request, e.root); err != nil {
 		return nil, err
 	}
 	candidatePath, err := e.root.Resolve(request.CandidatePath, true)
@@ -234,7 +234,7 @@ func (e Engine) Rollback(ctx context.Context, correlation Correlation, request N
 	if err := e.ready(ctx, correlation); err != nil {
 		return nil, err
 	}
-	if err := request.Validate(e.root); err != nil {
+	if err := ValidateRollbackRequest(request, e.root); err != nil {
 		return nil, err
 	}
 	path, err := e.root.Resolve(request.RollbackArtifactPath, true)

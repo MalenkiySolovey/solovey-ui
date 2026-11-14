@@ -98,7 +98,7 @@ func registerBrokerHandlers(registry *broker.Registry, root ManagedRoot, composi
 			if err := broker.DecodeRawPayload(envelope.Payload, &request); err != nil || request.Operation != operation {
 				return nil, broker.Failure(broker.CodeInvalidRequest, "server-protection payload does not match its typed verb")
 			}
-			if err := request.Validate(root); err != nil {
+			if err := ValidateRequest(request, root); err != nil {
 				return nil, broker.Failure(broker.CodeValidation, "server-protection request validation failed")
 			}
 			return engine.HandleContext(ctx, request), nil

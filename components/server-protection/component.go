@@ -18,6 +18,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	protectionapi "github.com/MalenkiySolovey/solovey-ui/components/server-protection/api"
+	protectionhealth "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendhealth"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendobservation"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
 	protectiondeployment "github.com/MalenkiySolovey/solovey-ui/components/server-protection/deploymentadapter"
@@ -25,7 +26,6 @@ import (
 	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifacts"
 	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
 	protectionfronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
-	protectionhealth "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/health"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionhostsurface "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/hostsurface"
 	protectioninterception "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/interception"
@@ -420,7 +420,7 @@ func protectionDeps(host componenthost.APIDeps) protectionapi.Deps {
 	}
 	dataOwner := protectionrepository.New(dbsqlite.DB())
 	repository := backendstore.New(dataOwner)
-	baseline := protectionfirewall.NewBaselineService(repository)
+	baseline := protectionfirewall.NewBaselineService(repository, sshservice.Shared())
 	if workflow != nil {
 		baseline.Capabilities = workflow
 	}
@@ -542,13 +542,13 @@ func ensureFirewallWorkflowLocked() (*protectionfirewall.Workflow, error) {
 			return protectionhealth.Evaluate(ctx, protectionresources.Snapshot(ctx, true, hostresources.Default).Resources, nil)
 		},
 		Contributions:        backendstore.New(protectionrepository.New(dbsqlite.DB())),
-		CurrentNetworkInputs: protectionfirewall.NewBaselineService(backendstore.New(protectionrepository.New(dbsqlite.DB()))).NetworkInputs,
+		CurrentNetworkInputs: protectionfirewall.NewBaselineService(backendstore.New(protectionrepository.New(dbsqlite.DB())), sshservice.Shared()).NetworkInputs,
 	}
 	runtimeLifecycle := protectiondeployment.FirewallRuntime{Authority: hooks.runtimeRootAuthority}
 	workflow.RuntimeStore = backendstore.New(protectionrepository.New(dbsqlite.DB()))
 	if runtimeLifecycle.Available() {
 		workflow.Runtime = runtimeLifecycle
-		workflow.CurrentRuntimeManagement = protectionfirewall.NewBaselineService(backendstore.New(protectionrepository.New(dbsqlite.DB()))).RuntimeManagement
+		workflow.CurrentRuntimeManagement = protectionfirewall.NewBaselineService(backendstore.New(protectionrepository.New(dbsqlite.DB())), sshservice.Shared()).RuntimeManagement
 	}
 	hooks.firewallWorkflow = workflow
 	return workflow, nil

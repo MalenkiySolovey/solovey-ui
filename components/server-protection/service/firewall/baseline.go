@@ -20,7 +20,6 @@ import (
 	protectionpolicy "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/policy"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 	protectionresponse "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/response"
-	sshservice "github.com/MalenkiySolovey/solovey-ui/service/sshmanagement"
 )
 
 const FirewallBaselineSnapshotBindingSchemaV1 = "solovey-ui/firewall-baseline-snapshot-binding/v1"
@@ -68,8 +67,14 @@ type BaselineState struct {
 type BaselineService struct {
 	Repository   BaselineStore
 	Capabilities BaselineCapabilitySource
-	SSH          *sshservice.Manager
+	SSH          SSHPostureSource
 	Now          func() time.Time
+}
+
+// SSHPostureSource scopes a composed read to the existing SSH owner's single
+// current posture. It cannot change SSH configuration or execution policy.
+type SSHPostureSource interface {
+	WithCurrentPosture(context.Context) context.Context
 }
 
 type BaselineCapabilitySource interface {
@@ -102,8 +107,8 @@ type DecisionResolutionPreview struct {
 
 var ErrUnknownBaselineEndpoint = errors.New("decision target is absent from the configured endpoint inventory")
 
-func NewBaselineService(repository BaselineStore) *BaselineService {
-	return &BaselineService{Repository: repository, SSH: sshservice.Shared()}
+func NewBaselineService(repository BaselineStore, posture SSHPostureSource) *BaselineService {
+	return &BaselineService{Repository: repository, SSH: posture}
 }
 
 func (s *BaselineService) CapabilityAssessment(ctx context.Context, plan FirewallPlan) BaselineCapabilityAssessment {
