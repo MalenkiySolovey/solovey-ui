@@ -420,7 +420,7 @@ func protectionDeps(host componenthost.APIDeps) protectionapi.Deps {
 	}
 	dataOwner := protectionrepository.New(dbsqlite.DB())
 	repository := backendstore.New(dataOwner)
-	baseline := protectionfirewall.NewBaselineService(repository)
+	baseline := protectionfirewall.NewBaselineService(repository, sshservice.Shared())
 	if workflow != nil {
 		baseline.Capabilities = workflow
 	}
@@ -542,13 +542,13 @@ func ensureFirewallWorkflowLocked() (*protectionfirewall.Workflow, error) {
 			return protectionhealth.Evaluate(ctx, protectionresources.Snapshot(ctx, true, hostresources.Default).Resources, nil)
 		},
 		Contributions:        backendstore.New(protectionrepository.New(dbsqlite.DB())),
-		CurrentNetworkInputs: protectionfirewall.NewBaselineService(backendstore.New(protectionrepository.New(dbsqlite.DB()))).NetworkInputs,
+		CurrentNetworkInputs: protectionfirewall.NewBaselineService(backendstore.New(protectionrepository.New(dbsqlite.DB())), sshservice.Shared()).NetworkInputs,
 	}
 	runtimeLifecycle := protectiondeployment.FirewallRuntime{Authority: hooks.runtimeRootAuthority}
 	workflow.RuntimeStore = backendstore.New(protectionrepository.New(dbsqlite.DB()))
 	if runtimeLifecycle.Available() {
 		workflow.Runtime = runtimeLifecycle
-		workflow.CurrentRuntimeManagement = protectionfirewall.NewBaselineService(backendstore.New(protectionrepository.New(dbsqlite.DB()))).RuntimeManagement
+		workflow.CurrentRuntimeManagement = protectionfirewall.NewBaselineService(backendstore.New(protectionrepository.New(dbsqlite.DB())), sshservice.Shared()).RuntimeManagement
 	}
 	hooks.firewallWorkflow = workflow
 	return workflow, nil

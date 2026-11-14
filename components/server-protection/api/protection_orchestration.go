@@ -13,6 +13,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
+	sshservice "github.com/MalenkiySolovey/solovey-ui/service/sshmanagement"
 	"github.com/gin-gonic/gin"
 )
 
@@ -99,7 +100,7 @@ func (h Handler) baselineService() *protectionfirewall.BaselineService {
 	if h.deps.Baseline != nil {
 		return h.deps.Baseline
 	}
-	return protectionfirewall.NewBaselineService(backendstore.New(h.deps.Repository))
+	return protectionfirewall.NewBaselineService(backendstore.New(h.deps.Repository), sshservice.Shared())
 }
 
 func (h Handler) currentFirewallBaselineState(ctx context.Context, refresh bool, selected map[string]struct{}) (protectionfirewall.BaselineState, error) {

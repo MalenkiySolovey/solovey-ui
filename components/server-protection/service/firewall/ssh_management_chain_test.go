@@ -413,7 +413,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 		t.Cleanup(func() { shared.Provider, shared.Now = previousProvider, previousNow })
 	}
 	workflow.Now = manager.Now
-	baseline := NewBaselineService(repo)
+	baseline := NewBaselineService(repo, manager)
 	baseline.SSH, baseline.Now = manager, manager.Now
 	boot := &controlledBootGeneration{generation: hostresources.Revision("boot-A")}
 	if len(bootRecovery) != 0 {
