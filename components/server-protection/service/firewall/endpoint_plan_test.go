@@ -29,7 +29,7 @@ func TestLocalIdentityMetadataPreservesFirewallPlanAndActionScope(t *testing.T) 
 	legacyScope := EndpointActionScopeRevision([]hostresources.ProtectableResource{resource})
 	legacyResource := EndpointActionResourceRevision(resource)
 	resource.Identity = hostresources.LocalConfiguredIdentity(resource)
-	if !resource.Identity.ValidFor(resource) {
+	if !resource.Identity.ValidFor(resource.ConfiguredResource()) {
 		t.Fatal("fixture has no bound Local identity")
 	}
 	current := BuildEndpointPlan(EndpointPlanInput{Graph: graph, Resources: []hostresources.ProtectableResource{resource}, Now: now})

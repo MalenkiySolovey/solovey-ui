@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
+	neutralfallback "github.com/MalenkiySolovey/solovey-host/componenthost/fallbacktargets"
 )
 
 const (

@@ -40,7 +40,7 @@ func TestRetainedAuthorityPublicRollbackLifecycle(t *testing.T) {
 		oldHealth := componenthealth.Default
 		componenthealth.Default = componenthealth.NewRegistry()
 		defer func() { componenthealth.Default = oldHealth }()
-		inventory := resources.Snapshot(t.Context(), true)
+		inventory := resources.Snapshot(t.Context(), true, hostresources.Default)
 		for _, resource := range inventory.Resources {
 			_, err := componenthealth.Register(publicFixtureHealth{id: resource.ID, check: func(ctx context.Context) componenthealth.Result {
 				results := workflow.Health(ctx, []hostresources.ProtectableResource{resource})

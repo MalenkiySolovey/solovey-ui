@@ -2,17 +2,18 @@ package resources
 
 import (
 	"encoding/json"
+	"github.com/MalenkiySolovey/solovey-host/componenthost/deploymentidentity"
 	"strings"
 	"testing"
 	"time"
 
-	hostsurface "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	hostsurface "github.com/MalenkiySolovey/solovey-host/componenthost/hostsurface"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 )
 
 func TestClaimMatchesSemanticOwnerWithoutSelectingSupervisor(t *testing.T) {
 	expected := hostresources.ExpectedApplicationOwnerV1{
-		Schema: hostresources.ExpectedApplicationOwnerSchemaV1, ContractRevision: strings.Repeat("a", 64),
+		Schema: deploymentidentity.ExpectedApplicationOwnerSchemaV1, ContractRevision: strings.Repeat("a", 64),
 		InstanceID: "00112233-4455-4677-8899-aabbccddeeff", SourceRevision: "src-" + strings.Repeat("1", 64),
 		ArtifactRevision: "art-" + strings.Repeat("2", 64), DeploymentID: "dep-" + strings.Repeat("3", 64),
 		RuntimeRootBindingRevision: strings.Repeat("4", 64), ServiceIdentity: "solovey-ui-panel",

@@ -2,6 +2,8 @@
 
 package api
 
+import hostinventory "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+
 import (
 	"errors"
 	"net/http"
@@ -19,7 +21,7 @@ func (h Handler) resources(c *gin.Context) {
 		return
 	}
 	refresh := queryBool(c, "refresh")
-	inventory := protectionresources.Snapshot(c.Request.Context(), refresh)
+	inventory := protectionresources.Snapshot(c.Request.Context(), refresh, hostinventory.Default)
 	page := parsePage(c, 100)
 	kind := strings.TrimSpace(c.Query("kind"))
 	owner := strings.TrimSpace(c.Query("owner"))
@@ -80,7 +82,7 @@ func (h Handler) profiles(c *gin.Context) {
 		h.deps.JSONObj(c, nil, err)
 		return
 	}
-	current := resourceMap(protectionresources.Snapshot(c.Request.Context(), false).Resources)
+	current := resourceMap(protectionresources.Snapshot(c.Request.Context(), false, hostinventory.Default).Resources)
 	views := make([]profileView, 0, len(items))
 	for _, item := range items {
 		views = append(views, makeProfileView(item, current[item.ResourceID]))
@@ -174,7 +176,7 @@ func (h Handler) updateProfile(c *gin.Context) {
 		return
 	}
 	h.audit(c, "server_protection_profile_updated", map[string]any{"profileId": item.ID, "revision": item.Revision})
-	resource := resourceMap(protectionresources.Snapshot(c.Request.Context(), false).Resources)[item.ResourceID]
+	resource := resourceMap(protectionresources.Snapshot(c.Request.Context(), false, hostinventory.Default).Resources)[item.ResourceID]
 	h.deps.JSONObj(c, makeProfileView(item, resource), nil)
 }
 

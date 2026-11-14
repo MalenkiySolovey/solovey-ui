@@ -48,7 +48,7 @@ func validateMVPProfile(input profileInput) error {
 
 func resolveResource(c *gin.Context, resourceID, revision string) (hostresources.ProtectableResource, error) {
 	resourceID = strings.TrimSpace(resourceID)
-	for _, item := range protectionresources.Snapshot(c.Request.Context(), false).Resources {
+	for _, item := range protectionresources.Snapshot(c.Request.Context(), false, hostresources.Default).Resources {
 		if item.ID != resourceID {
 			continue
 		}

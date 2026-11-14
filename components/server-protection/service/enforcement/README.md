@@ -24,3 +24,10 @@ Policy evaluation and capability resolution remain in the existing `decision`,
 `policy`, `scoring` and `response` packages. The compiler has no Backend storage,
 HTTP, shell, filesystem, broker, renderer or runtime dependency. Unknown or stale
 capability facts must still pass the existing resolver and Planner gates.
+
+Host references, endpoint/owner/target evidence and the network vocabulary come
+from the published `solovey-host` module. Product compatibility packages forward
+to those definitions. The resource policy package receives the existing owner's
+read-only inventory view from composition. Run
+`node scripts/verify-protection-source.mjs` to qualify the selected feature
+packages under a distinct module identity with public dependencies only.

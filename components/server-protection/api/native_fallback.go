@@ -2,6 +2,8 @@
 
 package api
 
+import hostinventory "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+
 import (
 	"crypto/subtle"
 	"encoding/json"
@@ -176,7 +178,7 @@ func (h Handler) nativeFallbackStatus(c *gin.Context) {
 		return
 	}
 	ctx, now := c.Request.Context(), time.Now().UTC()
-	inventory := protectionresources.Snapshot(ctx, false)
+	inventory := protectionresources.Snapshot(ctx, false, hostinventory.Default)
 	resourceFilter := strings.TrimSpace(c.Query("resource_id"))
 	settings, _, _, err := h.deps.Repository.LoadSettingsRevision(ctx)
 	if err != nil {

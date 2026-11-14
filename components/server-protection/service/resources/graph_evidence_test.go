@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	hostsurface "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	hostsurface "github.com/MalenkiySolovey/solovey-host/componenthost/hostsurface"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 )
 
 func TestSocketGraphEvidencePreservesFrozenNodeOwnerAndDualStackFacts(t *testing.T) {

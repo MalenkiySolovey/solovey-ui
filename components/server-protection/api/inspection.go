@@ -211,7 +211,7 @@ func (h Handler) posture(c *gin.Context) {
 		return
 	}
 	now := time.Now().UTC()
-	inventory := protectionresources.Snapshot(c.Request.Context(), false)
+	inventory := protectionresources.Snapshot(c.Request.Context(), false, hostresources.Default)
 	surfaces := hostfacts.CurrentSnapshot()
 	management := managementregistry.Endpoints(inventory.Resources, surfaces, now)
 	evidence := managementregistry.RecoveryEvidence(c.Request.Context(), now)

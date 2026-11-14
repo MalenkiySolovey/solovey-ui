@@ -264,7 +264,7 @@ func (w *Worker) processBatch(ctx context.Context, observations []publicsurface.
 		return 0, err
 	}
 	currentResources := make(map[string]hostresources.ProtectableResource)
-	for _, resource := range protectionresources.Snapshot(ctx, false).Resources {
+	for _, resource := range protectionresources.Snapshot(ctx, false, hostresources.Default).Resources {
 		currentResources[resource.ID] = resource
 	}
 	states := make(map[string]scoring.ScoreState)

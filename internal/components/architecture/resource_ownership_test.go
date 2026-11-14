@@ -5,13 +5,21 @@ import (
 	"go/parser"
 	"go/token"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	canonical "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 )
 
 func TestResourceCapabilityHasOneSemanticApplicationOwner(t *testing.T) {
-	root := moduleRoot(t)
-	fields := namedStructFields(t, filepath.Join(root, "componenthost", "resources", "types.go"), "ProtectableResourceCapabilities")
+	// The facade alias is enforced separately without importing Product owners
+	// into this pure architecture package. Inspect the actual public definition.
+	resourceType := reflect.TypeOf(canonical.ProtectableResourceCapabilities{})
+	fields := map[string]int{}
+	for index := 0; index < resourceType.NumField(); index++ {
+		fields[resourceType.Field(index).Name]++
+	}
 	if fields["ExpectedApplicationOwner"] != 1 {
 		t.Fatalf("generic resource capability has %d expected application owners", fields["ExpectedApplicationOwner"])
 	}

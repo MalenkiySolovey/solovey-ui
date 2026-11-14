@@ -1,11 +1,11 @@
 package resources
 
 import (
-	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
+	hostfacts "github.com/MalenkiySolovey/solovey-host/componenthost/hostsurface"
 	"testing"
 	"time"
 
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 )
 
 func resource(id, protocol, listen string, port int) hostresources.ProtectableResource {

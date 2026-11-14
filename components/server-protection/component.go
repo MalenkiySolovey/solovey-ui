@@ -532,7 +532,7 @@ func ensureFirewallWorkflowLocked() (*protectionfirewall.Workflow, error) {
 			return protectionhealth.Evaluate(ctx, resources, nil)
 		},
 		RollbackHealth: func(ctx context.Context, _ []hostresources.ProtectableResource) []componenthealth.Result {
-			return protectionhealth.Evaluate(ctx, protectionresources.Snapshot(ctx, true).Resources, nil)
+			return protectionhealth.Evaluate(ctx, protectionresources.Snapshot(ctx, true, hostresources.Default).Resources, nil)
 		},
 		Contributions:        protectionrepository.New(dbsqlite.DB()),
 		CurrentNetworkInputs: protectionfirewall.NewBaselineService(protectionrepository.New(dbsqlite.DB())).NetworkInputs,
@@ -569,7 +569,7 @@ func ensureFrontingWorkflowLocked() (*protectionfronting.Workflow, error) {
 			return protectionhealth.Evaluate(ctx, resources, nil)
 		},
 		RollbackHealth: func(ctx context.Context, _ []hostresources.ProtectableResource) []componenthealth.Result {
-			return protectionhealth.Evaluate(ctx, protectionresources.Snapshot(ctx, true).Resources, nil)
+			return protectionhealth.Evaluate(ctx, protectionresources.Snapshot(ctx, true, hostresources.Default).Resources, nil)
 		},
 	}
 	source := wireProductionFrontingV2(workflow, storage)

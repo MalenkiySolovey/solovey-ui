@@ -25,7 +25,7 @@ func (h Handler) diagnostics(c *gin.Context) {
 	if !h.readAllowed(c) {
 		return
 	}
-	inventory := protectionresources.Snapshot(c.Request.Context(), queryBool(c, "refresh"))
+	inventory := protectionresources.Snapshot(c.Request.Context(), queryBool(c, "refresh"), hostresources.Default)
 	support := domain.SupportSupported
 	capability := h.firewallPreviewCapability(c.Request.Context())
 	capabilityReason := capability.Reason
@@ -88,7 +88,7 @@ func (h Handler) firewallPreview(c *gin.Context) {
 		h.deps.JSONObj(c, nil, err)
 		return
 	}
-	inventory := protectionresources.Snapshot(c.Request.Context(), false)
+	inventory := protectionresources.Snapshot(c.Request.Context(), false, hostresources.Default)
 	if len(profileIDs) > 0 {
 		selected := make(map[string]struct{}, len(profileIDs))
 		for _, id := range profileIDs {
@@ -227,7 +227,7 @@ func (h Handler) applyConfigured(c *gin.Context) bool {
 		writeError(c, http.StatusConflict, "missing_capability", errors.New(reason))
 		return false
 	}
-	inventory := protectionresources.Snapshot(c.Request.Context(), true)
+	inventory := protectionresources.Snapshot(c.Request.Context(), true, hostresources.Default)
 	if err := firewallInventoryReady(inventory); err != nil {
 		writeError(c, http.StatusConflict, "missing_capability", err)
 		return false

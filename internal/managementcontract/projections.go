@@ -27,7 +27,7 @@ func representable(name string, value any) error {
 // ProjectConfiguredResource exports the existing configured identity only.
 // A missing/foreign identity does not imply Local or an observed healthy state.
 func ProjectConfiguredResource(value resources.ProtectableResource) (wire.ResourceRef, wire.Revision, error) {
-	if value.Identity == nil || !value.Identity.ValidFor(value) {
+	if value.Identity == nil || !value.Identity.ValidFor(value.ConfiguredResource()) {
 		return wire.ResourceRef{}, "", errors.New("STALE_STATE")
 	}
 	identity := value.Identity

@@ -23,11 +23,11 @@ func TestResourceIdentityPreservesLegacyWireAndFingerprint(t *testing.T) {
 		t.Fatalf("legacy resource gained metadata: %s %v", legacy, err)
 	}
 	var decoded ProtectableResource
-	if err := json.Unmarshal(legacy, &decoded); err != nil || decoded.Identity.ValidFor(decoded) {
+	if err := json.Unmarshal(legacy, &decoded); err != nil || decoded.Identity.ValidFor(decoded.ConfiguredResource()) {
 		t.Fatal("missing legacy identity became known", err)
 	}
 	resource.Identity = LocalConfiguredIdentity(resource)
-	if !resource.Identity.ValidFor(resource) || resource.Identity.Host != hostref.Local() ||
+	if !resource.Identity.ValidFor(resource.ConfiguredResource()) || resource.Identity.Host != hostref.Local() ||
 		resource.Identity.ObservationStatus != ResourceObservationUnknown || resource.Identity.ObservedRevision != "" {
 		t.Fatalf("configured Local identity: %+v", resource.Identity)
 	}
@@ -39,7 +39,7 @@ func TestResourceIdentityPreservesLegacyWireAndFingerprint(t *testing.T) {
 	if err := json.Unmarshal(payload, &oldReader); err != nil || oldReader.ID != resource.ID || oldReader.Owner != resource.Owner || oldReader.Source != resource.Source {
 		t.Fatalf("legacy identity changed: %+v %v", oldReader, err)
 	}
-	if err := json.Unmarshal(payload, &decoded); err != nil || !decoded.Identity.ValidFor(decoded) || Fingerprint(decoded) != fingerprint {
+	if err := json.Unmarshal(payload, &decoded); err != nil || !decoded.Identity.ValidFor(decoded.ConfiguredResource()) || Fingerprint(decoded) != fingerprint {
 		t.Fatal("identity roundtrip changed the canonical fingerprint", err)
 	}
 }
@@ -62,7 +62,7 @@ func TestRegistryDropsUnboundIdentityWithoutChangingCanonicalOwnership(t *testin
 			resource := configuredIdentityFixture()
 			resource.Identity = LocalConfiguredIdentity(resource)
 			change(&resource)
-			if resource.Identity.ValidFor(resource) {
+			if resource.Identity.ValidFor(resource.ConfiguredResource()) {
 				t.Fatal("unbound metadata validated")
 			}
 			registry := NewRegistry(time.Minute)
@@ -102,11 +102,11 @@ func TestRegistryIdentityIsClonedAndHasOneCanonicalOwner(t *testing.T) {
 	registerTestContributor(t, registry, &testContributor{owner: "core", items: []ProtectableResource{resource}})
 	first := registry.Refresh(t.Context())
 	first.Resources[0].Identity.Owner = "caller mutation"
-	if resource.Identity.Owner != "core" || !registry.Snapshot(t.Context()).Resources[0].Identity.ValidFor(resource) {
+	if resource.Identity.Owner != "core" || !registry.Snapshot(t.Context()).Resources[0].Identity.ValidFor(resource.ConfiguredResource()) {
 		t.Fatal("snapshot caller mutated a contributor or cached identity")
 	}
 	resource.Identity.Owner = "contributor mutation"
-	if !registry.Snapshot(t.Context()).Resources[0].Identity.ValidFor(configuredIdentityFixture()) {
+	if !registry.Snapshot(t.Context()).Resources[0].Identity.ValidFor(configuredIdentityFixture().ConfiguredResource()) {
 		t.Fatal("contributor mutated the cached identity")
 	}
 	foreign := configuredIdentityFixture()
@@ -115,7 +115,7 @@ func TestRegistryIdentityIsClonedAndHasOneCanonicalOwner(t *testing.T) {
 	registerTestContributor(t, registry, &testContributor{owner: "foreign", items: []ProtectableResource{foreign}})
 	resource.Identity.Owner = "core"
 	current := registry.Refresh(t.Context())
-	if len(current.Resources) != 1 || current.Resources[0].Owner != "core" || !current.Resources[0].Identity.ValidFor(current.Resources[0]) || len(current.Warnings) != 1 || current.Warnings[0].Code != "duplicate_resource_id" {
+	if len(current.Resources) != 1 || current.Resources[0].Owner != "core" || !current.Resources[0].Identity.ValidFor(current.Resources[0].ConfiguredResource()) || len(current.Warnings) != 1 || current.Warnings[0].Code != "duplicate_resource_id" {
 		t.Fatalf("duplicate metadata created a second owner: %+v", current)
 	}
 }

@@ -1,5 +1,7 @@
 package resources
 
+import canonical "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
+
 import (
 	"context"
 	"errors"
@@ -17,8 +19,8 @@ const (
 	// MaxResourceFacts bounds the neutral inventory retained and exposed by a
 	// single snapshot. A truncated snapshot carries an error so consumers that
 	// require completeness fail closed.
-	MaxResourceFacts                  = 4096
-	MaxEndpointsPerResource           = 16
+	MaxResourceFacts                  = canonical.MaxResourceFacts
+	MaxEndpointsPerResource           = canonical.MaxEndpointsPerResource
 	MaxAdvertisedEndpointsPerResource = 16
 	maxResourceStringValues           = 32
 	maxContributors                   = 128
@@ -236,7 +238,7 @@ func (r *Registry) snapshot(ctx context.Context, refresh bool, excluded map[stri
 			resourceInvalid = resourceInvalid || (originalTLSMode != "" && item.Capabilities.TLSMode == "") || (originalFallbackTargetID != "" && item.Capabilities.FallbackTargetID == "") || (originalOwnerRevision != "" && item.Capabilities.OwnerRevision == "") || (originalConfigRevision != "" && item.Capabilities.ConfigRevision == "")
 			// Optional metadata never replaces canonical ownership or becomes a
 			// new apply/removal gate. Unbound metadata has legacy unknown status.
-			if !item.Identity.ValidFor(item) {
+			if !item.Identity.ValidFor(item.ConfiguredResource()) {
 				item.Identity = nil
 			}
 			if expected := item.Capabilities.ExpectedApplicationOwner; expected.Schema != "" && !expected.Valid() {
