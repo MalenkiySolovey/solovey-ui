@@ -12,7 +12,19 @@ assert.match(hostVersion ?? '', /^v\d+\.\d+\.\d+$/);
 assert.ok(!(metadata.Replace ?? []).some(item => item.Old.Path === hostModule), 'Host must use published source');
 const identity = 'example.invalid/protection-source-check';
 const prefix = 'github.com/MalenkiySolovey/solovey-ui/components/server-protection/';
-const portable = ['domain', ...['decision', 'scoring', 'policy', 'response', 'enforcement', 'resources'].map(name => 'service/' + name)];
+const portable = ['domain', ...['decision', 'scoring', 'policy', 'response', 'enforcement', 'resources', 'events', 'observationio', 'observation', 'durable', 'operations'].map(name => 'service/' + name)];
+// These cases exercise real Product owners in the normal Product suite. Every
+// portable production file and independent feature test is included below.
+const productIntegrationTests = new Set([
+  'service/enforcement/intent_test.go',
+  'service/observation/worker_test.go',
+  'service/operations/manager_test.go',
+  'service/operations/runtime_recovery_test.go',
+]);
+const systemModule = 'golang.org/x/sys';
+const systemVersion = metadata.Require.find(item => item.Path === systemModule)?.Version;
+assert.ok(systemVersion, 'journal process identity uses the accepted system module');
+assert.ok(!(metadata.Replace ?? []).some(item => item.Old.Path === systemModule), 'system module must use published source');
 const temp = fs.realpathSync(os.tmpdir());
 const fixture = fs.mkdtempSync(path.join(temp, 'solovey-protection-source-'));
 let files = 0;
@@ -21,27 +33,25 @@ for (const relative of portable) {
   const destination = path.join(fixture, relative);
   fs.mkdirSync(destination, {recursive: true});
   for (const name of fs.readdirSync(source)) {
-    // This test exercises the actual Product Planner and deployment adapters in
-    // the normal Product suite. Feature algorithm tests run in this fixture.
-    if (!name.endsWith('.go') || relative === 'service/enforcement' && name === 'intent_test.go') continue;
+    if (!name.endsWith('.go') || productIntegrationTests.has(relative + '/' + name)) continue;
     const content = fs.readFileSync(path.join(source, name), 'utf8').replaceAll(prefix, identity + '/');
     assert.ok(!content.includes('github.com/MalenkiySolovey/solovey-ui/'), 'private source in ' + relative + '/' + name);
     fs.writeFileSync(path.join(destination, name), content);
     files++;
   }
 }
-fs.writeFileSync(path.join(fixture, 'go.mod'), `module ${identity}\n\ngo ${metadata.Go}\n\nrequire ${hostModule} ${hostVersion}\n`);
+fs.writeFileSync(path.join(fixture, 'go.mod'), `module ${identity}\n\ngo ${metadata.Go}\n\nrequire (\n\t${hostModule} ${hostVersion}\n\t${systemModule} ${systemVersion}\n)\n`);
 fs.copyFileSync(path.join(root, 'go.sum'), path.join(fixture, 'go.sum'));
 const env = {...process.env, GOWORK: 'off', GOFLAGS: '-mod=readonly'};
 const run = args => execFileSync('go', args, {cwd: fixture, env, encoding: 'utf8', windowsHide: true, maxBuffer: 4 << 20});
 const dependencies = run(['list', '-deps', '-test', '-f', '{{if not .Standard}}{{.ImportPath}}{{end}}', './...']).trim().split(/\r?\n/).filter(Boolean);
 for (const dependency of dependencies) {
-  assert.ok(dependency.startsWith(identity + '/') || dependency.startsWith(hostModule + '/'), 'unexpected independent dependency: ' + dependency);
+  assert.ok([identity, hostModule, systemModule].some(module => dependency.startsWith(module + '/')), 'unexpected independent dependency: ' + dependency);
 }
-process.stdout.write(run(['test', '-race', '-count=1', '-timeout=3m', './...']));
+process.stdout.write(run(['test', '-race', '-p', '1', '-count=1', '-timeout=3m', './...']));
 process.stdout.write(run(['vet', './...']));
 assert.ok(!fs.existsSync(path.join(fixture, 'componenthost')), 'Product Host source must not be copied');
-console.log(JSON.stringify({status: 'PASS', module: identity, hostModule, hostVersion, packages: portable, sourceFiles: files, dependencies, ProductHostSourcePackages: 0, localReplacements: 0, os: process.platform}));
+console.log(JSON.stringify({status: 'PASS', module: identity, hostModule, hostVersion, packages: portable, sourceFiles: files, productIntegrationTests: [...productIntegrationTests], dependencies, ProductHostSourcePackages: 0, localReplacements: 0, os: process.platform}));
 // This path was created by this invocation and is checked against its temp
 // parent before removing disposable qualification outputs.
 assert.equal(path.dirname(fs.realpathSync(fixture)), temp);
