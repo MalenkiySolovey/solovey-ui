@@ -8,7 +8,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
 
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 )
 
 func Preview(plan FirewallPlan, options PreviewOptions) FirewallPreview {

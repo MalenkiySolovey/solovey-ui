@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 
-	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
+	hostfacts "github.com/MalenkiySolovey/solovey-host/componenthost/hostsurface"
 )
 
 func observePlatform(context.Context, hostfacts.Limits) (PlatformSnapshot, error) {
