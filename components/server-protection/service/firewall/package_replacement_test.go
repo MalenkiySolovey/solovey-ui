@@ -1,5 +1,7 @@
 package firewall
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
+
 import (
 	"context"
 	"reflect"
@@ -38,7 +40,7 @@ func assertPackageReplacement(t *testing.T, w *Workflow, nft *testHelperInvoker,
 	if err != nil {
 		t.Fatal(err)
 	}
-	original, err := repository.New(db).OperationByID(ctx, id)
+	original, err := backendstore.New(repository.New(db)).OperationByID(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +92,7 @@ func assertPackageReplacement(t *testing.T, w *Workflow, nft *testHelperInvoker,
 			t.Fatal(err)
 		}
 		defer pool.Close()
-		retained, err := repository.New(read).FirewallAuthority(ctx)
+		retained, err := backendstore.New(repository.New(read)).FirewallAuthority(ctx)
 		if err != nil || !reflect.DeepEqual(retained.Composition, before.Composition) || !nft.ManagedTablePresent || helperOperationCount(nft.Requests, helper.OperationNFTApply) != 1 {
 			t.Fatal("migration failure minted or discarded firewall authority")
 		}
@@ -103,7 +105,7 @@ func assertPackageReplacement(t *testing.T, w *Workflow, nft *testHelperInvoker,
 	if err := repository.Migrate(db); err != nil {
 		t.Fatal(err)
 	}
-	repo := repository.New(db)
+	repo := backendstore.New(repository.New(db))
 	baseline.Repository = repo
 	previousRuntime := firewallBaselineRuntimeRevision
 	firewallBaselineRuntimeRevision = hostresources.Revision("package-process-generation-B")
@@ -127,7 +129,8 @@ func assertPackageReplacement(t *testing.T, w *Workflow, nft *testHelperInvoker,
 	case "runtime_schema":
 		changed := before.Composition
 		changed.Runtime.Schema = "future/v999"
-		if err := db.Save(&changed).Error; err != nil {
+		row := backendCompositionFixture(changed)
+		if err := db.Save(&row).Error; err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -6,6 +6,7 @@ import (
 	"context"
 
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
 	protectionfronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
 	protectioninterception "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/interception"
@@ -59,7 +60,7 @@ type localProxyService interface {
 	Prepare(context.Context, string, protectionlocalproxy.PrepareRequestV1) (protectionlocalproxy.ResultV1, error)
 	Apply(context.Context, protectionlocalproxy.ApplyRequestV1) (protectionlocalproxy.ResultV1, error)
 	Disable(context.Context, protectionlocalproxy.DisableRequestV1) (protectionlocalproxy.ResultV1, error)
-	Operation(context.Context, string) (protectionrepository.OperationLockModel, error)
+	Operation(context.Context, string) (durable.OperationLockModel, error)
 	Recovery(context.Context, string) (protectionlocalproxy.RecoveryStatusV1, error)
 }
 
@@ -72,9 +73,9 @@ type nativeFallbackService interface {
 }
 
 type operationService interface {
-	List(context.Context) ([]protectionrepository.OperationLockModel, error)
-	ForceUnlock(context.Context, protectionoperations.ForceUnlockRequest) (protectionrepository.OperationLockModel, error)
-	ForgetState(context.Context, protectionoperations.ForgetStateRequest) (protectionrepository.OperationLockModel, error)
+	List(context.Context) ([]durable.OperationLockModel, error)
+	ForceUnlock(context.Context, protectionoperations.ForceUnlockRequest) (durable.OperationLockModel, error)
+	ForgetState(context.Context, protectionoperations.ForgetStateRequest) (durable.OperationLockModel, error)
 }
 
 type Handler struct{ deps Deps }

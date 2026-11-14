@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
-	"github.com/MalenkiySolovey/solovey-ui/logger"
-	sqlite3 "github.com/mattn/go-sqlite3"
+	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 )
 
 // RuntimeRecoveryError is an execution failure of a constructed recovery
@@ -20,24 +18,30 @@ type RuntimeRecoveryError struct {
 
 func (e *RuntimeRecoveryError) Error() string {
 	step, role, primary, extended := e.Step, "runtime_recovery", 0, 0
-	var persistence *repository.PersistenceError
-	var driver sqlite3.Error
+	var persistence repository.PersistenceDiagnosticProvider
 	if errors.As(e.Cause, &persistence) {
-		step, role, primary, extended = persistence.Step, persistence.Role, persistence.Primary, persistence.Extended
-	} else if errors.As(e.Cause, &driver) {
-		primary, extended = int(driver.Code), int(driver.ExtendedCode)
+		diagnostic := persistence.PersistenceDiagnostic()
+		if diagnostic.Step != "" {
+			step = diagnostic.Step
+		}
+		if diagnostic.Role != "" {
+			role = diagnostic.Role
+		}
+		primary, extended = diagnostic.Primary, diagnostic.Extended
 	}
 	return fmt.Sprintf("server-protection recovery step=%s role=%s sqlite_primary=%d sqlite_extended=%d", step, role, primary, extended)
 }
 
 func (e *RuntimeRecoveryError) Unwrap() error { return e.Cause }
 
-func reportRuntimeRecovery(err error) bool {
+func (m *Manager) reportRuntimeRecovery(err error) bool {
 	var failure *RuntimeRecoveryError
 	if !errors.As(err, &failure) {
 		return false
 	}
-	logger.Warning(failure.Error())
+	if m.opts.ReportRecovery != nil {
+		m.opts.ReportRecovery(failure)
+	}
 	return true
 }
 

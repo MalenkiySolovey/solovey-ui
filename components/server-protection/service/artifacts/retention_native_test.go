@@ -1,5 +1,7 @@
 package artifacts
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
+
 import (
 	"context"
 	"fmt"
@@ -52,7 +54,7 @@ func TestNativeHistoryRunsThroughRestartRetentionOwner(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	repository := protectionrepository.New(db)
+	repository := backendstore.New(protectionrepository.New(db))
 	storage := artifactTestStorage(t, now)
 	result, err := NewPruner(storage, repository, func() time.Time { return now }).Prune(context.Background(), 1, 30)
 	if err != nil {

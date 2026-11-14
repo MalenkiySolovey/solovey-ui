@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	"strconv"
 	"strings"
 
@@ -20,8 +21,8 @@ const (
 )
 
 var (
-	ErrIdempotencyKeyExpired = errors.New("idempotency key is outside the retained replay horizon; use a new key")
-	ErrIdempotencyKeyInvalid = errors.New("structured idempotency key is invalid")
+	ErrIdempotencyKeyExpired = durable.ErrIdempotencyKeyExpired
+	ErrIdempotencyKeyInvalid = durable.ErrIdempotencyKeyInvalid
 )
 
 type IdempotencyReceiptPruneResult struct {

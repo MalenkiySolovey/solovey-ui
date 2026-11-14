@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -309,7 +310,7 @@ func TestDropDataRemovesOnlySafeTerminalArtifactStorage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (protectionartifacts.Service{Storage: storage, Store: protectionrepository.New(dbsqlite.DB())}).WriteRevision(
+	if _, err := (protectionartifacts.Service{Storage: storage, Store: backendstore.New(protectionrepository.New(dbsqlite.DB()))}).WriteRevision(
 		context.Background(), "operation-000000000000000000000000000000ff", "revision-terminal", map[string][]byte{"resource-before.json": []byte("safe")},
 	); err != nil {
 		t.Fatal(err)

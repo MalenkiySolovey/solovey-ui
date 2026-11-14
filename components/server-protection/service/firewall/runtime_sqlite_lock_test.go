@@ -1,18 +1,18 @@
 package firewall
 
+import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+
 import (
 	"database/sql"
 	"errors"
-	"runtime"
-	"strings"
-	"testing"
-
-	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	auditsvc "github.com/MalenkiySolovey/solovey-ui/service/audit"
 	sqlite3 "github.com/mattn/go-sqlite3"
 	"gorm.io/gorm"
+	"runtime"
+	"strings"
+	"testing"
 )
 
 func TestRuntimeSQLiteConcurrentAuditLifecycle(t *testing.T) {
@@ -33,7 +33,7 @@ func runtimeReadonlyFence(t *testing.T, db *gorm.DB) func() {
 	var failedTx *sql.Tx
 	var failure error
 	if err := db.Callback().Update().Before("gorm:update").Register("runtime:readonly", func(tx *gorm.DB) {
-		composition, ok := tx.Statement.Dest.(*repository.FirewallCompositionModel)
+		composition, ok := tx.Statement.Dest.(*protectiondata.FirewallCompositionModel)
 		if fired || !ok || composition.Runtime.State != "RESTORING_RUNTIME" || !runtimeFenceStack() {
 			return
 		}
@@ -124,7 +124,7 @@ func runtimeConcurrentAuditBarrier(t *testing.T, db *gorm.DB, operationID string
 		}
 	})
 	if err := db.Callback().Query().After("gorm:query").Register("runtime:read_barrier", func(tx *gorm.DB) {
-		operation, ok := tx.Statement.Dest.(*repository.OperationLockModel)
+		operation, ok := tx.Statement.Dest.(*protectiondata.OperationLockModel)
 		reader, inTx := tx.Statement.ConnPool.(*sql.Tx)
 		if fired || !ok || !inTx || tx.Error != nil || operation.OperationID != operationID || operation.State != "restoring_runtime" || !runtimeFenceStack() {
 			return

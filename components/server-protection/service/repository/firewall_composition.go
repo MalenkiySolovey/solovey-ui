@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	"regexp"
 	"time"
 
@@ -11,7 +12,7 @@ import (
 
 var ErrFirewallAuthorityConflict = errors.New("firewall contribution authority conflict")
 
-const FirewallObservationSchemaV1 = "solovey-ui/managed-firewall-observation/v1"
+const FirewallObservationSchemaV1 = durable.FirewallObservationSchemaV1
 
 var firewallIdentityPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 

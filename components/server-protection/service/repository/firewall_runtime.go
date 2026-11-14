@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	"reflect"
 	"time"
 
@@ -27,7 +28,7 @@ type FirewallRuntimeBinding struct {
 	CleanupAttempted         bool   `gorm:"not null;default:false"`
 }
 
-const FirewallRuntimeSchema = "solovey-ui/firewall-runtime-continuation/v1"
+const FirewallRuntimeSchema = durable.FirewallRuntimeSchema
 
 // UpdateFirewallRuntime fences lifecycle progress with the already claimed
 // operation and exact composition. The semantic owner supplies the decision.

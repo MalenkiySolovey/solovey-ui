@@ -6,9 +6,9 @@ import (
 	"time"
 
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
+	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 )
 
 func (c *Controller) verifyPostApplyHealth(ctx context.Context, expected UDPDirectGuardPlanV1, fence protectionfirewall.PostMutationHealthFence) (protectionfirewall.PostMutationHealthProof, error) {

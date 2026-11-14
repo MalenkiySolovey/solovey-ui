@@ -374,7 +374,7 @@ func (h Handler) nativeFallbackPrepare(c *gin.Context) {
 		writeNativeError(c, err)
 		return
 	}
-	view := projectNativeOperation(result.Operation, result.State)
+	view := projectNativeOperation(protectionrepository.NativeFallbackOperationModel(result.Operation), result.State)
 	auditResult["success"], auditResult["operationId"], auditResult["state"] = true, view.OperationID, view.State
 	h.deps.JSONObj(c, view, nil)
 }
@@ -411,7 +411,7 @@ func (h Handler) nativeFallbackApply(c *gin.Context) {
 		writeNativeError(c, err)
 		return
 	}
-	view := projectNativeOperation(result.Operation, result.State)
+	view := projectNativeOperation(protectionrepository.NativeFallbackOperationModel(result.Operation), result.State)
 	auditResult["success"], auditResult["state"], auditResult["actual"] = true, view.State, view.ActualState
 	h.deps.JSONObj(c, view, nil)
 }
@@ -448,7 +448,7 @@ func (h Handler) nativeFallbackRollback(c *gin.Context) {
 		writeNativeError(c, err)
 		return
 	}
-	view := projectNativeOperation(result.Operation, result.State)
+	view := projectNativeOperation(protectionrepository.NativeFallbackOperationModel(result.Operation), result.State)
 	auditResult["success"], auditResult["state"], auditResult["actual"] = true, view.State, view.ActualState
 	h.deps.JSONObj(c, view, nil)
 }

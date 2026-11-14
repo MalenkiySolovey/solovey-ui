@@ -1,5 +1,7 @@
 package artifacts
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
+
 import (
 	"context"
 	"fmt"
@@ -43,7 +45,7 @@ func TestReceiptHorizonsRunThroughStartupRetentionOwner(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	repository := protectionrepository.New(db)
+	repository := backendstore.New(protectionrepository.New(db))
 	storage := artifactTestStorage(t, now)
 	result, err := NewPruner(storage, repository, func() time.Time { return now }).Prune(context.Background(), 1, 30)
 	if err != nil {
@@ -52,7 +54,7 @@ func TestReceiptHorizonsRunThroughStartupRetentionOwner(t *testing.T) {
 	if result.DeletedFrontingReceipts != 1 || result.DeletedUDPGuardReceipts != 1 || result.DeletedLocalProxyReceipts != 1 || result.DeletedBytes <= 0 {
 		t.Fatalf("integrated receipt prune=%#v", result)
 	}
-	second, err := NewPruner(storage, protectionrepository.New(db), func() time.Time { return now }).Prune(context.Background(), 1, 30)
+	second, err := NewPruner(storage, backendstore.New(protectionrepository.New(db)), func() time.Time { return now }).Prune(context.Background(), 1, 30)
 	if err != nil || second.DeletedFrontingReceipts != 0 || second.DeletedUDPGuardReceipts != 0 || second.DeletedLocalProxyReceipts != 0 {
 		t.Fatalf("integrated receipt restart prune=%#v err=%v", second, err)
 	}

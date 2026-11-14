@@ -5,8 +5,8 @@ import (
 	"errors"
 	"strings"
 
+	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	operations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
-	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )

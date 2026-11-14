@@ -5,8 +5,8 @@ import (
 	"errors"
 
 	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifacts"
+	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 )
 
 // BackendRecovery resumes only the recorded rollback. It never repeats apply
@@ -15,7 +15,7 @@ type BackendRecovery struct {
 	Helper     Helper
 	Manager    *protectionoperations.Manager
 	Storage    *protectionartifacts.Storage
-	Repository *protectionrepository.Repository
+	Repository RecoveryStore
 	Health     HealthCheck
 	Workflow   *Workflow
 }

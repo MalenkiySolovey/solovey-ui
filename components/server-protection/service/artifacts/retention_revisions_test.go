@@ -1,5 +1,7 @@
 package artifacts
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
+
 import (
 	"context"
 	"encoding/json"
@@ -29,7 +31,7 @@ func TestArtifactsFirewallGenerationRetentionIntegration(t *testing.T) {
 	if err := protectionrepository.Migrate(db); err != nil {
 		t.Fatal(err)
 	}
-	repository := protectionrepository.New(db)
+	repository := backendstore.New(protectionrepository.New(db))
 	storage := artifactTestStorage(t, now.Add(-60*24*time.Hour))
 	current := "operation-00000000000000000000000000000501"
 	otherLive := "operation-00000000000000000000000000000502"

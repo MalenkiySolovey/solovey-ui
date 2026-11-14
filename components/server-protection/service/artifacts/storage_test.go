@@ -1,5 +1,7 @@
 package artifacts
 
+import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+
 import (
 	"context"
 	"encoding/json"
@@ -366,7 +368,7 @@ func TestFrontingOperationRecoveryRejectsCheckpointWithoutExactIdentity(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	artifact := protectionrepository.ArtifactModel{
+	artifact := protectiondata.ArtifactModel{
 		OperationID: testOperationThree, Revision: artifactRevision, Scope: "fronting", RelativePath: written.RelativePath,
 		ManifestSHA256: written.ManifestSHA256, Bytes: written.Bytes, CreatedAt: 1, UpdatedAt: 1,
 	}
@@ -374,7 +376,7 @@ func TestFrontingOperationRecoveryRejectsCheckpointWithoutExactIdentity(t *testi
 	if err := storage.WriteFrontingState(testOperationThree, []byte("{}\n")); err != nil {
 		t.Fatal(err)
 	}
-	operation := protectionrepository.OperationLockModel{OperationID: testOperationThree, Kind: "fronting", State: "rolling_back"}
+	operation := protectiondata.OperationLockModel{OperationID: testOperationThree, Kind: "fronting", State: "rolling_back"}
 	err = (OperationRecovery{Storage: storage, Repository: repository}).CreateBundle(context.Background(), operation, "rollback_failed")
 	if err == nil || !strings.Contains(err.Error(), "checkpoint identity is invalid") {
 		t.Fatalf("incomplete fronting checkpoint was accepted: %v", err)
@@ -424,9 +426,9 @@ func TestFirewallOperationRecoveryRequiresExactRollbackEvidence(t *testing.T) {
 	if err := os.WriteFile(rollbackPath+".sha256", []byte(rollbackSHA+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	artifact := protectionrepository.ArtifactModel{OperationID: testOperationThree, Revision: artifactRevision, Scope: "firewall", RelativePath: written.RelativePath, ManifestSHA256: written.ManifestSHA256, Bytes: written.Bytes, CreatedAt: 1, UpdatedAt: 1}
+	artifact := protectiondata.ArtifactModel{OperationID: testOperationThree, Revision: artifactRevision, Scope: "firewall", RelativePath: written.RelativePath, ManifestSHA256: written.ManifestSHA256, Bytes: written.Bytes, CreatedAt: 1, UpdatedAt: 1}
 	repository := &memoryOperationRecoveryRepository{artifact: artifact}
-	operation := protectionrepository.OperationLockModel{OperationID: testOperationThree, Kind: "firewall", State: "rolling_back", PlanRevision: planRevision}
+	operation := protectiondata.OperationLockModel{OperationID: testOperationThree, Kind: "firewall", State: "rolling_back", PlanRevision: planRevision}
 	wrong := firewallRecoveryEvidence{Version: 1, OperationID: testOperationThree, ArtifactRevision: artifactRevision, PlanRevision: planRevision, CandidateSHA256: digestArtifact(candidate), RollbackSHA256: strings.Repeat("c", 64), PreviousRevision: previousRevision, PreviousTablePresent: true}
 	data, _ := json.Marshal(wrong)
 	if err := storage.WriteFirewallState(testOperationThree, append(data, '\n')); err != nil {
@@ -460,7 +462,7 @@ func TestActiveArtifactNeverPrunedAndRollbackFailedBundlePreserved(t *testing.T)
 		if err != nil {
 			t.Fatal(err)
 		}
-		store.items = append(store.items, protectionrepository.ArtifactModel{ID: uint(index + 1), OperationID: operation, Revision: revision, RelativePath: written.RelativePath, Bytes: written.Bytes, CreatedAt: now.Add(-100 * 24 * time.Hour).Unix()})
+		store.items = append(store.items, protectiondata.ArtifactModel{ID: uint(index + 1), OperationID: operation, Revision: revision, RelativePath: written.RelativePath, Bytes: written.Bytes, CreatedAt: now.Add(-100 * 24 * time.Hour).Unix()})
 		if operation == testOperationFailed {
 			if _, err := storage.CreateRecoveryBundle(RecoveryInput{OperationID: operation, Revision: revision, State: "rollback_failed", CreatedAt: 1, UpdatedAt: 2}, written.ManifestSHA256); err != nil {
 				t.Fatal(err)
@@ -496,7 +498,7 @@ func TestArtifactRetentionKeepsCountOrDaysWindow(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		store.items = append(store.items, protectionrepository.ArtifactModel{ID: uint(index + 1), OperationID: operation, Revision: revision, RelativePath: written.RelativePath, Bytes: written.Bytes, CreatedAt: now.Add(-age).Unix()})
+		store.items = append(store.items, protectiondata.ArtifactModel{ID: uint(index + 1), OperationID: operation, Revision: revision, RelativePath: written.RelativePath, Bytes: written.Bytes, CreatedAt: now.Add(-age).Unix()})
 	}
 	sort.Slice(store.items, func(i, j int) bool { return store.items[i].CreatedAt > store.items[j].CreatedAt })
 	result, err := NewPruner(storage, store, func() time.Time { return now }).Prune(context.Background(), 2, 30)
@@ -669,32 +671,32 @@ func TestArtifactsOwnedOrphanSweepIsBoundedForeignSafeAndRestartIdempotent(t *te
 }
 
 type memoryMetadataStore struct {
-	items     []protectionrepository.ArtifactModel
+	items     []protectiondata.ArtifactModel
 	protected map[string]string
 }
 
 type memoryMetadataWriter struct {
-	items []protectionrepository.ArtifactModel
+	items []protectiondata.ArtifactModel
 	err   error
 }
 
 type memoryOperationRecoveryRepository struct {
-	artifact protectionrepository.ArtifactModel
+	artifact protectiondata.ArtifactModel
 }
 
-func (r *memoryOperationRecoveryRepository) ArtifactByOperation(_ context.Context, operationID string) (protectionrepository.ArtifactModel, error) {
+func (r *memoryOperationRecoveryRepository) ArtifactByOperation(_ context.Context, operationID string) (protectiondata.ArtifactModel, error) {
 	if r.artifact.OperationID != operationID {
-		return protectionrepository.ArtifactModel{}, protectionrepository.ErrRecordNotFound
+		return protectiondata.ArtifactModel{}, protectionrepository.ErrRecordNotFound
 	}
 	return r.artifact, nil
 }
 
-func (r *memoryOperationRecoveryRepository) SaveArtifact(_ context.Context, item *protectionrepository.ArtifactModel) error {
+func (r *memoryOperationRecoveryRepository) SaveArtifact(_ context.Context, item *protectiondata.ArtifactModel) error {
 	r.artifact = *item
 	return nil
 }
 
-func (w *memoryMetadataWriter) SaveArtifact(_ context.Context, item *protectionrepository.ArtifactModel) error {
+func (w *memoryMetadataWriter) SaveArtifact(_ context.Context, item *protectiondata.ArtifactModel) error {
 	if w.err != nil {
 		return w.err
 	}
@@ -703,8 +705,8 @@ func (w *memoryMetadataWriter) SaveArtifact(_ context.Context, item *protectionr
 	return nil
 }
 
-func (s *memoryMetadataStore) ListArtifacts(context.Context) ([]protectionrepository.ArtifactModel, error) {
-	return append([]protectionrepository.ArtifactModel(nil), s.items...), nil
+func (s *memoryMetadataStore) ListArtifacts(context.Context) ([]protectiondata.ArtifactModel, error) {
+	return append([]protectiondata.ArtifactModel(nil), s.items...), nil
 }
 func (s *memoryMetadataStore) ProtectedArtifactOperations(context.Context) (map[string]string, error) {
 	return s.protected, nil
@@ -719,8 +721,8 @@ func (s *memoryMetadataStore) DeleteArtifact(_ context.Context, id uint) error {
 	return errors.New("artifact not found")
 }
 
-func (s *memoryMetadataStore) PruneFirewallHistory(context.Context, int, int64, int64) (protectionrepository.FirewallHistoryPruneResult, error) {
-	return protectionrepository.FirewallHistoryPruneResult{}, nil
+func (s *memoryMetadataStore) PruneFirewallHistory(context.Context, int, int64, int64) (protectiondata.FirewallHistoryPruneResult, error) {
+	return protectiondata.FirewallHistoryPruneResult{}, nil
 }
 
 func artifactTestStorage(t *testing.T, now time.Time) *Storage {

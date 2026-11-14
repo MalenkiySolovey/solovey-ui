@@ -16,8 +16,7 @@ import (
 	"sync"
 	"time"
 
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 )
 
 const (
@@ -55,6 +54,9 @@ var (
 )
 
 type Store interface {
+	// AdmitMaintenance retains the Backend generation fence across a complete
+	// heartbeat or recovery cycle without exposing a connection or transaction.
+	AdmitMaintenance(context.Context) (context.Context, func(), error)
 	AcquireOperationLock(context.Context, protectionrepository.AcquireOperationLockInput) (protectionrepository.OperationLockModel, bool, error)
 	OperationByIdempotencyKey(context.Context, string) (protectionrepository.OperationLockModel, error)
 	OperationByID(context.Context, string) (protectionrepository.OperationLockModel, error)
@@ -89,6 +91,7 @@ type Options struct {
 	Lease          time.Duration
 	Audit          func(context.Context, AuditEvent) error
 	Recovery       Recovery
+	ReportRecovery func(error)
 }
 
 type Recovery interface {
@@ -320,7 +323,7 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 	m.mu.Unlock()
 	if _, err := m.Recover(ctx); err != nil {
-		if !reportRuntimeRecovery(err) {
+		if !m.reportRuntimeRecovery(err) {
 			return err
 		}
 	}
@@ -538,7 +541,7 @@ func (m *Manager) beginRollback(ctx context.Context, operationID string, revisio
 }
 
 func (m *Manager) Heartbeat(ctx context.Context, operationID string, revision int) (protectionrepository.OperationLockModel, error) {
-	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	ctx, release, err := m.admitMaintenance(ctx)
 	if err != nil {
 		return protectionrepository.OperationLockModel{}, err
 	}
@@ -628,7 +631,7 @@ func (m *Manager) ForceUnlock(ctx context.Context, request ForceUnlockRequest) (
 }
 
 func (m *Manager) Recover(ctx context.Context) ([]RecoveryResult, error) {
-	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	ctx, release, err := m.admitMaintenance(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -952,7 +955,7 @@ func (m *Manager) run(ctx context.Context, done chan struct{}) {
 			}
 		case <-recovery.C:
 			if _, err := m.Recover(ctx); err != nil {
-				reportRuntimeRecovery(err)
+				m.reportRuntimeRecovery(err)
 			}
 		}
 	}
