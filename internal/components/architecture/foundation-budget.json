@@ -1673,7 +1673,7 @@
       "rule": "component-model-mutation",
       "path": "components/server-protection/service/repository/operations.go",
       "symbol": "*Repository.HeartbeatOperationLock",
-      "digest": "b8dda29583d9d40977dc0eba9f24a8b37f0ece7183e99e7d88dd180f95320390"
+      "digest": "fcfbce2b6d87d16bf35fbfcfcb3f654038ee0f77612655d8d1de2892e6e04890"
     },
     {
       "rule": "component-model-mutation",

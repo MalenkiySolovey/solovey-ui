@@ -351,3 +351,15 @@ supplied candidate. The source-derived operation map and affected race suites
 qualify this relocation. The standalone worker entry remains exactly
 e4feb4ed6901dc796e09034e57d9cca74b767c51cfe4376edabe72a68d30d1cc; no
 worker or unrelated budget entry is added or regenerated.
+
+Protection operation heartbeats retain the existing Backend repository,
+transaction, row identity and exact operation/revision/instance/PID predicates.
+The state predicate now reads the same seven nonterminal states from the single
+portable journal vocabulary, which returns a fresh slice on each call. The
+feature receives only typed journal operations; it cannot supply a database,
+table, transaction or SQL. The heartbeat updates the same three timestamps and
+does not rotate the admission revision. Existing heartbeat, expired-prepared,
+terminal-state and typed owner-fencing race regressions qualify this boundary.
+Only the existing HeartbeatOperationLock mutation digest is replaced with
+fcfbce2b6d87d16bf35fbfcfcb3f654038ee0f77612655d8d1de2892e6e04890;
+the original budget base, site count and all unrelated entries remain fixed.
