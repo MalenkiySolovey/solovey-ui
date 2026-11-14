@@ -2,10 +2,10 @@
   "schema": "solovey.host.consumer-pin/v1",
   "canonicalRepository": "MalenkiySolovey/solovey-host",
   "module": "github.com/MalenkiySolovey/solovey-host",
-  "version": "v0.6.0",
-  "sourceCommit": "a1f9a36765d858a511c0fc6d61da36809e96c612",
-  "sourceTree": "95f238b7e487155c3c77949cb788a02661175db0",
-  "moduleChecksum": "h1:NwSM7WtIeCBgq25GH/P6RfQQ3n6rvbt/yuutWOdf5dI=",
+  "version": "v0.7.0",
+  "sourceCommit": "ab194d117928ab5cdb82d496dcc1f79d7b4b3373",
+  "sourceTree": "2ab71e0d964d74ad948680a6b57e68058b2185b4",
+  "moduleChecksum": "h1:m0Dt8PxCVgmhmEMVYcq4hFmTYNjkGvku6bgyUtLdQfs=",
   "goModChecksum": "h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=",
   "fixturesSHA256": "ff83fc9c0b5a7d64d35d37ede09b530aafa07d3fe420e3e0bd055278c15b8eb3",
   "valuesSHA256": "1d4d7f29ba8c1f3c57fd2c66ee3423ea45efe3947686f5c53de753362b865a0c",
@@ -31,7 +31,8 @@
     "componenthost/fallbacktargets",
     "componenthost/hostsurface",
     "network/intent",
-    "coreruntime/inboundcontrol"
+    "coreruntime/inboundcontrol",
+    "network/nftcontract"
   ],
   "dependencies": {
     "github.com/robfig/cron/v3": "v3.0.1"
@@ -40,7 +41,7 @@
     "go.mod": "ef51164a22ed0a25c894a038ddfb872d6c44aa4765806dd8ee8e7c78a8e62845",
     "go.sum": "623cd8fb33831e0d4bcfd81a5869833cac49e94d0ed84321453e9374b720c7c9",
     "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
-    "SOURCE_PROVENANCE.json": "08a77912eb1e86c8cbd9b00e88f8b5a47fb1f23c5bd97fca228465dcb24c69c7",
+    "SOURCE_PROVENANCE.json": "a150b9ea0e88249e8e37e01382e08d4dbc65f65142121e04b191690506170d41",
     "networkidentity/testdata/snapshots.json": "ff83fc9c0b5a7d64d35d37ede09b530aafa07d3fe420e3e0bd055278c15b8eb3",
     "qualification/testdata/values.json": "1d4d7f29ba8c1f3c57fd2c66ee3423ea45efe3947686f5c53de753362b865a0c",
     "auditrecord/event.go": "98e2195668a32f8d03f8bec85578aafbbe1ee39d179abd7f3c1fc4870244159c",
@@ -97,6 +98,7 @@
     "componenthost/fallbacktargets/target_identity.go": "da82cab8691f01c7f21ffa73d9363e9b8aeafc8a58c5f21a24b69fbcd87531d3",
     "coreruntime/inboundcontrol/patch_types.go": "c5c0557e02fda1aa88d1fabe7229ab48d04e8eb0f51434226832f2dc4a748d19",
     "coreruntime/inboundcontrol/ports.go": "9e664a33289ce5afba1bdc392f1b59525e5b099caded27c26a35fc54f1624f1a",
-    "coreruntime/inboundcontrol/types.go": "943122fa190ff1c2a455f60ccbc2784c1d6c4b1b03079f58f1f63640867f1e35"
+    "coreruntime/inboundcontrol/types.go": "943122fa190ff1c2a455f60ccbc2784c1d6c4b1b03079f58f1f63640867f1e35",
+    "network/nftcontract/types.go": "e06ea1fdb6535e6b2e6a7e7bedcc8a81683d4a9516da23c69a248aa59d5445d4"
   }
 }
