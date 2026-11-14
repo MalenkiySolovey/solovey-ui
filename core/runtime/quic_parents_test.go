@@ -47,23 +47,54 @@ const quicFixturePassword = "synthetic-loopback-only"
 
 func quicPort(t *testing.T) int {
 	t.Helper()
-	// Native fixtures reuse this port for TCP, UDP or both. On Windows the
-	// excluded ranges differ, so a UDP-only probe can select a forbidden TCP port.
-	for range 32 {
-		tcp, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		port := tcp.Addr().(*net.TCPAddr).Port
-		udp, err := net.ListenPacket("udp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
-		_ = tcp.Close()
-		if err == nil {
-			_ = udp.Close()
-			return port
-		}
+	port, err := findQUICFixturePort(probeQUICFixturePort)
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Fatal("no loopback port available for both TCP and UDP")
-	return 0
+	return port
+}
+
+func probeQUICFixturePort(network, address string) (io.Closer, int, error) {
+	if network == "tcp" {
+		socket, err := net.Listen(network, address)
+		if err != nil {
+			return nil, 0, err
+		}
+		return socket, socket.Addr().(*net.TCPAddr).Port, nil
+	}
+	socket, err := net.ListenPacket(network, address)
+	if err != nil {
+		return nil, 0, err
+	}
+	return socket, socket.LocalAddr().(*net.UDPAddr).Port, nil
+}
+
+func findQUICFixturePort(bind func(string, string) (io.Closer, int, error)) (int, error) {
+	var last error
+	// TCP and UDP have independent ephemeral allocators and exclusion ranges.
+	// Sample both while requiring each candidate to bind both protocols. Keep
+	// the original finite probe budget and hold the first socket until the
+	// second bind completes.
+	for attempt := range 32 {
+		first, second := "tcp", "udp"
+		if attempt%2 != 0 {
+			first, second = second, first
+		}
+		socket, port, err := bind(first, "127.0.0.1:0")
+		if err != nil {
+			last = fmt.Errorf("%s allocator: %w", first, err)
+			continue
+		}
+		address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+		other, _, err := bind(second, address)
+		_ = socket.Close()
+		if err == nil {
+			_ = other.Close()
+			return port, nil
+		}
+		last = fmt.Errorf("%s %s after %s allocation: %w", second, address, first, err)
+	}
+	return 0, fmt.Errorf("no loopback port available for both TCP and UDP after 32 probes: %w", last)
 }
 
 func quicBindings(users ...uint) []inboundidentity.Binding {
