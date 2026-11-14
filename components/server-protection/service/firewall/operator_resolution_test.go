@@ -1,5 +1,9 @@
 package firewall
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
+
+import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+
 import (
 	"testing"
 	"time"
@@ -16,23 +20,23 @@ func TestRetainedRollbackAdmissionRejectsUnsafeAuthority(t *testing.T) {
 	assertCurrentSSHProductionLifecycle(t, true, "", "sqlite_expired_reconcile", "operator_negatives")
 }
 
-func assertRetainedRollbackNegatives(t *testing.T, workflow Workflow, repo *repository.Repository, db *gorm.DB, executor *testHelperInvoker, operation repository.OperationLockModel) {
+func assertRetainedRollbackNegatives(t *testing.T, workflow Workflow, repo *backendstore.Store, db *gorm.DB, executor *testHelperInvoker, operation protectiondata.OperationLockModel) {
 	t.Helper()
 	before, err := repo.FirewallAuthority(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, mutate := range map[string]func(*repository.FirewallCompositionModel){
-		"wrong operation":    func(c *repository.FirewallCompositionModel) { c.AppliedOperationID = "other-operation" },
-		"unretired runtime":  func(c *repository.FirewallCompositionModel) { c.Runtime.State = "RESTORE_REQUIRED" },
-		"other failure":      func(c *repository.FirewallCompositionModel) { c.Runtime.Reason = "boot_restore_interrupted_absent" },
-		"mutation ambiguity": func(c *repository.FirewallCompositionModel) { c.Runtime.MutationAt = 1 },
-		"unexpected health":  func(c *repository.FirewallCompositionModel) { c.Runtime.HealthAt = 1 },
-		"invalid digest": func(c *repository.FirewallCompositionModel) {
+	for name, mutate := range map[string]func(*protectiondata.FirewallCompositionModel){
+		"wrong operation":    func(c *protectiondata.FirewallCompositionModel) { c.AppliedOperationID = "other-operation" },
+		"unretired runtime":  func(c *protectiondata.FirewallCompositionModel) { c.Runtime.State = "RESTORE_REQUIRED" },
+		"other failure":      func(c *protectiondata.FirewallCompositionModel) { c.Runtime.Reason = "boot_restore_interrupted_absent" },
+		"mutation ambiguity": func(c *protectiondata.FirewallCompositionModel) { c.Runtime.MutationAt = 1 },
+		"unexpected health":  func(c *protectiondata.FirewallCompositionModel) { c.Runtime.HealthAt = 1 },
+		"invalid digest": func(c *protectiondata.FirewallCompositionModel) {
 			c.CandidateSemanticSHA256 = hostresources.Revision("wrong")
 		},
-		"nonactive composition": func(c *repository.FirewallCompositionModel) { c.State = "RECOVERY_REQUIRED" },
-		"nonexpired deadline": func(c *repository.FirewallCompositionModel) {
+		"nonactive composition": func(c *protectiondata.FirewallCompositionModel) { c.State = "RECOVERY_REQUIRED" },
+		"nonexpired deadline": func(c *protectiondata.FirewallCompositionModel) {
 			c.Runtime.StartedAt = workflow.now().Unix()
 			c.Runtime.Deadline = c.Runtime.StartedAt + 300
 		},
@@ -40,11 +44,13 @@ func assertRetainedRollbackNegatives(t *testing.T, workflow Workflow, repo *repo
 		t.Run(name, func(t *testing.T) {
 			changed := before.Composition
 			mutate(&changed)
-			if err := db.Save(&changed).Error; err != nil {
+			row := backendCompositionFixture(changed)
+			if err := db.Save(&row).Error; err != nil {
 				t.Fatal(err)
 			}
 			defer func() {
-				if err := db.Save(&before.Composition).Error; err != nil {
+				original := backendCompositionFixture(before.Composition)
+				if err := db.Save(&original).Error; err != nil {
 					t.Error(err)
 				}
 			}()
@@ -92,7 +98,7 @@ func assertRetainedRollbackNegatives(t *testing.T, workflow Workflow, repo *repo
 	}
 }
 
-func assertFreshLifecycleAfterRetirement(t *testing.T, workflow Workflow, baseline *BaselineService, executor *testHelperInvoker, repo *repository.Repository, boot *controlledBootGeneration, operator lifecycleOperator) {
+func assertFreshLifecycleAfterRetirement(t *testing.T, workflow Workflow, baseline *BaselineService, executor *testHelperInvoker, repo *backendstore.Store, boot *controlledBootGeneration, operator lifecycleOperator, ownerDB *gorm.DB) {
 	t.Helper()
 	current, err := baseline.Snapshot(t.Context(), true, nil)
 	if err != nil {
@@ -143,7 +149,7 @@ func assertFreshLifecycleAfterRetirement(t *testing.T, workflow Workflow, baseli
 	}
 	var rolled Result
 	if operator != nil {
-		rolled, err = operator(workflow, repo, id)
+		rolled, err = operator(workflow, repository.New(ownerDB), id)
 	} else {
 		rolled, err = workflow.Rollback(t.Context(), id, "ROLLBACK SERVER PROTECTION "+id)
 	}

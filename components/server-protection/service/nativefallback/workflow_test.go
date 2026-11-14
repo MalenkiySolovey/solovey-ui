@@ -1,5 +1,9 @@
 package nativefallback
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
+
+import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+
 import (
 	"context"
 	"errors"
@@ -263,29 +267,29 @@ func providerTestError(class neutralfallback.ProviderErrorClass) *neutralfallbac
 }
 
 type journalRecorder struct {
-	*repository.Repository
+	*backendstore.Store
 	events     *[]string
-	failStages map[repository.NativeJournalStage]int
+	failStages map[protectiondata.NativeJournalStage]int
 }
 
-func (journal journalRecorder) CreateNativeFallbackOperation(ctx context.Context, model repository.NativeFallbackOperationModel) (repository.NativeFallbackOperationModel, error) {
+func (journal journalRecorder) CreateNativeFallbackOperation(ctx context.Context, model protectiondata.NativeFallbackOperationModel) (protectiondata.NativeFallbackOperationModel, error) {
 	*journal.events = append(*journal.events, "journal:create")
-	return journal.Repository.CreateNativeFallbackOperation(ctx, model)
+	return journal.Store.CreateNativeFallbackOperation(ctx, model)
 }
-func (journal journalRecorder) AdvanceNativeFallbackOperation(ctx context.Context, update repository.NativeFallbackJournalUpdate) (repository.NativeFallbackOperationModel, error) {
+func (journal journalRecorder) AdvanceNativeFallbackOperation(ctx context.Context, update protectiondata.NativeFallbackJournalUpdate) (protectiondata.NativeFallbackOperationModel, error) {
 	*journal.events = append(*journal.events, "journal:"+string(update.Stage))
 	if journal.failStages[update.Stage] > 0 {
 		journal.failStages[update.Stage]--
-		return repository.NativeFallbackOperationModel{}, errors.New("injected journal failure")
+		return protectiondata.NativeFallbackOperationModel{}, errors.New("injected journal failure")
 	}
-	return journal.Repository.AdvanceNativeFallbackOperation(ctx, update)
+	return journal.Store.AdvanceNativeFallbackOperation(ctx, update)
 }
 
 type artifactWriterFake struct{ events *[]string }
 
-func (writer artifactWriterFake) WriteRevision(_ context.Context, operationID, revision string, _ map[string][]byte) (repository.ArtifactModel, error) {
+func (writer artifactWriterFake) WriteRevision(_ context.Context, operationID, revision string, _ map[string][]byte) (protectiondata.ArtifactModel, error) {
 	*writer.events = append(*writer.events, "artifact:write")
-	return repository.ArtifactModel{OperationID: operationID, Revision: revision, ManifestSHA256: strings.Repeat("a", 64)}, nil
+	return protectiondata.ArtifactModel{OperationID: operationID, Revision: revision, ManifestSHA256: strings.Repeat("a", 64)}, nil
 }
 
 type markerFake struct {
@@ -315,7 +319,7 @@ func (marker markerFake) VerifyRevision(revision, expectedManifestSHA string) (p
 type workflowTestFixture struct {
 	now      time.Time
 	db       *gorm.DB
-	repo     *repository.Repository
+	repo     *backendstore.Store
 	journal  journalRecorder
 	manager  *protectionoperations.Manager
 	core     *workflowCoreFake
@@ -338,7 +342,7 @@ func newWorkflowFixture(t *testing.T) *workflowTestFixture {
 	if err := repository.Migrate(db); err != nil {
 		t.Fatal(err)
 	}
-	repo := repository.New(db)
+	repo := backendstore.New(repository.New(db))
 	events := []string{}
 	identity := exactRuntimeIdentity()
 	snapshot := vlessSnapshot(identity)
@@ -366,7 +370,7 @@ func newWorkflowFixture(t *testing.T) *workflowTestFixture {
 	t.Cleanup(unregister)
 	manager := protectionoperations.NewManager(repo, protectionoperations.Options{Now: func() time.Time { return now }, Audit: func(context.Context, protectionoperations.AuditEvent) error { return nil }})
 	t.Cleanup(func() { _ = manager.Stop(context.Background()) })
-	journal := journalRecorder{Repository: repo, events: &events, failStages: make(map[repository.NativeJournalStage]int)}
+	journal := journalRecorder{Store: repo, events: &events, failStages: make(map[protectiondata.NativeJournalStage]int)}
 	workflow := &Workflow{
 		Operations: manager, Journal: journal, Planner: planner, Core: core, Providers: registry,
 		Artifacts: artifactWriterFake{events: &events}, Marker: markerFake{events: &events}, Now: func() time.Time { return now },
@@ -584,7 +588,7 @@ func TestNativeActualApplyRollbackCyclesFeedBoundedSemanticRetention(t *testing.
 func TestNativeJournalRejectsIllegalAndStaleTransitionsAtomically(t *testing.T) {
 	fixture := newWorkflowFixture(t)
 	prepared := fixture.prepare(t)
-	for name, update := range map[string]repository.NativeFallbackJournalUpdate{
+	for name, update := range map[string]protectiondata.NativeFallbackJournalUpdate{
 		"stale revision": {
 			OperationID: prepared.Operation.OperationID, ExpectedRevision: prepared.Operation.Revision - 1,
 			Stage: repository.NativeJournalApplying, Now: fixture.now,
@@ -731,7 +735,7 @@ func TestCancellationAfterPossibleCommitIsAmbiguousAndRetainsAuthority(t *testin
 func TestRestartClassificationResumesHealthWithoutDuplicateApplyOrActivation(t *testing.T) {
 	fixture := newWorkflowFixture(t)
 	prepared := fixture.prepare(t)
-	operation, err := fixture.journal.AdvanceNativeFallbackOperation(context.Background(), repository.NativeFallbackJournalUpdate{
+	operation, err := fixture.journal.AdvanceNativeFallbackOperation(context.Background(), protectiondata.NativeFallbackJournalUpdate{
 		OperationID: prepared.Operation.OperationID, ExpectedRevision: prepared.Operation.Revision, Stage: repository.NativeJournalApplying, Now: fixture.now,
 	})
 	if err != nil {
@@ -743,7 +747,7 @@ func TestRestartClassificationResumesHealthWithoutDuplicateApplyOrActivation(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	operation, err = fixture.journal.AdvanceNativeFallbackOperation(context.Background(), repository.NativeFallbackJournalUpdate{
+	operation, err = fixture.journal.AdvanceNativeFallbackOperation(context.Background(), protectiondata.NativeFallbackJournalUpdate{
 		OperationID: operation.OperationID, ExpectedRevision: operation.Revision, Stage: repository.NativeJournalFenced, Reservation: &fenced, Now: fixture.now,
 	})
 	if err != nil {
@@ -919,7 +923,7 @@ func TestRestartFinishesInterruptedRollbackWithoutDuplicateRestoreOrRelease(t *t
 	t.Run("rollback_journal_failure_is_retryable_not_false_terminal", func(t *testing.T) {
 		fixture := newWorkflowFixture(t)
 		prepared := fixture.prepare(t)
-		operation, err := fixture.journal.AdvanceNativeFallbackOperation(context.Background(), repository.NativeFallbackJournalUpdate{
+		operation, err := fixture.journal.AdvanceNativeFallbackOperation(context.Background(), protectiondata.NativeFallbackJournalUpdate{
 			OperationID: prepared.Operation.OperationID, ExpectedRevision: prepared.Operation.Revision, Stage: repository.NativeJournalApplying, Now: fixture.now,
 		})
 		if err != nil {
@@ -1043,7 +1047,7 @@ func TestRestartClassifiesMarkerAtBeforeAndPreviouslyRestoredAuthority(t *testin
 	t.Run("marker_at_before", func(t *testing.T) {
 		fixture := newWorkflowFixture(t)
 		prepared := fixture.prepare(t)
-		operation, err := fixture.journal.AdvanceNativeFallbackOperation(context.Background(), repository.NativeFallbackJournalUpdate{
+		operation, err := fixture.journal.AdvanceNativeFallbackOperation(context.Background(), protectiondata.NativeFallbackJournalUpdate{
 			OperationID: prepared.Operation.OperationID, ExpectedRevision: prepared.Operation.Revision,
 			Stage: repository.NativeJournalApplying, Now: fixture.now,
 		})
@@ -1061,7 +1065,7 @@ func TestRestartClassifiesMarkerAtBeforeAndPreviouslyRestoredAuthority(t *testin
 	t.Run("previous_state_still_guarded", func(t *testing.T) {
 		fixture := newWorkflowFixture(t)
 		prepared := fixture.prepare(t)
-		operation, err := fixture.journal.AdvanceNativeFallbackOperation(context.Background(), repository.NativeFallbackJournalUpdate{
+		operation, err := fixture.journal.AdvanceNativeFallbackOperation(context.Background(), protectiondata.NativeFallbackJournalUpdate{
 			OperationID: prepared.Operation.OperationID, ExpectedRevision: prepared.Operation.Revision,
 			Stage: repository.NativeJournalApplying, Now: fixture.now,
 		})
@@ -1075,7 +1079,7 @@ func TestRestartClassifiesMarkerAtBeforeAndPreviouslyRestoredAuthority(t *testin
 		if err != nil {
 			t.Fatal(err)
 		}
-		operation, err = fixture.journal.AdvanceNativeFallbackOperation(context.Background(), repository.NativeFallbackJournalUpdate{
+		operation, err = fixture.journal.AdvanceNativeFallbackOperation(context.Background(), protectiondata.NativeFallbackJournalUpdate{
 			OperationID: operation.OperationID, ExpectedRevision: operation.Revision, Stage: repository.NativeJournalFenced,
 			Reservation: &fenced, Now: fixture.now,
 		})
@@ -1089,7 +1093,7 @@ func TestRestartClassifiesMarkerAtBeforeAndPreviouslyRestoredAuthority(t *testin
 		if err != nil {
 			t.Fatal(err)
 		}
-		operation, err = fixture.journal.AdvanceNativeFallbackOperation(context.Background(), repository.NativeFallbackJournalUpdate{
+		operation, err = fixture.journal.AdvanceNativeFallbackOperation(context.Background(), protectiondata.NativeFallbackJournalUpdate{
 			OperationID: operation.OperationID, ExpectedRevision: operation.Revision, Stage: repository.NativeJournalHealth,
 			AfterConfigurationRevision: mutation.AfterConfigurationRevision, ExpectedEffectiveRevision: mutation.ExpectedEffectiveRevision,
 			ManagerGeneration: mutation.Observation.ManagerGeneration, Now: fixture.now,
@@ -1097,7 +1101,7 @@ func TestRestartClassifiesMarkerAtBeforeAndPreviouslyRestoredAuthority(t *testin
 		if err != nil {
 			t.Fatal(err)
 		}
-		operation, err = fixture.journal.AdvanceNativeFallbackOperation(context.Background(), repository.NativeFallbackJournalUpdate{
+		operation, err = fixture.journal.AdvanceNativeFallbackOperation(context.Background(), protectiondata.NativeFallbackJournalUpdate{
 			OperationID: operation.OperationID, ExpectedRevision: operation.Revision, Stage: repository.NativeJournalRollingBack,
 			RecoveryClassification: "injected_restart", Now: fixture.now,
 		})

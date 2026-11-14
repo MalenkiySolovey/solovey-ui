@@ -12,8 +12,8 @@ import (
 	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 )
 
 const (

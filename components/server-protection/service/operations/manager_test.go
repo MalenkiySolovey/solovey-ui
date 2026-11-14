@@ -1,5 +1,9 @@
 package operations
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
+
+import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+
 import (
 	"context"
 	"errors"
@@ -32,8 +36,8 @@ type fakeRecovery struct {
 type fakeReconciler struct {
 	decision      ReconcileDecision
 	calls         int
-	seen          []protectionrepository.OperationLockModel
-	validate      func(protectionrepository.OperationLockModel) error
+	seen          []protectiondata.OperationLockModel
+	validate      func(protectiondata.OperationLockModel) error
 	validationErr error
 }
 
@@ -46,7 +50,7 @@ type blockingListStore struct {
 	once    sync.Once
 }
 
-func (s *blockingListStore) ListOperationLocks(ctx context.Context, states []string) ([]protectionrepository.OperationLockModel, error) {
+func (s *blockingListStore) ListOperationLocks(ctx context.Context, states []string) ([]protectiondata.OperationLockModel, error) {
 	s.mu.Lock()
 	s.calls++
 	call := s.calls
@@ -60,7 +64,7 @@ func (s *blockingListStore) ListOperationLocks(ctx context.Context, states []str
 	return s.Store.ListOperationLocks(ctx, states)
 }
 
-func (r *fakeReconciler) Reconcile(_ context.Context, operation protectionrepository.OperationLockModel) (ReconcileDecision, error) {
+func (r *fakeReconciler) Reconcile(_ context.Context, operation protectiondata.OperationLockModel) (ReconcileDecision, error) {
 	r.calls++
 	r.seen = append(r.seen, operation)
 	if r.validate != nil {
@@ -69,14 +73,14 @@ func (r *fakeReconciler) Reconcile(_ context.Context, operation protectionreposi
 	return r.decision, nil
 }
 
-func (r *fakeRecovery) HasMutationArtifact(context.Context, protectionrepository.OperationLockModel) (bool, error) {
+func (r *fakeRecovery) HasMutationArtifact(context.Context, protectiondata.OperationLockModel) (bool, error) {
 	return r.hasArtifact, r.evidenceErr
 }
-func (r *fakeRecovery) AttemptRollback(context.Context, protectionrepository.OperationLockModel) error {
+func (r *fakeRecovery) AttemptRollback(context.Context, protectiondata.OperationLockModel) error {
 	r.rollbacks++
 	return r.rollbackErr
 }
-func (r *fakeRecovery) CreateBundle(context.Context, protectionrepository.OperationLockModel, string) error {
+func (r *fakeRecovery) CreateBundle(context.Context, protectiondata.OperationLockModel, string) error {
 	r.bundles++
 	return nil
 }
@@ -187,7 +191,7 @@ func TestNativeReconcilerOwnsProcessGatePersistedFenceAndHistoricalAppliedReveri
 
 	reconciler := &fakeReconciler{decision: ReconcileDecision{State: StateApplied, Reason: "freshly_reverified"}}
 	recoverer := operationTestManager(t, repo, Options{InstanceID: "native-recoverer", PID: 262})
-	reconciler.validate = func(operation protectionrepository.OperationLockModel) error {
+	reconciler.validate = func(operation protectiondata.OperationLockModel) error {
 		if err := recoverer.ValidateHelperLock(context.Background(), operation.OperationID, "native-recoverer", KindNativeFallback, operation.Revision); !errors.Is(err, ErrFenced) {
 			return errors.New("terminal mutation lock remained authorized during reconciliation")
 		}
@@ -231,7 +235,7 @@ func TestKindReconcilerReclaimsReconcileRequiredForFreshResolution(t *testing.T)
 	}
 	recoverer := operationTestManager(t, repo, Options{InstanceID: "reconcile-recoverer", PID: 272})
 	reconciler := &fakeReconciler{decision: ReconcileDecision{State: StateCancelled, Reason: "ambiguity_resolved_before_mutation"}}
-	reconciler.validate = func(operation protectionrepository.OperationLockModel) error {
+	reconciler.validate = func(operation protectiondata.OperationLockModel) error {
 		if err := recoverer.ValidateHelperLock(context.Background(), operation.OperationID, "reconcile-recoverer", KindFronting, operation.Revision); !errors.Is(err, ErrFenced) {
 			return errors.New("terminal mutation lock remained authorized during reconciliation")
 		}
@@ -609,7 +613,7 @@ func TestOldInstanceCannotFinishOrUnlockNewInstanceOperation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = repo.UpdateOperationLockFenced(context.Background(), protectionrepository.FencedOperationLockUpdate{
+	_, err = repo.UpdateOperationLockFenced(context.Background(), protectiondata.FencedOperationLockUpdate{
 		OperationID: second.Operation.OperationID, Revision: second.Operation.Revision,
 		InstanceID: "old", PID: 801, FromStates: protectionrepository.NonTerminalOperationLockStates(),
 		ToState: StateApplied, Now: time.Now().Unix(), ExpiresAt: time.Now().Add(time.Minute).Unix(),
@@ -718,7 +722,7 @@ func TestStopTimeoutRetainsRunnerFenceUntilRetryDrainsIt(t *testing.T) {
 	}
 }
 
-func operationTestRepository(t *testing.T) *protectionrepository.Repository {
+func operationTestRepository(t *testing.T) *backendstore.Store {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "operations.db")), &gorm.Config{})
 	if err != nil {
@@ -732,10 +736,10 @@ func operationTestRepository(t *testing.T) *protectionrepository.Repository {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	return protectionrepository.New(db)
+	return backendstore.New(protectionrepository.New(db))
 }
 
-func operationTestManager(t *testing.T, repo *protectionrepository.Repository, options Options) *Manager {
+func operationTestManager(t *testing.T, repo *backendstore.Store, options Options) *Manager {
 	t.Helper()
 	if options.HeartbeatEvery == 0 {
 		options.HeartbeatEvery = time.Hour

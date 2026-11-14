@@ -1,5 +1,9 @@
 package fronting
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
+
+import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+
 import (
 	"context"
 	"errors"
@@ -28,7 +32,7 @@ func (frontingAudit) RecordHelperAudit(context.Context, protectionhelper.AuditEv
 
 type bundleRecorder struct{ count int }
 
-func (r *bundleRecorder) CreateBundle(context.Context, protectionrepository.OperationLockModel, string) error {
+func (r *bundleRecorder) CreateBundle(context.Context, protectiondata.OperationLockModel, string) error {
 	r.count++
 	return nil
 }
@@ -37,7 +41,7 @@ type frontingFixture struct {
 	workflow   *Workflow
 	nginx      *helperinvoker.Invoker
 	bundles    *bundleRecorder
-	repository *protectionrepository.Repository
+	repository *backendstore.Store
 	manager    *protectionoperations.Manager
 	storage    *protectionartifacts.Storage
 }
@@ -434,7 +438,7 @@ func countOperation(values []protectionhelper.Operation, wanted protectionhelper
 	return count
 }
 
-func newFrontingWorkflow(t *testing.T, health HealthCheck) (*Workflow, *helperinvoker.Invoker, *bundleRecorder, *protectionrepository.Repository) {
+func newFrontingWorkflow(t *testing.T, health HealthCheck) (*Workflow, *helperinvoker.Invoker, *bundleRecorder, *backendstore.Store) {
 	fixture := newFrontingFixture(t, health)
 	return fixture.workflow, fixture.nginx, fixture.bundles, fixture.repository
 }
@@ -450,7 +454,7 @@ func newFrontingFixture(t *testing.T, health HealthCheck) frontingFixture {
 	if err := protectionrepository.Migrate(db); err != nil {
 		t.Fatal(err)
 	}
-	repository := protectionrepository.New(db)
+	repository := backendstore.New(protectionrepository.New(db))
 	manager := protectionoperations.NewManager(repository, protectionoperations.Options{InstanceID: "fronting-test", PID: 77, Audit: func(context.Context, protectionoperations.AuditEvent) error { return nil }})
 	t.Cleanup(func() { _ = manager.Stop(context.Background()) })
 	rootPath := filepath.Join(t.TempDir(), ".runtime", "server-protection")

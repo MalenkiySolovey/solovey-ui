@@ -1,5 +1,9 @@
 package localproxy
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
+
+import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+
 import (
 	"context"
 	"path/filepath"
@@ -84,7 +88,7 @@ func TestLocalProxyPlannerEligibilityMatrixAndHonestMixedProjection(t *testing.T
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			plan := planForFact(test.fact, protectionrepository.LocalProxyStateV1Model{}, now)
+			plan := planForFact(test.fact, protectiondata.LocalProxyStateV1Model{}, now)
 			if (plan.ApplyGate == ApplyGateExperimentalAck) != test.actionable {
 				t.Fatalf("plan=%#v", plan)
 			}
@@ -96,7 +100,7 @@ func TestLocalProxyPlannerEligibilityMatrixAndHonestMixedProjection(t *testing.T
 			}
 		})
 	}
-	mixed := planForFact(workflowFactFixture("mixed", hostresources.LocalProxyExposureLoopback, hostresources.LocalProxyAuthenticationAbsent), protectionrepository.LocalProxyStateV1Model{}, now)
+	mixed := planForFact(workflowFactFixture("mixed", hostresources.LocalProxyExposureLoopback, hostresources.LocalProxyAuthenticationAbsent), protectiondata.LocalProxyStateV1Model{}, now)
 	if mixed.ExactReference == nil || !reflect.DeepEqual(mixed.ExactReference.Protocols, []hostresources.LocalProxyProtocolV1{
 		hostresources.LocalProxyProtocolHTTPConnect, hostresources.LocalProxyProtocolHTTPForward, hostresources.LocalProxyProtocolSOCKS5,
 	}) || !containsLocalProxyCode(mixed.WarningCodes, "MIXED_ALL_PROTOCOLS_ATOMIC") ||
@@ -123,7 +127,7 @@ func TestLocalProxyPlannerFailsClosedOnOwnerListenerRuntimeAndManagementDrift(t 
 			revisionInput := fact
 			revisionInput.ObservedAt, revisionInput.ExpiresAt, revisionInput.FactRevision = 0, 0, ""
 			fact.FactRevision = hostresources.Revision(revisionInput)
-			plan := planForFact(fact, protectionrepository.LocalProxyStateV1Model{}, now)
+			plan := planForFact(fact, protectiondata.LocalProxyStateV1Model{}, now)
 			if plan.ApplyGate != ApplyGateBlocked || plan.ExactReference != nil || len(plan.BlockCodes) == 0 {
 				t.Fatalf("unsafe plan=%#v", plan)
 			}
@@ -192,8 +196,8 @@ func TestMixedHealthVerifiesEveryProtocolSequentiallyAndFailsAtomically(t *testi
 	revisionInput := fact
 	revisionInput.ObservedAt, revisionInput.ExpiresAt, revisionInput.FactRevision = 0, 0, ""
 	fact.FactRevision = hostresources.Revision(revisionInput)
-	plan := planForFact(fact, protectionrepository.LocalProxyStateV1Model{}, now)
-	operation := protectionrepository.OperationLockModel{OperationID: "operation-1", Revision: 3}
+	plan := planForFact(fact, protectiondata.LocalProxyStateV1Model{}, now)
+	operation := protectiondata.OperationLockModel{OperationID: "operation-1", Revision: 3}
 	lease, err := hostresources.FinalizeLocalProxyGuardLeaseV1(hostresources.LocalProxyGuardLeaseV1{
 		LeaseID: "lease-1", AuthorityProviderID: plan.ExactReference.ProviderID, HolderID: operation.OperationID,
 		ExactReference: *plan.ExactReference, State: hostresources.EndpointLeaseMutationPending,
@@ -373,7 +377,7 @@ func TestPreviewIsZeroWritePrepareOnlyReservesAndRestartCancelsPrepared(t *testi
 	); err != nil {
 		t.Fatal(err)
 	}
-	repository := protectionrepository.New(db)
+	repository := backendstore.New(protectionrepository.New(db))
 	manager := protectionoperations.NewManager(repository, protectionoperations.Options{
 		InstanceID: "local-proxy-workflow-test", PID: 4242, Now: func() time.Time { return now },
 		Lease: 10 * time.Minute,
@@ -547,7 +551,7 @@ func TestLeaseRenewerExitsImmediatelyWhenDefaultOffHasNoActiveLease(t *testing.T
 	if err := db.AutoMigrate(&protectionrepository.OperationLockModel{}, &protectionrepository.LocalProxyStateV1Model{}); err != nil {
 		t.Fatal(err)
 	}
-	repository := protectionrepository.New(db)
+	repository := backendstore.New(protectionrepository.New(db))
 	manager := protectionoperations.NewManager(repository, protectionoperations.Options{InstanceID: "local-proxy-idle-test", PID: 4242, Now: func() time.Time { return now }})
 	controller := &Controller{Repository: repository, Operations: manager, Providers: hostresources.NewLocalProxyRegistryV1(), Probes: componenthealth.NewLocalProxyProbeRegistryV1(), Now: func() time.Time { return now }}
 	done := make(chan struct{})
@@ -580,7 +584,7 @@ func TestRestartDistrustsActiveHistoryAndRetainsFreshMarkerOnHealthFailure(t *te
 	); err != nil {
 		t.Fatal(err)
 	}
-	repository := protectionrepository.New(db)
+	repository := backendstore.New(protectionrepository.New(db))
 	manager := protectionoperations.NewManager(repository, protectionoperations.Options{
 		InstanceID: "local-proxy-restart-test", PID: 4243, Now: func() time.Time { return now },
 		Lease: 10 * time.Minute,
@@ -664,7 +668,7 @@ func TestLocalProxyPlanHighCardinalityIsBoundedDeterministicAndFast(t *testing.T
 	start := time.Now()
 	var firstDigest string
 	for index := 0; index < count; index++ {
-		plan := planForFact(fact, protectionrepository.LocalProxyStateV1Model{}, now)
+		plan := planForFact(fact, protectiondata.LocalProxyStateV1Model{}, now)
 		if index == 0 {
 			firstDigest = plan.PlanDigest
 		} else if plan.PlanDigest != firstDigest {
@@ -675,7 +679,7 @@ func TestLocalProxyPlanHighCardinalityIsBoundedDeterministicAndFast(t *testing.T
 		t.Fatalf("local proxy control planning exceeded 2s budget for %d facts: %s", count, elapsed)
 	}
 	allocations := testing.AllocsPerRun(5, func() {
-		_ = planForFact(fact, protectionrepository.LocalProxyStateV1Model{}, now)
+		_ = planForFact(fact, protectiondata.LocalProxyStateV1Model{}, now)
 	})
 	if allocations > 250 {
 		t.Fatalf("plan allocations %.1f exceed bounded control-plane budget", allocations)
@@ -687,7 +691,7 @@ func BenchmarkLocalProxyPlanV1(b *testing.B) {
 	fact := workflowFactFixture("mixed", hostresources.LocalProxyExposureLoopback, hostresources.LocalProxyAuthenticationAbsent)
 	b.ReportAllocs()
 	for index := 0; index < b.N; index++ {
-		_ = planForFact(fact, protectionrepository.LocalProxyStateV1Model{}, now)
+		_ = planForFact(fact, protectiondata.LocalProxyStateV1Model{}, now)
 	}
 }
 

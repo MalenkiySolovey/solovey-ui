@@ -1,5 +1,7 @@
 package firewall
 
+import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+
 import (
 	"context"
 	"encoding/json"
@@ -53,7 +55,7 @@ type interruptedRuntimeStore struct {
 	fired       bool
 }
 
-func (s *interruptedRuntimeStore) UpdateFirewallRuntime(ctx context.Context, id string, revision int, composition string, before, after protectionrepository.FirewallRuntimeBinding) error {
+func (s *interruptedRuntimeStore) UpdateFirewallRuntime(ctx context.Context, id string, revision int, composition string, before, after protectiondata.FirewallRuntimeBinding) error {
 	if !s.fired && ((s.beforeApply && after.State == "RESTORING_RUNTIME") || (!s.beforeApply && before.State == "RESTORING_RUNTIME" && after.State == "HEALTH_VERIFIED")) {
 		s.fired = true
 		if s.beforeApply {
@@ -68,7 +70,7 @@ func (s *interruptedRuntimeStore) UpdateFirewallRuntime(ctx context.Context, id 
 
 type mismatchedRuntimeStore struct{ FirewallContributionStore }
 
-func (s mismatchedRuntimeStore) FirewallAuthority(ctx context.Context) (protectionrepository.FirewallAuthoritySnapshot, error) {
+func (s mismatchedRuntimeStore) FirewallAuthority(ctx context.Context) (protectiondata.FirewallAuthoritySnapshot, error) {
 	snapshot, err := s.FirewallContributionStore.FirewallAuthority(ctx)
 	if snapshot.HasComposition {
 		snapshot.Composition.CandidateSemanticSHA256 = hostresources.Revision("mismatched")
@@ -458,7 +460,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 		trusted = []string{"198.51.100.9/32", "2001:db8:1::9/128"}
 	}
 	for _, prefix := range trusted {
-		if err := repo.CreateIPAllowlist(context.Background(), &protectionrepository.IPAllowlistModel{IPCIDR: prefix, Reason: "explicit fixture trust", CreatedBy: "ci"}); err != nil {
+		if err := repo.CreateIPAllowlist(context.Background(), &protectiondata.IPAllowlistModel{IPCIDR: prefix, Reason: "explicit fixture trust", CreatedBy: "ci"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -947,7 +949,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 		}
 		if scenario == "sqlite_expired_upgrade" || scenario == "sqlite_expired_reconcile" {
 			stableRevision := 0
-			var stableRuntime protectionrepository.FirewallRuntimeBinding
+			var stableRuntime protectiondata.FirewallRuntimeBinding
 			for attempt := 0; attempt < 3; attempt++ {
 				retained, err := repo.FirewallAuthority(t.Context())
 				original, opErr := repo.OperationByID(t.Context(), operationID)
@@ -994,7 +996,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 					err = loadErr
 					resolved = Result{OperationID: final.OperationID, State: final.State, Revision: final.Revision}
 				} else if operator != nil {
-					resolved, err = operator(workflow, repo, operationID)
+					resolved, err = operator(workflow, protectionrepository.New(startupDB), operationID)
 				} else {
 					resolved, err = workflow.Rollback(t.Context(), operationID, "ROLLBACK SERVER PROTECTION "+operationID)
 				}
@@ -1017,7 +1019,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 					VerifiedAt: clock.Add(-time.Second).Unix(), ExpiresAt: clock.Add(10 * time.Minute).Unix(), IndependenceClass: "independent_reconnect",
 					VerificationState: "verified", SourceRevision: sshmanagement.Revision("new-ssh-login-after-retirement"), ConfigurationRevision: endpoint.ConfigurationRevision,
 				}}
-				assertFreshLifecycleAfterRetirement(t, workflow, baseline, helper, repo, boot, operator)
+				assertFreshLifecycleAfterRetirement(t, workflow, baseline, helper, repo, boot, operator, startupDB)
 			}
 			return
 		}

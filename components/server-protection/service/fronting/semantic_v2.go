@@ -12,8 +12,8 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 )
 
 const FrontingSemanticStatusSchemaV2 = "solovey-ui/fronting-semantic-status/v2"
@@ -186,7 +186,7 @@ type FrontingStatusPageV2 struct {
 
 type SemanticServiceV2 struct {
 	Workflow   *Workflow
-	Repository *protectionrepository.Repository
+	Repository SemanticStore
 	Source     SemanticSourceV2
 	Now        func() time.Time
 }

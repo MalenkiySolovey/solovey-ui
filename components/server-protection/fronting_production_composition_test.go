@@ -5,6 +5,7 @@ package serverprotection
 import (
 	"context"
 	"errors"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -19,6 +20,7 @@ import (
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifacts"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionfronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
@@ -267,7 +269,7 @@ func TestProductionComposedPrepareAcquiresExactLeaseAndCreatesProtectedArtifactW
 	sqlDB, _ := db.DB()
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	repository := protectionrepository.New(db)
-	manager := protectionoperations.NewManager(repository, protectionoperations.Options{InstanceID: "production-composition-test", PID: 77,
+	manager := protectionoperations.NewManager(backendstore.New(repository), protectionoperations.Options{InstanceID: "production-composition-test", PID: 77,
 		Audit: func(context.Context, protectionoperations.AuditEvent) error { return nil }})
 	t.Cleanup(func() { _ = manager.Stop(context.Background()) })
 	storage, err := protectionartifacts.New(filepath.Join(t.TempDir(), ".runtime", "server-protection"))
@@ -284,7 +286,7 @@ func TestProductionComposedPrepareAcquiresExactLeaseAndCreatesProtectedArtifactW
 		t.Fatal(err)
 	}
 	workflow := &protectionfronting.Workflow{
-		Manager: manager, Helper: client, Artifacts: protectionartifacts.Service{Storage: storage, Store: repository}, Marker: storage, State: storage,
+		Manager: manager, Helper: client, Artifacts: protectionartifacts.Service{Storage: storage, Store: backendstore.New(repository)}, Marker: storage, State: storage,
 		Recovery: productionBundleFixture{},
 		Health: func(context.Context, []hostresources.ProtectableResource) []componenthealth.Result {
 			return []componenthealth.Result{}
@@ -328,7 +330,7 @@ func (productionHelperAuditFixture) RecordHelperAudit(context.Context, protectio
 
 type productionBundleFixture struct{}
 
-func (productionBundleFixture) CreateBundle(context.Context, protectionrepository.OperationLockModel, string) error {
+func (productionBundleFixture) CreateBundle(context.Context, durable.OperationLockModel, string) error {
 	return nil
 }
 

@@ -6,7 +6,7 @@ import (
 
 	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
+	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 )
 
 const (

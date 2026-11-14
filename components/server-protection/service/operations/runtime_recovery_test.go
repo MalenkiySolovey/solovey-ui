@@ -1,17 +1,17 @@
 package operations
 
+import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+
 import (
 	"context"
 	"errors"
 	"testing"
 	"time"
-
-	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 )
 
 type failedRuntimeReconciler struct{ calls int }
 
-func (r *failedRuntimeReconciler) Reconcile(context.Context, repository.OperationLockModel) (ReconcileDecision, error) {
+func (r *failedRuntimeReconciler) Reconcile(context.Context, protectiondata.OperationLockModel) (ReconcileDecision, error) {
 	r.calls++
 	return ReconcileDecision{}, &RuntimeRecoveryError{Step: "boot_restore_fence_failed", Cause: errors.New("private persistence failure")}
 }
@@ -79,10 +79,10 @@ type failedRuntimeFinalizeStore struct {
 	failed bool
 }
 
-func (s *failedRuntimeFinalizeStore) RecoverOperationLock(ctx context.Context, update repository.RecoveryOperationLockUpdate) (repository.OperationLockModel, error) {
+func (s *failedRuntimeFinalizeStore) RecoverOperationLock(ctx context.Context, update protectiondata.RecoveryOperationLockUpdate) (protectiondata.OperationLockModel, error) {
 	if !s.failed && len(update.FromStates) == 1 && update.FromStates[0] == StateRestoringRuntime {
 		s.failed = true
-		return repository.OperationLockModel{}, errors.New("controlled finalization failure")
+		return protectiondata.OperationLockModel{}, errors.New("controlled finalization failure")
 	}
 	return s.Store.RecoverOperationLock(ctx, update)
 }
@@ -92,7 +92,7 @@ type completedRuntimeReconciler struct {
 	mutations int
 }
 
-func (r *completedRuntimeReconciler) Reconcile(ctx context.Context, operation repository.OperationLockModel) (ReconcileDecision, error) {
+func (r *completedRuntimeReconciler) Reconcile(ctx context.Context, operation protectiondata.OperationLockModel) (ReconcileDecision, error) {
 	if r.mutations == 0 {
 		if _, err := r.manager.Transition(ctx, operation.OperationID, operation.Revision, StateRestoringRuntime); err != nil {
 			return ReconcileDecision{}, err

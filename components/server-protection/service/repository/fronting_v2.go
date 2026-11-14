@@ -2,24 +2,21 @@ package repository
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"strings"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
-const maxFrontingSemanticBlobV2 = 64 << 10
-
 const (
-	FrontingStateSchemaV2                = "solovey-ui/fronting-semantic-state/v2"
-	FrontingCompatibilityCurrentV2       = "CURRENT_V2"
-	FrontingCompatibilityLegacyRepreview = "LEGACY_V1_REPREVIEW_REQUIRED"
-	FrontingReceiptPending               = "PENDING"
-	FrontingReceiptComplete              = "COMPLETE"
-	FrontingReceiptAmbiguous             = "AMBIGUOUS"
+	FrontingStateSchemaV2                = durable.FrontingStateSchemaV2
+	FrontingCompatibilityCurrentV2       = durable.FrontingCompatibilityCurrentV2
+	FrontingCompatibilityLegacyRepreview = durable.FrontingCompatibilityLegacyRepreview
+	FrontingReceiptPending               = durable.FrontingReceiptPending
+	FrontingReceiptComplete              = durable.FrontingReceiptComplete
+	FrontingReceiptAmbiguous             = durable.FrontingReceiptAmbiguous
 )
 
 func (r *Repository) FrontingStatesV2(ctx context.Context) ([]FrontingStateV2Model, error) {
@@ -139,8 +136,7 @@ func (r *Repository) CompleteFrontingReceiptV2(ctx context.Context, action, key,
 	if r == nil || r.db == nil {
 		return errors.New("server-protection repository is not initialized")
 	}
-	if (action != "apply" && action != "rollback") || !frontingOpaqueV2(key, 128) || !frontingDigestV2(digest) ||
-		!frontingOpaqueV2(operationID, 128) || operationRevision <= 0 || len(response) == 0 || len(response) > maxFrontingSemanticBlobV2 || !json.Valid(response) || now <= 0 {
+	if !durable.ValidFrontingCompletionV2(action, key, digest, operationID, operationRevision, response, now) {
 		return errors.New("fronting idempotency receipt is invalid")
 	}
 	result := r.db.WithContext(ctx).Model(&FrontingIdempotencyV2Model{}).
@@ -198,86 +194,11 @@ func ReconcileRestoredFrontingRecords(ctx context.Context, db *gorm.DB, now time
 // semantic validation remains in the fronting service, while restore,
 // replay, and destructive guards can all fail closed on malformed storage.
 func ValidFrontingStateV2Model(value FrontingStateV2Model) bool {
-	if value.ResourceID == "" || len(value.ResourceID) > 256 || value.Schema != FrontingStateSchemaV2 ||
-		!frontingStateDesiredV2(value.DesiredStrategy) || !frontingStateSelectedV2(value.SelectedStrategy) || !frontingStateActualV2(value.ActualState) ||
-		value.ApplyGate != "EXPERIMENTAL_DISABLED_BY_DEFAULT" || !frontingRuntimeStateV2(value.RuntimeState) || !frontingInstallationClassV2(value.InstallationClass) ||
-		(value.CompatibilityState != FrontingCompatibilityCurrentV2 && value.CompatibilityState != FrontingCompatibilityLegacyRepreview) ||
-		value.CreatedAt <= 0 || value.UpdatedAt <= 0 || value.UpdatedAt < value.CreatedAt {
-		return false
-	}
-	for _, data := range []json.RawMessage{value.SocketClaimJSON, value.BackendReferencesJSON, value.FallbackReferencesJSON, value.SelectorSetJSON, value.LeaseMirrorsJSON, value.ReasonCodesJSON, value.BlocksJSON, value.WarningsJSON} {
-		if len(data) == 0 || len(data) > maxFrontingSemanticBlobV2 || !json.Valid(data) {
-			return false
-		}
-	}
-	return true
+	return durable.ValidFrontingStateV2Model(durable.FrontingStateV2Model(value))
 }
 
 func ValidFrontingIdempotencyV2Model(value FrontingIdempotencyV2Model) bool {
-	if (value.Action != "apply" && value.Action != "rollback") || !frontingOpaqueV2(value.IdempotencyKey, 128) || !frontingDigestV2(value.RequestDigest) ||
-		(value.Status != FrontingReceiptPending && value.Status != FrontingReceiptComplete && value.Status != FrontingReceiptAmbiguous) ||
-		len(value.ResponseJSON) == 0 || len(value.ResponseJSON) > maxFrontingSemanticBlobV2 || !json.Valid(value.ResponseJSON) ||
-		value.CreatedAt <= 0 || value.UpdatedAt <= 0 || value.UpdatedAt < value.CreatedAt {
-		return false
-	}
-	if value.Status == FrontingReceiptComplete {
-		return frontingOpaqueV2(value.OperationID, 128) && value.OperationRevision > 0
-	}
-	return value.OperationID == "" && value.OperationRevision == 0 || frontingOpaqueV2(value.OperationID, 128) && value.OperationRevision > 0
-}
-
-func frontingStateDesiredV2(value string) bool {
-	return value == "DISABLED" || value == "DISABLED_REPREVIEW_REQUIRED" || value == "L4_ONE_TO_ONE_FRONTING" || value == "SNI_PREREAD_FRONTING"
-}
-
-func frontingStateSelectedV2(value string) bool {
-	return value == "" || value == "L4_ONE_TO_ONE_FRONTING" || value == "SNI_PREREAD_FRONTING"
-}
-
-func frontingStateActualV2(value string) bool {
-	switch value {
-	case "NOT_APPLIED", "PREPARED", "APPLYING", "HEALTH", "APPLIED", "DEGRADED", "ROLLING_BACK", "ROLLED_BACK", "ROLLBACK_FAILED", "RECONCILE_REQUIRED", "CANCELLED":
-		return true
-	default:
-		return false
-	}
-}
-
-func frontingRuntimeStateV2(value string) bool {
-	switch value {
-	case "UNKNOWN", "NGINX_NOT_INSTALLED", "NGINX_EXTERNAL_MANAGED", "NGINX_IDENTITY_UNKNOWN", "STREAM_UNAVAILABLE", "SSL_PREREAD_UNAVAILABLE", "PROXY_PROTOCOL_UNPROVEN", "VALIDATION_UNAVAILABLE", "RELOAD_UNAVAILABLE", "MANAGED_ENGINE_READY":
-		return true
-	default:
-		return false
-	}
-}
-
-func frontingInstallationClassV2(value string) bool {
-	return value == "UNKNOWN" || value == "SOLOVEY_MANAGED" || value == "EXTERNAL_MANAGED" || value == "DEVELOPMENT_READ_ONLY"
-}
-
-func frontingOpaqueV2(value string, limit int) bool {
-	if value == "" || len(value) > limit || strings.TrimSpace(value) != value {
-		return false
-	}
-	for _, char := range value {
-		if char < 0x21 || char > 0x7e {
-			return false
-		}
-	}
-	return true
-}
-
-func frontingDigestV2(value string) bool {
-	if len(value) != 64 {
-		return false
-	}
-	for _, char := range value {
-		if char < '0' || char > '9' && char < 'a' || char > 'f' {
-			return false
-		}
-	}
-	return true
+	return durable.ValidFrontingIdempotencyV2Model(durable.FrontingIdempotencyV2Model(value))
 }
 
 func migrateLegacyFrontingV2(db *gorm.DB, now time.Time) error {

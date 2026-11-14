@@ -1,5 +1,7 @@
 package firewall
 
+import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+
 import (
 	"context"
 	"errors"
@@ -23,10 +25,17 @@ import (
 // from SQLite/CGO and from every system backend.
 type memoryOperationStore struct {
 	mu        sync.Mutex
-	items     map[string]protectionrepository.OperationLockModel
+	items     map[string]protectiondata.OperationLockModel
 	byKey     map[string]string
 	failState map[string]error
 	nextID    uint
+}
+
+func (*memoryOperationStore) AdmitMaintenance(ctx context.Context) (context.Context, func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	return ctx, func() {}, nil
 }
 
 type memoryFirewallState struct {
@@ -42,22 +51,22 @@ func (f firewallHelperFunc) Execute(ctx context.Context, request protectionhelpe
 
 type memoryContributionStore struct {
 	mu             sync.Mutex
-	contributions  map[string]protectionrepository.FirewallContributionModel
-	composition    protectionrepository.FirewallCompositionModel
+	contributions  map[string]protectiondata.FirewallContributionModel
+	composition    protectiondata.FirewallCompositionModel
 	hasComposition bool
-	observation    protectionrepository.FirewallObservationModel
+	observation    protectiondata.FirewallObservationModel
 	hasObservation bool
 	observationErr error
-	transitions    map[string]protectionrepository.FirewallContributionTransitionModel
+	transitions    map[string]protectiondata.FirewallContributionTransitionModel
 }
 
 func newMemoryContributionStore() *memoryContributionStore {
-	return &memoryContributionStore{contributions: map[string]protectionrepository.FirewallContributionModel{}, transitions: map[string]protectionrepository.FirewallContributionTransitionModel{}}
+	return &memoryContributionStore{contributions: map[string]protectiondata.FirewallContributionModel{}, transitions: map[string]protectiondata.FirewallContributionTransitionModel{}}
 }
-func (s *memoryContributionStore) FirewallAuthority(context.Context) (protectionrepository.FirewallAuthoritySnapshot, error) {
+func (s *memoryContributionStore) FirewallAuthority(context.Context) (protectiondata.FirewallAuthoritySnapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	result := protectionrepository.FirewallAuthoritySnapshot{Composition: s.composition, HasComposition: s.hasComposition, Observation: s.observation, HasObservation: s.hasObservation}
+	result := protectiondata.FirewallAuthoritySnapshot{Composition: s.composition, HasComposition: s.hasComposition, Observation: s.observation, HasObservation: s.hasObservation}
 	for _, value := range s.contributions {
 		result.Contributions = append(result.Contributions, value)
 	}
@@ -66,7 +75,7 @@ func (s *memoryContributionStore) FirewallAuthority(context.Context) (protection
 	})
 	return result, nil
 }
-func (s *memoryContributionStore) FirewallTransition(_ context.Context, id string) (protectionrepository.FirewallContributionTransitionModel, error) {
+func (s *memoryContributionStore) FirewallTransition(_ context.Context, id string) (protectiondata.FirewallContributionTransitionModel, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	value, ok := s.transitions[id]
@@ -75,7 +84,7 @@ func (s *memoryContributionStore) FirewallTransition(_ context.Context, id strin
 	}
 	return value, nil
 }
-func (s *memoryContributionStore) CreateFirewallTransition(_ context.Context, value protectionrepository.FirewallContributionTransitionModel) error {
+func (s *memoryContributionStore) CreateFirewallTransition(_ context.Context, value protectiondata.FirewallContributionTransitionModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.transitions[value.OperationID]; ok {
@@ -107,7 +116,7 @@ func (s *memoryContributionStore) MarkFirewallTransitionMutationCompleted(_ cont
 	s.transitions[id] = value
 	return nil
 }
-func (s *memoryContributionStore) CommitFirewallAuthority(_ context.Context, operationID, expectedComposition, expectedContribution string, replacement *protectionrepository.FirewallContributionModel, composition protectionrepository.FirewallCompositionModel, state string) error {
+func (s *memoryContributionStore) CommitFirewallAuthority(_ context.Context, operationID, expectedComposition, expectedContribution string, replacement *protectiondata.FirewallContributionModel, composition protectiondata.FirewallCompositionModel, state string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	transition, ok := s.transitions[operationID]
@@ -134,15 +143,15 @@ func (s *memoryContributionStore) CommitFirewallAuthority(_ context.Context, ope
 		s.contributions[replacement.ContributionID] = *replacement
 	}
 	if composition.Schema == "" {
-		s.composition = protectionrepository.FirewallCompositionModel{}
+		s.composition = protectiondata.FirewallCompositionModel{}
 		s.hasComposition = false
-		s.observation = protectionrepository.FirewallObservationModel{Schema: protectionrepository.FirewallObservationSchemaV1, State: FirewallLiveAbsent}
+		s.observation = protectiondata.FirewallObservationModel{Schema: protectionrepository.FirewallObservationSchemaV1, State: FirewallLiveAbsent}
 		s.hasObservation = true
 	} else {
 		composition.State = "ACTIVE"
 		s.composition = composition
 		s.hasComposition = true
-		s.observation = protectionrepository.FirewallObservationModel{Schema: protectionrepository.FirewallObservationSchemaV1, State: FirewallLiveMatching, HasCommittedAuthority: true,
+		s.observation = protectiondata.FirewallObservationModel{Schema: protectionrepository.FirewallObservationSchemaV1, State: FirewallLiveMatching, HasCommittedAuthority: true,
 			CommittedCompositionRevision: composition.Revision, ManagedTablePresent: true, CurrentRevision: composition.ManagedPlanRevision, CurrentSemanticSHA256: composition.CandidateSemanticSHA256,
 			CurrentTimedMembershipSHA256: composition.CandidateTimedMembershipSHA256, ExpectedTimedMembershipSHA256: composition.CandidateTimedMembershipSHA256}
 		s.hasObservation = true
@@ -169,7 +178,7 @@ func (s *memoryContributionStore) RecordFirewallTransitionHealth(_ context.Conte
 	return nil
 }
 
-func (s *memoryContributionStore) RecordFirewallObservation(_ context.Context, value protectionrepository.FirewallObservationModel, expected string) error {
+func (s *memoryContributionStore) RecordFirewallObservation(_ context.Context, value protectiondata.FirewallObservationModel, expected string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.observationErr != nil {
@@ -203,10 +212,10 @@ func (s *memoryContributionStore) RetireFirewallAuthorityAfterRuntimeLoss(_ cont
 	if expected == "" || s.composition.Revision != expected || !s.observation.HasCommittedAuthority || s.observation.CommittedCompositionRevision != expected {
 		return protectionrepository.ErrFirewallAuthorityConflict
 	}
-	s.contributions = map[string]protectionrepository.FirewallContributionModel{}
-	s.composition = protectionrepository.FirewallCompositionModel{}
+	s.contributions = map[string]protectiondata.FirewallContributionModel{}
+	s.composition = protectiondata.FirewallCompositionModel{}
 	s.hasComposition = false
-	s.observation = protectionrepository.FirewallObservationModel{Schema: protectionrepository.FirewallObservationSchemaV1, State: FirewallLiveAbsent}
+	s.observation = protectiondata.FirewallObservationModel{Schema: protectionrepository.FirewallObservationSchemaV1, State: FirewallLiveAbsent}
 	for id, transition := range s.transitions {
 		if transition.State == "APPLIED" || transition.State == "HEALTH_VERIFIED" {
 			transition.State = "RETIRED_RUNTIME_LOSS"
@@ -245,10 +254,10 @@ func (s *memoryFirewallState) ReadFirewallState(operationID string) ([]byte, err
 }
 
 func newMemoryOperationStore() *memoryOperationStore {
-	return &memoryOperationStore{items: map[string]protectionrepository.OperationLockModel{}, byKey: map[string]string{}, failState: map[string]error{}}
+	return &memoryOperationStore{items: map[string]protectiondata.OperationLockModel{}, byKey: map[string]string{}, failState: map[string]error{}}
 }
 
-func (s *memoryOperationStore) AcquireOperationLock(_ context.Context, input protectionrepository.AcquireOperationLockInput) (protectionrepository.OperationLockModel, bool, error) {
+func (s *memoryOperationStore) AcquireOperationLock(_ context.Context, input protectiondata.AcquireOperationLockInput) (protectiondata.OperationLockModel, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if id, ok := s.byKey[input.IdempotencyKey]; ok {
@@ -256,41 +265,41 @@ func (s *memoryOperationStore) AcquireOperationLock(_ context.Context, input pro
 	}
 	for _, item := range s.items {
 		if fakeNonTerminal(item.State) {
-			return protectionrepository.OperationLockModel{}, false, protectionrepository.ErrOperationConflict
+			return protectiondata.OperationLockModel{}, false, protectionrepository.ErrOperationConflict
 		}
 	}
 	s.nextID++
 	pid := input.LockedByPID
-	item := protectionrepository.OperationLockModel{ID: s.nextID, OperationID: input.OperationID, Kind: input.Kind, ResourceID: input.ResourceID, Protocol: input.Protocol, Listen: input.Listen, Port: input.Port, State: input.State, Revision: 1, IdempotencyKey: input.IdempotencyKey, PlanRevision: input.PlanRevision, HelperRevision: input.HelperRevision, LockedByPID: &pid, LockedByInstanceID: input.LockedByInstanceID, Actor: input.Actor, HeartbeatAt: input.Now, ExpiresAt: input.ExpiresAt, CreatedAt: input.Now, UpdatedAt: input.Now}
+	item := protectiondata.OperationLockModel{ID: s.nextID, OperationID: input.OperationID, Kind: input.Kind, ResourceID: input.ResourceID, Protocol: input.Protocol, Listen: input.Listen, Port: input.Port, State: input.State, Revision: 1, IdempotencyKey: input.IdempotencyKey, PlanRevision: input.PlanRevision, HelperRevision: input.HelperRevision, LockedByPID: &pid, LockedByInstanceID: input.LockedByInstanceID, Actor: input.Actor, HeartbeatAt: input.Now, ExpiresAt: input.ExpiresAt, CreatedAt: input.Now, UpdatedAt: input.Now}
 	s.items[item.OperationID] = item
 	s.byKey[input.IdempotencyKey] = item.OperationID
 	return item, false, nil
 }
 
-func (s *memoryOperationStore) OperationByIdempotencyKey(_ context.Context, key string) (protectionrepository.OperationLockModel, error) {
+func (s *memoryOperationStore) OperationByIdempotencyKey(_ context.Context, key string) (protectiondata.OperationLockModel, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	id, ok := s.byKey[key]
 	if !ok {
-		return protectionrepository.OperationLockModel{}, protectionrepository.ErrRecordNotFound
+		return protectiondata.OperationLockModel{}, protectionrepository.ErrRecordNotFound
 	}
 	return s.items[id], nil
 }
 
-func (s *memoryOperationStore) OperationByID(_ context.Context, id string) (protectionrepository.OperationLockModel, error) {
+func (s *memoryOperationStore) OperationByID(_ context.Context, id string) (protectiondata.OperationLockModel, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	item, ok := s.items[id]
 	if !ok {
-		return protectionrepository.OperationLockModel{}, protectionrepository.ErrRecordNotFound
+		return protectiondata.OperationLockModel{}, protectionrepository.ErrRecordNotFound
 	}
 	return item, nil
 }
 
-func (s *memoryOperationStore) ListOperationLocks(_ context.Context, states []string) ([]protectionrepository.OperationLockModel, error) {
+func (s *memoryOperationStore) ListOperationLocks(_ context.Context, states []string) ([]protectiondata.OperationLockModel, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	items := make([]protectionrepository.OperationLockModel, 0, len(s.items))
+	items := make([]protectiondata.OperationLockModel, 0, len(s.items))
 	for _, item := range s.items {
 		if len(states) == 0 || fakeContains(states, item.State) {
 			items = append(items, item)
@@ -300,43 +309,43 @@ func (s *memoryOperationStore) ListOperationLocks(_ context.Context, states []st
 	return items, nil
 }
 
-func (s *memoryOperationStore) UpdateOperationLockFenced(_ context.Context, update protectionrepository.FencedOperationLockUpdate) (protectionrepository.OperationLockModel, error) {
+func (s *memoryOperationStore) UpdateOperationLockFenced(_ context.Context, update protectiondata.FencedOperationLockUpdate) (protectiondata.OperationLockModel, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.failState[update.ToState]; err != nil {
-		return protectionrepository.OperationLockModel{}, err
+		return protectiondata.OperationLockModel{}, err
 	}
 	item, ok := s.items[update.OperationID]
 	if !ok || item.Revision != update.Revision || item.LockedByInstanceID != update.InstanceID || item.LockedByPID == nil || *item.LockedByPID != update.PID || !fakeContains(update.FromStates, item.State) {
-		return protectionrepository.OperationLockModel{}, protectionrepository.ErrOperationFenced
+		return protectiondata.OperationLockModel{}, protectionrepository.ErrOperationFenced
 	}
 	item.State, item.Revision, item.HeartbeatAt, item.ExpiresAt, item.UpdatedAt = update.ToState, update.Revision+1, update.Now, update.ExpiresAt, update.Now
 	s.items[item.OperationID] = item
 	return item, nil
 }
 
-func (s *memoryOperationStore) HeartbeatOperationLock(_ context.Context, id, instance string, pid, revision int, now, expires int64) (protectionrepository.OperationLockModel, error) {
-	return s.UpdateOperationLockFenced(context.Background(), protectionrepository.FencedOperationLockUpdate{OperationID: id, Revision: revision, InstanceID: instance, PID: pid, FromStates: protectionrepository.NonTerminalOperationLockStates(), ToState: s.items[id].State, Now: now, ExpiresAt: expires})
+func (s *memoryOperationStore) HeartbeatOperationLock(_ context.Context, id, instance string, pid, revision int, now, expires int64) (protectiondata.OperationLockModel, error) {
+	return s.UpdateOperationLockFenced(context.Background(), protectiondata.FencedOperationLockUpdate{OperationID: id, Revision: revision, InstanceID: instance, PID: pid, FromStates: protectionrepository.NonTerminalOperationLockStates(), ToState: s.items[id].State, Now: now, ExpiresAt: expires})
 }
 
-func (s *memoryOperationStore) RecoverOperationLock(_ context.Context, update protectionrepository.RecoveryOperationLockUpdate) (protectionrepository.OperationLockModel, error) {
+func (s *memoryOperationStore) RecoverOperationLock(_ context.Context, update protectiondata.RecoveryOperationLockUpdate) (protectiondata.OperationLockModel, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	item, ok := s.items[update.OperationID]
 	if !ok || item.Revision != update.ExpectedRevision || !fakeContains(update.FromStates, item.State) {
-		return protectionrepository.OperationLockModel{}, protectionrepository.ErrRevisionConflict
+		return protectiondata.OperationLockModel{}, protectionrepository.ErrRevisionConflict
 	}
 	item.State, item.Revision, item.UpdatedAt = update.ToState, item.Revision+1, update.Now
 	s.items[item.OperationID] = item
 	return item, nil
 }
 
-func (s *memoryOperationStore) ReclaimOperationLock(_ context.Context, update protectionrepository.ReclaimOperationLockUpdate) (protectionrepository.OperationLockModel, error) {
+func (s *memoryOperationStore) ReclaimOperationLock(_ context.Context, update protectiondata.ReclaimOperationLockUpdate) (protectiondata.OperationLockModel, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	item, ok := s.items[update.OperationID]
 	if !ok || item.Revision != update.Revision || item.State != update.FromState {
-		return protectionrepository.OperationLockModel{}, protectionrepository.ErrOperationFenced
+		return protectiondata.OperationLockModel{}, protectionrepository.ErrOperationFenced
 	}
 	pid := update.PID
 	item.State, item.Revision, item.LockedByInstanceID, item.LockedByPID = update.ToState, item.Revision+1, update.InstanceID, &pid
@@ -345,18 +354,18 @@ func (s *memoryOperationStore) ReclaimOperationLock(_ context.Context, update pr
 	return item, nil
 }
 
-func (s *memoryOperationStore) ForceUnlockOperation(_ context.Context, id string, revision int, now int64) (protectionrepository.OperationLockModel, error) {
+func (s *memoryOperationStore) ForceUnlockOperation(_ context.Context, id string, revision int, now int64) (protectiondata.OperationLockModel, error) {
 	return s.reviseTerminal(id, revision, "force_unlocked", now)
 }
-func (s *memoryOperationStore) ForgetOperationState(_ context.Context, id string, revision int, now int64) (protectionrepository.OperationLockModel, error) {
+func (s *memoryOperationStore) ForgetOperationState(_ context.Context, id string, revision int, now int64) (protectiondata.OperationLockModel, error) {
 	return s.reviseTerminal(id, revision, "forgotten", now)
 }
-func (s *memoryOperationStore) reviseTerminal(id string, revision int, state string, now int64) (protectionrepository.OperationLockModel, error) {
+func (s *memoryOperationStore) reviseTerminal(id string, revision int, state string, now int64) (protectiondata.OperationLockModel, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	item, ok := s.items[id]
 	if !ok || item.Revision != revision {
-		return protectionrepository.OperationLockModel{}, protectionrepository.ErrRevisionConflict
+		return protectiondata.OperationLockModel{}, protectionrepository.ErrRevisionConflict
 	}
 	item.State, item.Revision, item.UpdatedAt = state, revision+1, now
 	s.items[id] = item
@@ -372,7 +381,7 @@ func (s *memoryOperationStore) MarkOperationRecovery(_ context.Context, id strin
 	return nil
 }
 
-func (s *memoryOperationStore) RecordRuntimeRecoveryFailure(_ context.Context, claimed protectionrepository.OperationLockModel, attempts int, at int64) error {
+func (s *memoryOperationStore) RecordRuntimeRecoveryFailure(_ context.Context, claimed protectiondata.OperationLockModel, attempts int, at int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	item, ok := s.items[claimed.OperationID]
@@ -402,17 +411,17 @@ func fakeNonTerminal(state string) bool {
 
 type fakeArtifactService struct{ root string }
 
-func (s fakeArtifactService) WriteRevision(_ context.Context, operationID, revision string, files map[string][]byte) (protectionrepository.ArtifactModel, error) {
+func (s fakeArtifactService) WriteRevision(_ context.Context, operationID, revision string, files map[string][]byte) (protectiondata.ArtifactModel, error) {
 	dir := filepath.Join(s.root, "revisions", revision)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return protectionrepository.ArtifactModel{}, err
+		return protectiondata.ArtifactModel{}, err
 	}
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
-			return protectionrepository.ArtifactModel{}, err
+			return protectiondata.ArtifactModel{}, err
 		}
 	}
-	return protectionrepository.ArtifactModel{OperationID: operationID, Revision: revision, RelativePath: filepath.ToSlash(filepath.Join("revisions", revision))}, nil
+	return protectiondata.ArtifactModel{OperationID: operationID, Revision: revision, RelativePath: filepath.ToSlash(filepath.Join("revisions", revision))}, nil
 }
 
 type fakeMarker struct{}
@@ -480,7 +489,7 @@ func TestFakeCIStateMachine(t *testing.T) {
 	t.Run("verify and rollback failures are terminal", func(t *testing.T) {
 		workflow, mock, _, store := newFakeCIWorkflow(t, nil)
 		bundles := 0
-		workflow.Recovery = MockRecovery{Bundle: func(context.Context, protectionrepository.OperationLockModel, string) error { bundles++; return nil }}
+		workflow.Recovery = MockRecovery{Bundle: func(context.Context, protectiondata.OperationLockModel, string) error { bundles++; return nil }}
 		plan := applyPlan()
 		prepared, err := workflow.Prepare(context.Background(), PrepareInput{Plan: plan, Actor: "ci", IdempotencyKey: "verify", Confirmation: "PREPARE SERVER PROTECTION " + plan.Revision})
 		if err != nil {
@@ -500,7 +509,7 @@ func TestFakeCIStateMachine(t *testing.T) {
 
 	t.Run("bundle failure cannot publish rollback_failed", func(t *testing.T) {
 		workflow, mock, _, store := newFakeCIWorkflow(t, nil)
-		workflow.Recovery = MockRecovery{Bundle: func(context.Context, protectionrepository.OperationLockModel, string) error {
+		workflow.Recovery = MockRecovery{Bundle: func(context.Context, protectiondata.OperationLockModel, string) error {
 			return errors.New("injected bundle failure")
 		}}
 		plan := applyPlan()
@@ -580,7 +589,7 @@ func TestFakeCIRestartRecoveryNeverRepeatsApply(t *testing.T) {
 		t.Fatal(err)
 	}
 	rollbacks := 0
-	restarted := protectionoperations.NewManager(store, protectionoperations.Options{InstanceID: "restart-ci", PID: 99, Now: func() time.Time { return time.Unix(applying.ExpiresAt+1, 0) }, PIDProbe: fakeDeadPID{}, Audit: func(context.Context, protectionoperations.AuditEvent) error { return nil }, Recovery: MockRecovery{Rollback: func(context.Context, protectionrepository.OperationLockModel) error { rollbacks++; return nil }}})
+	restarted := protectionoperations.NewManager(store, protectionoperations.Options{InstanceID: "restart-ci", PID: 99, Now: func() time.Time { return time.Unix(applying.ExpiresAt+1, 0) }, PIDProbe: fakeDeadPID{}, Audit: func(context.Context, protectionoperations.AuditEvent) error { return nil }, Recovery: MockRecovery{Rollback: func(context.Context, protectiondata.OperationLockModel) error { rollbacks++; return nil }}})
 	results, err := restarted.Recover(context.Background())
 	if err != nil || rollbacks != 1 || len(results) != 2 || results[1].ToState != protectionoperations.StateRolledBack {
 		t.Fatalf("results=%#v rollbacks=%d err=%v", results, rollbacks, err)
@@ -820,11 +829,11 @@ func TestFakeCIRestartBundleFailureCannotPublishRollbackFailed(t *testing.T) {
 		InstanceID: "restart-bundle-ci", PID: 101, Now: func() time.Time { return time.Unix(applying.ExpiresAt+1, 0) }, PIDProbe: fakeDeadPID{},
 		Audit: func(context.Context, protectionoperations.AuditEvent) error { return nil },
 		Recovery: MockRecovery{
-			HasArtifact: func(context.Context, protectionrepository.OperationLockModel) (bool, error) { return true, nil },
-			Rollback: func(context.Context, protectionrepository.OperationLockModel) error {
+			HasArtifact: func(context.Context, protectiondata.OperationLockModel) (bool, error) { return true, nil },
+			Rollback: func(context.Context, protectiondata.OperationLockModel) error {
 				return errors.New("injected rollback failure")
 			},
-			Bundle: func(context.Context, protectionrepository.OperationLockModel, string) error {
+			Bundle: func(context.Context, protectiondata.OperationLockModel, string) error {
 				return errors.New("injected bundle failure")
 			},
 		},

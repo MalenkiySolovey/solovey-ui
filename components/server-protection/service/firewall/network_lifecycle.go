@@ -5,13 +5,13 @@ import (
 	"errors"
 	"strings"
 
+	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	operations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
-	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
 
-// ProjectOperation reuses R3 envelopes over the existing durable owner row.
+// ProjectOperation reuses coordination envelopes over the existing durable owner row.
 // Process restart reconstructs this projection; no Planner operation store,
 // journal, scheduler, cancellation or percentage is invented.
 func ProjectOperation(operation repository.OperationLockModel) (operationcoordination.Change, operationcoordination.Job) {

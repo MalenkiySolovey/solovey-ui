@@ -1,11 +1,12 @@
 package firewall
 
+import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+
 import (
 	"strings"
 	"testing"
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 )
 
 func TestPreviewIsDeterministicAndNonEnforcing(t *testing.T) {
@@ -14,8 +15,8 @@ func TestPreviewIsDeterministicAndNonEnforcing(t *testing.T) {
 		{ID: "core:inbound:1", Protocol: "udp", Listen: "0.0.0.0", Port: 443},
 		{ID: "core:panel:web", Protocol: "http", Listen: "127.0.0.1", Port: 2095},
 	}
-	ports := []protectionrepository.PortAllowlistModel{{ID: 1, Protocol: "tcp", Listen: "*", PortStart: 2222, PortEnd: 2222, Reason: "managed SSH"}}
-	graylist := []protectionrepository.GraylistModel{{IPCIDR: "203.0.113.8/32"}, {IPCIDR: "2001:db8::/64"}}
+	ports := []protectiondata.PortAllowlistModel{{ID: 1, Protocol: "tcp", Listen: "*", PortStart: 2222, PortEnd: 2222, Reason: "managed SSH"}}
+	graylist := []protectiondata.GraylistModel{{IPCIDR: "203.0.113.8/32"}, {IPCIDR: "2001:db8::/64"}}
 	left := BuildPlan(resources, ports, graylist)
 	right := BuildPlan(resources, ports, graylist)
 	if left.Revision == "" || left.Revision != right.Revision {
@@ -69,7 +70,7 @@ func TestPlanDoesNotInventAnSSHPortWhenSemanticOwnerIsUnknown(t *testing.T) {
 
 func TestPlanAcceptsExplicitNonstandardSSHKeep(t *testing.T) {
 	resources := []hostresources.ProtectableResource{{ID: "core:panel:web", Kind: "panel_web", Protocol: "http", Listen: "0.0.0.0", Port: 443}}
-	plan := BuildPlan(resources, []protectionrepository.PortAllowlistModel{{Protocol: "tcp", Listen: "*", PortStart: 2222, PortEnd: 2222, Reason: "managed SSH"}}, nil)
+	plan := BuildPlan(resources, []protectiondata.PortAllowlistModel{{Protocol: "tcp", Listen: "*", PortStart: 2222, PortEnd: 2222, Reason: "managed SSH"}}, nil)
 	if !containsPort(plan.AllowTCPPorts, 2222) || containsPort(plan.AllowTCPPorts, 22) {
 		t.Fatalf("explicit SSH keep ports = %#v", plan.AllowTCPPorts)
 	}

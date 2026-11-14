@@ -15,9 +15,9 @@ import (
 	managementregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/management"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
+	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionpolicy "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/policy"
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 	protectionresponse "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/response"
 	sshservice "github.com/MalenkiySolovey/solovey-ui/service/sshmanagement"
@@ -66,7 +66,7 @@ type BaselineState struct {
 }
 
 type BaselineService struct {
-	Repository   *protectionrepository.Repository
+	Repository   BaselineStore
 	Capabilities BaselineCapabilitySource
 	SSH          *sshservice.Manager
 	Now          func() time.Time
@@ -102,7 +102,7 @@ type DecisionResolutionPreview struct {
 
 var ErrUnknownBaselineEndpoint = errors.New("decision target is absent from the configured endpoint inventory")
 
-func NewBaselineService(repository *protectionrepository.Repository) *BaselineService {
+func NewBaselineService(repository BaselineStore) *BaselineService {
 	return &BaselineService{Repository: repository, SSH: sshservice.Shared()}
 }
 
