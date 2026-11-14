@@ -2,7 +2,7 @@ package firewall
 
 import (
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/enforcement"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 )
 
@@ -14,26 +14,8 @@ const (
 	MaximumDynamicTTLSeconds       = 24 * 60 * 60
 )
 
-type DynamicSetLimits struct {
-	MaxElements       int `json:"maxElements"`
-	DefaultTTLSeconds int `json:"defaultTtlSeconds"`
-	MaxTTLSeconds     int `json:"maxTtlSeconds"`
-}
-
-type EndpointContribution struct {
-	ContributionID string                `json:"contributionId"`
-	ActionID       string                `json:"actionId,omitempty"`
-	ActionIDs      []string              `json:"actionIds,omitempty"`
-	DecisionID     string                `json:"decisionId,omitempty"`
-	DecisionIDs    []string              `json:"decisionIds,omitempty"`
-	RefCount       int                   `json:"refCount"`
-	Subject        string                `json:"subject"`
-	Intent         domain.ResponseIntent `json:"intent"`
-	ExpiresAt      int64                 `json:"expiresAt"`
-	TTLSeconds     int                   `json:"ttlSeconds"`
-	SourceClass    string                `json:"sourceClass"`
-	SourceClasses  []string              `json:"sourceClasses,omitempty"`
-}
+type DynamicSetLimits = enforcement.DynamicSetLimits
+type EndpointContribution = enforcement.EndpointContribution
 
 type EndpointPolicy struct {
 	EndpointRevision      string                          `json:"endpointRevision"`
@@ -51,13 +33,7 @@ type EndpointPolicy struct {
 	UDPFlowPolicy         *UDPFlowPolicyV1                `json:"udpFlowPolicy,omitempty"`
 }
 
-type ManagementExemption struct {
-	EndpointID     string                          `json:"endpointId"`
-	RecoveryPathID string                          `json:"recoveryPathId"`
-	Key            hostresources.PublicEndpointKey `json:"key"`
-	SourcePrefix   string                          `json:"sourcePrefix"`
-	ExpiresAt      int64                           `json:"expiresAt"`
-}
+type ManagementExemption = enforcement.ManagementExemption
 
 type StormLimit struct {
 	Protocol string `json:"protocol"`
