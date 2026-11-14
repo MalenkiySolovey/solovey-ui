@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
+	neutralfallback "github.com/MalenkiySolovey/solovey-host/componenthost/fallbacktargets"
 	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
-	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 )

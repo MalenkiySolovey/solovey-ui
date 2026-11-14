@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
+	coreinboundcontrol "github.com/MalenkiySolovey/solovey-host/coreruntime/inboundcontrol"
 	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifacts"
 	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
-	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 )
 
 type CoreReader interface {
