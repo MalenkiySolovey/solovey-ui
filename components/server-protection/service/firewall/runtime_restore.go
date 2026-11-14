@@ -8,9 +8,9 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	helper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	operations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
-	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	"strconv"
 	"strings"
 	"time"
@@ -16,37 +17,37 @@ import (
 )
 
 const (
-	NativeFallbackOperationSchemaV1 = "solovey-ui/native-fallback-operation/v1"
-	NativeFallbackMirrorSchemaV1    = "solovey-ui/provider-reservation-mirror/v1"
-	NativeRecoveryRestoredUntrusted = "restored_state_untrusted"
+	NativeFallbackOperationSchemaV1 = durable.NativeFallbackOperationSchemaV1
+	NativeFallbackMirrorSchemaV1    = durable.NativeFallbackMirrorSchemaV1
+	NativeRecoveryRestoredUntrusted = durable.NativeRecoveryRestoredUntrusted
 
-	NativeWorkflowPreparing         = "PREPARING"
-	NativeWorkflowPrepared          = "PREPARED"
-	NativeWorkflowApplying          = "APPLYING"
-	NativeWorkflowHealth            = "HEALTH"
-	NativeWorkflowApplied           = "APPLIED"
-	NativeWorkflowRollingBack       = "ROLLING_BACK"
-	NativeWorkflowRolledBack        = "ROLLED_BACK"
-	NativeWorkflowRollbackFailed    = "ROLLBACK_FAILED"
-	NativeWorkflowReconcileRequired = "RECONCILE_REQUIRED"
-	NativeWorkflowCancelled         = "CANCELLED"
+	NativeWorkflowPreparing         = durable.NativeWorkflowPreparing
+	NativeWorkflowPrepared          = durable.NativeWorkflowPrepared
+	NativeWorkflowApplying          = durable.NativeWorkflowApplying
+	NativeWorkflowHealth            = durable.NativeWorkflowHealth
+	NativeWorkflowApplied           = durable.NativeWorkflowApplied
+	NativeWorkflowRollingBack       = durable.NativeWorkflowRollingBack
+	NativeWorkflowRolledBack        = durable.NativeWorkflowRolledBack
+	NativeWorkflowRollbackFailed    = durable.NativeWorkflowRollbackFailed
+	NativeWorkflowReconcileRequired = durable.NativeWorkflowReconcileRequired
+	NativeWorkflowCancelled         = durable.NativeWorkflowCancelled
 )
 
-type NativeJournalStage string
+type NativeJournalStage = durable.NativeJournalStage
 
 const (
-	NativeJournalReservation       NativeJournalStage = "reservation"
-	NativeJournalPrepared          NativeJournalStage = "prepared"
-	NativeJournalApplying          NativeJournalStage = "applying"
-	NativeJournalFenced            NativeJournalStage = "fenced"
-	NativeJournalHealth            NativeJournalStage = "health"
-	NativeJournalApplied           NativeJournalStage = "applied"
-	NativeJournalRollingBack       NativeJournalStage = "rolling_back"
-	NativeJournalRolledBack        NativeJournalStage = "rolled_back"
-	NativeJournalCancelled         NativeJournalStage = "cancelled"
-	NativeJournalRollbackFailed    NativeJournalStage = "rollback_failed"
-	NativeJournalReconcileRequired NativeJournalStage = "reconcile_required"
-	NativeJournalReverified        NativeJournalStage = "reverified"
+	NativeJournalReservation       = durable.NativeJournalReservation
+	NativeJournalPrepared          = durable.NativeJournalPrepared
+	NativeJournalApplying          = durable.NativeJournalApplying
+	NativeJournalFenced            = durable.NativeJournalFenced
+	NativeJournalHealth            = durable.NativeJournalHealth
+	NativeJournalApplied           = durable.NativeJournalApplied
+	NativeJournalRollingBack       = durable.NativeJournalRollingBack
+	NativeJournalRolledBack        = durable.NativeJournalRolledBack
+	NativeJournalCancelled         = durable.NativeJournalCancelled
+	NativeJournalRollbackFailed    = durable.NativeJournalRollbackFailed
+	NativeJournalReconcileRequired = durable.NativeJournalReconcileRequired
+	NativeJournalReverified        = durable.NativeJournalReverified
 )
 
 type NativeFallbackJournalUpdate struct {

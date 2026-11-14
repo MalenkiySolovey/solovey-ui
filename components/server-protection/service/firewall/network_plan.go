@@ -9,8 +9,8 @@ import (
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	helper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
-	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	platform "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
 	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )

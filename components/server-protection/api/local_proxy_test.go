@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionfronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
 	protectionlocalproxy "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/localproxy"
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 )
 
 type localProxyAPIRecorder struct {

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+
 	sqlite3 "github.com/mattn/go-sqlite3"
 	"gorm.io/gorm"
 )
@@ -40,6 +42,10 @@ func (e *PersistenceError) Error() string {
 }
 
 func (e *PersistenceError) Unwrap() error { return e.cause }
+
+func (e *PersistenceError) PersistenceDiagnostic() durable.PersistenceDiagnostic {
+	return durable.PersistenceDiagnostic{Step: e.Step, Role: e.Role, Primary: e.Primary, Extended: e.Extended}
+}
 
 func runtimeAuthorityReadError(err error) error {
 	if errors.Is(err, gorm.ErrRecordNotFound) {

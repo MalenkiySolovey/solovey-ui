@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
+	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 )
 
 func BuildPlan(resources []hostresources.ProtectableResource, ports []protectionrepository.PortAllowlistModel, graylist []protectionrepository.GraylistModel) FirewallPlan {

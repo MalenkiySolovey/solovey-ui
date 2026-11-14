@@ -1,10 +1,10 @@
 package firewall
 
+import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+
 import (
 	"context"
 	"testing"
-
-	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 )
 
 const runtimeCrash = "test process interruption"
@@ -16,7 +16,7 @@ type crashExpiredRuntime struct {
 	interrupt func()
 }
 
-func (s *crashExpiredRuntime) UpdateFirewallRuntime(ctx context.Context, id string, revision int, composition string, before, after repository.FirewallRuntimeBinding) error {
+func (s *crashExpiredRuntime) UpdateFirewallRuntime(ctx context.Context, id string, revision int, composition string, before, after protectiondata.FirewallRuntimeBinding) error {
 	if !s.fired && after.State == "RESTORE_FAILED" {
 		s.fired = true
 		if s.after {
@@ -39,7 +39,7 @@ type crashRetirementCommit struct {
 	interrupt func()
 }
 
-func (s *crashRetirementCommit) CommitFirewallAuthority(ctx context.Context, id, compositionRevision, contributionRevision string, replacement *repository.FirewallContributionModel, composition repository.FirewallCompositionModel, state string) error {
+func (s *crashRetirementCommit) CommitFirewallAuthority(ctx context.Context, id, compositionRevision, contributionRevision string, replacement *protectiondata.FirewallContributionModel, composition protectiondata.FirewallCompositionModel, state string) error {
 	if !s.fired && state == "ROLLED_BACK" {
 		s.fired = true
 		if s.after {
@@ -67,7 +67,7 @@ type crashRuntimeStore struct {
 	fired  bool
 }
 
-func (s *crashRuntimeStore) UpdateFirewallRuntime(ctx context.Context, id string, revision int, composition string, before, after repository.FirewallRuntimeBinding) error {
+func (s *crashRuntimeStore) UpdateFirewallRuntime(ctx context.Context, id string, revision int, composition string, before, after protectiondata.FirewallRuntimeBinding) error {
 	boundary := after.State == "RESTORING_RUNTIME" && (s.window == "before_fence" || s.window == "after_fence") || before.State == "RESTORING_RUNTIME" && after.State == "HEALTH_VERIFIED" && (s.window == "before_health_commit" || s.window == "after_health_commit")
 	if !s.fired && boundary {
 		s.fired = true

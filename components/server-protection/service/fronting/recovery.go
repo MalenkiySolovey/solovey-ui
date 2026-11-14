@@ -7,9 +7,9 @@ import (
 	"time"
 
 	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifacts"
+	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 )
 
 // BackendRecovery resumes only the exact previous managed revision recorded by
@@ -18,7 +18,7 @@ type BackendRecovery struct {
 	Helper     Helper
 	Manager    *protectionoperations.Manager
 	Storage    *protectionartifacts.Storage
-	Repository *protectionrepository.Repository
+	Repository RecoveryStore
 	Health     HealthCheck
 }
 

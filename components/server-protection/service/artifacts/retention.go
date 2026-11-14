@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
+	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 )
 
 type MetadataStore interface {

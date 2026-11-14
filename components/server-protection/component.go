@@ -19,6 +19,7 @@ import (
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	protectionapi "github.com/MalenkiySolovey/solovey-ui/components/server-protection/api"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendobservation"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
 	protectiondeployment "github.com/MalenkiySolovey/solovey-ui/components/server-protection/deploymentadapter"
 	protectionruntime "github.com/MalenkiySolovey/solovey-ui/components/server-protection/runtimecontract"
 	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifacts"
@@ -39,6 +40,7 @@ import (
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 	sshservice "github.com/MalenkiySolovey/solovey-ui/service/sshmanagement"
 	"github.com/robfig/cron/v3"
@@ -166,7 +168,7 @@ func (component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) erro
 		cleanupHooksLocked()
 		return err
 	}
-	repository := protectionrepository.New(dbsqlite.DB())
+	repository := backendstore.New(protectionrepository.New(dbsqlite.DB()))
 	if hooks.unregisterHostSurface == nil {
 		var provider *protectionhostsurface.Provider
 		sshProjection := protectionhostsurface.SSHPostureProjectionSource{Reader: sshservice.Shared()}
@@ -416,13 +418,14 @@ func protectionDeps(host componenthost.APIDeps) protectionapi.Deps {
 	if frontingWorkflow != nil {
 		frontingAdapter = protectionfronting.NewManagedNginxAdapter(frontingWorkflow)
 	}
-	repository := protectionrepository.New(dbsqlite.DB())
+	dataOwner := protectionrepository.New(dbsqlite.DB())
+	repository := backendstore.New(dataOwner)
 	baseline := protectionfirewall.NewBaselineService(repository)
 	if workflow != nil {
 		baseline.Capabilities = workflow
 	}
 	return protectionapi.Deps{
-		Repository:        repository,
+		Repository:        dataOwner,
 		RequireScope:      host.Auth.RequireScope,
 		Actor:             host.Request.Actor,
 		ClientIdentity:    host.Request.ClientIdentity,
@@ -451,8 +454,8 @@ func ensureOperationManagerLocked(runtime *coreservice.Runtime) *protectionopera
 	if hooks.operationManager != nil {
 		return hooks.operationManager
 	}
-	repository := protectionrepository.New(dbsqlite.DB())
-	options := protectionoperations.Options{}
+	repository := backendstore.New(protectionrepository.New(dbsqlite.DB()))
+	options := protectionoperations.Options{ReportRecovery: func(err error) { logger.Warning(err.Error()) }}
 	if runtime != nil {
 		auditService := &coreservice.AuditService{Runtime: runtime}
 		options.Audit = func(_ context.Context, event protectionoperations.AuditEvent) error {
@@ -530,22 +533,22 @@ func ensureFirewallWorkflowLocked() (*protectionfirewall.Workflow, error) {
 	}
 	workflow := &protectionfirewall.Workflow{
 		Manager: manager, Helper: client,
-		Artifacts: protectionartifacts.Service{Storage: storage, Store: protectionrepository.New(dbsqlite.DB())}, Marker: storage, State: storage,
-		Recovery: protectionartifacts.OperationRecovery{Storage: storage, Repository: protectionrepository.New(dbsqlite.DB())},
+		Artifacts: protectionartifacts.Service{Storage: storage, Store: backendstore.New(protectionrepository.New(dbsqlite.DB()))}, Marker: storage, State: storage,
+		Recovery: protectionartifacts.OperationRecovery{Storage: storage, Repository: backendstore.New(protectionrepository.New(dbsqlite.DB()))},
 		Health: func(ctx context.Context, resources []hostresources.ProtectableResource) []componenthealth.Result {
 			return protectionhealth.Evaluate(ctx, resources, nil)
 		},
 		RollbackHealth: func(ctx context.Context, _ []hostresources.ProtectableResource) []componenthealth.Result {
 			return protectionhealth.Evaluate(ctx, protectionresources.Snapshot(ctx, true, hostresources.Default).Resources, nil)
 		},
-		Contributions:        protectionrepository.New(dbsqlite.DB()),
-		CurrentNetworkInputs: protectionfirewall.NewBaselineService(protectionrepository.New(dbsqlite.DB())).NetworkInputs,
+		Contributions:        backendstore.New(protectionrepository.New(dbsqlite.DB())),
+		CurrentNetworkInputs: protectionfirewall.NewBaselineService(backendstore.New(protectionrepository.New(dbsqlite.DB()))).NetworkInputs,
 	}
 	runtimeLifecycle := protectiondeployment.FirewallRuntime{Authority: hooks.runtimeRootAuthority}
-	workflow.RuntimeStore = protectionrepository.New(dbsqlite.DB())
+	workflow.RuntimeStore = backendstore.New(protectionrepository.New(dbsqlite.DB()))
 	if runtimeLifecycle.Available() {
 		workflow.Runtime = runtimeLifecycle
-		workflow.CurrentRuntimeManagement = protectionfirewall.NewBaselineService(protectionrepository.New(dbsqlite.DB())).RuntimeManagement
+		workflow.CurrentRuntimeManagement = protectionfirewall.NewBaselineService(backendstore.New(protectionrepository.New(dbsqlite.DB()))).RuntimeManagement
 	}
 	hooks.firewallWorkflow = workflow
 	return workflow, nil
@@ -564,7 +567,7 @@ func ensureFrontingWorkflowLocked() (*protectionfronting.Workflow, error) {
 	if err != nil {
 		return nil, errors.Join(protectionfronting.ErrMissingCapability, err)
 	}
-	repository := protectionrepository.New(dbsqlite.DB())
+	repository := backendstore.New(protectionrepository.New(dbsqlite.DB()))
 	workflow := &protectionfronting.Workflow{
 		Manager: manager, Helper: client,
 		Artifacts: protectionartifacts.Service{Storage: storage, Store: repository}, Marker: storage, State: storage,
@@ -607,7 +610,7 @@ func ensureNativeFallbackWorkflowLocked(runtime *coreservice.Runtime) (*protecti
 	if err != nil {
 		return nil, err
 	}
-	repository := protectionrepository.New(dbsqlite.DB())
+	repository := backendstore.New(protectionrepository.New(dbsqlite.DB()))
 	coreControl := coreservice.NewConfigServiceWithRuntime(runtime).CoreInboundControl()
 	if coreControl == nil {
 		return nil, errors.New("native fallback core inbound control unavailable")
@@ -629,7 +632,7 @@ func ensureLocalProxyControllerLocked() *protectionlocalproxy.Controller {
 		return hooks.localProxyController
 	}
 	hooks.localProxyController = &protectionlocalproxy.Controller{
-		Repository: protectionrepository.New(dbsqlite.DB()), Operations: ensureOperationManagerLocked(hooks.runtime),
+		Repository: backendstore.New(protectionrepository.New(dbsqlite.DB())), Operations: ensureOperationManagerLocked(hooks.runtime),
 		Providers: hostresources.DefaultLocalProxiesV1, Probes: componenthealth.DefaultLocalProxyProbesV1,
 		LeaseActivityChanged: notifyLocalProxyLeaseActivity,
 	}

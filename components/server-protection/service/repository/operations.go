@@ -3,22 +3,19 @@ package repository
 import (
 	"context"
 	"errors"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 var (
-	ErrOperationConflict = errors.New("another server-protection system operation is active")
-	ErrOperationFenced   = errors.New("server-protection operation ownership changed")
+	ErrOperationConflict = durable.ErrOperationConflict
+	ErrOperationFenced   = durable.ErrOperationFenced
 )
 
-var nonTerminalOperationLockStates = []string{
-	"prepared", "applying", "health", "health_failed", "rolling_back", "lock_suspect", "restoring_runtime",
-}
-
 func NonTerminalOperationLockStates() []string {
-	return append([]string(nil), nonTerminalOperationLockStates...)
+	return durable.NonTerminalOperationLockStates()
 }
 
 type AcquireOperationLockInput struct {
@@ -58,7 +55,7 @@ func (r *Repository) AcquireOperationLock(ctx context.Context, input AcquireOper
 		}
 
 		var active int64
-		if err := tx.Model(&OperationLockModel{}).Where("state IN ?", nonTerminalOperationLockStates).Count(&active).Error; err != nil {
+		if err := tx.Model(&OperationLockModel{}).Where("state IN ?", durable.NonTerminalOperationLockStates()).Count(&active).Error; err != nil {
 			return err
 		}
 		if active > 0 {
@@ -177,7 +174,7 @@ func (r *Repository) HeartbeatOperationLock(ctx context.Context, operationID, in
 	var item OperationLockModel
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&OperationLockModel{}).
-			Where("operation_id = ? AND revision = ? AND locked_by_instance_id = ? AND locked_by_pid = ? AND state IN ?", operationID, revision, instanceID, pid, nonTerminalOperationLockStates).
+			Where("operation_id = ? AND revision = ? AND locked_by_instance_id = ? AND locked_by_pid = ? AND state IN ?", operationID, revision, instanceID, pid, durable.NonTerminalOperationLockStates()).
 			Updates(map[string]any{"heartbeat_at": now, "expires_at": expiresAt, "updated_at": now})
 		if result.Error != nil {
 			return result.Error
@@ -234,7 +231,7 @@ func (r *Repository) ReclaimOperationLock(ctx context.Context, update ReclaimOpe
 		}
 		if update.RequireIdle {
 			var active int64
-			if err := tx.Model(&OperationLockModel{}).Where("operation_id <> ? AND state IN ?", update.OperationID, nonTerminalOperationLockStates).Count(&active).Error; err != nil {
+			if err := tx.Model(&OperationLockModel{}).Where("operation_id <> ? AND state IN ?", update.OperationID, durable.NonTerminalOperationLockStates()).Count(&active).Error; err != nil {
 				return err
 			}
 			if active != 0 {
@@ -282,7 +279,7 @@ func (r *Repository) ForceUnlockOperation(ctx context.Context, operationID strin
 		if current.Revision != expectedRevision {
 			return ErrRevisionConflict
 		}
-		if !containsOperationState(nonTerminalOperationLockStates, current.State) {
+		if !containsOperationState(durable.NonTerminalOperationLockStates(), current.State) {
 			return ErrOperationConflict
 		}
 		result := tx.Model(&OperationLockModel{}).Where("operation_id = ? AND revision = ?", operationID, expectedRevision).

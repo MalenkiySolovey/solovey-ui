@@ -1,5 +1,7 @@
 package fronting
 
+import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+
 import (
 	"context"
 	"errors"
@@ -7,7 +9,6 @@ import (
 	"time"
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 )
 
 type semanticFixtureSourceV2 struct {
@@ -132,7 +133,7 @@ func TestSemanticPersistedRowsAreValidatedBeforeProjection(t *testing.T) {
 	if validPersistedFrontingStateV2(state) {
 		t.Fatal("invalid lease mirror was trusted")
 	}
-	state = protectionrepository.FrontingStateV2Model{ResourceID: "broken", Schema: "broken", DesiredStrategy: "DISABLED", ActualState: "APPLIED"}
+	state = protectiondata.FrontingStateV2Model{ResourceID: "broken", Schema: "broken", DesiredStrategy: "DISABLED", ActualState: "APPLIED"}
 	if validPersistedFrontingStateV2(state) {
 		t.Fatal("invalid persisted row was trusted")
 	}

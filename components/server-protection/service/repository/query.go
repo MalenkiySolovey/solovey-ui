@@ -3,11 +3,12 @@ package repository
 import (
 	"context"
 	"errors"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 
 	"gorm.io/gorm"
 )
 
-var ErrRecordNotFound = errors.New("server-protection record not found")
+var ErrRecordNotFound = durable.ErrRecordNotFound
 
 type PageQuery struct {
 	Page  int

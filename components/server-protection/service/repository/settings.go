@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	"gorm.io/gorm"
@@ -13,7 +14,7 @@ type Repository struct {
 	db *gorm.DB
 }
 
-var ErrRevisionConflict = errors.New("server-protection revision conflict")
+var ErrRevisionConflict = durable.ErrRevisionConflict
 
 func New(db *gorm.DB) *Repository {
 	return &Repository{db: db}

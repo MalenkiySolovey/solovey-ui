@@ -5,6 +5,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -92,7 +93,7 @@ func newProtectionAPIRouterWithLocalProxy(t *testing.T, scope string, fronting p
 	t.Cleanup(unregister)
 	audits := &[]auditEvent{}
 	repository := protectionrepository.New(db)
-	manager := protectionoperations.NewManager(repository, protectionoperations.Options{
+	manager := protectionoperations.NewManager(backendstore.New(repository), protectionoperations.Options{
 		InstanceID: "api-test", PID: 4242,
 		Audit: func(_ context.Context, event protectionoperations.AuditEvent) error {
 			*audits = append(*audits, auditEvent{Name: event.Event, Details: event.Details})

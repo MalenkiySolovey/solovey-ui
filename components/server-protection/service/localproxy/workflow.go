@@ -10,9 +10,8 @@ import (
 
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 type operationManager interface {
@@ -32,7 +31,7 @@ type Service interface {
 }
 
 type Controller struct {
-	Repository           *protectionrepository.Repository
+	Repository           StateRepository
 	Operations           operationManager
 	Providers            *hostresources.LocalProxyRegistryV1
 	Probes               *componenthealth.LocalProxyProbeRegistryV1
@@ -580,14 +579,14 @@ func localProxyReceiptError(err error) error {
 }
 
 func (c *Controller) RenewActive(ctx context.Context) (bool, error) {
-	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err := c.ready(); err != nil {
+		return false, err
+	}
+	ctx, release, err := c.Repository.AdmitMaintenance(ctx)
 	if err != nil {
 		return false, err
 	}
 	defer release()
-	if err := c.ready(); err != nil {
-		return false, err
-	}
 	states, err := c.Repository.LocalProxyStates(ctx)
 	if err != nil {
 		return false, err

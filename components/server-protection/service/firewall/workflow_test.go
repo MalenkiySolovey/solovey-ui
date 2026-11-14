@@ -1,5 +1,9 @@
 package firewall
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
+
+import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+
 import (
 	"context"
 	"errors"
@@ -127,7 +131,7 @@ func TestWorkflowIdempotencyUnknownSSHAndRollbackFailure(t *testing.T) {
 	mock.Responses[protectionhelper.OperationNFTRollback] = protectionhelper.Response{OK: false, Code: protectionhelper.CodeTransportFailed}
 	mock.FailAfter[protectionhelper.OperationNFTApply] = errors.New("injected post-mutation apply observation failure")
 	bundles := 0
-	workflow.Recovery = MockRecovery{Bundle: func(context.Context, protectionrepository.OperationLockModel, string) error { bundles++; return nil }}
+	workflow.Recovery = MockRecovery{Bundle: func(context.Context, protectiondata.OperationLockModel, string) error { bundles++; return nil }}
 	result, err := workflow.Apply(context.Background(), ApplyInput{OperationID: first.Operation.OperationID, Plan: plan, Resources: plan.Resources, Confirmation: "APPLY SERVER PROTECTION " + first.Operation.OperationID})
 	if err == nil || result.State != protectionoperations.StateRollbackFailed || bundles != 1 {
 		t.Fatalf("rollback failure = %#v, %v", result, err)
@@ -139,7 +143,7 @@ func TestWorkflowIdempotencyUnknownSSHAndRollbackFailure(t *testing.T) {
 }
 
 func TestPreflightRejectsStalePayloadAndUnknownListenerProtocol(t *testing.T) {
-	empty := BuildPlan(nil, []protectionrepository.PortAllowlistModel{{Protocol: "tcp", PortStart: 22, PortEnd: 22, Reason: "SSH"}}, nil)
+	empty := BuildPlan(nil, []protectiondata.PortAllowlistModel{{Protocol: "tcp", PortStart: 22, PortEnd: 22, Reason: "SSH"}}, nil)
 	if err := Preflight(empty); !errors.Is(err, ErrUnsafeResource) {
 		t.Fatalf("empty protectable resource inventory was accepted: %v", err)
 	}
@@ -156,14 +160,14 @@ func TestPreflightRejectsStalePayloadAndUnknownListenerProtocol(t *testing.T) {
 	}
 	unknown := BuildPlan(
 		[]hostresources.ProtectableResource{{ID: "core:inbound:1", Kind: "inbound", Protocol: "unknown", Port: 443}},
-		[]protectionrepository.PortAllowlistModel{{Protocol: "tcp", PortStart: 22, PortEnd: 22, Reason: "SSH"}}, nil,
+		[]protectiondata.PortAllowlistModel{{Protocol: "tcp", PortStart: 22, PortEnd: 22, Reason: "SSH"}}, nil,
 	)
 	if err := Preflight(unknown); !errors.Is(err, ErrUnsafeResource) {
 		t.Fatalf("unknown listener protocol was accepted: %v", err)
 	}
 	unknownKind := BuildPlan(
 		[]hostresources.ProtectableResource{{ID: "component:future:listener", Kind: "future_listener", Protocol: "tcp", Port: 8443}},
-		[]protectionrepository.PortAllowlistModel{{Protocol: "tcp", PortStart: 22, PortEnd: 22, Reason: "SSH"}}, nil,
+		[]protectiondata.PortAllowlistModel{{Protocol: "tcp", PortStart: 22, PortEnd: 22, Reason: "SSH"}}, nil,
 	)
 	if err := Preflight(unknownKind); !errors.Is(err, ErrUnsafeResource) {
 		t.Fatalf("unknown health-check resource kind was accepted: %v", err)
@@ -204,7 +208,7 @@ func TestMockRecoveryRollsBackAfterRestartWithoutHostMutation(t *testing.T) {
 	}
 	clock := time.Unix(applying.ExpiresAt+1, 0)
 	called := 0
-	restarted := protectionoperations.NewManager(repository, protectionoperations.Options{InstanceID: "restarted", PID: 99, Now: func() time.Time { return clock }, PIDProbe: deadPID{}, Recovery: MockRecovery{Rollback: func(context.Context, protectionrepository.OperationLockModel) error { called++; return nil }}})
+	restarted := protectionoperations.NewManager(repository, protectionoperations.Options{InstanceID: "restarted", PID: 99, Now: func() time.Time { return clock }, PIDProbe: deadPID{}, Recovery: MockRecovery{Rollback: func(context.Context, protectiondata.OperationLockModel) error { called++; return nil }}})
 	results, err := restarted.Recover(context.Background())
 	if err != nil || called != 1 || len(results) < 2 || results[len(results)-1].ToState != protectionoperations.StateRolledBack {
 		t.Fatalf("restart recovery = %#v, called=%d err=%v", results, called, err)
@@ -218,7 +222,7 @@ func TestWorkflowPersistsPlanRevisionAndFencesManualRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	changed := BuildPlan([]hostresources.ProtectableResource{{ID: "core:panel:web", Kind: "panel_web", Protocol: "http", Port: 444}}, []protectionrepository.PortAllowlistModel{{Protocol: "tcp", PortStart: 22, PortEnd: 22, Reason: "SSH"}}, nil)
+	changed := BuildPlan([]hostresources.ProtectableResource{{ID: "core:panel:web", Kind: "panel_web", Protocol: "http", Port: 444}}, []protectiondata.PortAllowlistModel{{Protocol: "tcp", PortStart: 22, PortEnd: 22, Reason: "SSH"}}, nil)
 	if _, err := workflow.Apply(context.Background(), ApplyInput{OperationID: prepared.Operation.OperationID, Plan: changed, Resources: changed.Resources, Confirmation: "APPLY SERVER PROTECTION " + prepared.Operation.OperationID}); !errors.Is(err, ErrPlanRevision) {
 		t.Fatalf("revision validation = %v", err)
 	}
@@ -292,7 +296,7 @@ func TestWorkflowCarriesExactValidatedManagedTableFenceIntoApply(t *testing.T) {
 		t.Fatalf("first authority = %#v, %v", authority, err)
 	}
 	previousRevision := authority.Composition.ManagedPlanRevision
-	secondPlan := BuildPlan(firstPlan.Resources, []protectionrepository.PortAllowlistModel{
+	secondPlan := BuildPlan(firstPlan.Resources, []protectiondata.PortAllowlistModel{
 		{Protocol: "tcp", PortStart: 22, PortEnd: 22, Reason: "SSH"},
 		{Protocol: "tcp", PortStart: 8443, PortEnd: 8443, Reason: "second baseline"},
 	}, nil)
@@ -400,7 +404,7 @@ type deadPID struct{}
 
 func (deadPID) Alive(int) (bool, error) { return false, nil }
 
-func newWorkflow(t *testing.T, health HealthCheck) (Workflow, *testHelperInvoker, *protectionoperations.Manager, *protectionrepository.Repository) {
+func newWorkflow(t *testing.T, health HealthCheck) (Workflow, *testHelperInvoker, *protectionoperations.Manager, *backendstore.Store) {
 	workflow, helper, manager, repository, _ := newWorkflowWithRoot(t, health)
 	return workflow, helper, manager, repository
 }
@@ -411,7 +415,7 @@ type workflowDatabaseConfig struct {
 	Open      func(string) (*gorm.DB, error)
 }
 
-func newWorkflowWithRoot(t *testing.T, health HealthCheck, configs ...workflowDatabaseConfig) (Workflow, *testHelperInvoker, *protectionoperations.Manager, *protectionrepository.Repository, string) {
+func newWorkflowWithRoot(t *testing.T, health HealthCheck, configs ...workflowDatabaseConfig) (Workflow, *testHelperInvoker, *protectionoperations.Manager, *backendstore.Store, string) {
 	t.Helper()
 	suffix := ""
 	if len(configs) != 0 {
@@ -438,7 +442,7 @@ func newWorkflowWithRoot(t *testing.T, health HealthCheck, configs ...workflowDa
 			setup.Configure(db)
 		}
 	}
-	repository := protectionrepository.New(db)
+	repository := backendstore.New(protectionrepository.New(db))
 	manager := protectionoperations.NewManager(repository, protectionoperations.Options{InstanceID: "workflow", PID: 77, Audit: func(context.Context, protectionoperations.AuditEvent) error { return nil }})
 	t.Cleanup(func() { _ = manager.Stop(context.Background()) })
 	rootPath := filepath.Join(t.TempDir(), ".runtime", "server-protection")
@@ -487,5 +491,5 @@ func passingHealth(_ context.Context, resources []hostresources.ProtectableResou
 }
 
 func applyPlan() FirewallPlan {
-	return BuildPlan([]hostresources.ProtectableResource{{ID: "core:panel:web", Kind: "panel_web", Protocol: "http", Port: 443}}, []protectionrepository.PortAllowlistModel{{Protocol: "tcp", PortStart: 22, PortEnd: 22, Reason: "SSH"}}, nil)
+	return BuildPlan([]hostresources.ProtectableResource{{ID: "core:panel:web", Kind: "panel_web", Protocol: "http", Port: 443}}, []protectiondata.PortAllowlistModel{{Protocol: "tcp", PortStart: 22, PortEnd: 22, Reason: "SSH"}}, nil)
 }

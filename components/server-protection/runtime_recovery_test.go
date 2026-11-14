@@ -14,6 +14,8 @@ import (
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	firewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
 	helper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	operations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
@@ -24,17 +26,17 @@ import (
 // This component lifetime fixture does not manufacture a SQLite lock. Real
 // SQLite contention and full four-resource restoration are tested by firewall.
 type startupAuthorityFailure struct {
-	*repository.Repository
+	*backendstore.Store
 	reads  int
 	failAt int
 }
 
-func (s *startupAuthorityFailure) FirewallAuthority(ctx context.Context) (repository.FirewallAuthoritySnapshot, error) {
+func (s *startupAuthorityFailure) FirewallAuthority(ctx context.Context) (durable.FirewallAuthoritySnapshot, error) {
 	s.reads++
 	if s.reads == s.failAt {
-		return repository.FirewallAuthoritySnapshot{}, errors.New("controlled authority read failure")
+		return durable.FirewallAuthoritySnapshot{}, errors.New("controlled authority read failure")
 	}
-	return s.Repository.FirewallAuthority(ctx)
+	return s.Store.FirewallAuthority(ctx)
 }
 
 type startupAbsentHelper struct{}
@@ -75,12 +77,12 @@ func assertComponentRuntimeExecutionFailureKeepsRecoveryAndSchedules(t *testing.
 		t.Fatal(err)
 	}
 	repo := repository.New(dbsqlite.DB())
-	manager := operations.NewManager(repo, operations.Options{InstanceID: "component-recovery", PID: 9876, RecoveryEvery: time.Hour})
+	manager := operations.NewManager(backendstore.New(repo), operations.Options{InstanceID: "component-recovery", PID: 9876, RecoveryEvery: time.Hour})
 	row := repository.OperationLockModel{OperationID: "component-runtime-recovery", Kind: operations.KindFirewall, State: operations.StateApplied, Revision: 1, IdempotencyKey: "component-runtime-recovery", ResourceID: "managed-table:inet:solovey_protection"}
 	if err := dbsqlite.DB().Create(&row).Error; err != nil {
 		t.Fatal(err)
 	}
-	store := &startupAuthorityFailure{Repository: repo, failAt: failAt}
+	store := &startupAuthorityFailure{Store: backendstore.New(repo), failAt: failAt}
 	unused := startupUnusedDependencies{}
 	health := func(context.Context, []hostresources.ProtectableResource) []componenthealth.Result { return nil }
 	workflow := &firewall.Workflow{Manager: manager, Helper: startupAbsentHelper{}, Contributions: store, Artifacts: unused, Marker: unused, State: unused, Recovery: unused, Health: health, RollbackHealth: health}

@@ -6,8 +6,8 @@ import (
 
 	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 
+	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	operations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
-	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 )
 
 type OperatorStatus struct {

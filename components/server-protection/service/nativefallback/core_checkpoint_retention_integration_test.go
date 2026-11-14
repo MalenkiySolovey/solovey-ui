@@ -1,5 +1,7 @@
 package nativefallback
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
+
 import (
 	"context"
 	"crypto/sha256"
@@ -123,7 +125,7 @@ func TestNativeRetentionConsumesProductionCheckpointRelease(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
-	repository := protectionrepository.New(db)
+	repository := backendstore.New(protectionrepository.New(db))
 	const expiredCutoff = int64(2_000_000_000)
 	before, err := repository.PruneNativeFallbackHistory(context.Background(), 1, expiredCutoff, 8<<20)
 	if err != nil || before.DeletedOperations != 0 || before.Preserved != 1 {

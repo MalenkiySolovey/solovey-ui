@@ -10,6 +10,7 @@ import (
 
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
 	"github.com/gin-gonic/gin"
@@ -98,7 +99,7 @@ func (h Handler) baselineService() *protectionfirewall.BaselineService {
 	if h.deps.Baseline != nil {
 		return h.deps.Baseline
 	}
-	return protectionfirewall.NewBaselineService(h.deps.Repository)
+	return protectionfirewall.NewBaselineService(backendstore.New(h.deps.Repository))
 }
 
 func (h Handler) currentFirewallBaselineState(ctx context.Context, refresh bool, selected map[string]struct{}) (protectionfirewall.BaselineState, error) {

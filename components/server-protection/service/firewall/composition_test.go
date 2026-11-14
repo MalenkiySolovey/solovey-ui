@@ -1,5 +1,7 @@
 package firewall
 
+import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+
 import (
 	"context"
 	"encoding/json"
@@ -411,8 +413,8 @@ func TestCheckpointV1WithoutSemanticIdentityFailsClosedWithoutMutation(t *testin
 		t.Fatal(err)
 	}
 	authority.mu.Lock()
-	authority.contributions = map[string]protectionrepository.FirewallContributionModel{}
-	authority.composition = protectionrepository.FirewallCompositionModel{}
+	authority.contributions = map[string]protectiondata.FirewallContributionModel{}
+	authority.composition = protectiondata.FirewallCompositionModel{}
 	authority.hasComposition = false
 	delete(authority.transitions, operation.OperationID)
 	authority.mu.Unlock()
@@ -734,7 +736,7 @@ func helperOperationCount(requests []protectionhelper.Request, operation protect
 	return count
 }
 
-func applyCompositionWorkflowPlan(t *testing.T, workflow *Workflow, plan FirewallPlan, key string) protectionrepository.OperationLockModel {
+func applyCompositionWorkflowPlan(t *testing.T, workflow *Workflow, plan FirewallPlan, key string) protectiondata.OperationLockModel {
 	t.Helper()
 	prepared, err := workflow.Prepare(t.Context(), PrepareInput{Plan: plan, Actor: "composition-test", IdempotencyKey: key, Confirmation: "PREPARE SERVER PROTECTION " + plan.Revision})
 	if err != nil {
@@ -808,7 +810,7 @@ func contributionRevision(values []ManagedFirewallContributionV1, id string) str
 	return ""
 }
 
-func compositionAuthoritySnapshot(t *testing.T, values []ManagedFirewallContributionV1) protectionrepository.FirewallAuthoritySnapshot {
+func compositionAuthoritySnapshot(t *testing.T, values []ManagedFirewallContributionV1) protectiondata.FirewallAuthoritySnapshot {
 	t.Helper()
 	composition, err := composeFirewall(values)
 	if err != nil {
@@ -818,7 +820,7 @@ func compositionAuthoritySnapshot(t *testing.T, values []ManagedFirewallContribu
 	if err != nil {
 		t.Fatal(err)
 	}
-	models := make([]protectionrepository.FirewallContributionModel, 0, len(values))
+	models := make([]protectiondata.FirewallContributionModel, 0, len(values))
 	for _, value := range values {
 		model, modelErr := contributionModel(value)
 		if modelErr != nil {
@@ -826,11 +828,11 @@ func compositionAuthoritySnapshot(t *testing.T, values []ManagedFirewallContribu
 		}
 		models = append(models, model)
 	}
-	observation := protectionrepository.FirewallObservationModel{Schema: protectionrepository.FirewallObservationSchemaV1, State: FirewallLiveMatching,
+	observation := protectiondata.FirewallObservationModel{Schema: protectionrepository.FirewallObservationSchemaV1, State: FirewallLiveMatching,
 		HasCommittedAuthority: true, CommittedCompositionRevision: compositionRow.Revision, ManagedTablePresent: true,
 		CurrentRevision: compositionRow.ManagedPlanRevision, CurrentSemanticSHA256: compositionRow.CandidateSemanticSHA256,
 		CurrentTimedMembershipSHA256: compositionRow.CandidateTimedMembershipSHA256, ExpectedTimedMembershipSHA256: compositionRow.CandidateTimedMembershipSHA256}
-	return protectionrepository.FirewallAuthoritySnapshot{Contributions: models, Composition: compositionRow, HasComposition: true, Observation: observation, HasObservation: true}
+	return protectiondata.FirewallAuthoritySnapshot{Contributions: models, Composition: compositionRow, HasComposition: true, Observation: observation, HasObservation: true}
 }
 
 func compositionEndpointPlan(t *testing.T) FirewallPlan {
