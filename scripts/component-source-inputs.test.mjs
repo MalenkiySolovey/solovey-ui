@@ -172,3 +172,19 @@ test('a component HTTP contribution can pin its narrow public UI exports without
   delete pin.files[file];pin.files['src/private.ts']=digest('private');write()
   assert.throws(()=>verifyUIAPI(root,directory),/unsupported UI API inputs/)
 })
+
+test('a contribution lifecycle export is independently pinned and rejects private inputs',t => {
+  const {root,directory} = fixture(t)
+  const sdk=fs.readFileSync(path.join(root,'frontend/src/componentSystem/sdk.ts'))
+  const file='src/componentSystem/contributions.ts'
+  fs.writeFileSync(path.join(root,'frontend',file),'export const contribution = true\n')
+  const pin=JSON.parse(fs.readFileSync(path.join(directory,'HOST_UI_PIN.json')))
+  pin.files[file]=digest(fs.readFileSync(path.join(root,'frontend',file)))
+  const write=()=>fs.writeFileSync(path.join(directory,'HOST_UI_PIN.json'),JSON.stringify(pin))
+  write(); verifyUIAPI(root,directory)
+  assert.deepEqual(fs.readFileSync(path.join(root,'frontend/src/componentSystem/sdk.ts')),sdk)
+  fs.appendFileSync(path.join(root,'frontend',file),'changed')
+  assert.throws(()=>verifyUIAPI(root,directory),/UI API input drift/)
+  delete pin.files[file];pin.files['src/componentSystem/registry.ts']=digest('private');write()
+  assert.throws(()=>verifyUIAPI(root,directory),/unsupported UI API inputs/)
+})

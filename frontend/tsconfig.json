@@ -18,6 +18,7 @@
     "paths": {
       "@solovey/component-ui": ["./src/componentSystem/sdk.ts"],
       "@solovey/component-ui/api": ["./src/componentSystem/api.ts"],
+      "@solovey/component-ui/contributions": ["./src/componentSystem/contributions.ts"],
       "@solovey/component-ui/observation": ["./src/componentSystem/observation.ts"],
       "@/*": ["./src/*"],
       "vue": ["./node_modules/vue"],

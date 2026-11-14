@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   delete: vi.fn(),
 }))
 
-vi.mock('@/plugins/api', () => ({
+vi.mock('@solovey/component-ui/api', () => ({
   default: mocks,
 }))
 
