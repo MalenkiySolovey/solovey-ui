@@ -6,8 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
-
 	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 )
 
@@ -41,7 +39,12 @@ func Preview(plan FirewallPlan, options PreviewOptions) FirewallPreview {
 		return preview
 	}
 	if options.IncludeGeneratedNFT {
-		preview.GeneratedNFT = RenderNFTPreview(plan)
+		if options.Codec == nil {
+			preview.Backend = "unsupported"
+			preview.WouldWarn = uniqueSorted(append(preview.WouldWarn, "nft_artifact_owner_unavailable"))
+			return preview
+		}
+		preview.GeneratedNFT = RenderNFTPreview(plan, options.Codec)
 	}
 	return preview
 }
@@ -60,15 +63,21 @@ func planReportsUnknownSSH(plan FirewallPlan) bool {
 	return false
 }
 
-func RenderNFTPreview(plan FirewallPlan) string {
-	return nftables.RenderProtection(protectionIntent(plan), false, time.Time{})
+func RenderNFTPreview(plan FirewallPlan, codec NFTCodec) string {
+	if codec == nil {
+		return ""
+	}
+	return codec.RenderProtection(protectionIntent(plan), false, time.Time{})
 }
 
 // RenderManagedNFT is the exact apply artifact. It remains non-enforcing by
 // default; a future hard-block policy must use a separate advanced-confirmed
 // model rather than editing this text through the API.
-func RenderManagedNFT(plan FirewallPlan) string {
-	return nftables.RenderProtection(protectionIntent(plan), true, time.Time{})
+func RenderManagedNFT(plan FirewallPlan, codec NFTCodec) string {
+	if codec == nil {
+		return ""
+	}
+	return codec.RenderProtection(protectionIntent(plan), true, time.Time{})
 }
 
 func containsPort(values []int, port int) bool {

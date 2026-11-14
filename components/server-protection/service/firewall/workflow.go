@@ -11,17 +11,16 @@ import (
 	"strings"
 	"time"
 
+	componenthealth "github.com/MalenkiySolovey/solovey-host/componenthost/health"
 	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-host/hostref"
-	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
+	networkplan "github.com/MalenkiySolovey/solovey-host/network/planning"
+	operationcoordination "github.com/MalenkiySolovey/solovey-host/operationref"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
-	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
+	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helpercontract"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
-	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
-	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
 
 var (
@@ -82,6 +81,8 @@ type Workflow struct {
 	RuntimeStore             RuntimeStore
 	CurrentRuntimeManagement func(context.Context) (RuntimeManagement, error)
 	CurrentNetworkInputs     NetworkInputs
+	NetworkPlanner           NetworkPlanner
+	Codec                    NFTCodec
 	Manager                  *protectionoperations.Manager
 	Helper                   Helper
 	Artifacts                ArtifactService
@@ -206,13 +207,13 @@ func (w Workflow) ReconcileAuthority(ctx context.Context) (AuthorityObservation,
 	}
 	expectedTimedMembership := ""
 	if snapshot.HasComposition {
-		values, decodeErr := contributionsFromModels(snapshot.Contributions)
-		recomposed, composeErr := composeFirewall(values)
+		values, decodeErr := contributionsFromModels(snapshot.Contributions, w.Codec)
+		recomposed, composeErr := composeFirewall(values, w.Codec)
 		if snapshot.Composition.State != "ACTIVE" || decodeErr != nil || composeErr != nil || !matchesCommittedComposition(recomposed, snapshot.Composition) {
 			observation, persistErr := persistAuthorityObservation(ctx, w.Contributions, AuthorityObservation{State: FirewallLiveUnavailable, CommittedComposition: expectedComposition, Reason: "committed_authority_invalid"})
 			return observation, errors.Join(ErrCompositionInvalid, decodeErr, composeErr, persistErr)
 		}
-		expectedTimedMembership, err = expectedTimedMembershipSHA(values, w.now())
+		expectedTimedMembership, err = expectedTimedMembershipSHA(values, w.now(), w.Codec)
 		if err != nil {
 			return AuthorityObservation{State: FirewallLiveUnavailable, CommittedComposition: expectedComposition, Reason: "committed_authority_invalid"}, err
 		}
@@ -267,7 +268,7 @@ func (w Workflow) ReconcileAuthority(ctx context.Context) (AuthorityObservation,
 			claim.PlanRevision = observation.CurrentRevision
 			actual = []networkplan.Allocation{{Ownership: claim, Proven: observation.State == FirewallLiveMatching || observation.State == FirewallLiveDrifted, IdentityMismatch: observation.State == FirewallLiveDrifted}}
 		}
-		observation.NetworkDrift = networkplan.CompareResource(expected, expected.PlanRevision, observation.State != FirewallLiveUnavailable, actual)
+		observation.NetworkDrift = w.NetworkPlanner.CompareResource(expected, expected.PlanRevision, observation.State != FirewallLiveUnavailable, actual)
 	}
 	observation, persistErr := persistAuthorityObservation(ctx, w.Contributions, observation)
 	if persistErr != nil {
@@ -335,7 +336,7 @@ func (w Workflow) Prepare(ctx context.Context, input PrepareInput) (protectionop
 	if err := w.ready(); err != nil {
 		return protectionoperations.AcquireResult{}, err
 	}
-	if err := Preflight(input.Plan); err != nil {
+	if err := Preflight(input.Plan, w.Codec); err != nil {
 		return protectionoperations.AcquireResult{}, err
 	}
 	if err := preflightTemporalPlan(input.Plan, w.now()); err != nil {
@@ -344,7 +345,7 @@ func (w Workflow) Prepare(ctx context.Context, input PrepareInput) (protectionop
 	if input.Confirmation != "PREPARE SERVER PROTECTION "+input.Plan.Revision {
 		return protectionoperations.AcquireResult{}, protectionoperations.ErrConfirmationRequired
 	}
-	contribution, err := contributionFromPlan(input.Plan)
+	contribution, err := contributionFromPlan(input.Plan, w.Codec)
 	if err != nil {
 		return protectionoperations.AcquireResult{}, err
 	}
@@ -352,7 +353,7 @@ func (w Workflow) Prepare(ctx context.Context, input PrepareInput) (protectionop
 	if err != nil {
 		return protectionoperations.AcquireResult{}, err
 	}
-	current, err := contributionsFromSnapshot(snapshot)
+	current, err := contributionsFromSnapshot(snapshot, w.Codec)
 	if err != nil {
 		return protectionoperations.AcquireResult{}, err
 	}
@@ -364,7 +365,7 @@ func (w Workflow) Prepare(ctx context.Context, input PrepareInput) (protectionop
 			break
 		}
 	}
-	composition, err := composeFirewall(replaceContribution(current, &contribution))
+	composition, err := composeFirewall(replaceContribution(current, &contribution), w.Codec)
 	if err != nil {
 		return protectionoperations.AcquireResult{}, err
 	}
@@ -421,13 +422,13 @@ func (w Workflow) apply(ctx context.Context, input ApplyInput) (Result, error) {
 	if input.Confirmation != "APPLY SERVER PROTECTION "+input.OperationID {
 		return Result{}, protectionoperations.ErrConfirmationRequired
 	}
-	if err := Preflight(input.Plan); err != nil {
+	if err := Preflight(input.Plan, w.Codec); err != nil {
 		return Result{}, err
 	}
 	if err := preflightTemporalPlan(input.Plan, w.now()); err != nil {
 		return Result{}, err
 	}
-	requested, err := contributionFromPlan(input.Plan)
+	requested, err := contributionFromPlan(input.Plan, w.Codec)
 	if err != nil {
 		return Result{}, err
 	}
@@ -453,7 +454,7 @@ func (w Workflow) apply(ctx context.Context, input ApplyInput) (Result, error) {
 	if transition.Schema != FirewallTransitionSchemaV2 || !validFirewallSHA(transition.CandidateSemanticSHA256) || !validFirewallSHA(transition.CandidateTimedMembershipSHA256) {
 		return Result{}, ErrContributionConflict
 	}
-	desired, err := decodeContributionJSON(transition.DesiredJSON)
+	desired, err := decodeContributionJSON(transition.DesiredJSON, w.Codec)
 	if err != nil || desired.SemanticRevision != requested.SemanticRevision || desired.ContributionID != requested.ContributionID ||
 		operation.PlanRevision != transition.ManagedPlanRevision || operation.ResourceID != networkplan.ProtectionResourceRef {
 		return Result{}, ErrPlanRevision
@@ -468,7 +469,7 @@ func (w Workflow) apply(ctx context.Context, input ApplyInput) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	current, err := contributionsFromSnapshot(snapshot)
+	current, err := contributionsFromSnapshot(snapshot, w.Codec)
 	if err != nil {
 		return Result{}, err
 	}
@@ -488,7 +489,7 @@ func (w Workflow) apply(ctx context.Context, input ApplyInput) (Result, error) {
 	if currentContributionRevision != transition.PreviousSemanticRevision {
 		return Result{}, ErrContributionConflict
 	}
-	composition, err := composeFirewall(replaceContribution(current, &desired))
+	composition, err := composeFirewall(replaceContribution(current, &desired), w.Codec)
 	if err != nil || composition.Revision != transition.AfterCompositionRevision || composition.PlanRevision != transition.ManagedPlanRevision || composition.CandidateSHA != transition.CandidateSHA256 || composition.CandidateSemanticSHA != transition.CandidateSemanticSHA256 || composition.CandidateTimedMembershipSHA != transition.CandidateTimedMembershipSHA256 {
 		return Result{}, errors.Join(ErrPlanRevision, err)
 	}
@@ -506,13 +507,13 @@ func (w Workflow) apply(ctx context.Context, input ApplyInput) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	candidate := nftables.RenderProtection(networkPlan.Enforcement(), true, time.Time{})
+	candidate := w.Codec.RenderProtection(networkPlan.Enforcement(), true, time.Time{})
 	candidateSHA := artifactSHA([]byte(candidate))
-	candidateSemanticSHA, semanticErr := protectionhelper.ManagedSemanticSHA256([]byte(candidate))
+	candidateSemanticSHA, semanticErr := w.Codec.ManagedSemanticSHA256([]byte(candidate))
 	if semanticErr != nil {
 		return Result{}, semanticErr
 	}
-	candidateTimedMembershipSHA, membershipErr := protectionhelper.ManagedTimedMembershipSHA256([]byte(candidate))
+	candidateTimedMembershipSHA, membershipErr := w.Codec.ManagedTimedMembershipSHA256([]byte(candidate))
 	if membershipErr != nil || candidateTimedMembershipSHA != composition.CandidateTimedMembershipSHA {
 		return Result{}, errors.Join(ErrPlanRevision, membershipErr)
 	}
@@ -533,14 +534,14 @@ func (w Workflow) apply(ctx context.Context, input ApplyInput) (Result, error) {
 		return Result{}, ErrApplyVerify
 	}
 	if snapshot.HasComposition {
-		expectedPreviousMembership, expectedErr := expectedTimedMembershipSHA(current, w.now())
+		expectedPreviousMembership, expectedErr := expectedTimedMembershipSHA(current, w.now(), w.Codec)
 		if expectedErr != nil || !validated.PreviousTablePresent || validated.PreviousRevision != snapshot.Composition.ManagedPlanRevision || !validFirewallSHA(snapshot.Composition.CandidateSemanticSHA256) || validated.PreviousSemanticSHA256 != snapshot.Composition.CandidateSemanticSHA256 || validated.PreviousTimedMembershipSHA256 != expectedPreviousMembership {
 			return Result{}, ErrContributionConflict
 		}
 	} else if validated.PreviousTablePresent {
 		return Result{}, ErrContributionConflict
 	}
-	accepted, err := networkplan.Accept(networkPlan.Plan, networkFacts, validated.CandidateSHA256)
+	accepted, err := w.NetworkPlanner.Accept(networkPlan, networkFacts, validated.CandidateSHA256)
 	if err != nil {
 		return Result{}, err
 	}
@@ -548,7 +549,7 @@ func (w Workflow) apply(ctx context.Context, input ApplyInput) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	if err := networkplan.CheckAccepted(accepted, currentNetworkFacts, candidateSHA); err != nil {
+	if err := w.NetworkPlanner.CheckAccepted(accepted, currentNetworkFacts, candidateSHA); err != nil {
 		return Result{}, err
 	}
 	applying, err := w.Manager.Transition(ctx, operation.OperationID, operation.Revision, protectionoperations.StateApplying)
@@ -595,7 +596,7 @@ func (w Workflow) apply(ctx context.Context, input ApplyInput) (Result, error) {
 	}
 	result.RollbackSHA256 = nftResult.RollbackSHA256
 	result.RollbackSemanticSHA256 = nftResult.PreviousSemanticSHA256
-	model, err := contributionModel(desired)
+	model, err := contributionModel(desired, w.Codec)
 	if err != nil {
 		return w.failAndRollback(ctx, applying, artifact.Revision, result, err)
 	}
@@ -666,7 +667,7 @@ func (w Workflow) replayApplied(ctx context.Context, operation protectionreposit
 	if err != nil || !snapshot.HasComposition || snapshot.Composition.State != "ACTIVE" || snapshot.Composition.Revision != transition.AfterCompositionRevision {
 		return Result{}, errors.Join(ErrContributionConflict, err)
 	}
-	current, err := contributionsFromModels(snapshot.Contributions)
+	current, err := contributionsFromModels(snapshot.Contributions, w.Codec)
 	if err != nil {
 		return Result{}, errors.Join(ErrContributionConflict, err)
 	}
@@ -676,7 +677,7 @@ func (w Workflow) replayApplied(ctx context.Context, operation protectionreposit
 			currentOwnRevision = value.SemanticRevision
 		}
 	}
-	composition, composeErr := composeFirewall(current)
+	composition, composeErr := composeFirewall(current, w.Codec)
 	if composeErr != nil || currentOwnRevision != desired.SemanticRevision || composition.Revision != transition.AfterCompositionRevision || composition.PlanRevision != transition.ManagedPlanRevision || composition.CandidateSHA != transition.CandidateSHA256 || composition.CandidateSemanticSHA != transition.CandidateSemanticSHA256 || composition.CandidateTimedMembershipSHA != transition.CandidateTimedMembershipSHA256 ||
 		composition.Revision != snapshot.Composition.Revision || composition.PlanRevision != snapshot.Composition.ManagedPlanRevision || composition.CandidateSHA != snapshot.Composition.CandidateSHA256 || composition.CandidateSemanticSHA != snapshot.Composition.CandidateSemanticSHA256 || composition.CandidateTimedMembershipSHA != snapshot.Composition.CandidateTimedMembershipSHA256 {
 		return Result{}, errors.Join(ErrContributionConflict, composeErr)
@@ -685,7 +686,7 @@ func (w Workflow) replayApplied(ctx context.Context, operation protectionreposit
 	if observeErr != nil || !observation.Persisted || observation.State != FirewallLiveMatching || !observation.ManagedTablePresent || observation.CommittedComposition != composition.Revision || observation.CurrentRevision != composition.PlanRevision || observation.CurrentSemanticSHA != composition.CandidateSemanticSHA {
 		return Result{}, errors.Join(ErrContributionConflict, observeErr)
 	}
-	expectedMembership, membershipErr := expectedTimedMembershipSHA(current, w.now())
+	expectedMembership, membershipErr := expectedTimedMembershipSHA(current, w.now(), w.Codec)
 	if membershipErr != nil || observation.CurrentTimedMembershipSHA != expectedMembership || observation.ExpectedTimedMembershipSHA != expectedMembership {
 		return Result{}, errors.Join(ErrContributionConflict, membershipErr)
 	}
@@ -807,13 +808,13 @@ func (w Workflow) finishRollback(ctx context.Context, rolling protectionreposito
 	if err != nil || transition.Schema != FirewallTransitionSchemaV2 || !validFirewallSHA(transition.CandidateSemanticSHA256) || !validFirewallSHA(transition.CandidateTimedMembershipSHA256) {
 		return w.rollbackFailure(ctx, rolling, result, errors.Join(ErrContributionConflict, err), completeOperation)
 	}
-	desired, err := decodeContributionJSON(transition.DesiredJSON)
+	desired, err := decodeContributionJSON(transition.DesiredJSON, w.Codec)
 	if err != nil {
 		return w.rollbackFailure(ctx, rolling, result, err, completeOperation)
 	}
 	var previous *ManagedFirewallContributionV1
 	if transition.PreviousPresent {
-		value, decodeErr := decodeContributionJSON(transition.PreviousJSON)
+		value, decodeErr := decodeContributionJSON(transition.PreviousJSON, w.Codec)
 		if decodeErr != nil || value.SemanticRevision != transition.PreviousSemanticRevision || value.ContributionID != desired.ContributionID {
 			return w.rollbackFailure(ctx, rolling, result, errors.Join(ErrContributionConflict, decodeErr), completeOperation)
 		}
@@ -844,9 +845,9 @@ func (w Workflow) finishRollback(ctx context.Context, rolling protectionreposito
 		// The explicit retirement predicate proves ABSENT. The ordinary
 		// contribution projection requires MATCHING because it serves mutation;
 		// here only the retained desired inputs are needed to retire ownership.
-		current, err = contributionsFromModels(snapshot.Contributions)
+		current, err = contributionsFromModels(snapshot.Contributions, w.Codec)
 	} else {
-		current, err = contributionsFromSnapshot(snapshot)
+		current, err = contributionsFromSnapshot(snapshot, w.Codec)
 	}
 	if err != nil {
 		return w.rollbackFailure(ctx, rolling, result, err, completeOperation)
@@ -876,7 +877,7 @@ func (w Workflow) finishRollback(ctx context.Context, rolling protectionreposito
 	expectedCompositionRevision := snapshot.Composition.Revision
 	var replacementModel *protectionrepository.FirewallContributionModel
 	if previous != nil {
-		model, modelErr := contributionModel(*previous)
+		model, modelErr := contributionModel(*previous, w.Codec)
 		if modelErr != nil {
 			return w.rollbackFailure(ctx, rolling, result, modelErr, completeOperation)
 		}
@@ -888,13 +889,13 @@ func (w Workflow) finishRollback(ctx context.Context, rolling protectionreposito
 		// operation's historical whole-table before-image. Validate the exact
 		// current aggregate and then delete only the Solovey-owned table through
 		// the existing restricted rollback primitive.
-		currentComposition, composeErr := composeFirewall(current)
+		currentComposition, composeErr := composeFirewall(current, w.Codec)
 		if composeErr != nil || currentComposition.Revision != snapshot.Composition.Revision || currentComposition.PlanRevision != snapshot.Composition.ManagedPlanRevision || currentComposition.CandidateSHA != snapshot.Composition.CandidateSHA256 || currentComposition.CandidateSemanticSHA != snapshot.Composition.CandidateSemanticSHA256 || currentComposition.CandidateTimedMembershipSHA != snapshot.Composition.CandidateTimedMembershipSHA256 {
 			return w.rollbackFailure(ctx, rolling, result, errors.Join(ErrContributionConflict, composeErr), completeOperation)
 		}
-		candidate := RenderManagedNFT(currentComposition.Plan)
+		candidate := RenderManagedNFT(currentComposition.Plan, w.Codec)
 		candidateSHA := artifactSHA([]byte(candidate))
-		deleteArtifact := nftables.DeleteOwnedTableCandidate()
+		deleteArtifact := w.Codec.DeleteOwnedTableCandidate()
 		deleteSHA := artifactSHA(deleteArtifact)
 		revision := rollbackArtifactRevision(rolling.OperationID, "empty")
 		files := candidateFiles(currentComposition.Plan, candidate, candidateSHA)
@@ -914,7 +915,7 @@ func (w Workflow) finishRollback(ctx context.Context, rolling protectionreposito
 			if retainedRetirement {
 				return w.rollbackFailure(ctx, rolling, result, ErrContributionConflict, completeOperation)
 			}
-			expectedCurrentMembership, expectedErr := expectedTimedMembershipSHA(current, w.now())
+			expectedCurrentMembership, expectedErr := expectedTimedMembershipSHA(current, w.now(), w.Codec)
 			if expectedErr != nil || validated.PreviousRevision != snapshot.Composition.ManagedPlanRevision || !validFirewallSHA(snapshot.Composition.CandidateSemanticSHA256) || validated.PreviousSemanticSHA256 != snapshot.Composition.CandidateSemanticSHA256 || validated.PreviousTimedMembershipSHA256 != expectedCurrentMembership {
 				return w.rollbackFailure(ctx, rolling, result, ErrContributionConflict, completeOperation)
 			}
@@ -927,11 +928,11 @@ func (w Workflow) finishRollback(ctx context.Context, rolling protectionreposito
 		}
 		result.RollbackSHA256 = deleteSHA
 	} else {
-		composition, composeErr := composeFirewall(target)
+		composition, composeErr := composeFirewall(target, w.Codec)
 		if composeErr != nil {
 			return w.rollbackFailure(ctx, rolling, result, composeErr, completeOperation)
 		}
-		candidate := RenderManagedNFT(composition.Plan)
+		candidate := RenderManagedNFT(composition.Plan, w.Codec)
 		candidateSHA := artifactSHA([]byte(candidate))
 		revision := rollbackArtifactRevision(rolling.OperationID, composition.Revision[:16])
 		artifact, artifactErr := w.Artifacts.WriteRevision(ctx, rolling.OperationID, revision, candidateFiles(composition.Plan, candidate, candidateSHA))
@@ -945,7 +946,7 @@ func (w Workflow) finishRollback(ctx context.Context, rolling protectionreposito
 			return w.rollbackFailure(ctx, rolling, result, errors.Join(ErrContributionConflict, validateErr), completeOperation)
 		}
 		alreadyApplied := validated.PreviousRevision == composition.PlanRevision && validated.PreviousSemanticSHA256 == composition.CandidateSemanticSHA && validated.PreviousTimedMembershipSHA256 == composition.CandidateTimedMembershipSHA
-		expectedCurrentMembership, expectedErr := expectedTimedMembershipSHA(current, w.now())
+		expectedCurrentMembership, expectedErr := expectedTimedMembershipSHA(current, w.now(), w.Codec)
 		if expectedErr != nil {
 			return w.rollbackFailure(ctx, rolling, result, expectedErr, completeOperation)
 		}
@@ -965,7 +966,7 @@ func (w Workflow) finishRollback(ctx context.Context, rolling protectionreposito
 			// rather than admitting a new forward policy from stale browser facts.
 			// Bind its exact artifact to the freshly proven live before-image;
 			// the Core adapter rechecks that image at the mutation boundary.
-			if err := networkplan.CheckRollback(networkplan.RollbackIntent{HostRef: hostref.Local(), Owner: "server-protection", ResourceRef: networkplan.ProtectionResourceRef,
+			if err := w.NetworkPlanner.CheckRollback(networkplan.RollbackIntent{HostRef: hostref.Local(), Owner: "server-protection", ResourceRef: networkplan.ProtectionResourceRef,
 				CurrentRevision: validated.PreviousRevision, CurrentSemantic: validated.PreviousSemanticSHA256,
 				CurrentMembership: validated.PreviousTimedMembershipSHA256, CheckpointDigest: candidateSHA}); err != nil {
 				return w.rollbackFailure(ctx, rolling, result, err, completeOperation)
@@ -1010,7 +1011,7 @@ func (w Workflow) finishPreMutationRollback(ctx context.Context, rolling protect
 	if transition.MarkerUnixNano != 0 || transition.MutationCompletedUnixNano != 0 {
 		return w.rollbackFailure(ctx, rolling, result, ErrContributionConflict, completeOperation)
 	}
-	current, err := contributionsFromSnapshot(snapshot)
+	current, err := contributionsFromSnapshot(snapshot, w.Codec)
 	if err != nil {
 		return w.rollbackFailure(ctx, rolling, result, err, completeOperation)
 	}
@@ -1032,8 +1033,8 @@ func (w Workflow) finishPreMutationRollback(ctx context.Context, rolling protect
 		return w.rollbackFailure(ctx, rolling, result, errors.Join(ErrContributionConflict, validateErr), completeOperation)
 	}
 	if snapshot.HasComposition {
-		composition, composeErr := composeFirewall(current)
-		expectedCurrentMembership, expectedErr := expectedTimedMembershipSHA(current, w.now())
+		composition, composeErr := composeFirewall(current, w.Codec)
+		expectedCurrentMembership, expectedErr := expectedTimedMembershipSHA(current, w.now(), w.Codec)
 		if composeErr != nil || expectedErr != nil || composition.Revision != snapshot.Composition.Revision || composition.PlanRevision != snapshot.Composition.ManagedPlanRevision || composition.CandidateSHA != snapshot.Composition.CandidateSHA256 || composition.CandidateSemanticSHA != snapshot.Composition.CandidateSemanticSHA256 || composition.CandidateTimedMembershipSHA != snapshot.Composition.CandidateTimedMembershipSHA256 ||
 			!validated.PreviousTablePresent || validated.PreviousRevision != composition.PlanRevision || validated.PreviousSemanticSHA256 != composition.CandidateSemanticSHA || validated.PreviousTimedMembershipSHA256 != expectedCurrentMembership {
 			return w.rollbackFailure(ctx, rolling, result, errors.Join(ErrContributionConflict, composeErr), completeOperation)
@@ -1068,7 +1069,7 @@ func (w Workflow) finishPreMutationRollback(ctx context.Context, rolling protect
 // authority commit and the operation-journal terminal transition. It performs
 // read-only managed-table validation and never repeats apply or rollback.
 func (w Workflow) finishCommittedRollback(ctx context.Context, rolling protectionrepository.OperationLockModel, artifactRevision string, result Result, transition protectionrepository.FirewallContributionTransitionModel, desired ManagedFirewallContributionV1, previous *ManagedFirewallContributionV1, snapshot protectionrepository.FirewallAuthoritySnapshot, completeOperation bool) (Result, error) {
-	current, err := contributionsFromSnapshot(snapshot)
+	current, err := contributionsFromSnapshot(snapshot, w.Codec)
 	if err != nil {
 		return w.rollbackFailure(ctx, rolling, result, err, completeOperation)
 	}
@@ -1087,12 +1088,12 @@ func (w Workflow) finishCommittedRollback(ctx context.Context, rolling protectio
 	}
 	paths := workflowPaths(artifactRevision)
 	if snapshot.HasComposition {
-		composition, composeErr := composeFirewall(current)
+		composition, composeErr := composeFirewall(current, w.Codec)
 		if composeErr != nil || composition.Revision != snapshot.Composition.Revision || composition.PlanRevision != snapshot.Composition.ManagedPlanRevision || composition.CandidateSHA != snapshot.Composition.CandidateSHA256 || composition.CandidateSemanticSHA != snapshot.Composition.CandidateSemanticSHA256 || composition.CandidateTimedMembershipSHA != snapshot.Composition.CandidateTimedMembershipSHA256 {
 			return w.rollbackFailure(ctx, rolling, result, errors.Join(ErrContributionConflict, composeErr), completeOperation)
 		}
 		validated, validateErr := w.call(ctx, rolling, protectionhelper.OperationNFTValidate, paths, composition.PlanRevision, composition.CandidateSHA, "", "", false, composition.CandidateSemanticSHA, composition.CandidateTimedMembershipSHA)
-		expectedCurrentMembership, expectedErr := expectedTimedMembershipSHA(current, w.now())
+		expectedCurrentMembership, expectedErr := expectedTimedMembershipSHA(current, w.now(), w.Codec)
 		if validateErr != nil || expectedErr != nil || validated == nil || validated.CandidateSHA256 != composition.CandidateSHA || validated.SemanticSHA256 != composition.CandidateSemanticSHA || validated.TimedMembershipSHA256 != composition.CandidateTimedMembershipSHA || !validated.PreviousTablePresent ||
 			validated.PreviousRevision != composition.PlanRevision || validated.PreviousSemanticSHA256 != composition.CandidateSemanticSHA || validated.PreviousTimedMembershipSHA256 != expectedCurrentMembership {
 			return w.rollbackFailure(ctx, rolling, result, errors.Join(ErrContributionConflict, validateErr), completeOperation)
@@ -1244,7 +1245,7 @@ func (w Workflow) call(ctx context.Context, operation protectionrepository.Opera
 		if len(semantic) < 2 {
 			return nil, &networkplan.Conflict{Reason: networkplan.InvalidIntent, ResourceRef: networkplan.ProtectionResourceRef}
 		}
-		if err := networkplan.CheckRollback(networkplan.RollbackIntent{HostRef: hostref.Local(), Owner: "server-protection", ResourceRef: networkplan.ProtectionResourceRef,
+		if err := w.NetworkPlanner.CheckRollback(networkplan.RollbackIntent{HostRef: hostref.Local(), Owner: "server-protection", ResourceRef: networkplan.ProtectionResourceRef,
 			CurrentRevision: planRevision, CurrentSemantic: semantic[0], CurrentMembership: semantic[1], CheckpointDigest: rollbackSHA}); err != nil {
 			return nil, err
 		}
@@ -1371,15 +1372,18 @@ func validFirewallSHA(value string) bool {
 	return true
 }
 
-func Preflight(plan FirewallPlan) error {
+func Preflight(plan FirewallPlan, codec NFTCodec) error {
+	if codec == nil {
+		return ErrMissingCapability
+	}
 	if strings.TrimSpace(plan.Revision) == "" || plan.Revision != firewallPlanRevision(plan) {
 		return ErrPlanRevision
 	}
 	if plan.Mode == ModeCoexistenceEndpointManaged {
-		if err := preflightEndpointPlan(plan); err != nil {
+		if err := preflightEndpointPlan(plan, codec); err != nil {
 			return err
 		}
-		if len(RenderManagedNFT(plan)) > protectionhelper.MaxManagedCandidateBytes {
+		if len(RenderManagedNFT(plan, codec)) > protectionhelper.MaxManagedCandidateBytes {
 			return fmt.Errorf("%w: managed nft projection exceeds the observable size limit", ErrUnsafeResource)
 		}
 		return nil
@@ -1416,7 +1420,7 @@ func Preflight(plan FirewallPlan) error {
 	if len(plan.StormLimits) > 0 {
 		return fmt.Errorf("%w: nft rate primitive is unproven", ErrMissingCapability)
 	}
-	if len(RenderManagedNFT(plan)) > protectionhelper.MaxManagedCandidateBytes {
+	if len(RenderManagedNFT(plan, codec)) > protectionhelper.MaxManagedCandidateBytes {
 		return fmt.Errorf("%w: managed nft projection exceeds the observable size limit", ErrUnsafeResource)
 	}
 	return nil
@@ -1530,7 +1534,7 @@ func firewallCapabilitiesAvailable(result *protectionhelper.CapabilitiesResult, 
 }
 
 func (w Workflow) ready() error {
-	if w.Manager == nil || w.Helper == nil || w.Artifacts == nil || w.Marker == nil || w.State == nil || w.Recovery == nil || w.Health == nil || w.RollbackHealth == nil || w.Contributions == nil {
+	if w.Manager == nil || w.Helper == nil || w.Artifacts == nil || w.Marker == nil || w.State == nil || w.Recovery == nil || w.Health == nil || w.RollbackHealth == nil || w.Contributions == nil || w.NetworkPlanner == nil || w.Codec == nil {
 		return ErrWorkflowDisabled
 	}
 	return nil

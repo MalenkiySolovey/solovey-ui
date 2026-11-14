@@ -6,16 +6,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
+	canonical "github.com/MalenkiySolovey/solovey-host/network/planning"
 	"sort"
 	"strings"
 
+	networkintent "github.com/MalenkiySolovey/solovey-host/network/intent"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
 	platform "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
-	networkintent "github.com/MalenkiySolovey/solovey-ui/network/intent"
 )
 
-const Schema = "solovey-ui/network-plan/v1"
+const Schema = canonical.Schema
 
 // Allocation vocabulary is shared with typed requests; this package retains
 // the single allocator and all accepted-plan authority.
@@ -24,56 +24,34 @@ const ProtectionFamily = networkintent.ProtectionFamily
 const ProtectionTable = networkintent.ProtectionTable
 const ProtectionTableCLI = networkintent.ProtectionTableCLI
 
-type Reason string
+type Reason = canonical.Reason
 
 const (
-	InvalidIntent         Reason = "INVALID_INTENT"
-	StalePlan             Reason = "STALE_PLAN"
-	ResourceConflict      Reason = "RESOURCE_CONFLICT"
-	ResourceGone          Reason = "RESOURCE_GONE"
-	EndpointChanged       Reason = "ENDPOINT_CHANGED"
-	CapabilityUnavailable Reason = "CAPABILITY_UNAVAILABLE"
-	ObservationUnknown    Reason = "OBSERVATION_UNKNOWN"
-	ManagementUnknown     Reason = "MANAGEMENT_CONTINUITY_UNKNOWN"
-	ManagementBlocked     Reason = "MANAGEMENT_CONTINUITY_BLOCKED"
-	CandidateChanged      Reason = "CANDIDATE_CHANGED"
-	AllocationUnavailable Reason = "ALLOCATION_UNAVAILABLE"
+	InvalidIntent         Reason = canonical.InvalidIntent
+	StalePlan             Reason = canonical.StalePlan
+	ResourceConflict      Reason = canonical.ResourceConflict
+	ResourceGone          Reason = canonical.ResourceGone
+	EndpointChanged       Reason = canonical.EndpointChanged
+	CapabilityUnavailable Reason = canonical.CapabilityUnavailable
+	ObservationUnknown    Reason = canonical.ObservationUnknown
+	ManagementUnknown     Reason = canonical.ManagementUnknown
+	ManagementBlocked     Reason = canonical.ManagementBlocked
+	CandidateChanged      Reason = canonical.CandidateChanged
+	AllocationUnavailable Reason = canonical.AllocationUnavailable
 )
 
-type Conflict struct {
-	Reason      Reason `json:"reason"`
-	ResourceRef string `json:"resourceRef"`
-	Allocation  string `json:"allocation,omitempty"`
-}
-
-func (c *Conflict) Error() string { return fmt.Sprintf("network plan %s: %s", c.Reason, c.ResourceRef) }
+type Conflict = canonical.Conflict
 
 type ResourceBinding = networkintent.ResourceBinding
 type Intent = networkintent.Intent
 
-type Ownership struct {
-	HostRef      hostref.Ref `json:"hostRef"`
-	Owner        string      `json:"owner"`
-	ResourceRef  string      `json:"resourceRef"`
-	PlanRevision string      `json:"planRevision"`
-	Kind         string      `json:"kind"`
-	Purpose      string      `json:"purpose"`
-	Allocation   string      `json:"allocation"`
-}
+type Ownership = canonical.Ownership
 
 // Allocation is a current platform observation. Proven must come from the
 // adapter's managed-resource grammar/identity check, never from a familiar name.
-type Allocation struct {
-	Ownership
-	Proven           bool `json:"proven"`
-	IdentityMismatch bool `json:"identityMismatch,omitempty"`
-}
+type Allocation = canonical.Allocation
 
-type Continuity struct {
-	ResourceRef      string `json:"resourceRef"`
-	EndpointRevision string `json:"endpointRevision"`
-	Status           string `json:"status"` // VERIFIED, BLOCKED, UNKNOWN
-}
+type Continuity = canonical.Continuity
 
 // Facts are operation-local inputs from existing owner/platform boundaries.
 // The owner determines continuity policy. Revision changes invalidate preview,
@@ -223,22 +201,18 @@ func CheckAccepted(accepted Accepted, current Facts, candidateDigest string) err
 	return CheckCurrent(accepted.plan, current)
 }
 
-type DriftKind string
+type DriftKind = canonical.DriftKind
 
 const (
-	Missing                   DriftKind = "MISSING"
-	Mismatch                  DriftKind = "MISMATCH"
-	Stale                     DriftKind = "STALE"
-	UnexpectedManagedResource DriftKind = "UNEXPECTED_MANAGED_RESOURCE"
-	DependencyUnavailable     DriftKind = "DEPENDENCY_UNAVAILABLE"
-	Unknown                   DriftKind = "UNKNOWN"
+	Missing                   DriftKind = canonical.Missing
+	Mismatch                  DriftKind = canonical.Mismatch
+	Stale                     DriftKind = canonical.Stale
+	UnexpectedManagedResource DriftKind = canonical.UnexpectedManagedResource
+	DependencyUnavailable     DriftKind = canonical.DependencyUnavailable
+	Unknown                   DriftKind = canonical.Unknown
 )
 
-type Drift struct {
-	Kind        DriftKind `json:"kind"`
-	ResourceRef string    `json:"resourceRef"`
-	Repairable  bool      `json:"repairable"`
-}
+type Drift = canonical.Drift
 
 // Compare is bounded and read-only. A late observation of another accepted
 // plan cannot change the current generation's status or authorize repair.

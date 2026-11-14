@@ -4,11 +4,10 @@ import (
 	"net/netip"
 	"sort"
 	"strconv"
-	"strings"
 
+	networkintent "github.com/MalenkiySolovey/solovey-host/network/intent"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	networkintent "github.com/MalenkiySolovey/solovey-ui/network/intent"
 )
 
 const ProtectionResourceRef = networkintent.ProtectionResourceRef
@@ -170,28 +169,12 @@ func protectionEndpointKey(key hostresources.PublicEndpointKey) string {
 
 // ValidProtectionEndpoint checks typed endpoint fields without returning OS syntax.
 func ValidProtectionEndpoint(key hostresources.PublicEndpointKey, source string) bool {
-	if !validEndpoint(key) {
-		return false
-	}
-	if source == "" {
-		return true
-	}
-	prefix, err := netip.ParsePrefix(source)
-	return err == nil && prefix.Masked().String() == source && prefix.Addr().Is4() == (key.AddressFamily == hostresources.AddressFamilyIPv4)
+	return networkintent.ValidProtectionEndpoint(key, source)
 }
 
 func setClass(value SetClass) bool {
 	return value == GraySet || value == RateSet || value == QuarantineSet || value == BlockSet
 }
 func validEndpoint(key hostresources.PublicEndpointKey) bool {
-	if key.Port == 0 || key.Network != hostresources.NetworkTCP && key.Network != hostresources.NetworkUDP ||
-		key.AddressFamily != hostresources.AddressFamilyIPv4 && key.AddressFamily != hostresources.AddressFamilyIPv6 {
-		return false
-	}
-	listen := hostresources.NormalizeListen(key.BindAddress)
-	if listen.Wildcard() {
-		return true
-	}
-	address, err := netip.ParseAddr(listen.Value)
-	return err == nil && !strings.Contains(listen.Value, "%") && address.Is4() == (key.AddressFamily == hostresources.AddressFamilyIPv4)
+	return networkintent.ValidProtectionEndpoint(key, "")
 }

@@ -1,5 +1,7 @@
 package firewall
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendnetwork"
+
 import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
 
 import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
@@ -104,7 +106,7 @@ func assertFreshLifecycleAfterRetirement(t *testing.T, workflow Workflow, baseli
 	if err != nil {
 		t.Fatal(err)
 	}
-	preview := Preview(current.Plan, PreviewOptions{IncludeGeneratedNFT: true})
+	preview := Preview(current.Plan, PreviewOptions{IncludeGeneratedNFT: true, Codec: backendnetwork.NFTCodec{}})
 	if preview.Revision != current.Plan.Revision {
 		t.Fatal("fresh Preview lost current plan")
 	}

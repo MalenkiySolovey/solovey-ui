@@ -2,8 +2,8 @@ package firewall
 
 import (
 	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
+	networkplan "github.com/MalenkiySolovey/solovey-host/network/planning"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/enforcement"
-	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
 
 // protectionIntent binds the concrete owner plan to the reusable feature

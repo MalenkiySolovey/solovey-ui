@@ -272,7 +272,7 @@ func (c *Controller) Apply(ctx context.Context, input ApplyRequestV1) (ApplyResu
 		return ApplyResultV1{}, err
 	}
 	transition, transitionErr := c.Repository.FirewallTransition(ctx, input.OperationID)
-	requestedContributionRevision := protectionfirewall.ContributionRevision(candidate)
+	requestedContributionRevision := protectionfirewall.ContributionRevision(candidate, c.Baseline.Codec)
 	if transitionErr != nil || requestedContributionRevision == "" || transition.DesiredSemanticRevision != requestedContributionRevision {
 		return ApplyResultV1{}, contractError(CodeRevisionDrift, transitionErr)
 	}
@@ -420,7 +420,7 @@ func (c *Controller) statusState(ctx context.Context, refresh bool) (StatusV1, p
 	if err != nil {
 		return StatusV1{}, protectionfirewall.BaselineState{}, err
 	}
-	baselineAuthorityActive, err := protectionfirewall.BaselineAuthorityMatchesPlan(authority, baseline.Plan)
+	baselineAuthorityActive, err := protectionfirewall.BaselineAuthorityMatchesPlan(authority, baseline.Plan, c.Baseline.Codec)
 	if err != nil {
 		return StatusV1{}, protectionfirewall.BaselineState{}, err
 	}

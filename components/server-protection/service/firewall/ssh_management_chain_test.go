@@ -1,5 +1,7 @@
 package firewall
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendnetwork"
+
 import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 
 import (
@@ -154,14 +156,14 @@ func assertSSHPostureReachesPreparedTypedFirewallCandidate(t *testing.T, now tim
 		Graph: graph, Resources: resources, Management: management, RecoveryPaths: []hostresources.RecoveryPathV1{recovery},
 		TrustedSources: []string{"198.51.100.0/24"}, RequireSSHKeep: true, Now: now,
 	})
-	if err := Preflight(plan); err != nil || !plan.BaselineEligibility.MutationReady || !slices.Contains(plan.AllowTCPPorts, int(authority.Socket.Port)) {
+	if err := Preflight(plan, backendnetwork.NFTCodec{}); err != nil || !plan.BaselineEligibility.MutationReady || !slices.Contains(plan.AllowTCPPorts, int(authority.Socket.Port)) {
 		t.Fatalf("SSH management-preservation candidate failed: plan=%#v err=%v", plan, err)
 	}
-	preview := Preview(plan, PreviewOptions{IncludeGeneratedNFT: true, NFTCapability: NFTPreviewCapability{Available: true, Revision: sshmanagement.Revision("nft-capability")}})
+	preview := Preview(plan, PreviewOptions{IncludeGeneratedNFT: true, NFTCapability: NFTPreviewCapability{Available: true, Revision: sshmanagement.Revision("nft-capability")}, Codec: backendnetwork.NFTCodec{}})
 	if preview.Backend != "preview_only" || preview.Revision != plan.Revision || preview.GeneratedNFT == "" {
 		t.Fatalf("SSH candidate preview is incomplete: %#v", preview)
 	}
-	candidate := RenderManagedNFT(plan)
+	candidate := RenderManagedNFT(plan, backendnetwork.NFTCodec{})
 	if !strings.Contains(candidate, "solovey-revision:"+plan.Revision) || !strings.Contains(candidate, "dport "+strconv.Itoa(int(authority.Socket.Port))) || strings.Contains(candidate, "flush ruleset") || strings.Contains(candidate, "table inet fw4") {
 		t.Fatalf("SSH candidate crossed its managed-table boundary:\n%s", candidate)
 	}
@@ -413,7 +415,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 		t.Cleanup(func() { shared.Provider, shared.Now = previousProvider, previousNow })
 	}
 	workflow.Now = manager.Now
-	baseline := NewBaselineService(repo, manager)
+	baseline := NewBaselineService(repo, manager, backendnetwork.NFTCodec{}, baselineSourcesFixture())
 	baseline.SSH, baseline.Now = manager, manager.Now
 	boot := &controlledBootGeneration{generation: hostresources.Revision("boot-A")}
 	if len(bootRecovery) != 0 {
@@ -440,7 +442,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 	if state.Plan.BaselineEligibility.MutationReady {
 		t.Fatal("missing operator prerequisites authorized mutation")
 	}
-	preview := Preview(state.Plan, PreviewOptions{IncludeGeneratedNFT: true})
+	preview := Preview(state.Plan, PreviewOptions{IncludeGeneratedNFT: true, Codec: backendnetwork.NFTCodec{}})
 	if strings.Contains(preview.GeneratedNFT, "flush ruleset") || strings.Contains(preview.GeneratedNFT, "table inet fw4") {
 		t.Fatal("preview crossed owned namespace")
 	}
@@ -481,7 +483,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 	if provider.calls != 2 || len(ready.Management) != 2 || !ready.Plan.BaselineEligibility.MutationReady {
 		t.Fatalf("current dual-family baseline not ready: calls=%d eligibility=%#v", provider.calls, ready.Plan.BaselineEligibility)
 	}
-	if err := Preflight(ready.Plan); err != nil {
+	if err := Preflight(ready.Plan, backendnetwork.NFTCodec{}); err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Contains(ready.Plan.AllowTCPPorts, 22) {
@@ -523,8 +525,8 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 		t.Fatalf("clock-only baseline refresh changed preview binding: %v", err)
 	}
 	ready = renewed
-	preview = Preview(ready.Plan, PreviewOptions{IncludeGeneratedNFT: true, NFTCapability: NFTPreviewCapability{Available: true, Revision: hostresources.Revision("fixture-capability")}})
-	if preview.Revision != ready.Plan.Revision || preview.GeneratedNFT != RenderNFTPreview(ready.Plan) {
+	preview = Preview(ready.Plan, PreviewOptions{IncludeGeneratedNFT: true, NFTCapability: NFTPreviewCapability{Available: true, Revision: hostresources.Revision("fixture-capability")}, Codec: backendnetwork.NFTCodec{}})
+	if preview.Revision != ready.Plan.Revision || preview.GeneratedNFT != RenderNFTPreview(ready.Plan, backendnetwork.NFTCodec{}) {
 		t.Fatal("fresh preview did not bind the candidate")
 	}
 	if exactHealth {
@@ -614,17 +616,17 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 	if err != nil {
 		t.Fatal(err)
 	}
-	if current.Plan.Revision != ready.Plan.Revision || current.Plan.InputRevision != ready.Plan.InputRevision || RenderManagedNFT(current.Plan) != RenderManagedNFT(ready.Plan) {
+	if current.Plan.Revision != ready.Plan.Revision || current.Plan.InputRevision != ready.Plan.InputRevision || RenderManagedNFT(current.Plan, backendnetwork.NFTCodec{}) != RenderManagedNFT(ready.Plan, backendnetwork.NFTCodec{}) {
 		t.Fatal("same semantics changed public plan/input/candidate")
 	}
 	if current.Plan.GraphRevision == ready.Plan.GraphRevision || current.Plan.OwnerObservationRevision == ready.Plan.OwnerObservationRevision {
 		t.Fatal("fixture did not renew graph and owner observation generations")
 	}
-	beforeContribution, err := contributionFromPlan(ready.Plan)
+	beforeContribution, err := contributionFromPlan(ready.Plan, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	afterContribution, err := contributionFromPlan(current.Plan)
+	afterContribution, err := contributionFromPlan(current.Plan, backendnetwork.NFTCodec{})
 	if err != nil || beforeContribution.SemanticRevision != afterContribution.SemanticRevision {
 		t.Fatalf("renewal changed contribution identity: %v", err)
 	}
@@ -669,7 +671,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 		t.Fatalf("renewed Apply: state=%s err=%v", applied.State, err)
 	}
 	checkpoint, err := workflow.loadCheckpoint(operationID)
-	if err != nil || checkpoint.ContributionRevision != ContributionRevision(current.Plan) || checkpoint.PlanRevision != applied.PlanRevision {
+	if err != nil || checkpoint.ContributionRevision != ContributionRevision(current.Plan, backendnetwork.NFTCodec{}) || checkpoint.PlanRevision != applied.PlanRevision {
 		t.Fatalf("renewed checkpoint: %v", err)
 	}
 	if !storage.HasMutationMarker(operationID) || checkpoint.GraphRevision != current.Plan.GraphRevision {

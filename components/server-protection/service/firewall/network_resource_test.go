@@ -1,5 +1,7 @@
 package firewall
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendnetwork"
+
 import (
 	"context"
 	"errors"
@@ -22,7 +24,7 @@ func TestNetworkResourceLifecycleRetiresStaleGuardWithoutRebindingOtherPolicy(t 
 	guard4 := compositionPlanForUDP(t, current, compositionEndpoint(current, hostresources.NetworkUDP, hostresources.AddressFamilyIPv4))
 	guard4Operation := applyCompositionWorkflowPlan(t, &w, guard4, "guarded-udp4")
 	guard6 := compositionPlanForUDP(t, current, compositionEndpoint(current, hostresources.NetworkUDP, hostresources.AddressFamilyIPv6))
-	guard6Contribution, err := contributionFromPlan(guard6)
+	guard6Contribution, err := contributionFromPlan(guard6, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,8 +55,8 @@ func TestNetworkResourceLifecycleRetiresStaleGuardWithoutRebindingOtherPolicy(t 
 	}
 	applyCompositionWorkflowPlan(t, &w, current, "changed-guarded-baseline")
 	newGuard := compositionPlanForUDP(t, current, compositionEndpoint(current, hostresources.NetworkUDP, hostresources.AddressFamilyIPv4))
-	newGuardContribution, err := contributionFromPlan(newGuard)
-	oldGuardContribution, oldErr := contributionFromPlan(guard4)
+	newGuardContribution, err := contributionFromPlan(newGuard, backendnetwork.NFTCodec{})
+	oldGuardContribution, oldErr := contributionFromPlan(guard4, backendnetwork.NFTCodec{})
 	if err != nil || oldErr != nil || newGuardContribution.ContributionID != oldGuardContribution.ContributionID || newGuardContribution.SemanticRevision == oldGuardContribution.SemanticRevision {
 		t.Fatal("changed canonical endpoint did not retain semantic guard identity with a new revision")
 	}
@@ -68,11 +70,11 @@ func TestNetworkResourceLifecycleRetiresStaleGuardWithoutRebindingOtherPolicy(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	values, err := contributionsFromSnapshot(snapshot)
+	values, err := contributionsFromSnapshot(snapshot, backendnetwork.NFTCodec{})
 	if err != nil || len(values) != 2 || contributionRevision(values, guard6Contribution.ContributionID) != guard6Contribution.SemanticRevision || contributionRevision(values, newGuardContribution.ContributionID) != "" {
 		t.Fatal("retirement removed the independent IPv6 guard or retained the deleted binding")
 	}
-	composition, err := composeFirewall(values)
+	composition, err := composeFirewall(values, backendnetwork.NFTCodec{})
 	if err != nil || len(composition.Plan.Endpoints) != 1 || composition.Plan.Endpoints[0].ResourceID != retainedRef || composition.Plan.Endpoints[0].UDPFlowPolicy == nil {
 		t.Fatalf("remaining materialized policy changed: %v", err)
 	}
@@ -158,7 +160,7 @@ func networkOwnerResourcePlan(t *testing.T, resources []hostresources.Protectabl
 	}
 	graph := protectionresources.BuildSocketOwnershipGraph(protectionresources.SocketGraphInput{Resources: resources, Surfaces: surfaces, Now: now})
 	plan := BuildEndpointPlan(EndpointPlanInput{Graph: graph, Resources: resources, Now: now})
-	if err := Preflight(plan); err != nil {
+	if err := Preflight(plan, backendnetwork.NFTCodec{}); err != nil {
 		t.Fatalf("changed canonical resource plan: %v", err)
 	}
 	return plan

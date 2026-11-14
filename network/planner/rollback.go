@@ -1,14 +1,11 @@
 package planner
 
-import "github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
+import canonical "github.com/MalenkiySolovey/solovey-host/network/planning"
 
 // RollbackIntent describes compensation of proven owned state, not a new
 // forward policy. The existing broker/checkpoint owner must still authenticate
 // the before-image and compare the complete live identity before restoring it.
-type RollbackIntent struct {
-	HostRef                                                                                   hostref.Ref
-	Owner, ResourceRef, CurrentRevision, CurrentSemantic, CurrentMembership, CheckpointDigest string
-}
+type RollbackIntent = canonical.RollbackIntent
 
 func CheckRollback(intent RollbackIntent) error {
 	if !intent.HostRef.IsLocal() || !token(intent.Owner, 64) || intent.ResourceRef != ProtectionResourceRef ||
