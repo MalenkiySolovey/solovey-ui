@@ -2,11 +2,9 @@ package helper
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
+	canonical "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helpercontract"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
@@ -60,7 +58,7 @@ func (e ContractEngine) HandleContext(ctx context.Context, request Request) Resp
 		response.Code, response.Reason = CodeMissingCapability, "helper_version_mismatch"
 		return response
 	}
-	if err := request.Validate(e.root); err != nil {
+	if err := ValidateRequest(request, e.root); err != nil {
 		response.Code, response.Reason = CodeInvalidRequest, "request_validation_failed"
 		if errors.Is(err, ErrManagedPathForbidden) {
 			response.Code, response.Reason = CodePathForbidden, "path_forbidden"
@@ -116,7 +114,7 @@ func (e ContractEngine) HandleContext(ctx context.Context, request Request) Resp
 		response.Code, response.Reason = CodeValidationFailed, "managed_operation_failed"
 		var conflict *networkplan.Conflict
 		if errors.As(err, &conflict) {
-			response.NetworkReason = conflict.Reason
+			response.NetworkReason = string(conflict.Reason)
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
 			response.Code, response.Reason = CodeTimeout, "timeout"
@@ -206,97 +204,23 @@ func (e ContractEngine) capabilities(ctx context.Context) *CapabilitiesResult {
 }
 
 func validSSHRecoverySupport(value SSHRecoverySupport) bool {
-	return value.PlatformKnown && value.Linux && value.Available && validSHA256(value.VerifierRevision) &&
-		validSHA256(value.ObserverRevision) &&
-		(value.EvidenceKind == SSHRecoveryEvidenceJournald || value.EvidenceKind == SSHRecoveryEvidenceLogread)
+	return canonical.ValidSSHRecoverySupport(value)
 }
-
-func SSHRecoveryCapabilityAvailable(result *CapabilitiesResult) bool {
-	return result != nil && CapabilityAvailable(result, OperationSSHRecoveryObserve) && validSSHRecoverySupport(result.SSHRecovery)
+func SSHRecoveryCapabilityAvailable(value *CapabilitiesResult) bool {
+	return canonical.SSHRecoveryCapabilityAvailable(value)
 }
-
-func capabilityReason(result *CapabilitiesResult, operation Operation) string {
-	for _, capability := range result.Capabilities {
-		if capability.Operation == operation && capability.Reason != "" {
-			return capability.Reason
-		}
-	}
-	return "missing_capability"
+func capabilityReason(value *CapabilitiesResult, operation Operation) string {
+	return canonical.CapabilityReason(value, operation)
 }
-
-func DefaultCapabilities() *CapabilitiesResult {
-	capabilities := make([]Capability, 0, len(allowedOperations))
-	for _, operation := range []Operation{OperationCapabilities, OperationNFTValidate, OperationNFTObserve, OperationNFTApply, OperationNFTRollback, OperationNginxDetectVersion, OperationNginxValidate, OperationNginxInstall, OperationNginxSwitch, OperationNginxReload, OperationNginxVerify, OperationNginxRestore, OperationListenerOwnerObserve, OperationSSHRecoveryObserve} {
-		available := operation == OperationCapabilities
-		reason := "missing_capability"
-		if available {
-			reason = ""
-		}
-		capabilities = append(capabilities, Capability{Operation: operation, Available: available, Reason: reason})
-	}
-	result := &CapabilitiesResult{ProtocolVersions: []int{ProtocolVersion}, HelperVersion: HelperVersion, ContractVersion: HelperContractVersion, Capabilities: capabilities, NFT: NFTSupport{Reason: "nft_capability_unknown"}, Nginx: NginxSupport{Reason: "nginx_capability_unknown"}, SSHRecovery: SSHRecoverySupport{Reason: "ssh_recovery_capability_unknown"}, ListenerOwner: ListenerOwnerSupport{Reason: "listener_owner_capability_unknown"}}
-	setCapabilityRevision(result)
-	return result
+func DefaultCapabilities() *CapabilitiesResult        { return canonical.DefaultCapabilities() }
+func setCapabilityRevision(value *CapabilitiesResult) { canonical.SetCapabilityRevision(value) }
+func CapabilityAvailable(value *CapabilitiesResult, operation Operation) bool {
+	return canonical.CapabilityAvailable(value, operation)
 }
-
-func setCapabilityRevision(result *CapabilitiesResult) {
-	if result == nil {
-		return
-	}
-	copy := *result
-	copy.Revision = ""
-	data, _ := json.Marshal(copy)
-	result.Revision = sha256Hex(data)
+func validateNegotiation(value *CapabilitiesResult) error {
+	return canonical.ValidateCapabilities(value)
 }
-
-func CapabilityAvailable(result *CapabilitiesResult, operation Operation) bool {
-	if result == nil {
-		return false
-	}
-	for _, capability := range result.Capabilities {
-		if capability.Operation == operation {
-			return capability.Available
-		}
-	}
-	return false
+func ValidateCapabilities(value *CapabilitiesResult) error {
+	return canonical.ValidateCapabilities(value)
 }
-
-func validateNegotiation(result *CapabilitiesResult) error {
-	if result == nil || result.HelperVersion == "" {
-		return fmt.Errorf("helper did not return capabilities")
-	}
-	if result.ContractVersion != HelperContractVersion || !compatibleHelperVersion(result.HelperVersion) {
-		return fmt.Errorf("helper_version_mismatch")
-	}
-	expectedRevision := *result
-	setCapabilityRevision(&expectedRevision)
-	if !validRevision(result.Revision) || result.Revision != expectedRevision.Revision {
-		return fmt.Errorf("helper_version_mismatch")
-	}
-	found := false
-	for _, version := range result.ProtocolVersions {
-		if version == ProtocolVersion {
-			found = true
-			break
-		}
-	}
-	if !found {
-		return fmt.Errorf("helper_version_mismatch")
-	}
-	recoveryAdvertised := CapabilityAvailable(result, OperationSSHRecoveryObserve)
-	if recoveryAdvertised != result.SSHRecovery.Available || recoveryAdvertised && !validSSHRecoverySupport(result.SSHRecovery) {
-		return fmt.Errorf("helper_version_mismatch")
-	}
-	return nil
-}
-
-// ValidateCapabilities exposes the same strict protocol/contract/revision
-// negotiation used by the panel client to bounded diagnostic consumers.
-func ValidateCapabilities(result *CapabilitiesResult) error {
-	return validateNegotiation(result)
-}
-
-func compatibleHelperVersion(version string) bool {
-	parts := strings.Split(version, ".")
-	return len(parts) == 3 && parts[0]+"."+parts[1] == HelperContractVersion
-}
+func compatibleHelperVersion(value string) bool { return canonical.CompatibleHelperVersion(value) }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	canonical "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helpercontract"
 	"time"
 )
 
@@ -29,12 +30,7 @@ type helperIdentityInvoker interface {
 	HelperIdentityRevision() string
 }
 
-type ExecutionMetadata struct {
-	HelperIdentityRevision        string
-	CapabilityRevision            string
-	ListenerOwnerContractRevision string
-	ListenerOwnerObserverRevision string
-}
+type ExecutionMetadata = canonical.ExecutionMetadata
 
 type AuditEvent struct {
 	Phase           string
@@ -92,7 +88,7 @@ func (c *Client) ExecuteWithMetadata(ctx context.Context, request Request) (Resp
 	if invoker, ok := c.invoker.(helperIdentityInvoker); ok {
 		metadata.HelperIdentityRevision = invoker.HelperIdentityRevision()
 	}
-	if err := request.Validate(c.root); err != nil {
+	if err := ValidateRequest(request, c.root); err != nil {
 		code, reason := CodeInvalidRequest, "request_validation_failed"
 		if errors.Is(err, ErrManagedPathForbidden) {
 			code, reason = CodePathForbidden, "path_forbidden"

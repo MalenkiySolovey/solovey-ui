@@ -9,7 +9,7 @@ import (
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
-	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
+	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helpercontract"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 )
 

@@ -2,7 +2,7 @@ package nftables
 
 import "errors"
 
-func (r NFTValidateRequest) Validate(root ManagedRoot) error {
+func ValidateRequest(r NFTValidateRequest, root ManagedRoot) error {
 	if !validRevision(r.ExpectedRevision) || !validSHA256(r.ExpectedSHA256) || !validSHA256(r.ExpectedSemanticSHA256) || !validSHA256(r.ExpectedTimedMembershipSHA256) {
 		return errors.New("nft validation requires bounded candidate artifact and semantic identities")
 	}
@@ -10,7 +10,7 @@ func (r NFTValidateRequest) Validate(root ManagedRoot) error {
 	return err
 }
 
-func (r NFTApplyRequest) Validate(root ManagedRoot) error {
+func ValidateApplyRequest(r NFTApplyRequest, root ManagedRoot) error {
 	if r.ExpectedTable != managedTable {
 		return errors.New("nft apply is restricted to inet solovey_protection")
 	}
@@ -31,7 +31,7 @@ func (r NFTApplyRequest) Validate(root ManagedRoot) error {
 	return err
 }
 
-func (r NFTRollbackRequest) Validate(root ManagedRoot) error {
+func ValidateRollbackRequest(r NFTRollbackRequest, root ManagedRoot) error {
 	if r.ExpectedTable != managedTable {
 		return errors.New("nft rollback is restricted to inet solovey_protection")
 	}

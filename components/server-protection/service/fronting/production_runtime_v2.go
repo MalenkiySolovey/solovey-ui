@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
+	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helpercontract"
 )
 
 type staticNginxVersionReaderV2 struct{ observation NginxVersionObservationV2 }

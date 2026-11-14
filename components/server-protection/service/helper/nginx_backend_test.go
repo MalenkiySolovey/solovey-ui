@@ -49,7 +49,7 @@ func TestNginxContractRejectsTraversalSymlinksAndArbitraryPayload(t *testing.T) 
 	for name, path := range map[string]string{"traversal": "../candidate.conf", "absolute": filepath.Join(root.Path(), "revisions", "candidate.conf"), "arbitrary": "../../etc/nginx/nginx.conf"} {
 		t.Run(name, func(t *testing.T) {
 			request := Request{ProtocolVersion: ProtocolVersion, Correlation: Correlation{OperationID: "operation-path", InstanceID: "instance", LockRevision: 1}, Operation: OperationNginxValidate, NginxValidate: &NginxValidateRequest{CandidatePath: path, ExpectedRevision: revision, ExpectedSHA256: candidateSHA, ExpectedBinary: identity}}
-			if err := request.Validate(root); !errors.Is(err, ErrManagedPathForbidden) {
+			if err := ValidateRequest(request, root); !errors.Is(err, ErrManagedPathForbidden) {
 				t.Fatalf("path %q err=%v", path, err)
 			}
 		})
@@ -58,12 +58,12 @@ func TestNginxContractRejectsTraversalSymlinksAndArbitraryPayload(t *testing.T) 
 	target, _ := root.Resolve(candidatePath, true)
 	if err := os.Symlink(target, link); err == nil {
 		request := Request{ProtocolVersion: ProtocolVersion, Correlation: Correlation{OperationID: "operation-link", InstanceID: "instance", LockRevision: 1}, Operation: OperationNginxValidate, NginxValidate: &NginxValidateRequest{CandidatePath: "candidate-link.conf", ExpectedRevision: revision, ExpectedSHA256: candidateSHA, ExpectedBinary: identity}}
-		if err := request.Validate(root); !errors.Is(err, ErrManagedPathForbidden) {
+		if err := ValidateRequest(request, root); !errors.Is(err, ErrManagedPathForbidden) {
 			t.Fatalf("symlink candidate accepted: %v", err)
 		}
 	}
 	malformed := Request{ProtocolVersion: ProtocolVersion, Correlation: Correlation{OperationID: "operation-shape", InstanceID: "instance", LockRevision: 1}, Operation: OperationNginxReload, NginxReload: &NginxReloadRequest{ExpectedRevision: revision, ExpectedSHA256: candidateSHA, ExpectedBinary: identity}, NFTValidate: &NFTValidateRequest{CandidatePath: candidatePath, ExpectedRevision: revision, ExpectedSHA256: candidateSHA}}
-	if err := malformed.Validate(root); err == nil || !strings.Contains(err.Error(), "exactly one typed") {
+	if err := ValidateRequest(malformed, root); err == nil || !strings.Contains(err.Error(), "exactly one typed") {
 		t.Fatalf("arbitrary second payload accepted: %v", err)
 	}
 	t.Run("symlink parent", func(t *testing.T) {
@@ -78,7 +78,7 @@ func TestNginxContractRejectsTraversalSymlinksAndArbitraryPayload(t *testing.T) 
 			t.Skipf("symlink unavailable: %v", err)
 		}
 		request := Request{ProtocolVersion: ProtocolVersion, Correlation: Correlation{OperationID: "operation-parent", InstanceID: "instance", LockRevision: 1}, Operation: OperationNginxValidate, NginxValidate: &NginxValidateRequest{CandidatePath: "linked-parent/candidate.conf", ExpectedRevision: revision, ExpectedSHA256: candidateSHA, ExpectedBinary: identity}}
-		if err := request.Validate(root); !errors.Is(err, ErrManagedPathForbidden) {
+		if err := ValidateRequest(request, root); !errors.Is(err, ErrManagedPathForbidden) {
 			t.Fatalf("symlink parent accepted: %v", err)
 		}
 	})

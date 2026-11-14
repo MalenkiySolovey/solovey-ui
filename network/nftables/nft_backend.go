@@ -1,5 +1,7 @@
 package nftables
 
+import canonical "github.com/MalenkiySolovey/solovey-host/network/nftcontract"
+
 import (
 	"bytes"
 	"context"
@@ -33,18 +35,7 @@ const nftRateCapabilityProbe = "table inet solovey_capability_probe {\n  chain i
 
 // NFTSupport is explicit so an unknown platform, binary, or primitive never
 // becomes an affirmative capability by inference.
-type NFTSupport struct {
-	BaseFirewallPresent bool   `json:"base_firewall_present"`
-	PlatformKnown       bool   `json:"platform_known"`
-	Linux               bool   `json:"linux"`
-	Available           bool   `json:"available"`
-	Version             string `json:"version,omitempty"`
-	TTLSet              bool   `json:"ttl_set"`
-	RateLimit           bool   `json:"rate_limit"`
-	TTLSetReason        string `json:"ttl_set_reason,omitempty"`
-	RateLimitReason     string `json:"rate_limit_reason,omitempty"`
-	Reason              string `json:"reason,omitempty"`
-}
+type NFTSupport = canonical.NFTSupport
 
 // NFTExecutor is the complete privileged command vocabulary. It has no method
 // accepting a binary, argument list, command string, table, family, or stdin.

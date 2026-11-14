@@ -84,7 +84,7 @@ func TestNetworkOwnershipConflictSurvivesBrokerWithoutMutation(t *testing.T) {
 		ProtocolVersion: ProtocolVersion, Correlation: Correlation{OperationID: "observe-conflict", InstanceID: "instance"},
 		Operation: OperationNFTObserve, NFTObserve: &NFTObserveRequest{},
 	})
-	if response.OK || response.NetworkReason != networkplan.ResourceConflict || executor.applies != 0 || executor.deleteCalls != 0 || response.NFT != nil {
+	if response.OK || response.NetworkReason != string(networkplan.ResourceConflict) || executor.applies != 0 || executor.deleteCalls != 0 || response.NFT != nil {
 		t.Fatalf("ownership conflict lost at typed broker: %#v", response)
 	}
 }
