@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	componenthealth "github.com/MalenkiySolovey/solovey-host/componenthost/health"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
@@ -145,8 +145,8 @@ type Controller struct {
 	Operations OperationService
 	Firewall   *protectionfirewall.Workflow
 	Baseline   *protectionfirewall.BaselineService
-	Probes     *componenthealth.ProtocolProbeRegistryV1
-	Transports *hostresources.InboundTransportRegistryV2
+	Probes     ProbeSource
+	Transports TransportSource
 	Now        func() time.Time
 }
 
@@ -157,22 +157,8 @@ func (c *Controller) now() time.Time {
 	return time.Now().UTC()
 }
 
-func (c *Controller) probes() *componenthealth.ProtocolProbeRegistryV1 {
-	if c != nil && c.Probes != nil {
-		return c.Probes
-	}
-	return componenthealth.DefaultProtocolProbesV1
-}
-
-func (c *Controller) transports() *hostresources.InboundTransportRegistryV2 {
-	if c != nil && c.Transports != nil {
-		return c.Transports
-	}
-	return hostresources.DefaultInboundTransportsV2
-}
-
 func (c *Controller) ready() error {
-	if c == nil || c.Repository == nil || c.Baseline == nil {
+	if c == nil || c.Repository == nil || c.Baseline == nil || c.Probes == nil || c.Transports == nil {
 		return contractError(CodeMissingCapability, errors.New("udp guard service dependencies are unavailable"))
 	}
 	return nil
@@ -408,7 +394,7 @@ func (c *Controller) statusState(ctx context.Context, refresh bool) (StatusV1, p
 		return StatusV1{}, protectionfirewall.BaselineState{}, err
 	}
 	now := c.now()
-	facts, err := c.transports().Facts(ctx, now)
+	facts, err := c.Transports.Facts(ctx, now)
 	if err != nil {
 		return StatusV1{}, protectionfirewall.BaselineState{}, err
 	}
@@ -440,7 +426,7 @@ func (c *Controller) statusState(ctx context.Context, refresh bool) (StatusV1, p
 					ConfigurationRevision: fact.ConfigurationRevision, SocketRevision: observed.OwnerObservationRevision,
 					AddressFamily: observed.Key.AddressFamily, ConfiguredBind: observed.Key.BindAddress, Port: observed.Key.Port,
 				}
-				probeCapabilities[fact.ResourceID+"|"+observed.ID] = c.probes().Capability(ctx, target)
+				probeCapabilities[fact.ResourceID+"|"+observed.ID] = c.Probes.Capability(ctx, target)
 			}
 		}
 	}

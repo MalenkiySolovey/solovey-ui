@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	componenthealth "github.com/MalenkiySolovey/solovey-host/componenthost/health"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 )
 
 const (

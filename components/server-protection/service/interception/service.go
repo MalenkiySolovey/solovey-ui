@@ -8,8 +8,7 @@ import (
 	"strings"
 	"time"
 
-	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 )
 
 const (
@@ -108,9 +107,9 @@ type OperationStatusV1 struct {
 }
 
 type Service struct {
-	Interceptions    *hostresources.InterceptionRegistryV1
-	IngressScopes    *hostresources.ForwardedIngressScopeRegistryV1
-	Health           *componenthealth.InterceptionProbeRegistryV1
+	Interceptions    InterceptionSource
+	IngressScopes    IngressScopeSource
+	Health           ProbeInventory
 	Now              func() time.Time
 	KernelCapability KernelInterceptionCapabilityV1
 }
@@ -123,17 +122,17 @@ type KernelInterceptionCapabilityV1 struct {
 	Revision   string
 }
 
-func New() *Service {
+func New(interceptions InterceptionSource, scopes IngressScopeSource, health ProbeInventory) *Service {
 	return &Service{
-		Interceptions: hostresources.DefaultInterceptionsV1,
-		IngressScopes: hostresources.DefaultIngressScopesV1,
-		Health:        componenthealth.DefaultInterceptionProbesV1,
+		Interceptions: interceptions,
+		IngressScopes: scopes,
+		Health:        health,
 		Now:           time.Now,
 	}
 }
 
-func NewWithKernelCapability(capability KernelInterceptionCapabilityV1) *Service {
-	service := New()
+func NewWithKernelCapability(capability KernelInterceptionCapabilityV1, interceptions InterceptionSource, scopes IngressScopeSource, health ProbeInventory) *Service {
+	service := New(interceptions, scopes, health)
 	service.KernelCapability = capability
 	return service
 }
@@ -166,12 +165,12 @@ func (s *Service) Status(ctx context.Context) (StatusV1, error) {
 	} else if s != nil && s.KernelCapability.ReasonCode != "" {
 		status.GlobalReasonCodes = normalizeReasons(append(status.GlobalReasonCodes, s.KernelCapability.ReasonCode))
 	}
-	if s != nil && s.Health != nil && s.Health.ProviderCount() > 0 {
-		status.HealthState = "PROVIDER_REGISTERED_MUTATION_STILL_NOT_SHIPPED"
-		status.GlobalReasonCodes = withoutReason(status.GlobalReasonCodes, "POST_MARKER_FORWARDED_TRAFFIC_PROBE_PROVIDER_ABSENT")
-	}
 	if s == nil || s.Interceptions == nil || s.IngressScopes == nil {
 		return status, errors.New(CodeInternalFailure)
+	}
+	if s.Health != nil && s.Health.ProviderCount() > 0 {
+		status.HealthState = "PROVIDER_REGISTERED_MUTATION_STILL_NOT_SHIPPED"
+		status.GlobalReasonCodes = withoutReason(status.GlobalReasonCodes, "POST_MARKER_FORWARDED_TRAFFIC_PROBE_PROVIDER_ABSENT")
 	}
 	facts, factErr := s.Interceptions.FactsV1(ctx, now)
 	if factErr != nil && factErr.Error() != "interception_provider_v1_absent" {

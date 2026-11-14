@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
+	componenthealth "github.com/MalenkiySolovey/solovey-host/componenthost/health"
 	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-host/hostref"
-	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"

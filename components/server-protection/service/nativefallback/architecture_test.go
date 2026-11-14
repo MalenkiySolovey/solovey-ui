@@ -46,6 +46,7 @@ func TestNativePlannerImportsOnlyReadOnlyNeutralBoundaries(t *testing.T) {
 func TestPlannerInterfacesExposeNoMutationSurface(t *testing.T) {
 	interfaces := []reflect.Type{
 		reflect.TypeOf((*CoreReader)(nil)).Elem(),
+		reflect.TypeOf((*CoreAdmission)(nil)).Elem(),
 		reflect.TypeOf((*TargetReader)(nil)).Elem(),
 		reflect.TypeOf((*ManagementReader)(nil)).Elem(),
 	}

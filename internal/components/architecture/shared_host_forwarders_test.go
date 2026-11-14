@@ -11,17 +11,21 @@ import (
 
 func TestSharedHostCompatibilityPathsOnlyForwardToCanonicalSource(t *testing.T) {
 	for relative, canonical := range map[string]string{
-		"componenthost/hostref/local.go":           "hostref",
-		"componenthost/secretref/reference.go":     "secretref",
-		"componenthost/ports.go":                   "componenthost",
-		"internal/components/manifest/host_api.go": "componenthost/manifest",
-		"internal/components/manifest/manifest.go": "componenthost/manifest",
-		"internal/components/manifest/durable.go":  "componenthost/manifest",
-		"internal/components/manifest/json.go":     "componenthost/manifest",
-		"internal/httpheader/sanitize.go":          "httpheader",
-		"util/redact/redact.go":                    "redact",
-		"componentkit/telegram/botapi.go":          "componentkit/telegram",
-		"componentkit/telegram/transport.go":       "componentkit/telegram",
+		"componenthost/hostref/local.go":                    "hostref",
+		"componenthost/secretref/reference.go":              "secretref",
+		"componenthost/ports.go":                            "componenthost",
+		"internal/components/manifest/host_api.go":          "componenthost/manifest",
+		"internal/components/manifest/manifest.go":          "componenthost/manifest",
+		"internal/components/manifest/durable.go":           "componenthost/manifest",
+		"internal/components/manifest/json.go":              "componenthost/manifest",
+		"internal/httpheader/sanitize.go":                   "httpheader",
+		"util/redact/redact.go":                             "redact",
+		"componentkit/telegram/botapi.go":                   "componentkit/telegram",
+		"componentkit/telegram/transport.go":                "componentkit/telegram",
+		"componenthost/resources/fronting_contracts.go":     "componenthost/resources",
+		"componenthost/resources/local_proxy_contracts.go":  "componenthost/resources",
+		"componenthost/resources/inbound_transport_v2.go":   "componenthost/resources",
+		"componenthost/resources/interception_contracts.go": "componenthost/resources",
 	} {
 		t.Run(relative, func(t *testing.T) {
 			file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(moduleRoot(t), filepath.FromSlash(relative)), nil, 0)
@@ -36,7 +40,7 @@ func TestSharedHostCompatibilityPathsOnlyForwardToCanonicalSource(t *testing.T) 
 				}
 				if name == "github.com/MalenkiySolovey/solovey-host/"+canonical && imported.Name != nil && imported.Name.Name == "canonical" {
 					found = true
-				} else if name != "time" && name != "encoding/json" && name != "net/http" {
+				} else if name != "time" && name != "encoding/json" && name != "net/http" && !(canonical == "componenthost/resources" && name == "context") && !(relative == "componenthost/resources/local_proxy_contracts.go" && name == "github.com/MalenkiySolovey/solovey-host/componenthost/hostsurface") {
 					t.Errorf("compatibility path imports another implementation: %s", name)
 				}
 			}
@@ -54,7 +58,18 @@ func TestSharedHostCompatibilityPathsOnlyForwardToCanonicalSource(t *testing.T) 
 						t.Fatal("compatibility function must only return its canonical call")
 					}
 					call, ok := returned.Results[0].(*ast.CallExpr)
-					if !ok || !canonicalSelector(call.Fun, declaration.Name.Name) {
+					canonicalName := declaration.Name.Name
+					if canonical == "componenthost/resources" {
+						switch canonicalName {
+						case "frontingToken":
+							canonicalName = "FrontingContractTokenValidV1"
+						case "boundedToken":
+							canonicalName = "TransportContractTokenValidV2"
+						case "interceptionToken":
+							canonicalName = "InterceptionContractTokenValidV1"
+						}
+					}
+					if !ok || !canonicalSelector(call.Fun, canonicalName) {
 						t.Fatal("compatibility function replaced its canonical behavior")
 					}
 					for _, argument := range call.Args {

@@ -11,6 +11,7 @@ import (
 
 	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendcore"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 )
 
@@ -106,5 +107,5 @@ func thousandFactPlanner(t testing.TB) (Planner, PlanRequestV1) {
 		Endpoints: func(context.Context, time.Time) []hostresources.ManagementEndpointV1 { return endpoints },
 		Resources: func(context.Context) hostresources.ResourceSnapshot { return hostresources.ResourceSnapshot{} },
 	}
-	return Planner{Core: core, Targets: targets, Management: management, Now: func() time.Time { return now }}, requestFor(snapshot, reference)
+	return Planner{Core: core, Admission: backendcore.Admission{}, Targets: targets, Management: management, Now: func() time.Time { return now }}, requestFor(snapshot, reference)
 }

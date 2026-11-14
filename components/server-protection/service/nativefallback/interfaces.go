@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
+	neutralfallback "github.com/MalenkiySolovey/solovey-host/componenthost/fallbacktargets"
 	coreinboundcontrol "github.com/MalenkiySolovey/solovey-host/coreruntime/inboundcontrol"
-	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifacts"
 	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
@@ -15,6 +15,13 @@ type CoreReader interface {
 	Identity(context.Context) coreinboundcontrol.CoreRuntimeIdentityV1
 	Snapshot(context.Context, uint) (coreinboundcontrol.InboundFallbackSnapshotV1, error)
 	PreviewFallbackPatch(context.Context, coreinboundcontrol.PreviewFallbackPatchRequestV1) (coreinboundcontrol.FallbackPatchPreviewV1, error)
+}
+
+// CoreAdmission retains the existing engine/source identity authority. The
+// feature compares admitted revisions without importing provider pins or rules.
+type CoreAdmission interface {
+	VerifyRuntimeIdentity(coreinboundcontrol.CoreRuntimeIdentityV1) bool
+	CapabilityResolverRevision() string
 }
 
 type CoreControl interface {
@@ -30,7 +37,7 @@ type CoreControl interface {
 
 type ProviderDirectory interface {
 	ProviderV2(string) (neutralfallback.ProviderV2, bool)
-	ListReservationsV2(context.Context, neutralfallback.ListReservationsQueryV1) (neutralfallback.RegistryReservationsV2, error)
+	ListReservationsV2(context.Context, neutralfallback.ListReservationsQueryV1) (neutralfallback.ReservationSnapshotV2, error)
 }
 
 type NativeJournal interface {

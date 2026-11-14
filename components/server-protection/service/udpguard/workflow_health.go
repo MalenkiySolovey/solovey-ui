@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
+	componenthealth "github.com/MalenkiySolovey/solovey-host/componenthost/health"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
@@ -69,11 +69,11 @@ func (c *Controller) probeFresh(ctx context.Context, plan UDPDirectGuardPlanV1, 
 		ConfigurationRevision: plan.Claim.ConfigurationRevision, SocketRevision: plan.Claim.ClaimRevision,
 		AddressFamily: plan.Claim.AddressFamily, ConfiguredBind: plan.Claim.ConfiguredBind, Port: plan.Claim.Port,
 	}
-	capability := c.probes().Capability(ctx, target)
+	capability := c.Probes.Capability(ctx, target)
 	if !capability.Available || capability.Revision != plan.HealthRevision {
 		return protectionfirewall.PostMutationHealthProof{}, protectionfirewall.ErrHealthFailed
 	}
-	observation, err := c.probes().ProbeFresh(ctx, componenthealth.ProtocolProbeRequestV1{
+	observation, err := c.Probes.ProbeFresh(ctx, componenthealth.ProtocolProbeRequestV1{
 		Target: target, ContributionRevision: fence.ContributionRevision, CompositionRevision: fence.CompositionRevision,
 		ManagedPlanRevision: fence.ManagedPlanRevision, ProviderInstance: capability.ProviderInstance,
 		MinimumGeneration: 1, NotBeforeUnixNano: fence.MutationUnixNano,
