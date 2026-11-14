@@ -1,4 +1,4 @@
-import api from '@/plugins/api'
+import api from '@solovey/component-ui/api'
 import type {
 	FrontingApplyRequest,
 	FrontingOperation,

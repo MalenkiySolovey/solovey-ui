@@ -1,4 +1,4 @@
-import { registerComponent, unregisterComponent } from '@/componentSystem/registry'
+import { registerComponent, unregisterComponent } from '@solovey/component-ui/contributions'
 
 const componentID = 'server-protection'
 
