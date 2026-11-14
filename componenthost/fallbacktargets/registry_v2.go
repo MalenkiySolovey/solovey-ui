@@ -3,25 +3,16 @@ package fallbacktargets
 import (
 	"context"
 	"errors"
+	canonical "github.com/MalenkiySolovey/solovey-host/componenthost/fallbacktargets"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 )
 
-type RegistrySnapshotV2 struct {
-	GeneratedAt int64              `json:"generatedAt"`
-	Targets     []FallbackTargetV2 `json:"targets"`
-	Truncated   bool               `json:"truncated"`
-	ReasonCodes []string           `json:"reasonCodes,omitempty"`
-}
+type RegistrySnapshotV2 = canonical.TargetSnapshotV2
 
-type RegistryReservationsV2 struct {
-	Reservations []ProviderTargetReservationV1 `json:"reservations"`
-	Continuation string                        `json:"continuation,omitempty"`
-	Truncated    bool                          `json:"truncated"`
-	ReasonCodes  []string                      `json:"reasonCodes,omitempty"`
-}
+type RegistryReservationsV2 = canonical.ReservationSnapshotV2
 
 func (r *Registry) RegisterV2(provider ProviderV2) (func(), error) {
 	if provider == nil {
@@ -354,7 +345,7 @@ func canonicalRegistryReasonsV2(values []string) []string {
 	seen := make(map[string]struct{}, min(len(values), MaxReasonCodesV2))
 	result := make([]string, 0, len(values))
 	for _, value := range values {
-		if !validSafeToken(value, MaxReasonCodeLengthV2) {
+		if !validReasonCodesV2([]string{value}) {
 			value = "fallback_target_registry_v2_reason_invalid"
 		}
 		if _, exists := seen[value]; exists {

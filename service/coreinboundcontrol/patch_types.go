@@ -2,245 +2,120 @@ package coreinboundcontrol
 
 import (
 	"context"
-	"time"
-
+	canonical "github.com/MalenkiySolovey/solovey-host/coreruntime/inboundcontrol"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"gorm.io/gorm"
+	"time"
 )
 
 const (
-	FallbackPatchPreviewSchemaV1 = "solovey-ui/inbound-fallback-patch-preview/v1"
-	FallbackCheckpointSchemaV1   = "solovey-ui/inbound-fallback-checkpoint/v1"
-	FallbackMutationSchemaV1     = "solovey-ui/inbound-fallback-mutation/v1"
+	FallbackPatchPreviewSchemaV1 = canonical.FallbackPatchPreviewSchemaV1
+	FallbackCheckpointSchemaV1   = canonical.FallbackCheckpointSchemaV1
+	FallbackMutationSchemaV1     = canonical.FallbackMutationSchemaV1
 )
 
-type FallbackPatchVariantV1 string
+type FallbackPatchVariantV1 = canonical.FallbackPatchVariantV1
 
 const (
-	FallbackPatchVLESSRealityHandshakeTCP FallbackPatchVariantV1 = "VLESS_REALITY_HANDSHAKE_TCP"
-	FallbackPatchTrojanDefaultTCP         FallbackPatchVariantV1 = "TROJAN_DEFAULT_FALLBACK_TCP"
-	FallbackPatchTrojanALPNTCP            FallbackPatchVariantV1 = "TROJAN_ALPN_FALLBACK_TCP"
+	FallbackPatchVLESSRealityHandshakeTCP = canonical.FallbackPatchVLESSRealityHandshakeTCP
+	FallbackPatchTrojanDefaultTCP         = canonical.FallbackPatchTrojanDefaultTCP
+	FallbackPatchTrojanALPNTCP            = canonical.FallbackPatchTrojanALPNTCP
 )
 
-type ApprovedEndpointV1 struct {
-	ProviderID           string   `json:"providerId"`
-	EndpointID           string   `json:"endpointId"`
-	EndpointRevision     string   `json:"endpointRevision"`
-	Network              string   `json:"network"`
-	AddressFamily        string   `json:"addressFamily"`
-	Bind                 string   `json:"bind"`
-	Port                 uint16   `json:"port"`
-	Local                bool     `json:"local"`
-	TransportSecurity    string   `json:"transportSecurity"`
-	ApplicationProtocols []string `json:"applicationProtocols,omitempty"`
-}
+type ApprovedEndpointV1 = canonical.ApprovedEndpointV1
 
-type FallbackPatchExpectationsV1 struct {
-	InboundDatabaseID          uint   `json:"inboundDatabaseId"`
-	ResourceID                 string `json:"resourceId"`
-	ConfigurationRevision      string `json:"configurationRevision"`
-	RuntimeIdentityRevision    string `json:"runtimeIdentityRevision"`
-	CapabilityResolverRevision string `json:"capabilityResolverRevision"`
-	EndpointRevision           string `json:"endpointRevision"`
-}
+type FallbackPatchExpectationsV1 = canonical.FallbackPatchExpectationsV1
 
-type PreviewFallbackPatchRequestV1 struct {
-	Expected          FallbackPatchExpectationsV1 `json:"expected"`
-	Variant           FallbackPatchVariantV1      `json:"variant"`
-	ApprovedEndpoint  ApprovedEndpointV1          `json:"approvedEndpoint"`
-	ReplaceDefaultToo bool                        `json:"replaceDefaultToo,omitempty"`
-}
+type PreviewFallbackPatchRequestV1 = canonical.PreviewFallbackPatchRequestV1
 
-type ChangedFieldV1 struct {
-	Path string `json:"path"`
-}
+type ChangedFieldV1 = canonical.ChangedFieldV1
 
-type FallbackPatchPreviewV1 struct {
-	Schema                      string                 `json:"schema"`
-	PreviewID                   string                 `json:"previewId"`
-	Digest                      string                 `json:"digest"`
-	InboundDatabaseID           uint                   `json:"inboundDatabaseId"`
-	ResourceID                  string                 `json:"resourceId"`
-	Variant                     FallbackPatchVariantV1 `json:"variant"`
-	BeforeConfigurationRevision string                 `json:"beforeConfigurationRevision"`
-	ExpectedAfterRevision       string                 `json:"expectedAfterRevision"`
-	RuntimeIdentityRevision     string                 `json:"runtimeIdentityRevision"`
-	CapabilityResolverRevision  string                 `json:"capabilityResolverRevision"`
-	EndpointProviderID          string                 `json:"endpointProviderId"`
-	EndpointID                  string                 `json:"endpointId"`
-	EndpointRevision            string                 `json:"endpointRevision"`
-	ChangedFields               []ChangedFieldV1       `json:"changedFields"`
-	WarningCodes                []ReasonCode           `json:"warningCodes,omitempty"`
-	ExpiresAt                   time.Time              `json:"expiresAt"`
-}
+type FallbackPatchPreviewV1 = canonical.FallbackPatchPreviewV1
 
-type CheckpointPreparationV1 struct {
-	Schema                  string    `json:"schema"`
-	CheckpointID            string    `json:"checkpointId"`
-	PreviewDigest           string    `json:"previewDigest"`
-	IntegrityDigest         string    `json:"integrityDigest"`
-	UncommittedReleaseProof string    `json:"uncommittedReleaseProof"`
-	ExpiresAt               time.Time `json:"expiresAt"`
-}
+type CheckpointPreparationV1 = canonical.CheckpointPreparationV1
 
-type CheckpointStateV1 string
+type CheckpointStateV1 = canonical.CheckpointStateV1
 
 const (
-	CheckpointStatePrepared          CheckpointStateV1 = "PREPARED"
-	CheckpointStateCommitted         CheckpointStateV1 = "COMMITTED"
-	CheckpointStateRuntimeApplied    CheckpointStateV1 = "RUNTIME_APPLIED"
-	CheckpointStateEffectiveVerified CheckpointStateV1 = "EFFECTIVE_VERIFIED"
-	CheckpointStateRestoredCommitted CheckpointStateV1 = "RESTORED_COMMITTED"
-	CheckpointStateRestoreFailed     CheckpointStateV1 = "RESTORE_FAILED"
-	CheckpointStateRestoredVerified  CheckpointStateV1 = "RESTORED_VERIFIED"
-	CheckpointStateReleased          CheckpointStateV1 = "RELEASED"
+	CheckpointStatePrepared          = canonical.CheckpointStatePrepared
+	CheckpointStateCommitted         = canonical.CheckpointStateCommitted
+	CheckpointStateRuntimeApplied    = canonical.CheckpointStateRuntimeApplied
+	CheckpointStateEffectiveVerified = canonical.CheckpointStateEffectiveVerified
+	CheckpointStateRestoredCommitted = canonical.CheckpointStateRestoredCommitted
+	CheckpointStateRestoreFailed     = canonical.CheckpointStateRestoreFailed
+	CheckpointStateRestoredVerified  = canonical.CheckpointStateRestoredVerified
+	CheckpointStateReleased          = canonical.CheckpointStateReleased
 )
 
-type InspectCheckpointRequestV1 struct {
-	CheckpointID string `json:"checkpointId"`
-}
+type InspectCheckpointRequestV1 = canonical.InspectCheckpointRequestV1
 
 // FindCheckpointRequestV1 is intentionally limited to the core-generated
 // preview digest. It exists only to adopt a checkpoint whose identifier could
 // not be journaled after a process interruption.
-type FindCheckpointRequestV1 struct {
-	PreviewDigest string `json:"previewDigest"`
-}
+type FindCheckpointRequestV1 = canonical.FindCheckpointRequestV1
 
 // CheckpointStatusV1 exposes only integrity and revision facts needed by an
 // owning recovery workflow. It never returns the secret-sensitive checkpoint
 // payload or the previous inbound configuration.
-type CheckpointStatusV1 struct {
-	CheckpointID                 string            `json:"checkpointId"`
-	State                        CheckpointStateV1 `json:"state"`
-	PreviewDigest                string            `json:"previewDigest"`
-	IntegrityDigest              string            `json:"integrityDigest"`
-	BeforeConfigurationRevision  string            `json:"beforeConfigurationRevision"`
-	ExpectedAfterRevision        string            `json:"expectedAfterRevision"`
-	CurrentConfigurationRevision string            `json:"currentConfigurationRevision"`
-	CurrentEffectiveRevision     string            `json:"currentEffectiveRevision,omitempty"`
-	ProofDigest                  string            `json:"proofDigest,omitempty"`
-	DetachedReleaseProof         string            `json:"detachedReleaseProof,omitempty"`
-	UncommittedReleaseProof      string            `json:"uncommittedReleaseProof,omitempty"`
-}
+type CheckpointStatusV1 = canonical.CheckpointStatusV1
 
-type PrepareCheckpointRequestV1 struct {
-	Preview           FallbackPatchPreviewV1 `json:"preview"`
-	ApprovedEndpoint  ApprovedEndpointV1     `json:"approvedEndpoint"`
-	ReplaceDefaultToo bool                   `json:"replaceDefaultToo,omitempty"`
-}
+type PrepareCheckpointRequestV1 = canonical.PrepareCheckpointRequestV1
 
-type ApplyFallbackPatchRequestV1 struct {
-	CheckpointID           string             `json:"checkpointId"`
-	ExpectedBeforeRevision string             `json:"expectedBeforeRevision"`
-	ApprovedEndpoint       ApprovedEndpointV1 `json:"approvedEndpoint"`
-}
+type ApplyFallbackPatchRequestV1 = canonical.ApplyFallbackPatchRequestV1
 
-type RuntimeInboundObservationV1 struct {
-	RuntimeAvailable     bool   `json:"runtimeAvailable"`
-	Tag                  string `json:"tag,omitempty"`
-	Type                 string `json:"type,omitempty"`
-	OptionsDigest        string `json:"optionsDigest,omitempty"`
-	ManagerGeneration    uint64 `json:"managerGeneration,omitempty"`
-	MatchingInboundCount int    `json:"matchingInboundCount"`
-}
+type RuntimeInboundObservationV1 = canonical.RuntimeInboundObservationV1
 
-type FallbackMutationResultV1 struct {
-	Schema                      string                      `json:"schema"`
-	CheckpointID                string                      `json:"checkpointId"`
-	InboundDatabaseID           uint                        `json:"inboundDatabaseId"`
-	BeforeConfigurationRevision string                      `json:"beforeConfigurationRevision"`
-	AfterConfigurationRevision  string                      `json:"afterConfigurationRevision"`
-	ExpectedEffectiveRevision   string                      `json:"expectedEffectiveRevision"`
-	Observation                 RuntimeInboundObservationV1 `json:"observation"`
-	AlreadyCommitted            bool                        `json:"alreadyCommitted"`
-}
+type FallbackMutationResultV1 = canonical.FallbackMutationResultV1
 
-type VerifyEffectiveRequestV1 struct {
-	CheckpointID              string `json:"checkpointId"`
-	ExpectedAfterRevision     string `json:"expectedAfterRevision"`
-	ExpectedEffectiveRevision string `json:"expectedEffectiveRevision"`
-}
+type VerifyEffectiveRequestV1 = canonical.VerifyEffectiveRequestV1
 
-type EffectiveVerificationV1 struct {
-	CheckpointID          string                      `json:"checkpointId"`
-	ConfigurationRevision string                      `json:"configurationRevision"`
-	EffectiveRevision     string                      `json:"effectiveRevision"`
-	Verified              bool                        `json:"verified"`
-	ProofDigest           string                      `json:"proofDigest"`
-	Observation           RuntimeInboundObservationV1 `json:"observation"`
-}
+type EffectiveVerificationV1 = canonical.EffectiveVerificationV1
 
-type RestoreCheckpointRequestV1 struct {
-	CheckpointID            string `json:"checkpointId"`
-	ExpectedCurrentRevision string `json:"expectedCurrentRevision"`
-}
+type RestoreCheckpointRequestV1 = canonical.RestoreCheckpointRequestV1
 
-type RestoreCheckpointResultV1 struct {
-	CheckpointID                  string `json:"checkpointId"`
-	RestoredConfigurationRevision string `json:"restoredConfigurationRevision"`
-	RestoredEffectiveRevision     string `json:"restoredEffectiveRevision"`
-	ProofDigest                   string `json:"proofDigest"`
-}
+type RestoreCheckpointResultV1 = canonical.RestoreCheckpointResultV1
 
-type CheckpointTerminalProofKind string
+type CheckpointTerminalProofKind = canonical.CheckpointTerminalProofKind
 
 const (
-	CheckpointProofApplyNeverCommitted CheckpointTerminalProofKind = "apply_never_committed"
-	CheckpointProofRestoreVerified     CheckpointTerminalProofKind = "restore_verified"
-	CheckpointProofDurablyAdopted      CheckpointTerminalProofKind = "durably_adopted"
+	CheckpointProofApplyNeverCommitted = canonical.CheckpointProofApplyNeverCommitted
+	CheckpointProofRestoreVerified     = canonical.CheckpointProofRestoreVerified
+	CheckpointProofDurablyAdopted      = canonical.CheckpointProofDurablyAdopted
 )
 
-type ReleaseCheckpointRequestV1 struct {
-	CheckpointID string                      `json:"checkpointId"`
-	Kind         CheckpointTerminalProofKind `json:"kind"`
-	ProofDigest  string                      `json:"proofDigest"`
-}
+type ReleaseCheckpointRequestV1 = canonical.ReleaseCheckpointRequestV1
 
-type CheckpointReleaseV1 struct {
-	CheckpointID string    `json:"checkpointId"`
-	ReleasedAt   time.Time `json:"releasedAt"`
-}
+type CheckpointReleaseV1 = canonical.CheckpointReleaseV1
 
-type AdapterErrorCode string
+type AdapterErrorCode = canonical.AdapterErrorCode
 
 const (
-	ErrorUnsupportedRuntime  AdapterErrorCode = "unsupported_runtime"
-	ErrorUnsupportedConfig   AdapterErrorCode = "unsupported_configuration"
-	ErrorStalePreview        AdapterErrorCode = "stale_preview"
-	ErrorStaleBeforeRevision AdapterErrorCode = "stale_before_revision"
-	ErrorSharedTLS           AdapterErrorCode = "shared_tls_row"
-	ErrorInvalidEndpoint     AdapterErrorCode = "invalid_target_endpoint"
-	ErrorInvalidCandidate    AdapterErrorCode = "invalid_candidate"
-	ErrorCheckpointMissing   AdapterErrorCode = "checkpoint_missing"
-	ErrorCheckpointTampered  AdapterErrorCode = "checkpoint_tampered"
-	ErrorCheckpointStale     AdapterErrorCode = "checkpoint_stale"
-	ErrorMutationConflict    AdapterErrorCode = "mutation_conflict"
-	ErrorDatabase            AdapterErrorCode = "database_failure"
-	ErrorRuntimeApply        AdapterErrorCode = "runtime_apply_failure"
-	ErrorEffectiveVerify     AdapterErrorCode = "effective_verify_failure"
-	ErrorRestoreDrift        AdapterErrorCode = "restore_drift"
-	ErrorRestoreFailure      AdapterErrorCode = "restore_failure"
-	ErrorReconcileRequired   AdapterErrorCode = "reconcile_required"
-	ErrorCancelled           AdapterErrorCode = "cancelled"
-	ErrorAmbiguousResult     AdapterErrorCode = "ambiguous_result"
-	ErrorCheckpointRelease   AdapterErrorCode = "checkpoint_release_rejected"
+	ErrorUnsupportedRuntime  = canonical.ErrorUnsupportedRuntime
+	ErrorUnsupportedConfig   = canonical.ErrorUnsupportedConfig
+	ErrorStalePreview        = canonical.ErrorStalePreview
+	ErrorStaleBeforeRevision = canonical.ErrorStaleBeforeRevision
+	ErrorSharedTLS           = canonical.ErrorSharedTLS
+	ErrorInvalidEndpoint     = canonical.ErrorInvalidEndpoint
+	ErrorInvalidCandidate    = canonical.ErrorInvalidCandidate
+	ErrorCheckpointMissing   = canonical.ErrorCheckpointMissing
+	ErrorCheckpointTampered  = canonical.ErrorCheckpointTampered
+	ErrorCheckpointStale     = canonical.ErrorCheckpointStale
+	ErrorMutationConflict    = canonical.ErrorMutationConflict
+	ErrorDatabase            = canonical.ErrorDatabase
+	ErrorRuntimeApply        = canonical.ErrorRuntimeApply
+	ErrorEffectiveVerify     = canonical.ErrorEffectiveVerify
+	ErrorRestoreDrift        = canonical.ErrorRestoreDrift
+	ErrorRestoreFailure      = canonical.ErrorRestoreFailure
+	ErrorReconcileRequired   = canonical.ErrorReconcileRequired
+	ErrorCancelled           = canonical.ErrorCancelled
+	ErrorAmbiguousResult     = canonical.ErrorAmbiguousResult
+	ErrorCheckpointRelease   = canonical.ErrorCheckpointRelease
 )
 
-type AdapterError struct {
-	Code AdapterErrorCode
-}
-
-func (e *AdapterError) Error() string {
-	if e == nil {
-		return "core fallback adapter failure"
-	}
-	return string(e.Code)
-}
+type AdapterError = canonical.AdapterError
 
 func IsAdapterError(err error, code AdapterErrorCode) bool {
-	typed, ok := err.(*AdapterError)
-	return ok && typed.Code == code
+	return canonical.IsAdapterError(err, code)
 }
 
 type MutationCoordinator interface {

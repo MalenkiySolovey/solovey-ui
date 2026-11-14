@@ -8,12 +8,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	canonical "github.com/MalenkiySolovey/solovey-host/componenthost/fallbacktargets"
+	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"sort"
 	"strings"
 	"sync"
 	"time"
-
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 )
 
 const (
@@ -25,19 +25,16 @@ const (
 	MaxReferenceLeases = 4096
 )
 
-type Readiness string
+type Readiness = canonical.Readiness
 
 const (
-	ReadinessReady    Readiness = "READY"
-	ReadinessNotReady Readiness = "NOT_READY"
-	ReadinessStale    Readiness = "STALE"
-	ReadinessUnknown  Readiness = "UNKNOWN"
+	ReadinessReady    = canonical.ReadinessReady
+	ReadinessNotReady = canonical.ReadinessNotReady
+	ReadinessStale    = canonical.ReadinessStale
+	ReadinessUnknown  = canonical.ReadinessUnknown
 )
 
-type TargetIdentity struct {
-	ProviderID string `json:"providerId"`
-	TargetID   string `json:"targetId"`
-}
+type TargetIdentity = canonical.TargetIdentity
 
 type EndpointCapability struct {
 	EndpointID         string                        `json:"endpointId"`
