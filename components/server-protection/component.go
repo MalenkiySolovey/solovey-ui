@@ -198,13 +198,13 @@ func (component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) erro
 	workflow, workflowErr := ensureFirewallWorkflowLocked()
 	recovery := protectionoperations.Recovery(protectionartifacts.OperationRecovery{Storage: storage, Repository: repository})
 	if workflowErr == nil {
-		recovery = protectionfirewall.BackendRecovery{Helper: workflow.Helper, Manager: manager, Storage: storage, Repository: repository, Health: workflow.RollbackHealth, Workflow: workflow}
+		recovery = protectionfirewall.BackendRecovery{Helper: workflow.Helper, Manager: manager, Storage: storage, Repository: repository, Bundles: protectionartifacts.OperationRecovery{Storage: storage, Repository: repository}, Health: workflow.RollbackHealth, Workflow: workflow}
 	}
 	if err := manager.SetRecovery(recovery); err != nil {
 		cleanupHooksLocked()
 		return err
 	}
-	frontingRecovery := protectionfronting.BackendRecovery{Manager: manager, Storage: storage, Repository: repository}
+	frontingRecovery := protectionfronting.BackendRecovery{Manager: manager, Storage: storage, Repository: repository, Bundles: protectionartifacts.OperationRecovery{Storage: storage, Repository: repository}}
 	if workflow, workflowErr := ensureFrontingWorkflowLocked(); workflowErr == nil {
 		frontingRecovery.Helper, frontingRecovery.Health = workflow.Helper, workflow.RollbackHealth
 	}

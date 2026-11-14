@@ -815,7 +815,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 			if err := restarted.SetReconcilerForKind(protectionoperations.KindFirewall, RuntimeLossReconciler{Workflow: &workflow}); err != nil {
 				t.Fatal(err)
 			}
-			if err := restarted.SetRecovery(BackendRecovery{Helper: client, Manager: restarted, Storage: storage, Repository: repo, Health: workflow.RollbackHealth, Workflow: &workflow}); err != nil {
+			if err := restarted.SetRecovery(BackendRecovery{Helper: client, Manager: restarted, Storage: storage, Repository: repo, Bundles: protectionartifacts.OperationRecovery{Storage: storage, Repository: repo}, Health: workflow.RollbackHealth, Workflow: &workflow}); err != nil {
 				t.Fatal(err)
 			}
 			if err := restarted.Start(t.Context()); err != nil {
