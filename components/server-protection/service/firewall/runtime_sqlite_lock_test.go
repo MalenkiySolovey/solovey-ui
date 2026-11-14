@@ -1,6 +1,6 @@
 package firewall
 
-import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+import protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 
 import (
 	"database/sql"
@@ -33,7 +33,7 @@ func runtimeReadonlyFence(t *testing.T, db *gorm.DB) func() {
 	var failedTx *sql.Tx
 	var failure error
 	if err := db.Callback().Update().Before("gorm:update").Register("runtime:readonly", func(tx *gorm.DB) {
-		composition, ok := tx.Statement.Dest.(*protectiondata.FirewallCompositionModel)
+		composition, ok := tx.Statement.Dest.(*protectionrepository.FirewallCompositionModel)
 		if fired || !ok || composition.Runtime.State != "RESTORING_RUNTIME" || !runtimeFenceStack() {
 			return
 		}
@@ -124,7 +124,7 @@ func runtimeConcurrentAuditBarrier(t *testing.T, db *gorm.DB, operationID string
 		}
 	})
 	if err := db.Callback().Query().After("gorm:query").Register("runtime:read_barrier", func(tx *gorm.DB) {
-		operation, ok := tx.Statement.Dest.(*protectiondata.OperationLockModel)
+		operation, ok := tx.Statement.Dest.(*protectionrepository.OperationLockModel)
 		reader, inTx := tx.Statement.ConnPool.(*sql.Tx)
 		if fired || !ok || !inTx || tx.Error != nil || operation.OperationID != operationID || operation.State != "restoring_runtime" || !runtimeFenceStack() {
 			return
