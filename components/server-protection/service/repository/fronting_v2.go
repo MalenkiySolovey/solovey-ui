@@ -10,8 +10,6 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const maxFrontingSemanticBlobV2 = durable.MaxFrontingSemanticBlobV2
-
 const (
 	FrontingStateSchemaV2                = durable.FrontingStateSchemaV2
 	FrontingCompatibilityCurrentV2       = durable.FrontingCompatibilityCurrentV2
