@@ -26,6 +26,7 @@ func TestProtectionPolicyCannotAcquireConcreteBackendOrNetworkExecution(t *testi
 		feature + "service/policy":    true,
 		feature + "service/resources": true,
 		feature + "service/response":  true,
+		feature + "service/decision":  true,
 	}
 	for _, relative := range []string{
 		"components/server-protection/domain", "components/server-protection/service/decision",
