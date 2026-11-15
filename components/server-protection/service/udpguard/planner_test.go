@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	componenthealth "github.com/MalenkiySolovey/solovey-host/componenthost/health"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 )
 

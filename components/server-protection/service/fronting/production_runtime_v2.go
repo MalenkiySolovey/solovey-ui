@@ -10,12 +10,6 @@ import (
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helpercontract"
 )
 
-type staticNginxVersionReaderV2 struct{ observation NginxVersionObservationV2 }
-
-func (r staticNginxVersionReaderV2) ReadNginxVersion(context.Context, string) (NginxVersionObservationV2, error) {
-	return r.observation, nil
-}
-
 func UnknownNginxRuntimeIdentityV2(now time.Time, managementRevision, reason string) NginxRuntimeIdentityV2 {
 	return finalizeRuntimeIdentity(NginxRuntimeIdentityV2{
 		Schema: NginxRuntimeIdentitySchemaV2, State: NginxIdentityUnknown, InstallationClass: NginxInstallationUnknown,
@@ -27,8 +21,11 @@ func UnknownNginxRuntimeIdentityV2(now time.Time, managementRevision, reason str
 // ObserveManagedRuntimeIdentityV2 composes the existing restricted helper's
 // typed capabilities, version observation and active verification into the
 // reviewed runtime inspector. It performs no installation or mutation.
-func ObserveManagedRuntimeIdentityV2(ctx context.Context, workflow *Workflow, managementRevision string, now time.Time) (NginxRuntimeIdentityV2, error) {
-	if workflow == nil || !frontingHexV2(managementRevision) {
+func ObserveManagedRuntimeIdentityV2(ctx context.Context, workflow *Workflow, inspector NginxRuntimeInspectionSourceV2, managementRevision string, now time.Time) (NginxRuntimeIdentityV2, error) {
+	if err := ctx.Err(); err != nil {
+		return NginxRuntimeIdentityV2{}, err
+	}
+	if workflow == nil || inspector == nil || !frontingHexV2(managementRevision) {
 		return NginxRuntimeIdentityV2{}, errors.New("nginx_runtime_identity_unavailable")
 	}
 	capabilities, err := workflow.capabilities(ctx)
@@ -78,9 +75,9 @@ func ObserveManagedRuntimeIdentityV2(ctx context.Context, workflow *Workflow, ma
 		HelperContractVersion: capabilities.ContractVersion, HelperContractRevision: capabilities.Revision,
 		ManagementExclusionsRevision: managementRevision, ObservedAt: now.UTC(), ExpiresAt: now.UTC().Add(time.Minute),
 	}
-	return (NginxRuntimeInspectorV2{Config: config, Reader: staticNginxVersionReaderV2{observation: NginxVersionObservationV2{
+	return inspector.Inspect(ctx, config, NginxVersionObservationV2{
 		Version: detected.NginxVersion.Version, ConfigureArguments: arguments,
-	}}}).Inspect(ctx)
+	})
 }
 
 func configureArgumentsFromHelperModulesV2(modules []string) []string {

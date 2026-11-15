@@ -3,7 +3,7 @@ package fronting
 import (
 	"context"
 	"errors"
-	"os"
+	"io/fs"
 	"sort"
 	"strings"
 	"time"
@@ -28,7 +28,7 @@ func (r V2Reconciler) Reconcile(ctx context.Context, operation protectionreposit
 	}
 	checkpoint, err := w.loadV2(operation.OperationID)
 	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
+		if !errors.Is(err, fs.ErrNotExist) {
 			return protectionoperations.ReconcileDecision{State: protectionoperations.StateRollbackFailed, Reason: "artifact_integrity_failed"}, nil
 		}
 		return r.reconcileMissingCheckpoint(ctx, operation)

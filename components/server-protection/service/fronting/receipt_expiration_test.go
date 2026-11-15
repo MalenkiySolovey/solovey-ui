@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
+	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 )
 
 func TestReceiptExpiredReceiptHasExplicitFrontingSemanticCode(t *testing.T) {

@@ -12,6 +12,7 @@ import (
 	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	backendfronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendfronting"
 	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
 	protectionfronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
@@ -45,7 +46,7 @@ func newProductionFrontingSemanticSource(workflow *protectionfronting.Workflow) 
 		},
 		surfaces: hostfacts.Default.Snapshot,
 		runtime: func(ctx context.Context, managementRevision string, now time.Time) (protectionfronting.NginxRuntimeIdentityV2, error) {
-			return protectionfronting.ObserveManagedRuntimeIdentityV2(ctx, workflow, managementRevision, now)
+			return protectionfronting.ObserveManagedRuntimeIdentityV2(ctx, workflow, backendfronting.NewRuntimeInspector(workflow), managementRevision, now)
 		},
 		cache: make(map[string]productionFrontingPlanCacheV2),
 	}

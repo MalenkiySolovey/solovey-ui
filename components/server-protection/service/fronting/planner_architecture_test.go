@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -41,6 +42,32 @@ func TestReadOnlyPlannerHasNoMutationPersistenceOrPublicTransportDependency(t *t
 	}
 }
 
+func TestFrontingUsesTypedOwnersForPlatformAndExecutableInspection(t *testing.T) {
+	_, current, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("fronting source location unavailable")
+	}
+	files, err := filepath.Glob(filepath.Join(filepath.Dir(current), "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), name, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, imported := range parsed.Imports {
+			value := strings.Trim(imported.Path.Value, "\"")
+			if value == "os" || value == "os/exec" || value == "syscall" || value == "unsafe" || strings.HasPrefix(value, "golang.org/x/sys/") {
+				t.Errorf("feature inspection gained platform authority through %s in %s", value, filepath.Base(name))
+			}
+		}
+	}
+}
+
 func TestReadOnlyPlannerDefinesNoPackageMutableState(t *testing.T) {
 	_, current, _, ok := runtime.Caller(0)
 	if !ok {
@@ -58,35 +85,5 @@ func TestReadOnlyPlannerDefinesNoPackageMutableState(t *testing.T) {
 				t.Errorf("%s defines package-level mutable state", name)
 			}
 		}
-	}
-}
-
-func TestEndpointLeaseContractDefinesNoAuthorityMutationMethods(t *testing.T) {
-	_, current, _, _ := runtime.Caller(0)
-	path := filepath.Clean(filepath.Join(filepath.Dir(current), "..", "..", "..", "..", "componenthost", "resources", "fronting_contracts.go"))
-	parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ast.Inspect(parsed, func(node ast.Node) bool {
-		declaration, ok := node.(*ast.FuncDecl)
-		if !ok || declaration.Recv == nil || len(declaration.Recv.List) == 0 || declaration.Name == nil {
-			return true
-		}
-		if (declaration.Name.Name == "Acquire" || declaration.Name.Name == "Renew" || declaration.Name.Name == "Activate" || declaration.Name.Name == "Release") && receiverTypeName(declaration.Recv.List[0].Type) == "EndpointLeaseV1" {
-			t.Errorf("neutral lease contract gained provider mutation method %q", declaration.Name.Name)
-		}
-		return true
-	})
-}
-
-func receiverTypeName(expr ast.Expr) string {
-	switch value := expr.(type) {
-	case *ast.Ident:
-		return value.Name
-	case *ast.StarExpr:
-		return receiverTypeName(value.X)
-	default:
-		return ""
 	}
 }

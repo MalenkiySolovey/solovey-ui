@@ -6,10 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -155,107 +151,6 @@ type NginxRuntimeInspectionConfigV2 struct {
 	ExpiresAt                     time.Time
 }
 
-type NginxRuntimeInspectorV2 struct {
-	Config NginxRuntimeInspectionConfigV2
-	Reader NginxVersionReaderV2
-}
-
-func (i NginxRuntimeInspectorV2) Inspect(ctx context.Context) (NginxRuntimeIdentityV2, error) {
-	now := i.Config.ObservedAt.UTC()
-	if now.IsZero() {
-		now = time.Now().UTC()
-	}
-	expires := i.Config.ExpiresAt.UTC()
-	if expires.IsZero() {
-		expires = now.Add(MaxRuntimeFreshnessV2)
-	}
-	identity := NginxRuntimeIdentityV2{Schema: NginxRuntimeIdentitySchemaV2, State: NginxIdentityUnknown,
-		InstallationClass: i.Config.InstallationClass, ObservedAt: now.Unix(), ExpiresAt: expires.Unix()}
-	copyRuntimeMethods(&identity, i.Config)
-	paths, pathReasons := inspectExecutableCandidates(i.Config.CandidatePaths, i.Config.AllowedExecutableRoots)
-	if len(paths) == 0 {
-		identity.State = NginxNotInstalled
-		identity.ReasonCodes = append(pathReasons, "nginx_not_installed")
-		return finalizeRuntimeIdentity(identity), nil
-	}
-	if len(paths) != 1 || len(pathReasons) != 0 {
-		identity.ReasonCodes = append(pathReasons, "nginx_executable_ambiguous")
-		return finalizeRuntimeIdentity(identity), nil
-	}
-	selected := paths[0]
-	before, err := os.Stat(selected)
-	if err != nil || !before.Mode().IsRegular() {
-		identity.ReasonCodes = append(identity.ReasonCodes, "nginx_executable_non_regular")
-		return finalizeRuntimeIdentity(identity), nil
-	}
-	digest, err := digestFileBounded(selected)
-	if err != nil {
-		identity.ReasonCodes = append(identity.ReasonCodes, "nginx_executable_identity_unknown")
-		return finalizeRuntimeIdentity(identity), nil
-	}
-	identity.ExecutableDigest = digest
-	identity.ExecutableDevice, identity.ExecutableInode = platformFileIdentityV2(before)
-	identity.PlatformIdentityRevision = v2Revision(struct {
-		Size    int64
-		Mode    fs.FileMode
-		ModTime int64
-		Device  uint64
-		Inode   uint64
-	}{before.Size(), before.Mode(), before.ModTime().UnixNano(), identity.ExecutableDevice, identity.ExecutableInode})
-	identity.ExecutableIdentityRevision = v2Revision(struct {
-		Digest, Platform string
-		Device, Inode    uint64
-	}{digest, identity.PlatformIdentityRevision, identity.ExecutableDevice, identity.ExecutableInode})
-	if i.Reader == nil {
-		identity.ReasonCodes = append(identity.ReasonCodes, "nginx_version_reader_unavailable")
-		return finalizeRuntimeIdentity(identity), nil
-	}
-	observation, readErr := i.Reader.ReadNginxVersion(ctx, selected)
-	if readErr != nil {
-		if err := ctx.Err(); err != nil {
-			return NginxRuntimeIdentityV2{}, err
-		}
-		identity.ReasonCodes = append(identity.ReasonCodes, "nginx_version_unparseable")
-		return finalizeRuntimeIdentity(identity), nil
-	}
-	after, statErr := os.Stat(selected)
-	afterDigest, digestErr := digestFileBounded(selected)
-	if statErr != nil || digestErr != nil || before.Size() != after.Size() || before.ModTime() != after.ModTime() || digest != afterDigest {
-		identity.ReasonCodes = append(identity.ReasonCodes, "nginx_executable_identity_drift")
-		return finalizeRuntimeIdentity(identity), nil
-	}
-	version, ok := normalizeNginxVersionV2(observation.Version)
-	arguments, argumentsOK := normalizeConfigureArgumentsV2(observation.ConfigureArguments)
-	if !ok {
-		identity.ReasonCodes = append(identity.ReasonCodes, "nginx_version_unparseable")
-		return finalizeRuntimeIdentity(identity), nil
-	}
-	if !argumentsOK {
-		identity.ReasonCodes = append(identity.ReasonCodes, "nginx_configure_arguments_invalid")
-		return finalizeRuntimeIdentity(identity), nil
-	}
-	identity.Version = version
-	identity.ConfigureArgumentsRevision = v2Revision(arguments)
-	identity.BuildIdentity = "nginx/" + version + "/" + identity.ConfigureArgumentsRevision[:16]
-	identity.Stream = moduleCapabilityV2("stream", arguments, i.Config.LoadedDynamicModules)
-	identity.SSLPreread = moduleCapabilityV2("ssl_preread", arguments, i.Config.LoadedDynamicModules)
-	identity.StreamSSL = moduleCapabilityV2("ssl", arguments, i.Config.LoadedDynamicModules)
-	identity.StreamRealIP = moduleCapabilityV2("realip", arguments, i.Config.LoadedDynamicModules)
-	identity.ModuleCapabilityRevision = v2Revision([]NginxModuleCapabilityV2{identity.Stream, identity.SSLPreread, identity.StreamSSL, identity.StreamRealIP})
-	rootRevision, ownershipRevision, ownershipOK := inspectManagedContourV2(i.Config.ManagedRootPath, i.Config.ControlledConfigPath)
-	identity.ManagedRootIdentityRevision, identity.LoaderConfigOwnershipRevision = rootRevision, ownershipRevision
-	if i.Config.InstallationClass == NginxInstallationExternal {
-		identity.State = NginxExternalManaged
-		identity.ReasonCodes = append(identity.ReasonCodes, "nginx_external_managed")
-		return finalizeRuntimeIdentity(identity), nil
-	}
-	if i.Config.InstallationClass != NginxInstallationManaged || !ownershipOK {
-		identity.ReasonCodes = append(identity.ReasonCodes, "nginx_managed_contour_unknown")
-		return finalizeRuntimeIdentity(identity), nil
-	}
-	return finalizeRuntimeIdentity(identity), nil
-}
-
 func copyRuntimeMethods(identity *NginxRuntimeIdentityV2, config NginxRuntimeInspectionConfigV2) {
 	identity.ValidationMethod = normalizeMethodV2(config.ValidationMethod)
 	identity.ReloadMethod = normalizeMethodV2(config.ReloadMethod)
@@ -272,126 +167,6 @@ func copyRuntimeMethods(identity *NginxRuntimeIdentityV2, config NginxRuntimeIns
 	identity.HelperContractVersion = safeRuntimeTokenV2(config.HelperContractVersion, 64)
 	identity.HelperContractRevision = safeDigestV2(config.HelperContractRevision)
 	identity.ManagementExclusionsRevision = safeDigestV2(config.ManagementExclusionsRevision)
-}
-
-func inspectExecutableCandidates(candidates, roots []string) ([]string, []string) {
-	allowed := make([]string, 0, len(roots))
-	for _, root := range roots {
-		if absolute, err := filepath.Abs(root); err == nil {
-			if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
-				allowed = append(allowed, filepath.Clean(resolved))
-			}
-		}
-	}
-	seen := map[string]struct{}{}
-	reasons := []string{}
-	for _, candidate := range candidates {
-		absolute, err := filepath.Abs(strings.TrimSpace(candidate))
-		if err != nil || !filepath.IsAbs(absolute) {
-			reasons = append(reasons, "nginx_executable_path_escape")
-			continue
-		}
-		info, err := os.Lstat(absolute)
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			reasons = append(reasons, "nginx_executable_identity_unknown")
-			continue
-		}
-		resolved, err := filepath.EvalSymlinks(absolute)
-		if err != nil || !withinAnyRootV2(resolved, allowed) {
-			reasons = append(reasons, "nginx_executable_path_escape")
-			continue
-		}
-		resolvedInfo, err := os.Stat(resolved)
-		if err != nil || !resolvedInfo.Mode().IsRegular() || info.IsDir() {
-			reasons = append(reasons, "nginx_executable_non_regular")
-			continue
-		}
-		seen[filepath.Clean(resolved)] = struct{}{}
-	}
-	paths := make([]string, 0, len(seen))
-	for path := range seen {
-		paths = append(paths, path)
-	}
-	sort.Strings(paths)
-	return paths, canonicalRuntimeReasonsV2(reasons)
-}
-
-func withinAnyRootV2(path string, roots []string) bool {
-	clean := filepath.Clean(path)
-	for _, root := range roots {
-		relative, err := filepath.Rel(root, clean)
-		if err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative) {
-			return true
-		}
-	}
-	return false
-}
-
-func digestFileBounded(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil || info.Size() < 0 || info.Size() > 256<<20 {
-		return "", errors.New("nginx executable size is outside the bounded identity contract")
-	}
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
-}
-
-func inspectManagedContourV2(root, config string) (string, string, bool) {
-	root = strings.TrimSpace(root)
-	config = strings.TrimSpace(config)
-	if root == "" || config == "" {
-		return "", "", false
-	}
-	rootResolved, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		return "", "", false
-	}
-	rootInfo, err := os.Stat(rootResolved)
-	if err != nil || !rootInfo.IsDir() {
-		return "", "", false
-	}
-	configResolved, err := filepath.EvalSymlinks(config)
-	if err != nil || !withinAnyRootV2(configResolved, []string{rootResolved}) {
-		return "", "", false
-	}
-	configInfo, err := os.Stat(configResolved)
-	if err != nil || !configInfo.Mode().IsRegular() {
-		return "", "", false
-	}
-	rootDevice, rootInode := platformFileIdentityV2(rootInfo)
-	rootRevision := v2Revision(struct {
-		ResolvedPathRevision string
-		Mode                 fs.FileMode
-		ModTime              int64
-		Device               uint64
-		Inode                uint64
-	}{v2Revision(filepath.Clean(rootResolved)), rootInfo.Mode(), rootInfo.ModTime().UnixNano(), rootDevice, rootInode})
-	configDigest, err := digestFileBounded(configResolved)
-	if err != nil {
-		return "", "", false
-	}
-	configDevice, configInode := platformFileIdentityV2(configInfo)
-	configRevision := v2Revision(struct {
-		ResolvedPathRevision string
-		Digest               string
-		Size                 int64
-		Mode                 fs.FileMode
-		ModTime              int64
-		Device               uint64
-		Inode                uint64
-	}{v2Revision(filepath.Clean(configResolved)), configDigest, configInfo.Size(), configInfo.Mode(), configInfo.ModTime().UnixNano(), configDevice, configInode})
-	return rootRevision, v2Revision(struct{ Root, Config string }{rootRevision, configRevision}), true
 }
 
 func normalizeNginxVersionV2(value string) (string, bool) {
@@ -785,4 +560,62 @@ func v2Revision(value any) string {
 	payload, _ := json.Marshal(value)
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])
+}
+
+// NewNginxRuntimeIdentityV2 seeds a bounded identity from typed capability metadata.
+func NewNginxRuntimeIdentityV2(config NginxRuntimeInspectionConfigV2) NginxRuntimeIdentityV2 {
+	now := config.ObservedAt.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	expires := config.ExpiresAt.UTC()
+	if expires.IsZero() {
+		expires = now.Add(MaxRuntimeFreshnessV2)
+	}
+	identity := NginxRuntimeIdentityV2{Schema: NginxRuntimeIdentitySchemaV2, State: NginxIdentityUnknown,
+		InstallationClass: config.InstallationClass, ObservedAt: now.Unix(), ExpiresAt: expires.Unix()}
+	copyRuntimeMethods(&identity, config)
+	return identity
+}
+
+// ApplyNginxBuildObservationV2 applies the canonical version and module rules to owner observations.
+func ApplyNginxBuildObservationV2(identity NginxRuntimeIdentityV2, observation NginxVersionObservationV2, loaded []string) (NginxRuntimeIdentityV2, bool) {
+	version, ok := normalizeNginxVersionV2(observation.Version)
+	arguments, argumentsOK := normalizeConfigureArgumentsV2(observation.ConfigureArguments)
+	if !ok {
+		identity.ReasonCodes = append(identity.ReasonCodes, "nginx_version_unparseable")
+		return identity, false
+	}
+	if !argumentsOK {
+		identity.ReasonCodes = append(identity.ReasonCodes, "nginx_configure_arguments_invalid")
+		return identity, false
+	}
+	identity.Version = version
+	identity.ConfigureArgumentsRevision = v2Revision(arguments)
+	identity.BuildIdentity = "nginx/" + version + "/" + identity.ConfigureArgumentsRevision[:16]
+	identity.Stream = moduleCapabilityV2("stream", arguments, loaded)
+	identity.SSLPreread = moduleCapabilityV2("ssl_preread", arguments, loaded)
+	identity.StreamSSL = moduleCapabilityV2("ssl", arguments, loaded)
+	identity.StreamRealIP = moduleCapabilityV2("realip", arguments, loaded)
+	identity.ModuleCapabilityRevision = v2Revision([]NginxModuleCapabilityV2{identity.Stream, identity.SSLPreread, identity.StreamSSL, identity.StreamRealIP})
+	return identity, true
+}
+
+// FinalizeNginxRuntimeIdentityV2 canonicalizes the typed owner observation without performing I/O.
+func FinalizeNginxRuntimeIdentityV2(value NginxRuntimeIdentityV2) NginxRuntimeIdentityV2 {
+	return finalizeRuntimeIdentity(value)
+}
+
+// NginxRuntimeFactRevisionV2 uses the same canonical revision format for OS identity facts.
+func NginxRuntimeFactRevisionV2(value any) string { return v2Revision(value) }
+
+// CanonicalNginxRuntimeReasonsV2 bounds and orders inspection reasons before publication.
+func CanonicalNginxRuntimeReasonsV2(reasons []string) []string {
+	return canonicalRuntimeReasonsV2(reasons)
+}
+
+// NginxRuntimeInspectionSourceV2 observes only the selected nginx identity and managed contour.
+// Filesystem and platform attestation remain with its Backend implementation.
+type NginxRuntimeInspectionSourceV2 interface {
+	Inspect(context.Context, NginxRuntimeInspectionConfigV2, NginxVersionObservationV2) (NginxRuntimeIdentityV2, error)
 }

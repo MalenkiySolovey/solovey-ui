@@ -1,52 +1,21 @@
 package fronting
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 )
-
-type versionReaderV2 struct {
-	observation NginxVersionObservationV2
-	err         error
-	mutate      bool
-}
-
-func (r versionReaderV2) ReadNginxVersion(_ context.Context, path string) (NginxVersionObservationV2, error) {
-	if r.mutate {
-		_ = os.WriteFile(path, []byte("changed executable"), 0600)
-	}
-	return r.observation, r.err
-}
 
 func readyRuntimeIdentityV2(t *testing.T, now time.Time, arguments []string, loaded []string) NginxRuntimeIdentityV2 {
 	t.Helper()
-	root := t.TempDir()
-	executable := filepath.Join(root, "nginx")
-	if err := os.WriteFile(executable, []byte("fixture executable"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	managedRoot := filepath.Join(root, "managed")
-	if err := os.MkdirAll(managedRoot, 0700); err != nil {
-		t.Fatal(err)
-	}
-	controlled := filepath.Join(managedRoot, "loader.conf")
-	if err := os.WriteFile(controlled, []byte("managed loader"), 0600); err != nil {
-		t.Fatal(err)
-	}
 	supported := func(label string) NginxMethodCapabilityV2 {
 		return NginxMethodCapabilityV2{Availability: CapabilitySupportedV2, Revision: v2Revision(label)}
 	}
 	config := NginxRuntimeInspectionConfigV2{
-		CandidatePaths: []string{executable}, AllowedExecutableRoots: []string{root}, ManagedRootPath: managedRoot,
-		ControlledConfigPath: controlled, InstallationClass: NginxInstallationManaged, LoadedDynamicModules: loaded,
+		InstallationClass: NginxInstallationManaged, LoadedDynamicModules: loaded,
 		ValidationMethod: supported("validation"), ReloadMethod: supported("reload"), ActiveVerification: supported("active"),
 		ProcessVerification: supported("process"), ListenerVerification: supported("listener"),
 		ProxyProtocolReceive: supported("proxy-receive"), ProxyProtocolEmit: supported("proxy-emit"),
@@ -55,10 +24,14 @@ func readyRuntimeIdentityV2(t *testing.T, now time.Time, arguments []string, loa
 		HelperContractVersion: "1.5", HelperContractRevision: v2Revision("helper"),
 		ManagementExclusionsRevision: v2Revision("management"), ObservedAt: now, ExpiresAt: now.Add(2 * time.Minute),
 	}
-	identity, err := (NginxRuntimeInspectorV2{Config: config, Reader: versionReaderV2{observation: NginxVersionObservationV2{Version: "nginx/1.27.4", ConfigureArguments: arguments}}}).Inspect(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	identity := NewNginxRuntimeIdentityV2(config)
+	identity.ExecutableDigest = v2Revision("observed executable")
+	identity.PlatformIdentityRevision = v2Revision("observed platform")
+	identity.ExecutableIdentityRevision = v2Revision("observed executable identity")
+	identity.ManagedRootIdentityRevision = v2Revision("observed managed root")
+	identity.LoaderConfigOwnershipRevision = v2Revision("observed loader")
+	identity, _ = ApplyNginxBuildObservationV2(identity, NginxVersionObservationV2{Version: "nginx/1.27.4", ConfigureArguments: arguments}, loaded)
+	identity = finalizeRuntimeIdentity(identity)
 	return identity
 }
 
@@ -118,52 +91,6 @@ func TestFrontingSocketClaimRevisionIgnoresOnlyFreshnessWindow(t *testing.T) {
 	}
 }
 
-func TestRuntimeIdentityV2FailClosedMatrix(t *testing.T) {
-	now := time.Unix(1_800_000_000, 0).UTC()
-	root := t.TempDir()
-	base := NginxRuntimeInspectionConfigV2{AllowedExecutableRoots: []string{root}, InstallationClass: NginxInstallationManaged, ObservedAt: now, ExpiresAt: now.Add(time.Minute)}
-	identity, err := (NginxRuntimeInspectorV2{Config: base}).Inspect(context.Background())
-	if err != nil || identity.State != NginxNotInstalled {
-		t.Fatalf("absent identity=%#v err=%v", identity, err)
-	}
-	first, second := filepath.Join(root, "nginx-a"), filepath.Join(root, "nginx-b")
-	_ = os.WriteFile(first, []byte("a"), 0700)
-	_ = os.WriteFile(second, []byte("b"), 0700)
-	ambiguous := base
-	ambiguous.CandidatePaths = []string{first, second}
-	identity, _ = (NginxRuntimeInspectorV2{Config: ambiguous, Reader: versionReaderV2{}}).Inspect(context.Background())
-	if identity.State != NginxIdentityUnknown || !containsReasonV2(identity.ReasonCodes, "nginx_executable_ambiguous") {
-		t.Fatalf("ambiguous identity=%#v", identity)
-	}
-	nonRegular := base
-	nonRegular.CandidatePaths = []string{root}
-	identity, _ = (NginxRuntimeInspectorV2{Config: nonRegular}).Inspect(context.Background())
-	if !containsReasonV2(identity.ReasonCodes, "nginx_executable_non_regular") {
-		t.Fatalf("non-regular identity=%#v", identity)
-	}
-	escaped := base
-	outside := filepath.Join(t.TempDir(), "outside-nginx")
-	if err := os.WriteFile(outside, []byte("outside"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	escaped.CandidatePaths = []string{outside}
-	identity, _ = (NginxRuntimeInspectorV2{Config: escaped}).Inspect(context.Background())
-	if !containsReasonV2(identity.ReasonCodes, "nginx_executable_path_escape") {
-		t.Fatalf("path escape identity=%#v", identity)
-	}
-	malformed := ambiguous
-	malformed.CandidatePaths = []string{first}
-	identity, _ = (NginxRuntimeInspectorV2{Config: malformed, Reader: versionReaderV2{err: errors.New("malformed")}}).Inspect(context.Background())
-	if !containsReasonV2(identity.ReasonCodes, "nginx_version_unparseable") {
-		t.Fatalf("malformed identity=%#v", identity)
-	}
-	drift := malformed
-	identity, _ = (NginxRuntimeInspectorV2{Config: drift, Reader: versionReaderV2{mutate: true, observation: NginxVersionObservationV2{Version: "1.27.4"}}}).Inspect(context.Background())
-	if !containsReasonV2(identity.ReasonCodes, "nginx_executable_identity_drift") {
-		t.Fatalf("drift identity=%#v", identity)
-	}
-}
-
 func TestRuntimeIdentityV2ConfigureArgumentBoundsAndExternalContour(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0).UTC()
 	tooMany := make([]string, MaxConfigureArgumentsV2+1)
@@ -182,64 +109,6 @@ func TestRuntimeIdentityV2ConfigureArgumentBoundsAndExternalContour(t *testing.T
 	capability := ResolveNginxStrategyCapabilityV2(managed, StrategyL4OneToOne, hostresources.ProxyModeOff, CapabilitySupportedV2, now)
 	if capability.Actionable || !capability.InspectionOnly {
 		t.Fatalf("external capability=%#v", capability)
-	}
-}
-
-func TestRuntimeIdentityV2ManagedContourRevisionSeparatesResolvedRoots(t *testing.T) {
-	stamp := time.Unix(1_700_000_000, 0).UTC()
-	makeContour := func() (string, string) {
-		root := t.TempDir()
-		config := filepath.Join(root, "loader.conf")
-		if err := os.WriteFile(config, []byte("same managed loader"), 0600); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chtimes(config, stamp, stamp); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chtimes(root, stamp, stamp); err != nil {
-			t.Fatal(err)
-		}
-		return root, config
-	}
-	firstRoot, firstConfig := makeContour()
-	secondRoot, secondConfig := makeContour()
-	firstRootRevision, firstOwnershipRevision, firstOK := inspectManagedContourV2(firstRoot, firstConfig)
-	secondRootRevision, secondOwnershipRevision, secondOK := inspectManagedContourV2(secondRoot, secondConfig)
-	if !firstOK || !secondOK || firstRootRevision == secondRootRevision || firstOwnershipRevision == secondOwnershipRevision {
-		t.Fatalf("distinct resolved managed contours collided: first=%s/%s second=%s/%s", firstRootRevision, firstOwnershipRevision, secondRootRevision, secondOwnershipRevision)
-	}
-}
-
-func TestRuntimeIdentityV2DynamicModulesAndSymlinkEscapeFailClosed(t *testing.T) {
-	now := time.Unix(1_800_000_000, 0).UTC()
-	dynamicLoaded := readyRuntimeIdentityV2(t, now, []string{"--with-stream=dynamic"}, []string{"stream"})
-	if dynamicLoaded.Stream.State != NginxModuleDynamicLoaded || dynamicLoaded.State != NginxManagedEngineReady {
-		t.Fatalf("loaded dynamic module state=%#v", dynamicLoaded)
-	}
-	dynamicNotLoaded := readyRuntimeIdentityV2(t, now, []string{"--with-stream=dynamic", "--with-stream_ssl_preread_module=dynamic"}, []string{})
-	if dynamicNotLoaded.Stream.State != NginxModuleDynamicNotLoaded || dynamicNotLoaded.SSLPreread.State != NginxModuleDynamicNotLoaded ||
-		dynamicNotLoaded.State != NginxIdentityUnknown {
-		t.Fatalf("dynamic module state=%#v", dynamicNotLoaded)
-	}
-	dynamicUnknown := readyRuntimeIdentityV2(t, now, []string{"--with-stream=dynamic"}, nil)
-	if dynamicUnknown.Stream.State != NginxModuleUnknown || dynamicUnknown.Stream.Effective != CapabilityUnknownV2 ||
-		dynamicUnknown.State != NginxIdentityUnknown {
-		t.Fatalf("unknown dynamic module state=%#v", dynamicUnknown)
-	}
-	root := t.TempDir()
-	outside := filepath.Join(t.TempDir(), "nginx")
-	if err := os.WriteFile(outside, []byte("outside"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	link := filepath.Join(root, "nginx")
-	if err := os.Symlink(outside, link); err != nil {
-		t.Skipf("symlink creation is unavailable: %v", err)
-	}
-	config := NginxRuntimeInspectionConfigV2{CandidatePaths: []string{link}, AllowedExecutableRoots: []string{root},
-		InstallationClass: NginxInstallationManaged, ObservedAt: now, ExpiresAt: now.Add(time.Minute)}
-	identity, err := (NginxRuntimeInspectorV2{Config: config}).Inspect(context.Background())
-	if err != nil || !containsReasonV2(identity.ReasonCodes, "nginx_executable_path_escape") {
-		t.Fatalf("symlink escape identity=%#v err=%v", identity, err)
 	}
 }
 
