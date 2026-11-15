@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/service/durable"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/graylist"
-	protectionpolicy "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/policy"
-	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/domain"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/service/graylist"
+	protectionpolicy "github.com/MalenkiySolovey/solovey-component-server-protection/service/policy"
+	protectionresources "github.com/MalenkiySolovey/solovey-component-server-protection/service/resources"
 )
 
 func TestGraylistV2MigrationStoreRestoreBackupAndDropOwnership(t *testing.T) {

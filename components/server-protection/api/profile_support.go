@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-component-server-protection/domain"
+	protectionresources "github.com/MalenkiySolovey/solovey-component-server-protection/service/resources"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
-	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 	"github.com/gin-gonic/gin"
 )
 

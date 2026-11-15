@@ -13,7 +13,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
 
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+	protectionrepository "github.com/MalenkiySolovey/solovey-component-server-protection/service/durable"
 )
 
 // OperationRecovery connects persisted journal facts to local artifacts. It is

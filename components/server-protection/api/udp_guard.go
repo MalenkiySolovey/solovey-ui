@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"strings"
 
-	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
-	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
-	protectionudpguard "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/udpguard"
+	protectionfirewall "github.com/MalenkiySolovey/solovey-component-server-protection/service/firewall"
+	protectionoperations "github.com/MalenkiySolovey/solovey-component-server-protection/service/operations"
+	protectionudpguard "github.com/MalenkiySolovey/solovey-component-server-protection/service/udpguard"
 	"github.com/gin-gonic/gin"
 )
 

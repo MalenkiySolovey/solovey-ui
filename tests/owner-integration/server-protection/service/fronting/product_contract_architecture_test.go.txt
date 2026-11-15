@@ -1,0 +1,26 @@
+package fronting
+
+import (
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
+	"github.com/MalenkiySolovey/solovey-ui/testsupport/productsource"
+	"reflect"
+	"testing"
+)
+
+func TestEndpointLeaseContractDefinesNoAuthorityMutationMethods(t *testing.T) {
+	for _, value := range []any{hostresources.EndpointLeaseV1{}, &hostresources.EndpointLeaseV1{}} {
+		contract := reflect.TypeOf(value)
+		for _, name := range []string{"Acquire", "Renew", "Activate", "Release"} {
+			if _, found := contract.MethodByName(name); found {
+				t.Errorf("neutral lease contract gained provider mutation method %q", name)
+			}
+		}
+	}
+}
+
+func TestProductFrontingAPIHasNoDirectUnqualifiedApplySurface(t *testing.T) {
+	apiPath := productsource.Path("components", "server-protection", "api", "fronting.go")
+	api := parseArchitectureFile(t, apiPath)
+	assertNoForbiddenIdentifiers(t, api, apiPath, map[string]bool{"PrepareV2": true, "ApplyV2": true})
+	assertAnyIdentifiers(t, []string{apiPath}, []string{"frontingSemanticService", "FrontingStrategyPlanV2", "frontingApplyConfigured"})
+}

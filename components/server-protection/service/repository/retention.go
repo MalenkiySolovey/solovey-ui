@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/events"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/service/events"
 	"gorm.io/gorm"
 )
 

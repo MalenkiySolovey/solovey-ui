@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/service/durable"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-component-server-protection/domain"
 	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

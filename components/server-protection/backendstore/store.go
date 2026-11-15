@@ -4,11 +4,11 @@ package backendstore
 
 import (
 	"context"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/events"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/domain"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/service/durable"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/service/events"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/service/scoring"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/scoring"
 	"net/netip"
 	"time"
 )

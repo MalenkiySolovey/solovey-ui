@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/observationio"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/service/observationio"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"gorm.io/driver/sqlite"

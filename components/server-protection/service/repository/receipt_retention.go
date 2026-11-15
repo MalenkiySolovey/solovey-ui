@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/service/durable"
 	"strconv"
 	"strings"
 

@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-component-server-protection/domain"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/service/events"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/service/scoring"
 	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/events"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/scoring"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

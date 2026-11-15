@@ -14,9 +14,9 @@ import (
 	"sync/atomic"
 	"testing"
 
+	protectionfronting "github.com/MalenkiySolovey/solovey-component-server-protection/service/fronting"
+	protectionoperations "github.com/MalenkiySolovey/solovey-component-server-protection/service/operations"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	protectionfronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
-	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"

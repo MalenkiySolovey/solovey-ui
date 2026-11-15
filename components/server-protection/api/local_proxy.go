@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	protectionlocalproxy "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/localproxy"
+	protectionlocalproxy "github.com/MalenkiySolovey/solovey-component-server-protection/service/localproxy"
 	"github.com/gin-gonic/gin"
 )
 

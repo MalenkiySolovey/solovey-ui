@@ -11,7 +11,7 @@ import (
 
 func TestProtectionPolicyCannotAcquireConcreteBackendOrNetworkExecution(t *testing.T) {
 	root := moduleRoot(t)
-	feature := modulePath + "/components/server-protection/"
+	feature := protectionSourceModule + "/"
 	allowed := map[string]bool{
 		"github.com/MalenkiySolovey/solovey-host/hostref":                          true,
 		"github.com/MalenkiySolovey/solovey-host/componenthost/resources":          true,
@@ -37,7 +37,11 @@ func TestProtectionPolicyCannotAcquireConcreteBackendOrNetworkExecution(t *testi
 		"components/server-protection/service/health",
 		"components/server-protection/service/graylist",
 	} {
-		walkGoFiles(t, filepath.Join(root, filepath.FromSlash(relative)), func(path string) {
+		directory := filepath.Join(root, filepath.FromSlash(relative))
+		if strings.HasPrefix(relative, "components/server-protection/") {
+			directory = protectionSourcePath(t, strings.TrimPrefix(relative, "components/server-protection/"))
+		}
+		walkGoFiles(t, directory, func(path string) {
 			if strings.HasSuffix(path, "_test.go") {
 				return
 			}
@@ -45,7 +49,7 @@ func TestProtectionPolicyCannotAcquireConcreteBackendOrNetworkExecution(t *testi
 				if strings.HasPrefix(imported, modulePath+"/componenthost/") || imported == modulePath+"/network/intent" {
 					t.Errorf("portable policy retained a Product-private contract: %s imports %s", path, imported)
 				}
-				if (strings.HasPrefix(imported, modulePath+"/") || strings.HasPrefix(imported, "github.com/MalenkiySolovey/solovey-host/")) && !allowed[imported] ||
+				if (strings.HasPrefix(imported, modulePath+"/") || strings.HasPrefix(imported, "github.com/MalenkiySolovey/solovey-host/") || strings.HasPrefix(imported, feature)) && !allowed[imported] ||
 					imported == "os" || imported == "os/exec" || imported == "database/sql" ||
 					strings.HasPrefix(imported, "gorm.io/") || strings.HasPrefix(imported, "github.com/gin-gonic/") {
 					t.Errorf("portable policy acquired concrete authority: %s imports %s", path, imported)

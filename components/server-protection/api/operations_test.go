@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
+	protectionoperations "github.com/MalenkiySolovey/solovey-component-server-protection/service/operations"
 )
 
 func TestOperationAPIRequiresExplicitForceUnlockConfirmation(t *testing.T) {

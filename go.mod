@@ -8,8 +8,6 @@ require (
 	github.com/MalenkiySolovey/solovey-component-telegram v0.1.0
 	github.com/MalenkiySolovey/solovey-contracts v1.0.0
 	github.com/MalenkiySolovey/solovey-host v0.9.0
-	// v1.1.0 omits its license; select the upstream CC0 source grant.
-	github.com/zeebo/assert v1.3.0 // indirect
 	github.com/coder/websocket v1.8.14
 	github.com/gin-contrib/gzip v1.2.6
 	github.com/gin-contrib/sessions v1.1.0
@@ -25,6 +23,8 @@ require (
 	github.com/sagernet/sing-snell v0.0.0-20260829071736-20f2eaec77c3
 	github.com/shirou/gopsutil/v4 v4.26.5
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
+	// v1.1.0 omits its license; select the upstream CC0 source grant.
+	github.com/zeebo/assert v1.3.0 // indirect
 	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.62.0
 	golang.org/x/term v0.47.0
@@ -54,6 +54,7 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0
+	github.com/MalenkiySolovey/solovey-component-server-protection v0.1.0
 	github.com/ajg/form v1.5.1 // indirect
 	github.com/akutz/memconn v0.1.0 // indirect
 	github.com/alexbrainman/sspi v0.0.0-20231016080023-1a75b4708caa // indirect

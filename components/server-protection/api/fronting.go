@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	protectionfronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
+	protectionfronting "github.com/MalenkiySolovey/solovey-component-server-protection/service/fronting"
 	"github.com/gin-gonic/gin"
 )
 

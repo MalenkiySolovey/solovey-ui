@@ -3,8 +3,8 @@
 package api
 
 import (
+	protectionresources "github.com/MalenkiySolovey/solovey-component-server-protection/service/resources"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 )
 
 func optionalPort(port int) *int {

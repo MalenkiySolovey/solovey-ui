@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/domain"
 )
 
 func TestLegacySelfStealProfileBecomesDisabledUnmanagedCandidate(t *testing.T) {

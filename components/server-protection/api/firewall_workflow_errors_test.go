@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	protectionfirewall "github.com/MalenkiySolovey/solovey-component-server-protection/service/firewall"
+	protectionoperations "github.com/MalenkiySolovey/solovey-component-server-protection/service/operations"
+	protectionresources "github.com/MalenkiySolovey/solovey-component-server-protection/service/resources"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
-	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
-	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 	"github.com/gin-gonic/gin"
 )

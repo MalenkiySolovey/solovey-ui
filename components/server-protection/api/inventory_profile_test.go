@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-component-server-protection/domain"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 )
 
 func TestMVPAPIInventoryProfileAndMissingApplyCapability(t *testing.T) {

@@ -12,11 +12,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-component-server-protection/domain"
+	protectionfirewall "github.com/MalenkiySolovey/solovey-component-server-protection/service/firewall"
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
-	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
 	sshservice "github.com/MalenkiySolovey/solovey-ui/service/sshmanagement"
 	"github.com/gin-gonic/gin"
 )

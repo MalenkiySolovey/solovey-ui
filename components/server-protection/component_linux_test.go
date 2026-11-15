@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
+	protectionfirewall "github.com/MalenkiySolovey/solovey-component-server-protection/service/firewall"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"

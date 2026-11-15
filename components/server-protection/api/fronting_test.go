@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
-	protectionfronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/domain"
+	protectionfronting "github.com/MalenkiySolovey/solovey-component-server-protection/service/fronting"
 )
 
 type frontingSemanticRecorder struct {

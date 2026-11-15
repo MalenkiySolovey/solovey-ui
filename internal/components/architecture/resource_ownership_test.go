@@ -52,7 +52,7 @@ func TestGenericOwnerConsumersDoNotSelectInstalledSupervisorSchemas(t *testing.T
 			}
 		})
 	}
-	graph := filepath.Join(root, "components", "server-protection", "service", "resources", "graph.go")
+	graph := protectionSourcePath(t, "service/resources/graph.go")
 	for _, imported := range fileImports(t, graph) {
 		if strings.Contains(imported, "/deploymentidentity") || strings.Contains(imported, "/runtimecontract") {
 			violations = append(violations, "Server Protection semantic graph imports "+imported)
@@ -69,9 +69,8 @@ func TestGenericOwnerConsumersDoNotSelectInstalledSupervisorSchemas(t *testing.T
 }
 
 func TestListenerProofRequestIsSupervisorNeutral(t *testing.T) {
-	root := moduleRoot(t)
 	fields := namedStructFields(t,
-		filepath.Join(root, "components", "server-protection", "service", "helpercontract", "protocol.go"),
+		protectionSourcePath(t, "service/helpercontract/protocol.go"),
 		"ListenerOwnerObserveRequest")
 	for field := range fields {
 		lower := strings.ToLower(field)
@@ -89,7 +88,7 @@ func TestHelperFacadeAliasesTheCanonicalOperationDeclarations(t *testing.T) {
 	}
 	canonicalImport := false
 	for _, imported := range file.Imports {
-		if imported.Name != nil && imported.Name.Name == "canonical" && imported.Path.Value == `"`+modulePath+`/components/server-protection/service/helpercontract"` {
+		if imported.Name != nil && imported.Name.Name == "canonical" && imported.Path.Value == `"`+protectionSourceModule+`/service/helpercontract"` {
 			canonicalImport = true
 		}
 	}

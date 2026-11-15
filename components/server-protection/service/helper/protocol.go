@@ -3,7 +3,7 @@
 // It intentionally has no HTTP types and exposes no command-string API.
 package helper
 
-import canonical "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helpercontract"
+import canonical "github.com/MalenkiySolovey/solovey-component-server-protection/service/helpercontract"
 
 import (
 	"bytes"

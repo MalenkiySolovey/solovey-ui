@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	protectionfronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
+	protectionfronting "github.com/MalenkiySolovey/solovey-component-server-protection/service/fronting"
 )
 
 func TestReceiptExpiredFrontingReceiptIsAnExplicitConflict(t *testing.T) {

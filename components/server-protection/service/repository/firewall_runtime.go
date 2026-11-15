@@ -2,7 +2,7 @@ package repository
 
 import (
 	"context"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/service/durable"
 	"reflect"
 	"time"
 

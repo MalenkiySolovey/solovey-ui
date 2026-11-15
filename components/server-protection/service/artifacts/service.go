@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+	protectionrepository "github.com/MalenkiySolovey/solovey-component-server-protection/service/durable"
 )
 
 type ArtifactMetadataWriter interface {
