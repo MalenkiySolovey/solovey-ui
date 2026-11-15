@@ -73,5 +73,3 @@ func (r *HealthRegistry) Snapshot(ctx context.Context, now time.Time) (map[strin
 	}
 	return result, nil
 }
-
-var DefaultHealth = NewHealthRegistry()
