@@ -58,6 +58,9 @@ var componentJSON []byte
 var componentManifest = manifest.MustFromJSON(componentJSON)
 var componentID = componentManifest.ID
 
+// ComponentHost owns the Product observation instance and its lifecycle.
+var observationWorker = protectionobservation.NewWorker()
+
 var hooks = struct {
 	sync.Mutex
 	unregisterBackup       func()
@@ -85,7 +88,7 @@ var hooks = struct {
 }{}
 
 func init() {
-	protectionobservation.DefaultWorker = protectionobservation.NewWorker(protectionobservation.Options{
+	observationWorker = protectionobservation.NewWorker(protectionobservation.Options{
 		Source: backendobservation.Source{}, Inventory: hostresources.Default,
 	})
 	registry.Register(registry.Component{Manifest: componentManifest, Lifecycle: &component{}})
@@ -280,7 +283,7 @@ func (component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) erro
 		_, _ = pruner.Prune(ctx, settings.ArtifactRetentionCount, settings.ArtifactRetentionDays)
 	}
 	startLocalProxyRenewerLocked(localProxyController)
-	if err := protectionobservation.DefaultWorker.Start(backendobservation.NewStore(protectionrepository.New(dbsqlite.DB()))); err != nil {
+	if err := observationWorker.Start(backendobservation.NewStore(protectionrepository.New(dbsqlite.DB()))); err != nil {
 		_ = manager.Stop(context.Background())
 		hooks.operationManager = nil
 		cleanupHooksLocked()
@@ -293,7 +296,7 @@ func (component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) erro
 			_, _ = workflow.ReconcileAuthority(reconcileCtx)
 		}))
 		if scheduleErr != nil {
-			_ = protectionobservation.DefaultWorker.Stop(context.Background())
+			_ = observationWorker.Stop(context.Background())
 			_ = manager.Stop(context.Background())
 			hooks.operationManager = nil
 			cleanupHooksLocked()
@@ -314,7 +317,7 @@ func (component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) erro
 				_ = lifecycleCtx.Host.Scheduler.RemoveJobAndWait(context.Background(), hooks.firewallReconcileID)
 				hooks.firewallReconcileID = 0
 			}
-			_ = protectionobservation.DefaultWorker.Stop(context.Background())
+			_ = observationWorker.Stop(context.Background())
 			_ = manager.Stop(context.Background())
 			hooks.operationManager = nil
 			cleanupHooksLocked()
@@ -352,7 +355,7 @@ func (component) Stop(ctx context.Context) error {
 	}
 	localProxyErr := waitForBackground(ctx, localProxyDone)
 	hostSurfaceErr := waitForBackground(ctx, hostSurfaceDone)
-	workerErr := protectionobservation.DefaultWorker.Stop(ctx)
+	workerErr := observationWorker.Stop(ctx)
 	var operationErr error
 	if manager != nil {
 		operationErr = manager.Stop(ctx)
@@ -385,7 +388,7 @@ func waitForBackground(ctx context.Context, done <-chan struct{}) error {
 }
 
 func (component) DropData(ctx context.Context, _ lifecycle.Context) error {
-	if err := protectionobservation.DefaultWorker.Stop(ctx); err != nil {
+	if err := observationWorker.Stop(ctx); err != nil {
 		return err
 	}
 	if err := protectionrepository.EnsureDropSafe(dbsqlite.DB()); err != nil {
@@ -437,7 +440,7 @@ func protectionDeps(host componenthost.APIDeps) protectionapi.Deps {
 		Audit:             host.Audit.Audit,
 		JSONObj:           host.HTTP.JSONObj,
 		JSONMsg:           host.HTTP.JSONMsg,
-		ObservationStatus: protectionobservation.DefaultWorker.Status,
+		ObservationStatus: observationWorker.Status,
 		Operations:        manager,
 		Firewall:          workflow,
 		Baseline:          baseline,

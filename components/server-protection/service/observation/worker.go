@@ -485,5 +485,3 @@ func isBusyError(err error) bool {
 	}
 	return errors.Is(err, observationio.ErrWriteBusy)
 }
-
-var DefaultWorker = NewWorker()
