@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 )
 
 func TestFixedL4LoopbackHealthProvesExactBackendAndProxyMode(t *testing.T) {

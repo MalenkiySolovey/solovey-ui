@@ -1,7 +1,5 @@
 package firewall
 
-import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendnetwork"
-
 import (
 	"context"
 	"errors"
@@ -17,7 +15,7 @@ func TestMissingNetworkPlannerRejectsBeforeStateAndHelperCalls(t *testing.T) {
 		t.Fatal("called health before Planner admission")
 		return nil
 	}
-	workflow := Workflow{Manager: &operations.Manager{}, Helper: struct{ Helper }{}, Artifacts: struct{ ArtifactService }{}, Marker: struct{ MutationMarker }{}, State: struct{ StateStore }{}, Recovery: struct{ RecoveryBundler }{}, Contributions: struct{ FirewallContributionStore }{}, Health: health, RollbackHealth: health, Codec: backendnetwork.NFTCodec{}}
+	workflow := Workflow{Manager: &operations.Manager{}, Helper: struct{ Helper }{}, Artifacts: struct{ ArtifactService }{}, Marker: struct{ MutationMarker }{}, State: struct{ StateStore }{}, Recovery: struct{ RecoveryBundler }{}, Contributions: struct{ FirewallContributionStore }{}, Health: health, RollbackHealth: health, Codec: struct{ NFTCodec }{}}
 	if _, err := workflow.Prepare(t.Context(), PrepareInput{}); !errors.Is(err, ErrWorkflowDisabled) {
 		t.Fatalf("unbound network owner admitted: %v", err)
 	}

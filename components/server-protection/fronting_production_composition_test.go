@@ -19,6 +19,7 @@ import (
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	backendfronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendfronting"
 	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifacts"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionfronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
@@ -477,7 +478,7 @@ func productionReadyRuntimeFixture(t *testing.T, now time.Time, managementRevisi
 		t.Fatal(err)
 	}
 	supported := protectionfronting.NginxMethodCapabilityV2{Availability: protectionfronting.CapabilitySupportedV2, Revision: strings.Repeat("1", 64)}
-	identity, err := (protectionfronting.NginxRuntimeInspectorV2{Config: protectionfronting.NginxRuntimeInspectionConfigV2{
+	identity, err := (backendfronting.NginxRuntimeInspectorV2{Config: protectionfronting.NginxRuntimeInspectionConfigV2{
 		CandidatePaths: []string{binary}, AllowedExecutableRoots: []string{root}, ManagedRootPath: root, ControlledConfigPath: config,
 		InstallationClass: protectionfronting.NginxInstallationManaged, ValidationMethod: supported, ReloadMethod: supported,
 		ActiveVerification: supported, ProcessVerification: supported, ListenerVerification: supported,

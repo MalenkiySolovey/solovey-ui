@@ -14,26 +14,7 @@ import (
 func TestMissingBaselineFactOwnerRejectsBeforeAnySourceOrStateRead(t *testing.T) {
 	for _, missing := range []string{"inventory", "surfaces", "targets", "endpoints", "recovery", "effective"} {
 		t.Run(missing, func(t *testing.T) {
-			sources := BaselineSources{Inventory: struct {
-				protectionresources.InventoryReader
-			}{}, Surfaces: struct{ SurfaceSource }{},
-				Targets: func(context.Context, time.Time) []BaselineTargetFact {
-					t.Fatal("read targets before owner admission")
-					return nil
-				},
-				Endpoints: func([]hostresources.ProtectableResource, hostfacts.Snapshot, time.Time) []hostresources.ManagementEndpointV1 {
-					t.Fatal("read management before owner admission")
-					return nil
-				},
-				RecoveryEvidence: func(context.Context, time.Time) BaselineRecoveryEvidence {
-					t.Fatal("read recovery before owner admission")
-					return BaselineRecoveryEvidence{}
-				},
-				EffectiveRecovery: func(hostresources.RecoveryPathV1, []hostresources.ManagementEndpointV1, time.Time) hostresources.RecoveryPathV1 {
-					t.Fatal("admitted recovery before owner admission")
-					return hostresources.RecoveryPathV1{}
-				},
-			}
+			sources := unreadBaselineSources(t)
 			switch missing {
 			case "inventory":
 				sources.Inventory = nil
@@ -56,5 +37,30 @@ func TestMissingBaselineFactOwnerRejectsBeforeAnySourceOrStateRead(t *testing.T)
 				t.Fatalf("runtime read incomplete owners: %v", err)
 			}
 		})
+	}
+}
+
+// Every port is present, but any observation before admission fails the test.
+func unreadBaselineSources(t *testing.T) BaselineSources {
+	t.Helper()
+	return BaselineSources{Inventory: struct {
+		protectionresources.InventoryReader
+	}{}, Surfaces: struct{ SurfaceSource }{},
+		Targets: func(context.Context, time.Time) []BaselineTargetFact {
+			t.Fatal("read targets before owner admission")
+			return nil
+		},
+		Endpoints: func([]hostresources.ProtectableResource, hostfacts.Snapshot, time.Time) []hostresources.ManagementEndpointV1 {
+			t.Fatal("read management before owner admission")
+			return nil
+		},
+		RecoveryEvidence: func(context.Context, time.Time) BaselineRecoveryEvidence {
+			t.Fatal("read recovery before owner admission")
+			return BaselineRecoveryEvidence{}
+		},
+		EffectiveRecovery: func(hostresources.RecoveryPathV1, []hostresources.ManagementEndpointV1, time.Time) hostresources.RecoveryPathV1 {
+			t.Fatal("admitted recovery before owner admission")
+			return hostresources.RecoveryPathV1{}
+		},
 	}
 }

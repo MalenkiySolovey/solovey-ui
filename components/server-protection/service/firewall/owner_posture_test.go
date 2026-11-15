@@ -1,7 +1,5 @@
 package firewall
 
-import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendnetwork"
-
 import (
 	"context"
 	"testing"
@@ -17,7 +15,7 @@ func (source *countingSSHPostureSource) WithCurrentPosture(ctx context.Context) 
 type unreadableBaselineStore struct{ BaselineStore }
 
 func TestRuntimeWithoutSSHOwnerDoesNotReadDurablePolicy(t *testing.T) {
-	service := NewBaselineService(unreadableBaselineStore{}, nil, backendnetwork.NFTCodec{}, baselineSourcesFixture())
+	service := NewBaselineService(unreadableBaselineStore{}, nil, struct{ NFTCodec }{}, unreadBaselineSources(t))
 	if _, err := service.RuntimeManagement(t.Context()); err == nil {
 		t.Fatal("missing SSH owner admitted runtime authority")
 	}
@@ -25,7 +23,7 @@ func TestRuntimeWithoutSSHOwnerDoesNotReadDurablePolicy(t *testing.T) {
 
 func TestBaselineWithoutDurableOwnerDoesNotObserveSSH(t *testing.T) {
 	source := &countingSSHPostureSource{}
-	service := NewBaselineService(nil, source, backendnetwork.NFTCodec{}, baselineSourcesFixture())
+	service := NewBaselineService(nil, source, struct{ NFTCodec }{}, unreadBaselineSources(t))
 	if _, err := service.Snapshot(t.Context(), true, nil); err == nil {
 		t.Fatal("missing durable owner admitted baseline observation")
 	}

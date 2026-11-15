@@ -104,7 +104,8 @@ func TestFeaturePreviewAndPlanningConsumeNarrowCapabilityTypes(t *testing.T) {
 	}{
 		{"components/server-protection/service/firewall/types.go", "PreviewOptions", "NFTCapability", "NFTPreviewCapability"},
 		{"components/server-protection/service/interception/service.go", "Service", "KernelCapability", "KernelInterceptionCapabilityV1"},
-		{"components/server-protection/service/fronting/nginx.go", "NginxConfig", "ProbeCapability", "Availability"},
+		{"components/server-protection/backendfronting/preview_inspection.go", "NginxConfig", "ProbeCapability", "fronting.Availability"},
+		{"components/server-protection/service/fronting/nginx.go", "NginxAdapter", "Inspection", "NginxCapabilitySource"},
 	}
 	for _, check := range checks {
 		path := filepath.Join(root, filepath.FromSlash(check.path))
@@ -114,6 +115,9 @@ func TestFeaturePreviewAndPlanningConsumeNarrowCapabilityTypes(t *testing.T) {
 		}
 		if !structFieldHasType(file, check.structure, check.field, check.typeName) {
 			t.Errorf("%s.%s.%s is not the narrow %s projection", check.path, check.structure, check.field, check.typeName)
+		}
+		if check.typeName == "fronting.Availability" && !containsImport(fileImports(t, path), "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting") {
+			t.Errorf("nginx inspection does not use the feature's narrow availability contract")
 		}
 		for _, imported := range fileImports(t, path) {
 			if imported == "runtime" {
@@ -183,9 +187,17 @@ func structFieldHasType(file *ast.File, structure, field, typeName string) bool 
 				continue
 			}
 			for _, candidate := range value.Fields.List {
-				identifier, direct := candidate.Type.(*ast.Ident)
+				actual := ""
+				switch value := candidate.Type.(type) {
+				case *ast.Ident:
+					actual = value.Name
+				case *ast.SelectorExpr:
+					if owner, ok := value.X.(*ast.Ident); ok {
+						actual = owner.Name + "." + value.Sel.Name
+					}
+				}
 				for _, name := range candidate.Names {
-					if direct && name.Name == field && identifier.Name == typeName {
+					if name.Name == field && actual == typeName {
 						return true
 					}
 				}

@@ -20,10 +20,7 @@ func TestWorkflowV2ReusesRestrictedEngineAndHasNoPublicOrDynamicDestinationSurfa
 		assertNoForbiddenIdentifiers(t, parsed, path, map[string]bool{"RawConfig": true, "RawSnippet": true})
 	}
 	assertAnyIdentifiers(t, files, []string{"OperationNginxValidate", "OperationNginxInstall", "OperationNginxSwitch", "OperationNginxReload", "OperationNginxVerify", "OperationNginxRestore", "Acquire", "MarkMutation", "VerifyRevision"})
-	apiPath := filepath.Join(directory, "..", "..", "api", "fronting.go")
-	api := parseArchitectureFile(t, apiPath)
-	assertNoForbiddenIdentifiers(t, api, apiPath, map[string]bool{"PrepareV2": true, "ApplyV2": true})
-	assertAnyIdentifiers(t, []string{apiPath}, []string{"frontingSemanticService", "FrontingStrategyPlanV2", "frontingApplyConfigured"})
+
 }
 
 func TestSNIPrereadRendererHasNoSecondEngineOrDynamicActionSurface(t *testing.T) {

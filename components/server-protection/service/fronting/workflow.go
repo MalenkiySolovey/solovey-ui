@@ -158,7 +158,7 @@ type WorkflowResult struct {
 }
 
 func (w *Workflow) Capability(ctx context.Context) CapabilityReport {
-	report := CapabilityReport{AdapterID: "nginx", AdapterKind: "stream", CapabilityRevision: capabilityRevision, State: StateUnknown,
+	report := CapabilityReport{AdapterID: "nginx", AdapterKind: "stream", CapabilityRevision: NginxCapabilityRevision, State: StateUnknown,
 		ManagedRoot: AvailabilityUnsupported, ControlledInclude: AvailabilityUnsupported, Validate: AvailabilityUnsupported, Activate: AvailabilityUnsupported, Reload: AvailabilityUnsupported,
 		SNI: AvailabilitySupported, ALPN: AvailabilitySupported, ProxyProtocol: AvailabilitySupported, Warnings: []string{}, Diagnostics: []string{}}
 	capabilities, err := w.capabilities(ctx)

@@ -19,7 +19,7 @@ func TestMissingArtifactOwnerRejectsBeforeAnyStateOrHelperRead(t *testing.T) {
 	if _, err := workflow.Prepare(t.Context(), PrepareInput{}); !errors.Is(err, ErrWorkflowDisabled) {
 		t.Fatalf("missing artifact owner admitted: %v", err)
 	}
-	baseline := NewBaselineService(struct{ BaselineStore }{}, struct{ SSHPostureSource }{}, nil, baselineSourcesFixture())
+	baseline := NewBaselineService(struct{ BaselineStore }{}, struct{ SSHPostureSource }{}, nil, unreadBaselineSources(t))
 	if _, err := baseline.Snapshot(t.Context(), true, nil); !errors.Is(err, ErrMissingCapability) {
 		t.Fatalf("baseline used implicit artifact owner: %v", err)
 	}
