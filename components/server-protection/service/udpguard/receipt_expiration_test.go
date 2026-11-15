@@ -3,7 +3,7 @@ package udpguard
 import (
 	"testing"
 
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
+	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 )
 
 func TestReceiptExpiredReceiptHasExplicitUDPContractCode(t *testing.T) {

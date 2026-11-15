@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-host/componenthost/fallbacktargets"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 )
 
 const FrontingStrategyPlanSchemaV2 = "solovey-ui/fronting-strategy-plan/v2"

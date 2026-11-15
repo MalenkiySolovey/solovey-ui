@@ -13,6 +13,7 @@ import (
 	"time"
 
 	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendcore"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifacts"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
@@ -356,7 +357,7 @@ func newWorkflowFixture(t *testing.T) *workflowTestFixture {
 	request := requestFor(snapshot, reference)
 	targetReader := &fakeTargetReader{target: target}
 	management := &fakeManagementReader{result: ManagementIsolationResultV1{State: "ISOLATED", Revision: strings.Repeat("f", 64), ExpiresAt: now.Add(2 * time.Minute)}}
-	planner := Planner{Core: core, Targets: targetReader, Management: management, Now: func() time.Time { return now }}
+	planner := Planner{Core: core, Admission: backendcore.Admission{}, Targets: targetReader, Management: management, Now: func() time.Time { return now }}
 	plan, err := planner.Plan(context.Background(), request)
 	if err != nil || !plan.Eligible {
 		t.Fatalf("plan: %#v %v", plan, err)

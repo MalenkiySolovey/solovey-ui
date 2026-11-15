@@ -4,10 +4,10 @@ package health
 import (
 	"context"
 	"errors"
-	canonical "github.com/MalenkiySolovey/solovey-host/componenthost/health"
 	"strings"
 	"sync"
-	"time"
+
+	canonical "github.com/MalenkiySolovey/solovey-host/componenthost/health"
 )
 
 type Status = canonical.Status
@@ -17,7 +17,7 @@ const (
 	StatusDegraded          = canonical.StatusDegraded
 	StatusMissingCapability = canonical.StatusMissingCapability
 )
-const DefaultTimeout = 5 * time.Second
+const DefaultTimeout = canonical.DefaultTimeout
 const maxHealthCheckers = 256
 
 type Result = canonical.Result

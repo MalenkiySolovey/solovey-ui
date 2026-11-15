@@ -5,13 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/netip"
 	"sort"
 	"strings"
 	"time"
 
-	managementregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/management"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 )
 
 const managementFactLifetime = time.Minute
@@ -25,6 +25,9 @@ type InventoryManagementReader struct {
 func (reader InventoryManagementReader) ResolveIsolation(ctx context.Context, resourceID string, target ManagementEndpointFactsV1) (ManagementIsolationResultV1, error) {
 	if err := ctx.Err(); err != nil {
 		return ManagementIsolationResultV1{}, err
+	}
+	if reader.Endpoints == nil || reader.Resources == nil {
+		return ManagementIsolationResultV1{State: "UNKNOWN", ReasonCodes: []string{"management_reachability_unknown"}}, errors.New("management_inventory_unavailable")
 	}
 	now := time.Now().UTC()
 	if reader.Now != nil {
@@ -44,18 +47,11 @@ func (reader InventoryManagementReader) ResolveIsolation(ctx context.Context, re
 		result.State = "FORBIDDEN"
 		result.ReasonCodes = append(result.ReasonCodes, "management_target_forbidden")
 	}
-	endpoints := managementregistry.CurrentEndpoints
-	if reader.Endpoints != nil {
-		endpoints = reader.Endpoints
-	}
-	management := endpoints(ctx, now)
+	management := reader.Endpoints(ctx, now)
 	if err := ctx.Err(); err != nil {
 		return ManagementIsolationResultV1{}, err
 	}
-	resources := hostresources.Snapshot(ctx)
-	if reader.Resources != nil {
-		resources = reader.Resources(ctx)
-	}
+	resources := reader.Resources(ctx)
 	if len(resources.Errors) != 0 {
 		result.State = "UNKNOWN"
 		result.ReasonCodes = append(result.ReasonCodes, "management_reachability_unknown")

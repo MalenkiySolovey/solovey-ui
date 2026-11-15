@@ -12,12 +12,13 @@ import (
 
 	neutralfallback "github.com/MalenkiySolovey/solovey-host/componenthost/fallbacktargets"
 	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
+	coreinboundcontrol "github.com/MalenkiySolovey/solovey-host/coreruntime/inboundcontrol"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
-	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 )
 
 type Planner struct {
 	Core       CoreReader
+	Admission  CoreAdmission
 	Targets    TargetReader
 	Management ManagementReader
 	Now        func() time.Time
@@ -36,7 +37,11 @@ func (planner Planner) Plan(ctx context.Context, request PlanRequestV1) (domain.
 	if err := ctx.Err(); err != nil {
 		return domain.NativeFallbackPlanV1{}, &PlannerError{Code: "planner_cancelled"}
 	}
-	if planner.Core == nil || planner.Targets == nil || planner.Management == nil || request.InboundDatabaseID == 0 || request.TargetReference.Validate() != nil {
+	if planner.Core == nil || planner.Admission == nil || planner.Targets == nil || planner.Management == nil || request.InboundDatabaseID == 0 || request.TargetReference.Validate() != nil {
+		return domain.NativeFallbackPlanV1{}, &PlannerError{Code: "planner_input_invalid"}
+	}
+	resolverRevision := planner.Admission.CapabilityResolverRevision()
+	if resolverRevision == "" {
 		return domain.NativeFallbackPlanV1{}, &PlannerError{Code: "planner_input_invalid"}
 	}
 	createdAt := time.Now().UTC().Truncate(time.Second)
@@ -71,7 +76,7 @@ func (planner Planner) Plan(ctx context.Context, request PlanRequestV1) (domain.
 		Warnings: []domain.NativeFallbackReasonCode{gateReason},
 	}
 
-	if !runtimeIdentityExact(identity, snapshot) {
+	if !planner.runtimeIdentityExact(identity, snapshot, resolverRevision) {
 		if identity.State == coreinboundcontrol.RuntimeIdentityUnknown && !identityHasMismatch(identity) {
 			block(&plan, domain.NativeReasonRuntimeIdentityUnknown)
 		} else {
@@ -85,7 +90,7 @@ func (planner Planner) Plan(ctx context.Context, request PlanRequestV1) (domain.
 		block(&plan, domain.NativeReasonEffectiveStateStale)
 	}
 
-	patchVariant, selected, replaceDefault, capabilityReason := admittedVariant(snapshot)
+	patchVariant, selected, replaceDefault, capabilityReason := admittedVariant(snapshot, resolverRevision)
 	if capabilityReason != "" {
 		block(&plan, capabilityReason)
 		if capabilityReason == domain.NativeReasonCapabilityUnsupported {
@@ -269,9 +274,9 @@ func validateTargetProtocol(plan *domain.NativeFallbackPlanV1, snapshot coreinbo
 	}
 }
 
-func admittedVariant(snapshot coreinboundcontrol.InboundFallbackSnapshotV1) (coreinboundcontrol.FallbackPatchVariantV1, domain.NativeFallbackVariant, bool, domain.NativeFallbackReasonCode) {
+func admittedVariant(snapshot coreinboundcontrol.InboundFallbackSnapshotV1, resolverRevision string) (coreinboundcontrol.FallbackPatchVariantV1, domain.NativeFallbackVariant, bool, domain.NativeFallbackReasonCode) {
 	capability := snapshot.Capability
-	if capability.CapabilityResolverRevision != coreinboundcontrol.CapabilityResolverRevisionV1 || capability.Disposition == coreinboundcontrol.CapabilityUnknown {
+	if resolverRevision == "" || capability.CapabilityResolverRevision != resolverRevision || capability.Disposition == coreinboundcontrol.CapabilityUnknown {
 		return "", domain.NativeFallbackVariantNone, false, domain.NativeReasonCapabilityUnknown
 	}
 	switch capability.Variant {
@@ -299,9 +304,9 @@ func admittedVariant(snapshot coreinboundcontrol.InboundFallbackSnapshotV1) (cor
 	return "", domain.NativeFallbackVariantUnsupported, false, domain.NativeReasonCapabilityUnsupported
 }
 
-func runtimeIdentityExact(identity coreinboundcontrol.CoreRuntimeIdentityV1, snapshot coreinboundcontrol.InboundFallbackSnapshotV1) bool {
-	return coreinboundcontrol.RuntimeIdentityVerifiedV1(identity) &&
-		identity.IdentityRevision == snapshot.RuntimeIdentityRevision && identity.CapabilityResolverRevision == coreinboundcontrol.CapabilityResolverRevisionV1 && snapshot.CapabilityResolverRevision == identity.CapabilityResolverRevision
+func (planner Planner) runtimeIdentityExact(identity coreinboundcontrol.CoreRuntimeIdentityV1, snapshot coreinboundcontrol.InboundFallbackSnapshotV1, resolverRevision string) bool {
+	return planner.Admission != nil && resolverRevision != "" && planner.Admission.VerifyRuntimeIdentity(identity) &&
+		identity.IdentityRevision == snapshot.RuntimeIdentityRevision && identity.CapabilityResolverRevision == resolverRevision && snapshot.CapabilityResolverRevision == identity.CapabilityResolverRevision
 }
 
 func identityHasMismatch(identity coreinboundcontrol.CoreRuntimeIdentityV1) bool {
