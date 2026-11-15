@@ -46,8 +46,8 @@ func (r RuntimeLossReconciler) NeedsReconcile(ctx context.Context, operation pro
 			return false, nil
 		}
 		current, currentErr := r.Workflow.CurrentRuntimeManagement(ctx)
-		values, valuesErr := contributionsFromModels(snapshot.Contributions)
-		composition, composeErr := composeFirewall(values)
+		values, valuesErr := contributionsFromModels(snapshot.Contributions, r.Workflow.Codec)
+		composition, composeErr := composeFirewall(values, r.Workflow.Codec)
 		capabilities, capabilityErr := r.Workflow.Capabilities(ctx)
 		return currentErr == nil && valuesErr == nil && composeErr == nil && capabilityErr == nil &&
 			firewallCapabilitiesAvailable(capabilities, composition.Plan) && (!r.Workflow.Runtime.RequiresBaseFirewall() || capabilities.NFT.BaseFirewallPresent) &&

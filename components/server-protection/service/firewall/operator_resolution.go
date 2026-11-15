@@ -4,7 +4,7 @@ import (
 	"context"
 	"slices"
 
-	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
+	networkplan "github.com/MalenkiySolovey/solovey-host/network/planning"
 
 	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	operations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
@@ -102,8 +102,8 @@ func (w Workflow) retainedRollbackAdmission(ctx context.Context, operation repos
 		transition.CandidateSHA256 != snapshot.Composition.CandidateSHA256 || transition.CandidateSemanticSHA256 != snapshot.Composition.CandidateSemanticSHA256 || transition.CandidateTimedMembershipSHA256 != snapshot.Composition.CandidateTimedMembershipSHA256 {
 		return operations.ErrConflict
 	}
-	values, err := contributionsFromModels(snapshot.Contributions)
-	composition, composeErr := composeFirewall(values)
+	values, err := contributionsFromModels(snapshot.Contributions, w.Codec)
+	composition, composeErr := composeFirewall(values, w.Codec)
 	if err != nil || composeErr != nil || !matchesCommittedComposition(composition, snapshot.Composition) {
 		return operations.ErrConflict
 	}

@@ -2,6 +2,10 @@
 
 package api
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendfacts"
+
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendnetwork"
+
 import (
 	"context"
 	"errors"
@@ -30,7 +34,7 @@ func (h Handler) firewallBaselinePlan(c *gin.Context) {
 		h.deps.JSONObj(c, nil, err)
 		return
 	}
-	preview := protectionfirewall.Preview(state.Plan, protectionfirewall.PreviewOptions{IncludeGeneratedNFT: queryBool(c, "include_generated_nft"), NFTCapability: h.firewallPreviewCapability(c.Request.Context())})
+	preview := protectionfirewall.Preview(state.Plan, protectionfirewall.PreviewOptions{IncludeGeneratedNFT: queryBool(c, "include_generated_nft"), NFTCapability: h.firewallPreviewCapability(c.Request.Context()), Codec: backendnetwork.NFTCodec{}})
 	capability := h.baselineService().CapabilityAssessment(c.Request.Context(), state.Plan)
 	recommendations := make([]gin.H, 0, len(state.Graph.Nodes))
 	for _, node := range state.Graph.Nodes {
@@ -100,7 +104,7 @@ func (h Handler) baselineService() *protectionfirewall.BaselineService {
 	if h.deps.Baseline != nil {
 		return h.deps.Baseline
 	}
-	return protectionfirewall.NewBaselineService(backendstore.New(h.deps.Repository), sshservice.Shared())
+	return protectionfirewall.NewBaselineService(backendstore.New(h.deps.Repository), sshservice.Shared(), backendnetwork.NFTCodec{}, backendfacts.BaselineSources())
 }
 
 func (h Handler) currentFirewallBaselineState(ctx context.Context, refresh bool, selected map[string]struct{}) (protectionfirewall.BaselineState, error) {

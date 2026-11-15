@@ -1,5 +1,7 @@
 package firewall
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendnetwork"
+
 import (
 	"context"
 	"encoding/json"
@@ -61,9 +63,9 @@ func TestContributionIdentityDoesNotAuthorizeExpiredManagement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	identity := ContributionRevision(plan)
+	identity := ContributionRevision(plan, backendnetwork.NFTCodec{})
 	workflow.Now = func() time.Time { return now.Add(2 * time.Hour) }
-	if ContributionRevision(plan) != identity {
+	if ContributionRevision(plan, backendnetwork.NFTCodec{}) != identity {
 		t.Fatal("elapsed time changed semantic intent")
 	}
 	_, err = workflow.Apply(context.Background(), ApplyInput{Plan: plan, OperationID: prepared.Operation.OperationID, Confirmation: "APPLY SERVER PROTECTION " + prepared.Operation.OperationID})

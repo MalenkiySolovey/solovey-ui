@@ -15,6 +15,7 @@ import (
 
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendnetwork"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
@@ -922,11 +923,12 @@ func newFakeCIWorkflow(t *testing.T, health HealthCheck) (Workflow, *testHelperI
 	state := &memoryFirewallState{data: map[string][]byte{}}
 	contributions := newMemoryContributionStore()
 	return Workflow{
-		Manager: manager, Helper: client, Artifacts: fakeArtifactService{root: rootPath}, Marker: fakeMarker{}, State: state, Recovery: MockRecovery{}, Health: health,
+		NetworkPlanner: backendnetwork.Planner{},
+		Manager:        manager, Helper: client, Artifacts: fakeArtifactService{root: rootPath}, Marker: fakeMarker{}, State: state, Recovery: MockRecovery{}, Health: health,
 		RollbackHealth: func(context.Context, []hostresources.ProtectableResource) []componenthealth.Result {
 			return []componenthealth.Result{{ResourceID: "rollback:panel", Status: componenthealth.StatusOK, FactCode: "listener_ready"}}
 		},
 		Contributions: contributions, Now: func() time.Time { return time.Unix(1000, 0).UTC() },
-		CurrentNetworkInputs: func(_ context.Context, plan FirewallPlan) (FirewallPlan, error) { return plan, nil },
+		CurrentNetworkInputs: func(_ context.Context, plan FirewallPlan) (FirewallPlan, error) { return plan, nil }, Codec: backendnetwork.NFTCodec{},
 	}, mock, manager, store
 }

@@ -2,6 +2,8 @@
 
 package api
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendnetwork"
+
 import (
 	"context"
 	"errors"
@@ -115,7 +117,7 @@ func (h Handler) firewallPreview(c *gin.Context) {
 	}
 	preview := protectionfirewall.Preview(plan, protectionfirewall.PreviewOptions{
 		IncludeGeneratedNFT: input.IncludeGeneratedNFT || input.IncludeGeneratedNFTSnake,
-		NFTCapability:       h.firewallPreviewCapability(c.Request.Context()),
+		NFTCapability:       h.firewallPreviewCapability(c.Request.Context()), Codec: backendnetwork.NFTCodec{},
 	})
 	preview.WouldWarn = append(preview.WouldWarn, collisionWarnings(inventory.Collisions)...)
 	preview.WouldWarn = append(preview.WouldWarn, contributorWarnings(inventory.Errors)...)

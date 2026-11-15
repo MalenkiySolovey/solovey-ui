@@ -5,13 +5,11 @@ import (
 	"errors"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
-
 	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
+	networkplan "github.com/MalenkiySolovey/solovey-host/network/planning"
 	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
-	helper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
+	helper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helpercontract"
 	operations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
-	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
 
 type RuntimeLifecycle interface {
@@ -54,8 +52,8 @@ func (w Workflow) reconcileRuntime(ctx context.Context, operation repository.Ope
 	if observation.State != FirewallLiveAbsent && observation.State != FirewallLiveMatching {
 		return runtimeDecision("firewall_restore_foreign_runtime"), true, nil
 	}
-	values, err := contributionsFromModels(snapshot.Contributions)
-	composition, composeErr := composeFirewall(values)
+	values, err := contributionsFromModels(snapshot.Contributions, w.Codec)
+	composition, composeErr := composeFirewall(values, w.Codec)
 	transition, transitionErr := w.Contributions.FirewallTransition(ctx, operation.OperationID)
 	if err != nil || composeErr != nil || transitionErr != nil || transition.Schema != FirewallTransitionSchemaV2 || transition.State != "HEALTH_VERIFIED" || snapshot.Composition.State != "ACTIVE" ||
 		!matchesCommittedComposition(composition, snapshot.Composition) ||
@@ -178,10 +176,10 @@ func (w Workflow) reconcileRuntime(ctx context.Context, operation repository.Ope
 		}
 	}
 	capturedAt := w.now()
-	candidate := renderEndpointManagedNFTAt(composition.Plan, true, capturedAt)
+	candidate := renderEndpointManagedNFTAt(composition.Plan, true, capturedAt, w.Codec)
 	runtimeSHA := artifactSHA([]byte(candidate))
-	runtimeSemantic, semanticErr := helper.ManagedSemanticSHA256([]byte(candidate))
-	runtimeMembership, membershipErr := helper.ManagedTimedMembershipSHA256([]byte(candidate))
+	runtimeSemantic, semanticErr := w.Codec.ManagedSemanticSHA256([]byte(candidate))
+	runtimeMembership, membershipErr := w.Codec.ManagedTimedMembershipSHA256([]byte(candidate))
 	if semanticErr != nil || membershipErr != nil || runtimeSemantic != composition.CandidateSemanticSHA {
 		return w.failRuntimeRestore(ctx, operation, composition, binding, "boot_restore_projection_invalid")
 	}
@@ -190,7 +188,7 @@ func (w Workflow) reconcileRuntime(ctx context.Context, operation repository.Ope
 		if factsErr != nil {
 			return runtimeDecision("planner_runtime_inputs_unavailable"), true, factsErr
 		}
-		networkPlan, planErr := networkplan.CompileProtection(protectionIntent(composition.Plan), networkFacts)
+		networkPlan, planErr := w.NetworkPlanner.CompileProtection(protectionIntent(composition.Plan), networkFacts)
 		if planErr != nil {
 			return runtimeDecision("planner_runtime_conflict"), true, planErr
 		}
@@ -210,7 +208,7 @@ func (w Workflow) reconcileRuntime(ctx context.Context, operation repository.Ope
 		if err != nil || validated == nil || validated.PreviousTablePresent || validated.CandidateSHA256 != runtimeSHA || validated.SemanticSHA256 != composition.CandidateSemanticSHA || validated.TimedMembershipSHA256 != runtimeMembership {
 			return w.failRuntimeRestore(ctx, operation, composition, binding, "boot_restore_validation_failed")
 		}
-		accepted, acceptErr := networkplan.Accept(networkPlan.Plan, networkFacts, validated.CandidateSHA256)
+		accepted, acceptErr := w.NetworkPlanner.Accept(networkPlan, networkFacts, validated.CandidateSHA256)
 		if acceptErr != nil {
 			return runtimeDecision("planner_runtime_candidate_changed"), true, acceptErr
 		}
@@ -224,7 +222,7 @@ func (w Workflow) reconcileRuntime(ctx context.Context, operation repository.Ope
 		if bootErr != nil || factsErr != nil {
 			return runtimeDecision("planner_runtime_inputs_changed"), true, errors.Join(bootErr, factsErr)
 		}
-		if err := networkplan.CheckAccepted(accepted, currentFacts, runtimeSHA); err != nil {
+		if err := w.NetworkPlanner.CheckAccepted(accepted, currentFacts, runtimeSHA); err != nil {
 			return runtimeDecision("planner_runtime_inputs_changed"), true, err
 		}
 		next := binding
@@ -260,7 +258,7 @@ func (w Workflow) reconcileRuntime(ctx context.Context, operation repository.Ope
 	}
 	// Reconstruct the operation-local deletion checkpoint even after an
 	// interrupted post-mutation write. Rollback semantics stay contribution-owned.
-	deleteSHA := artifactSHA(nftables.DeleteOwnedTableCandidate())
+	deleteSHA := artifactSHA(w.Codec.DeleteOwnedTableCandidate())
 	checkpoint := FirewallCheckpoint{Version: 2, OperationID: operation.OperationID, ArtifactRevision: binding.ArtifactRevision, PlanRevision: composition.PlanRevision, CandidateSHA256: binding.ArtifactSHA256, CandidateSemanticSHA256: composition.CandidateSemanticSHA, CandidateTimedMembershipSHA256: binding.ArtifactMembershipSHA256, RollbackSHA256: deleteSHA, ContributionID: transition.ContributionID, ContributionRevision: transition.DesiredSemanticRevision, CompositionRevision: composition.Revision}
 	if err := w.saveCheckpoint(checkpoint); err != nil {
 		return w.failRuntimeRestore(ctx, operation, composition, binding, "boot_restore_checkpoint_failed")
@@ -309,12 +307,12 @@ func (w Workflow) validateRuntimeContributionOwners(ctx context.Context, snapsho
 			transition.MarkerUnixNano <= 0 || transition.MutationCompletedUnixNano <= transition.MarkerUnixNano || transition.HealthStartedUnixNano < transition.MutationCompletedUnixNano || transition.HealthCompletedUnixNano < transition.HealthStartedUnixNano || transition.HealthProviderInstance == "" || transition.HealthGeneration == 0 || !validFirewallSHA(transition.HealthObservationRevision) {
 			return ErrContributionConflict
 		}
-		desired, err := decodeContributionJSON(transition.DesiredJSON)
+		desired, err := decodeContributionJSON(transition.DesiredJSON, w.Codec)
 		if err != nil || desired.ContributionID != model.ContributionID || desired.SemanticRevision != model.SemanticRevision {
 			return ErrContributionConflict
 		}
 		if transition.PreviousPresent {
-			previous, err := decodeContributionJSON(transition.PreviousJSON)
+			previous, err := decodeContributionJSON(transition.PreviousJSON, w.Codec)
 			if err != nil || previous.ContributionID != model.ContributionID || previous.SemanticRevision != transition.PreviousSemanticRevision {
 				return ErrContributionConflict
 			}
@@ -360,9 +358,9 @@ func (w Workflow) failRuntimeRestore(ctx context.Context, operation repository.O
 		if err := w.RuntimeStore.UpdateFirewallRuntime(ctx, operation.OperationID, operation.Revision, composition.Revision, failed, cleanup); err != nil {
 			return runtimeDecision(reason), true, err
 		}
-		deletion := nftables.DeleteOwnedTableCandidate()
+		deletion := w.Codec.DeleteOwnedTableCandidate()
 		digest := artifactSHA(deletion)
-		files := candidateFiles(composition.Plan, RenderManagedNFT(composition.Plan), composition.CandidateSHA)
+		files := candidateFiles(composition.Plan, RenderManagedNFT(composition.Plan, w.Codec), composition.CandidateSHA)
 		files["firewall-before.nft"], files["firewall-before.nft.sha256"] = deletion, []byte(digest+"\n")
 		artifact, err := w.Artifacts.WriteRevision(ctx, operation.OperationID, rollbackArtifactRevision(operation.OperationID, "boot-failed"), files)
 		if err == nil {

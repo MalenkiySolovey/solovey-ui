@@ -5,9 +5,7 @@ import (
 	"net/netip"
 	"time"
 
-	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
-	managementregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/management"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 )
 
@@ -21,15 +19,15 @@ type RuntimeManagement struct {
 }
 
 func (s *BaselineService) RuntimeManagement(ctx context.Context) (RuntimeManagement, error) {
-	if s == nil || s.Repository == nil || s.SSH == nil {
+	if s == nil || s.Repository == nil || s.SSH == nil || !s.Sources.available() {
 		return RuntimeManagement{}, ErrWorkflowDisabled
 	}
 	ctx = s.SSH.WithCurrentPosture(ctx)
-	inventory := protectionresources.Snapshot(ctx, true, hostresources.Default)
+	inventory := protectionresources.Snapshot(ctx, true, s.Sources.Inventory)
 	if err := InventoryReady(inventory); err != nil {
 		return RuntimeManagement{}, err
 	}
-	surfaces := hostfacts.Reconcile(ctx)
+	surfaces := s.Sources.Surfaces.Reconcile(ctx)
 	now := time.Now().UTC()
 	if s.Now != nil {
 		now = s.Now().UTC()
@@ -38,7 +36,7 @@ func (s *BaselineService) RuntimeManagement(ctx context.Context) (RuntimeManagem
 	if err != nil {
 		return RuntimeManagement{}, err
 	}
-	return RuntimeManagement{Resources: inventory.Resources, Management: managementregistry.Endpoints(inventory.Resources, surfaces, now), Trusted: trusted, ObservedAt: now}, nil
+	return RuntimeManagement{Resources: inventory.Resources, Management: s.Sources.Endpoints(inventory.Resources, surfaces, now), Trusted: trusted, ObservedAt: now}, nil
 }
 
 // validateRuntimeManagement proves coverage of current facts by the committed

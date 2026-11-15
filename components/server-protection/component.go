@@ -2,6 +2,8 @@
 
 package serverprotection
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendfacts"
+
 import (
 	"context"
 	_ "embed"
@@ -21,6 +23,7 @@ import (
 	protectionapi "github.com/MalenkiySolovey/solovey-ui/components/server-protection/api"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendcore"
 	protectionhealth "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendhealth"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendnetwork"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendobservation"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
 	protectiondeployment "github.com/MalenkiySolovey/solovey-ui/components/server-protection/deploymentadapter"
@@ -200,13 +203,13 @@ func (component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) erro
 	workflow, workflowErr := ensureFirewallWorkflowLocked()
 	recovery := protectionoperations.Recovery(protectionartifacts.OperationRecovery{Storage: storage, Repository: repository})
 	if workflowErr == nil {
-		recovery = protectionfirewall.BackendRecovery{Helper: workflow.Helper, Manager: manager, Storage: storage, Repository: repository, Health: workflow.RollbackHealth, Workflow: workflow}
+		recovery = protectionfirewall.BackendRecovery{Helper: workflow.Helper, Manager: manager, Storage: storage, Repository: repository, Bundles: protectionartifacts.OperationRecovery{Storage: storage, Repository: repository}, Health: workflow.RollbackHealth, Workflow: workflow}
 	}
 	if err := manager.SetRecovery(recovery); err != nil {
 		cleanupHooksLocked()
 		return err
 	}
-	frontingRecovery := protectionfronting.BackendRecovery{Manager: manager, Storage: storage, Repository: repository}
+	frontingRecovery := protectionfronting.BackendRecovery{Manager: manager, Storage: storage, Repository: repository, Bundles: protectionartifacts.OperationRecovery{Storage: storage, Repository: repository}}
 	if workflow, workflowErr := ensureFrontingWorkflowLocked(); workflowErr == nil {
 		frontingRecovery.Helper, frontingRecovery.Health = workflow.Helper, workflow.RollbackHealth
 	}
@@ -422,7 +425,7 @@ func protectionDeps(host componenthost.APIDeps) protectionapi.Deps {
 	}
 	dataOwner := protectionrepository.New(dbsqlite.DB())
 	repository := backendstore.New(dataOwner)
-	baseline := protectionfirewall.NewBaselineService(repository, sshservice.Shared())
+	baseline := protectionfirewall.NewBaselineService(repository, sshservice.Shared(), backendnetwork.NFTCodec{}, backendfacts.BaselineSources())
 	if workflow != nil {
 		baseline.Capabilities = workflow
 	}
@@ -535,7 +538,8 @@ func ensureFirewallWorkflowLocked() (*protectionfirewall.Workflow, error) {
 		return nil, errors.Join(protectionfirewall.ErrMissingCapability, err)
 	}
 	workflow := &protectionfirewall.Workflow{
-		Manager: manager, Helper: client,
+		NetworkPlanner: backendnetwork.Planner{},
+		Manager:        manager, Helper: client,
 		Artifacts: protectionartifacts.Service{Storage: storage, Store: backendstore.New(protectionrepository.New(dbsqlite.DB()))}, Marker: storage, State: storage,
 		Recovery: protectionartifacts.OperationRecovery{Storage: storage, Repository: backendstore.New(protectionrepository.New(dbsqlite.DB()))},
 		Health: func(ctx context.Context, resources []hostresources.ProtectableResource) []componenthealth.Result {
@@ -545,13 +549,13 @@ func ensureFirewallWorkflowLocked() (*protectionfirewall.Workflow, error) {
 			return protectionhealth.Evaluate(ctx, protectionresources.Snapshot(ctx, true, hostresources.Default).Resources, nil)
 		},
 		Contributions:        backendstore.New(protectionrepository.New(dbsqlite.DB())),
-		CurrentNetworkInputs: protectionfirewall.NewBaselineService(backendstore.New(protectionrepository.New(dbsqlite.DB())), sshservice.Shared()).NetworkInputs,
+		CurrentNetworkInputs: protectionfirewall.NewBaselineService(backendstore.New(protectionrepository.New(dbsqlite.DB())), sshservice.Shared(), backendnetwork.NFTCodec{}, backendfacts.BaselineSources()).NetworkInputs, Codec: backendnetwork.NFTCodec{},
 	}
 	runtimeLifecycle := protectiondeployment.FirewallRuntime{Authority: hooks.runtimeRootAuthority}
 	workflow.RuntimeStore = backendstore.New(protectionrepository.New(dbsqlite.DB()))
 	if runtimeLifecycle.Available() {
 		workflow.Runtime = runtimeLifecycle
-		workflow.CurrentRuntimeManagement = protectionfirewall.NewBaselineService(backendstore.New(protectionrepository.New(dbsqlite.DB())), sshservice.Shared()).RuntimeManagement
+		workflow.CurrentRuntimeManagement = protectionfirewall.NewBaselineService(backendstore.New(protectionrepository.New(dbsqlite.DB())), sshservice.Shared(), backendnetwork.NFTCodec{}, backendfacts.BaselineSources()).RuntimeManagement
 	}
 	hooks.firewallWorkflow = workflow
 	return workflow, nil

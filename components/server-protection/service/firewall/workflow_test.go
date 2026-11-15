@@ -15,6 +15,7 @@ import (
 
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendnetwork"
 	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifacts"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
@@ -144,32 +145,32 @@ func TestWorkflowIdempotencyUnknownSSHAndRollbackFailure(t *testing.T) {
 
 func TestPreflightRejectsStalePayloadAndUnknownListenerProtocol(t *testing.T) {
 	empty := BuildPlan(nil, []protectiondata.PortAllowlistModel{{Protocol: "tcp", PortStart: 22, PortEnd: 22, Reason: "SSH"}}, nil)
-	if err := Preflight(empty); !errors.Is(err, ErrUnsafeResource) {
+	if err := Preflight(empty, backendnetwork.NFTCodec{}); !errors.Is(err, ErrUnsafeResource) {
 		t.Fatalf("empty protectable resource inventory was accepted: %v", err)
 	}
 	stale := applyPlan()
 	stale.AllowTCPPorts = []int{22}
-	if err := Preflight(stale); !errors.Is(err, ErrPlanRevision) {
+	if err := Preflight(stale, backendnetwork.NFTCodec{}); !errors.Is(err, ErrPlanRevision) {
 		t.Fatalf("stale plan payload was accepted: %v", err)
 	}
 	missingKeep := applyPlan()
 	missingKeep.AllowTCPPorts = []int{22}
 	missingKeep.Revision = firewallPlanRevision(missingKeep)
-	if err := Preflight(missingKeep); !errors.Is(err, ErrUnsafeResource) {
+	if err := Preflight(missingKeep, backendnetwork.NFTCodec{}); !errors.Is(err, ErrUnsafeResource) {
 		t.Fatalf("self-consistent plan without the panel keep was accepted: %v", err)
 	}
 	unknown := BuildPlan(
 		[]hostresources.ProtectableResource{{ID: "core:inbound:1", Kind: "inbound", Protocol: "unknown", Port: 443}},
 		[]protectiondata.PortAllowlistModel{{Protocol: "tcp", PortStart: 22, PortEnd: 22, Reason: "SSH"}}, nil,
 	)
-	if err := Preflight(unknown); !errors.Is(err, ErrUnsafeResource) {
+	if err := Preflight(unknown, backendnetwork.NFTCodec{}); !errors.Is(err, ErrUnsafeResource) {
 		t.Fatalf("unknown listener protocol was accepted: %v", err)
 	}
 	unknownKind := BuildPlan(
 		[]hostresources.ProtectableResource{{ID: "component:future:listener", Kind: "future_listener", Protocol: "tcp", Port: 8443}},
 		[]protectiondata.PortAllowlistModel{{Protocol: "tcp", PortStart: 22, PortEnd: 22, Reason: "SSH"}}, nil,
 	)
-	if err := Preflight(unknownKind); !errors.Is(err, ErrUnsafeResource) {
+	if err := Preflight(unknownKind, backendnetwork.NFTCodec{}); !errors.Is(err, ErrUnsafeResource) {
 		t.Fatalf("unknown health-check resource kind was accepted: %v", err)
 	}
 }
@@ -472,13 +473,14 @@ func newWorkflowWithRoot(t *testing.T, health HealthCheck, configs ...workflowDa
 		health = passingHealth
 	}
 	return Workflow{
-		Manager: manager, Helper: client, Artifacts: protectionartifacts.Service{Storage: storage, Store: repository}, Marker: storage, State: storage,
+		NetworkPlanner: backendnetwork.Planner{},
+		Manager:        manager, Helper: client, Artifacts: protectionartifacts.Service{Storage: storage, Store: repository}, Marker: storage, State: storage,
 		Recovery: MockRecovery{}, Health: health,
 		RollbackHealth: func(context.Context, []hostresources.ProtectableResource) []componenthealth.Result {
 			return []componenthealth.Result{{ResourceID: "rollback:panel", Status: componenthealth.StatusOK, FactCode: "listener_ready"}}
 		},
 		Contributions: repository, Now: func() time.Time { return time.Unix(1000, 0).UTC() },
-		CurrentNetworkInputs: func(_ context.Context, plan FirewallPlan) (FirewallPlan, error) { return plan, nil },
+		CurrentNetworkInputs: func(_ context.Context, plan FirewallPlan) (FirewallPlan, error) { return plan, nil }, Codec: backendnetwork.NFTCodec{},
 	}, mock, manager, repository, rootPath
 }
 

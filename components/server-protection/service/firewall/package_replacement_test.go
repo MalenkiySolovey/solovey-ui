@@ -156,7 +156,7 @@ func assertPackageReplacement(t *testing.T, w *Workflow, nft *testHelperInvoker,
 	if err := restarted.SetReconcilerForKind(operations.KindFirewall, RuntimeLossReconciler{Workflow: w}); err != nil {
 		t.Fatal(err)
 	}
-	if err := restarted.SetRecovery(BackendRecovery{Helper: client, Manager: restarted, Storage: newStorage, Repository: repo, Health: w.RollbackHealth, Workflow: w}); err != nil {
+	if err := restarted.SetRecovery(BackendRecovery{Helper: client, Manager: restarted, Storage: newStorage, Repository: repo, Bundles: artifacts.OperationRecovery{Storage: newStorage, Repository: repo}, Health: w.RollbackHealth, Workflow: w}); err != nil {
 		t.Fatal(err)
 	}
 	if err := restarted.Start(ctx); err != nil {

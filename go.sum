@@ -553,5 +553,5 @@ github.com/MalenkiySolovey/solovey-host v0.6.0 h1:NwSM7WtIeCBgq25GH/P6RfQQ3n6rvb
 github.com/MalenkiySolovey/solovey-host v0.6.0/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
 github.com/MalenkiySolovey/solovey-host v0.7.0 h1:m0Dt8PxCVgmhmEMVYcq4hFmTYNjkGvku6bgyUtLdQfs=
 github.com/MalenkiySolovey/solovey-host v0.7.0/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
-github.com/MalenkiySolovey/solovey-host v0.8.0 h1:UYHbfJOXA5dBPAIpF7+IP+VHzyrRKEhOIr/Wf5SkEQQ=
-github.com/MalenkiySolovey/solovey-host v0.8.0/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
+github.com/MalenkiySolovey/solovey-host v0.9.0 h1:1z8gota+HZO1oTkftl3rXlN0hjzUz+0Ghin7UeFELQU=
+github.com/MalenkiySolovey/solovey-host v0.9.0/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=

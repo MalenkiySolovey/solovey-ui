@@ -10,13 +10,12 @@ import (
 	"strings"
 	"time"
 
-	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
-	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
-	managementregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/management"
-	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	neutralfallback "github.com/MalenkiySolovey/solovey-host/componenthost/fallbacktargets"
+	hostfacts "github.com/MalenkiySolovey/solovey-host/componenthost/hostsurface"
+	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
-	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
+	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helpercontract"
 	protectionpolicy "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/policy"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 	protectionresponse "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/response"
@@ -68,6 +67,8 @@ type BaselineService struct {
 	Repository   BaselineStore
 	Capabilities BaselineCapabilitySource
 	SSH          SSHPostureSource
+	Codec        NFTCodec
+	Sources      BaselineSources
 	Now          func() time.Time
 }
 
@@ -107,8 +108,8 @@ type DecisionResolutionPreview struct {
 
 var ErrUnknownBaselineEndpoint = errors.New("decision target is absent from the configured endpoint inventory")
 
-func NewBaselineService(repository BaselineStore, posture SSHPostureSource) *BaselineService {
-	return &BaselineService{Repository: repository, SSH: posture}
+func NewBaselineService(repository BaselineStore, posture SSHPostureSource, codec NFTCodec, sources BaselineSources) *BaselineService {
+	return &BaselineService{Repository: repository, SSH: posture, Codec: codec, Sources: sources}
 }
 
 func (s *BaselineService) CapabilityAssessment(ctx context.Context, plan FirewallPlan) BaselineCapabilityAssessment {
@@ -201,10 +202,16 @@ func (s *BaselineService) Snapshot(ctx context.Context, refresh bool, selected m
 	if s == nil || s.Repository == nil {
 		return BaselineState{}, errors.New("firewall baseline repository is unavailable")
 	}
+	if s.Codec == nil {
+		return BaselineState{}, ErrMissingCapability
+	}
+	if !s.Sources.available() {
+		return BaselineState{}, ErrMissingCapability
+	}
 	if s.SSH != nil {
 		ctx = s.SSH.WithCurrentPosture(ctx)
 	}
-	inventory := protectionresources.Snapshot(ctx, refresh, hostresources.Default)
+	inventory := protectionresources.Snapshot(ctx, refresh, s.Sources.Inventory)
 	if err := InventoryReady(inventory); err != nil {
 		return BaselineState{}, err
 	}
@@ -222,28 +229,28 @@ func (s *BaselineService) Snapshot(ctx context.Context, refresh bool, selected m
 		}
 	}
 
-	surfaceSnapshot := hostfacts.CurrentSnapshot()
+	surfaceSnapshot := s.Sources.Surfaces.Snapshot()
 	// A caller-requested refresh must include host surfaces as well as the
 	// configured resource registry. Firewall preview is a safety boundary: it
 	// must consume the current semantic SSH projection, not race a background
 	// reconciliation or reuse an empty startup snapshot.
 	if refresh || surfaceSnapshot.GeneratedAt == 0 {
-		surfaceSnapshot = hostfacts.Reconcile(ctx)
+		surfaceSnapshot = s.Sources.Surfaces.Reconcile(ctx)
 	}
 	now := time.Now().UTC()
 	if s.Now != nil {
 		now = s.Now().UTC()
 	}
 	targets := make(map[string]protectionresources.LocalTargetStatus)
-	targetSnapshot := neutralfallback.Default.Snapshot(ctx, now)
+	targetSnapshot := s.Sources.Targets(ctx, now)
 	for _, resource := range resources {
 		targetID := strings.TrimSpace(resource.Capabilities.FallbackTargetID)
 		if targetID == "" {
 			continue
 		}
-		for _, target := range targetSnapshot.Targets {
-			identity := target.Identity.ProviderID + ":" + target.Identity.TargetID
-			if targetID != target.Identity.TargetID && targetID != identity {
+		for _, target := range targetSnapshot {
+			identity := target.ProviderID + ":" + target.TargetID
+			if targetID != target.TargetID && targetID != identity {
 				continue
 			}
 			health := string(target.Readiness)
@@ -251,7 +258,7 @@ func (s *BaselineService) Snapshot(ctx context.Context, refresh bool, selected m
 				health = "HEALTHY"
 			}
 			targets[resource.ID] = protectionresources.LocalTargetStatus{
-				TargetID: identity, EndpointID: target.Endpoint.EndpointID, PublishRevision: target.PublishRevision,
+				TargetID: identity, EndpointID: target.EndpointID, PublishRevision: target.PublishRevision,
 				HealthRevision: target.ProviderHealthRevision, ConfigurationRevision: target.ContentDigest, Health: health,
 			}
 			break
@@ -297,7 +304,7 @@ func (s *BaselineService) Snapshot(ctx context.Context, refresh bool, selected m
 		ResourceRevision: resourceRevision, GraphRevision: graph.Revision, GraphEvidenceRevision: graphEvidence.Revision,
 		OwnerObservationRevision: graph.OwnerObservationRevision, ConfigurationRevision: configurationRevision,
 		PolicyRevision: policyRevision, RecoveryRevision: recoveryRevision, PlanRevision: plan.Revision,
-		CandidateSHA256: baselineSHA256([]byte(RenderManagedNFT(plan))), CapturedAt: now.Unix(),
+		CandidateSHA256: baselineSHA256([]byte(RenderManagedNFT(plan, s.Codec))), CapturedAt: now.Unix(),
 	}
 	return BaselineState{
 		Graph: graph, GraphEvidence: graphEvidence, Topology: topology, Plan: plan,
@@ -310,13 +317,16 @@ func (s *BaselineService) ManagementContracts(ctx context.Context, resources []h
 	if s == nil || s.Repository == nil {
 		return nil, nil, 0, errors.New("firewall baseline repository is unavailable")
 	}
-	management := managementregistry.Endpoints(resources, surfaces, now)
+	if !s.Sources.available() {
+		return nil, nil, 0, ErrMissingCapability
+	}
+	management := s.Sources.Endpoints(resources, surfaces, now)
 	sort.Slice(management, func(i, j int) bool { return management[i].ID < management[j].ID })
-	evidence := managementregistry.RecoveryEvidence(ctx, now)
+	evidence := s.Sources.RecoveryEvidence(ctx, now)
 	recovery := make([]hostresources.RecoveryPathV1, 0, len(evidence.Paths))
 	invalid := len(evidence.ReasonCodes)
 	for _, value := range evidence.Paths {
-		value = managementregistry.Effective(value, management, now)
+		value = s.Sources.EffectiveRecovery(value, management, now)
 		if !hostresources.RecoveryPathValid(value, now) {
 			invalid++
 			continue

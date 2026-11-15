@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifacts"
+	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifactcontract"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helpercontract"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
@@ -17,9 +17,16 @@ import (
 type BackendRecovery struct {
 	Helper     Helper
 	Manager    *protectionoperations.Manager
-	Storage    *protectionartifacts.Storage
+	Storage    RecoveryArtifacts
+	Bundles    RecoveryBundler
 	Repository RecoveryStore
 	Health     HealthCheck
+}
+
+type RecoveryArtifacts interface {
+	StateStore
+	HasMutationMarker(string) bool
+	VerifyRevision(string, string) (protectionartifacts.Manifest, error)
 }
 
 func (r BackendRecovery) HasMutationArtifact(ctx context.Context, operation protectionrepository.OperationLockModel) (bool, error) {
@@ -38,7 +45,7 @@ func (r BackendRecovery) HasMutationArtifact(ctx context.Context, operation prot
 }
 
 func (r BackendRecovery) AttemptRollback(ctx context.Context, operation protectionrepository.OperationLockModel) error {
-	if r.Helper == nil || r.Manager == nil || r.Storage == nil || r.Health == nil {
+	if r.Helper == nil || r.Manager == nil || r.Storage == nil || r.Health == nil || r.Bundles == nil {
 		return errors.New("restricted fronting rollback backend is unavailable")
 	}
 	workflow := &Workflow{Manager: r.Manager, Helper: r.Helper, State: r.Storage, Health: r.Health, RollbackHealth: r.Health, Now: time.Now}
@@ -100,5 +107,8 @@ func (r BackendRecovery) AttemptRollback(ctx context.Context, operation protecti
 }
 
 func (r BackendRecovery) CreateBundle(ctx context.Context, operation protectionrepository.OperationLockModel, state string) error {
-	return (protectionartifacts.OperationRecovery{Storage: r.Storage, Repository: r.Repository}).CreateBundle(ctx, operation, state)
+	if r.Bundles == nil {
+		return errors.New("recovery bundle owner is unavailable")
+	}
+	return r.Bundles.CreateBundle(ctx, operation, state)
 }

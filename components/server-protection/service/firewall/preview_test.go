@@ -1,5 +1,7 @@
 package firewall
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendnetwork"
+
 import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 
 import (
@@ -22,7 +24,7 @@ func TestPreviewIsDeterministicAndNonEnforcing(t *testing.T) {
 	if left.Revision == "" || left.Revision != right.Revision {
 		t.Fatalf("plan revisions = %q / %q", left.Revision, right.Revision)
 	}
-	preview := Preview(left, PreviewOptions{NFTCapability: NFTPreviewCapability{Available: true, Revision: strings.Repeat("a", 64)}, IncludeGeneratedNFT: true})
+	preview := Preview(left, PreviewOptions{NFTCapability: NFTPreviewCapability{Available: true, Revision: strings.Repeat("a", 64)}, IncludeGeneratedNFT: true, Codec: backendnetwork.NFTCodec{}})
 	if preview.Backend != "preview_only" || len(preview.WouldBlock) != 0 || len(preview.ProtectedKeep) != 3 {
 		t.Fatalf("preview = %#v", preview)
 	}
@@ -44,7 +46,7 @@ func TestPreviewIsDeterministicAndNonEnforcing(t *testing.T) {
 
 func TestUnavailableNFTCapabilityReturnsInventoryWithoutScript(t *testing.T) {
 	plan := BuildPlan([]hostresources.ProtectableResource{{ID: "core:panel:web", Protocol: "http", Listen: "127.0.0.1", Port: 2095}}, nil, nil)
-	preview := Preview(plan, PreviewOptions{NFTCapability: NFTPreviewCapability{Reason: "nft_helper_absent"}, IncludeGeneratedNFT: true})
+	preview := Preview(plan, PreviewOptions{NFTCapability: NFTPreviewCapability{Reason: "nft_helper_absent"}, IncludeGeneratedNFT: true, Codec: backendnetwork.NFTCodec{}})
 	if preview.Backend != "unsupported" || preview.GeneratedNFT != "" || len(preview.ProtectedKeep) != 1 || len(preview.WouldBlock) != 0 {
 		t.Fatalf("preview = %#v", preview)
 	}
@@ -52,7 +54,7 @@ func TestUnavailableNFTCapabilityReturnsInventoryWithoutScript(t *testing.T) {
 
 func TestPreviewFailsClosedWithoutInjectedCapability(t *testing.T) {
 	plan := BuildPlan(nil, nil, nil)
-	preview := Preview(plan, PreviewOptions{IncludeGeneratedNFT: true})
+	preview := Preview(plan, PreviewOptions{IncludeGeneratedNFT: true, Codec: backendnetwork.NFTCodec{}})
 	if preview.Backend != "unsupported" || preview.GeneratedNFT != "" || !strings.Contains(strings.Join(preview.Warnings, " "), "capability unavailable") {
 		t.Fatalf("preview without capability = %#v", preview)
 	}
@@ -74,7 +76,7 @@ func TestPlanAcceptsExplicitNonstandardSSHKeep(t *testing.T) {
 	if !containsPort(plan.AllowTCPPorts, 2222) || containsPort(plan.AllowTCPPorts, 22) {
 		t.Fatalf("explicit SSH keep ports = %#v", plan.AllowTCPPorts)
 	}
-	if err := Preflight(plan); err != nil {
+	if err := Preflight(plan, backendnetwork.NFTCodec{}); err != nil {
 		t.Fatalf("explicit nonstandard SSH was blocked: %v", err)
 	}
 }

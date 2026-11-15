@@ -9,10 +9,9 @@ import (
 	componenthealth "github.com/MalenkiySolovey/solovey-host/componenthost/health"
 	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-host/hostref"
+	networkplan "github.com/MalenkiySolovey/solovey-host/network/planning"
 	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
-	helper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
-	platform "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
-	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
+	helper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helpercontract"
 )
 
 // NetworkInputs is an operation-local read of canonical owner state. The
@@ -36,15 +35,15 @@ func (w Workflow) networkFacts(ctx context.Context, desired FirewallPlan, capabi
 	intent := protectionIntent(current)
 	facts := networkplan.Facts{HostRef: hostref.Local(), InventoryComplete: true,
 		Revision: intent.Binding.InputRevision, Resources: intent.Binding.Resources, Allocations: allocations,
-		Capability: platform.PlatformFact{Availability: platform.Unavailable, Backend: "nft", Reason: "nft_capability_unavailable"}}
+		Capability: networkplan.CapabilityFact{Availability: networkplan.CapabilityUnavailableState, Backend: "nft", Reason: "nft_capability_unavailable"}}
 	if firewallCapabilitiesAvailable(capabilities, desired) {
 		facts.CapabilityRevision = capabilities.Revision
-		facts.Capability = platform.PlatformFact{Availability: platform.Available, Backend: "nft"}
+		facts.Capability = networkplan.CapabilityFact{Availability: networkplan.CapabilityAvailable, Backend: "nft"}
 	}
 	// The existing policy owner establishes continuity. Planner consumes the
 	// result for the exact semantic endpoint, without inventing management policy.
 	continuity := "UNKNOWN"
-	if Preflight(current) == nil && preflightTemporalPlan(current, w.now()) == nil {
+	if Preflight(current, w.Codec) == nil && preflightTemporalPlan(current, w.now()) == nil {
 		continuity = "VERIFIED"
 	}
 	for _, binding := range facts.Resources {
@@ -67,9 +66,9 @@ func expectedNetworkAllocations(snapshot repository.FirewallAuthoritySnapshot) [
 func (w Workflow) compileNetwork(ctx context.Context, desired FirewallPlan, capabilities *helper.CapabilitiesResult, snapshot repository.FirewallAuthoritySnapshot) (networkplan.ProtectionPlan, networkplan.Facts, error) {
 	facts, err := w.networkFacts(ctx, desired, capabilities, expectedNetworkAllocations(snapshot))
 	if err != nil {
-		return networkplan.ProtectionPlan{}, facts, err
+		return nil, facts, err
 	}
-	plan, err := networkplan.CompileProtection(protectionIntent(desired), facts)
+	plan, err := w.NetworkPlanner.CompileProtection(protectionIntent(desired), facts)
 	if err == nil && desired.Mode == ModeCoexistenceEndpointManaged && desired.InputRevision != facts.Revision {
 		err = &networkplan.Conflict{Reason: networkplan.StalePlan, ResourceRef: networkplan.ProtectionResourceRef}
 	}
@@ -91,9 +90,9 @@ func (w Workflow) runtimeNetworkFacts(plan FirewallPlan, current RuntimeManageme
 			Trusted                     []string
 		}{boot,
 			hostresources.Revision(CanonicalPlanResources(current.Resources)), BaselineConfigurationRevision(current.Management), uniqueSorted(current.Trusted)}),
-		Capability: platform.PlatformFact{Availability: platform.Unavailable, Backend: "nft"}}
+		Capability: networkplan.CapabilityFact{Availability: networkplan.CapabilityUnavailableState, Backend: "nft"}}
 	if firewallCapabilitiesAvailable(capabilities, plan) {
-		facts.CapabilityRevision, facts.Capability = capabilities.Revision, platform.PlatformFact{Availability: platform.Available, Backend: "nft"}
+		facts.CapabilityRevision, facts.Capability = capabilities.Revision, networkplan.CapabilityFact{Availability: networkplan.CapabilityAvailable, Backend: "nft"}
 	}
 	for _, binding := range facts.Resources {
 		if binding.Management {

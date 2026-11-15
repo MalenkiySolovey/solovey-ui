@@ -404,7 +404,7 @@ func TestRestartRecoveryAtEveryFrontingCheckpointNeverRepeatsForwardSwitch(t *te
 				fixture.nginx.ActiveRevision, fixture.nginx.ActiveSHA256 = desired.DesiredRevision, desired.GeneratedSHA256
 			}
 			beforeSwitches := countOperation(fixture.nginx.Calls, protectionhelper.OperationNginxSwitch)
-			recovery := BackendRecovery{Helper: fixture.workflow.Helper, Manager: fixture.manager, Storage: fixture.storage, Repository: fixture.repository, Health: fixture.workflow.RollbackHealth}
+			recovery := BackendRecovery{Helper: fixture.workflow.Helper, Manager: fixture.manager, Storage: fixture.storage, Repository: fixture.repository, Bundles: protectionartifacts.OperationRecovery{Storage: fixture.storage, Repository: fixture.repository}, Health: fixture.workflow.RollbackHealth}
 			if err := recovery.AttemptRollback(context.Background(), operation); err != nil {
 				t.Fatalf("checkpoint=%s err=%v", test.checkpoint, err)
 			}

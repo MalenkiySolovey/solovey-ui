@@ -1,5 +1,7 @@
 package firewall
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendnetwork"
+
 import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 
 import (
@@ -29,7 +31,7 @@ func (failingCompositionMarker) MarkMutation(string, string) error {
 
 func TestFirewallCompositionKeepsIndependentNetworkAndFamilyContributions(t *testing.T) {
 	baseline := compositionEndpointPlan(t)
-	baselineContribution, err := contributionFromPlan(baseline)
+	baselineContribution, err := contributionFromPlan(baseline, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +52,7 @@ func TestFirewallCompositionKeepsIndependentNetworkAndFamilyContributions(t *tes
 		t.Fatalf("family identities collapsed: %#v %#v", contribution4, contribution6)
 	}
 
-	composed, err := composeFirewall([]ManagedFirewallContributionV1{contribution6, baselineContribution, contribution4})
+	composed, err := composeFirewall([]ManagedFirewallContributionV1{contribution6, baselineContribution, contribution4}, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +66,7 @@ func TestFirewallCompositionKeepsIndependentNetworkAndFamilyContributions(t *tes
 		}
 	}
 
-	without4, err := composeFirewall([]ManagedFirewallContributionV1{baselineContribution, contribution6})
+	without4, err := composeFirewall([]ManagedFirewallContributionV1{baselineContribution, contribution6}, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +79,7 @@ func TestFirewallCompositionKeepsIndependentNetworkAndFamilyContributions(t *tes
 func TestUDPContributionKeyIsStableAcrossExactSocketRevisionDrift(t *testing.T) {
 	baseline := compositionEndpointPlan(t)
 	endpoint := compositionEndpoint(baseline, hostresources.NetworkUDP, hostresources.AddressFamilyIPv4)
-	first, err := contributionFromPlan(compositionPlanForUDP(t, baseline, endpoint))
+	first, err := contributionFromPlan(compositionPlanForUDP(t, baseline, endpoint), backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,14 +97,14 @@ func TestUDPContributionKeyIsStableAcrossExactSocketRevisionDrift(t *testing.T) 
 	if first.SemanticRevision == second.SemanticRevision {
 		t.Fatal("exact socket drift did not change the contribution semantic revision")
 	}
-	if err := validateContribution(second); err != nil {
+	if err := validateContribution(second, backendnetwork.NFTCodec{}); err != nil {
 		t.Fatalf("drifted semantic contribution is invalid: %v", err)
 	}
 }
 
 func TestFirewallCompositionRollbackRebasesOntoNewUnrelatedBaseline(t *testing.T) {
 	baseline := compositionEndpointPlan(t)
-	oldBaseline, err := contributionFromPlan(baseline)
+	oldBaseline, err := contributionFromPlan(baseline, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +116,7 @@ func TestFirewallCompositionRollbackRebasesOntoNewUnrelatedBaseline(t *testing.T
 	}
 	udpA := compositionUDPContribution(t, baseline, endpoints[0])
 	udpB := compositionUDPContribution(t, baseline, endpoints[1])
-	before, err := composeFirewall([]ManagedFirewallContributionV1{oldBaseline, udpA, udpB})
+	before, err := composeFirewall([]ManagedFirewallContributionV1{oldBaseline, udpA, udpB}, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,15 +126,15 @@ func TestFirewallCompositionRollbackRebasesOntoNewUnrelatedBaseline(t *testing.T
 	slices.Sort(newPlan.AllowTCPPorts)
 	newPlan.AllowTCPPorts = slices.Compact(newPlan.AllowTCPPorts)
 	newPlan.Revision = firewallPlanRevision(newPlan)
-	newBaseline, err := contributionFromPlan(newPlan)
+	newBaseline, err := contributionFromPlan(newPlan, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	current, err := composeFirewall([]ManagedFirewallContributionV1{newBaseline, udpA, udpB})
+	current, err := composeFirewall([]ManagedFirewallContributionV1{newBaseline, udpA, udpB}, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	afterRollbackA, err := composeFirewall([]ManagedFirewallContributionV1{newBaseline, udpB})
+	afterRollbackA, err := composeFirewall([]ManagedFirewallContributionV1{newBaseline, udpB}, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,14 +144,14 @@ func TestFirewallCompositionRollbackRebasesOntoNewUnrelatedBaseline(t *testing.T
 	if got := policyFamilies(afterRollbackA.Plan); !slices.Equal(got, []hostresources.AddressFamily{udpB.AddressFamily}) {
 		t.Fatalf("rollback removed or retained wrong contribution: %v", got)
 	}
-	if _, err := composeFirewall([]ManagedFirewallContributionV1{newBaseline, udpB, udpB}); err == nil {
+	if _, err := composeFirewall([]ManagedFirewallContributionV1{newBaseline, udpB, udpB}, backendnetwork.NFTCodec{}); err == nil {
 		t.Fatal("conflicting duplicate contribution was accepted")
 	}
 }
 
 func TestEffectiveBaselineAuthorityRevisionDetectsDesiredBaselineDrift(t *testing.T) {
 	baseline := compositionEndpointPlan(t)
-	baselineContribution, err := contributionFromPlan(baseline)
+	baselineContribution, err := contributionFromPlan(baseline, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,27 +164,27 @@ func TestEffectiveBaselineAuthorityRevisionDetectsDesiredBaselineDrift(t *testin
 	}
 	udpContribution := compositionUDPContribution(t, baseline, udpEndpoint)
 	snapshot := compositionAuthoritySnapshot(t, []ManagedFirewallContributionV1{baselineContribution, udpContribution})
-	revision, err := EffectiveBaselineAuthorityRevision(snapshot)
+	revision, err := EffectiveBaselineAuthorityRevision(snapshot, backendnetwork.NFTCodec{})
 	if err != nil || revision != baselineContribution.Baseline.Revision {
 		t.Fatalf("explicit baseline authority revision = %q, want %q, err=%v", revision, baselineContribution.Baseline.Revision, err)
 	}
-	if matches, matchErr := BaselineAuthorityMatchesPlan(snapshot, baseline); matchErr != nil || !matches {
+	if matches, matchErr := BaselineAuthorityMatchesPlan(snapshot, baseline, backendnetwork.NFTCodec{}); matchErr != nil || !matches {
 		t.Fatalf("current desired baseline did not match authority: matches=%v err=%v", matches, matchErr)
 	}
 	changed := compositionBaselineWithTCPPort(baseline, 8443)
-	if matches, matchErr := BaselineAuthorityMatchesPlan(snapshot, changed); matchErr != nil || matches {
+	if matches, matchErr := BaselineAuthorityMatchesPlan(snapshot, changed, backendnetwork.NFTCodec{}); matchErr != nil || matches {
 		t.Fatalf("an unapplied desired baseline appeared active: matches=%v err=%v", matches, matchErr)
 	}
 
 	// Rolling back the first baseline leaves the UDP contribution's agreed
 	// fallback as the effective baseline authority.
 	fallbackOnly := compositionAuthoritySnapshot(t, []ManagedFirewallContributionV1{udpContribution})
-	revision, err = EffectiveBaselineAuthorityRevision(fallbackOnly)
+	revision, err = EffectiveBaselineAuthorityRevision(fallbackOnly, backendnetwork.NFTCodec{})
 	if err != nil || revision != baselineContribution.Baseline.Revision {
 		t.Fatalf("fallback baseline authority revision = %q, err=%v", revision, err)
 	}
 	fallbackOnly.Composition.CandidateSHA256 = strings.Repeat("0", 64)
-	if _, err = EffectiveBaselineAuthorityRevision(fallbackOnly); err == nil {
+	if _, err = EffectiveBaselineAuthorityRevision(fallbackOnly, backendnetwork.NFTCodec{}); err == nil {
 		t.Fatal("drifted persisted composition was accepted as baseline authority")
 	}
 }
@@ -201,7 +203,7 @@ func TestTimedMembershipAuthorityDetectsInsertionAndEarlyLossButAllowsNaturalExp
 	if err != nil {
 		t.Fatal(err)
 	}
-	values, err := contributionsFromModels(snapshot.Contributions)
+	values, err := contributionsFromModels(snapshot.Contributions, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +216,7 @@ func TestTimedMembershipAuthorityDetectsInsertionAndEarlyLossButAllowsNaturalExp
 	}
 	assertState(FirewallLiveMatching, "")
 
-	expiredMembership, err := expectedTimedMembershipSHA(values, now.Add(time.Minute))
+	expiredMembership, err := expectedTimedMembershipSHA(values, now.Add(time.Minute), backendnetwork.NFTCodec{})
 	if err != nil || expiredMembership == helper.ManagedTimedMembership {
 		t.Fatalf("fixture did not separate live and expired membership: live=%s expired=%s err=%v", helper.ManagedTimedMembership, expiredMembership, err)
 	}
@@ -250,7 +252,7 @@ func TestPreflightRejectsUnobservableProjectionBeforeWorkflowMutation(t *testing
 	}
 	plan.Endpoints[2].Contributions = ipv6Contributions
 	plan.Revision = firewallPlanRevision(plan)
-	if size := len(RenderManagedNFT(plan)); size <= protectionhelper.MaxManagedCandidateBytes {
+	if size := len(RenderManagedNFT(plan, backendnetwork.NFTCodec{})); size <= protectionhelper.MaxManagedCandidateBytes {
 		t.Fatalf("oversize fixture is only %d bytes", size)
 	}
 	before := len(helper.Requests)
@@ -280,7 +282,7 @@ func TestWorkflowComposesAndRollsBackOnlyOwnedContribution(t *testing.T) {
 		}
 	}
 	udpAPlan := compositionPlanForUDP(t, baseline2, udpEndpoints[0])
-	udpAContribution, _ := contributionFromPlan(udpAPlan)
+	udpAContribution, _ := contributionFromPlan(udpAPlan, backendnetwork.NFTCodec{})
 	udpAOperation := applyCompositionWorkflowPlan(t, &workflow, udpAPlan, "udp-a")
 
 	if _, err := workflow.Rollback(t.Context(), base2Operation.OperationID, "ROLLBACK SERVER PROTECTION "+base2Operation.OperationID); err != nil {
@@ -290,7 +292,7 @@ func TestWorkflowComposesAndRollsBackOnlyOwnedContribution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	values, err := contributionsFromSnapshot(snapshot)
+	values, err := contributionsFromSnapshot(snapshot, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,24 +301,24 @@ func TestWorkflowComposesAndRollsBackOnlyOwnedContribution(t *testing.T) {
 	}
 
 	udpBPlan := compositionPlanForUDP(t, baseline1, udpEndpoints[1])
-	udpBContribution, _ := contributionFromPlan(udpBPlan)
+	udpBContribution, _ := contributionFromPlan(udpBPlan, backendnetwork.NFTCodec{})
 	udpBOperation := applyCompositionWorkflowPlan(t, &workflow, udpBPlan, "udp-b")
 	if _, err = workflow.Rollback(t.Context(), udpAOperation.OperationID, "ROLLBACK SERVER PROTECTION "+udpAOperation.OperationID); err != nil {
 		t.Fatalf("rollback UDP A: %v", err)
 	}
 	snapshot, _ = authority.FirewallAuthority(t.Context())
-	values, _ = contributionsFromSnapshot(snapshot)
+	values, _ = contributionsFromSnapshot(snapshot, backendnetwork.NFTCodec{})
 	if contributionRevision(values, udpAContribution.ContributionID) != "" || contributionRevision(values, udpBContribution.ContributionID) != udpBContribution.SemanticRevision {
 		t.Fatalf("UDP A rollback did not preserve UDP B: %#v", values)
 	}
 
 	applyCompositionWorkflowPlan(t, &workflow, baseline3, "base-3")
-	newBaseline, _ := contributionFromPlan(baseline3)
+	newBaseline, _ := contributionFromPlan(baseline3, backendnetwork.NFTCodec{})
 	if _, err = workflow.Rollback(t.Context(), udpBOperation.OperationID, "ROLLBACK SERVER PROTECTION "+udpBOperation.OperationID); err != nil {
 		t.Fatalf("rollback UDP B after baseline change: %v", err)
 	}
 	snapshot, _ = authority.FirewallAuthority(t.Context())
-	values, _ = contributionsFromSnapshot(snapshot)
+	values, _ = contributionsFromSnapshot(snapshot, backendnetwork.NFTCodec{})
 	if contributionRevision(values, udpBContribution.ContributionID) != "" || contributionRevision(values, BaselineContributionID) != newBaseline.SemanticRevision {
 		t.Fatalf("UDP rollback overwrote newer TCP baseline: %#v", values)
 	}
@@ -336,7 +338,7 @@ func TestInitialBaselineRollbackPreservesDependentUDPAndFinalRollbackDeletesCurr
 		}
 	}
 	udpPlan := compositionPlanForUDP(t, baseline, udpEndpoint)
-	udpContribution, err := contributionFromPlan(udpPlan)
+	udpContribution, err := contributionFromPlan(udpPlan, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +351,7 @@ func TestInitialBaselineRollbackPreservesDependentUDPAndFinalRollbackDeletesCurr
 	if err != nil {
 		t.Fatal(err)
 	}
-	values, err := contributionsFromSnapshot(snapshot)
+	values, err := contributionsFromSnapshot(snapshot, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -443,7 +445,7 @@ func TestRestartRollbackReconcilesAlreadyComposedTargetWithoutDuplicateMutation(
 		}
 	}
 	planA := compositionPlanForUDP(t, baseline, udpEndpoints[0])
-	contributionA, _ := contributionFromPlan(planA)
+	contributionA, _ := contributionFromPlan(planA, backendnetwork.NFTCodec{})
 	operationA := applyCompositionWorkflowPlan(t, &workflow, planA, "restart-udp-a")
 	planB := compositionPlanForUDP(t, baseline, udpEndpoints[1])
 	applyCompositionWorkflowPlan(t, &workflow, planB, "restart-udp-b")
@@ -452,7 +454,7 @@ func TestRestartRollbackReconcilesAlreadyComposedTargetWithoutDuplicateMutation(
 	if err != nil {
 		t.Fatal(err)
 	}
-	current, err := contributionsFromSnapshot(snapshot)
+	current, err := contributionsFromSnapshot(snapshot, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +464,7 @@ func TestRestartRollbackReconcilesAlreadyComposedTargetWithoutDuplicateMutation(
 			target = append(target, value)
 		}
 	}
-	targetComposition, err := composeFirewall(target)
+	targetComposition, err := composeFirewall(target, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -490,7 +492,7 @@ func TestRestartRollbackReconcilesAlreadyComposedTargetWithoutDuplicateMutation(
 		t.Fatalf("restart duplicated rollback mutation: apply calls %d -> %d", applyCalls, after)
 	}
 	snapshot, _ = authority.FirewallAuthority(t.Context())
-	values, _ := contributionsFromSnapshot(snapshot)
+	values, _ := contributionsFromSnapshot(snapshot, backendnetwork.NFTCodec{})
 	if contributionRevision(values, contributionA.ContributionID) != "" {
 		t.Fatalf("reconciled rollback retained owned contribution: %#v", values)
 	}
@@ -527,15 +529,15 @@ func TestRestartRecoveryRollsBackExactUncommittedForwardContribution(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	desired, err := decodeContributionJSON(transition.DesiredJSON)
+	desired, err := decodeContributionJSON(transition.DesiredJSON, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	current, err := contributionsFromSnapshot(before)
+	current, err := contributionsFromSnapshot(before, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	after, err := composeFirewall(replaceContribution(current, &desired))
+	after, err := composeFirewall(replaceContribution(current, &desired), backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -743,7 +745,7 @@ func applyCompositionWorkflowPlan(t *testing.T, workflow *Workflow, plan Firewal
 		t.Fatal(err)
 	}
 	input := ApplyInput{OperationID: prepared.Operation.OperationID, Plan: plan, Resources: plan.Resources, Confirmation: "APPLY SERVER PROTECTION " + prepared.Operation.OperationID}
-	contribution, err := contributionFromPlan(plan)
+	contribution, err := contributionFromPlan(plan, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -812,7 +814,7 @@ func contributionRevision(values []ManagedFirewallContributionV1, id string) str
 
 func compositionAuthoritySnapshot(t *testing.T, values []ManagedFirewallContributionV1) protectiondata.FirewallAuthoritySnapshot {
 	t.Helper()
-	composition, err := composeFirewall(values)
+	composition, err := composeFirewall(values, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -822,7 +824,7 @@ func compositionAuthoritySnapshot(t *testing.T, values []ManagedFirewallContribu
 	}
 	models := make([]protectiondata.FirewallContributionModel, 0, len(values))
 	for _, value := range values {
-		model, modelErr := contributionModel(value)
+		model, modelErr := contributionModel(value, backendnetwork.NFTCodec{})
 		if modelErr != nil {
 			t.Fatal(modelErr)
 		}
@@ -862,7 +864,7 @@ func compositionEndpointPlan(t *testing.T) FirewallPlan {
 	}
 	graph := protectionresources.BuildSocketOwnershipGraph(protectionresources.SocketGraphInput{Resources: resources, Surfaces: surfaces, Now: now})
 	plan := BuildEndpointPlan(EndpointPlanInput{Graph: graph, Resources: resources, Now: now})
-	if err := Preflight(plan); err != nil {
+	if err := Preflight(plan, backendnetwork.NFTCodec{}); err != nil {
 		t.Fatalf("fixture preflight: %v reasons=%v graph=%v", err, plan.ReasonCodes, graph.ReasonCodes)
 	}
 	return plan
@@ -892,7 +894,7 @@ func compositionUDPContribution(t *testing.T, baseline FirewallPlan, endpoint En
 	if err != nil {
 		t.Fatalf("attach %s/%s: %v", endpoint.ResourceID, endpoint.Key.AddressFamily, err)
 	}
-	value, err := contributionFromPlan(guarded)
+	value, err := contributionFromPlan(guarded, backendnetwork.NFTCodec{})
 	if err != nil {
 		t.Fatalf("derive %s/%s: %v endpoints=%#v", endpoint.ResourceID, endpoint.Key.AddressFamily, err, guarded.Endpoints)
 	}

@@ -9,11 +9,10 @@ import (
 	"strings"
 	"time"
 
-	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
+	networkplan "github.com/MalenkiySolovey/solovey-host/network/planning"
 
 	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
-	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 )
 
 const (
@@ -74,7 +73,7 @@ type FirewallContributionStore interface {
 	RetireFirewallAuthorityAfterRuntimeLoss(context.Context, string, int, string) error
 }
 
-func contributionFromPlan(plan FirewallPlan) (ManagedFirewallContributionV1, error) {
+func contributionFromPlan(plan FirewallPlan, codec NFTCodec) (ManagedFirewallContributionV1, error) {
 	udpIndexes := make([]int, 0, 1)
 	for index := range plan.Endpoints {
 		if plan.Endpoints[index].UDPFlowPolicy != nil {
@@ -82,7 +81,7 @@ func contributionFromPlan(plan FirewallPlan) (ManagedFirewallContributionV1, err
 		}
 	}
 	if len(udpIndexes) == 0 {
-		baseline, err := normalizedBaseline(plan)
+		baseline, err := normalizedBaseline(plan, codec)
 		if err != nil {
 			return ManagedFirewallContributionV1{}, err
 		}
@@ -96,7 +95,7 @@ func contributionFromPlan(plan FirewallPlan) (ManagedFirewallContributionV1, err
 	}
 	endpoint := plan.Endpoints[udpIndexes[0]]
 	policy := *endpoint.UDPFlowPolicy
-	baseline, err := normalizedBaseline(plan)
+	baseline, err := normalizedBaseline(plan, codec)
 	if err != nil {
 		return ManagedFirewallContributionV1{}, err
 	}
@@ -107,8 +106,8 @@ func contributionFromPlan(plan FirewallPlan) (ManagedFirewallContributionV1, err
 	return finalizeContribution(value), nil
 }
 
-func ContributionRevision(plan FirewallPlan) string {
-	value, err := contributionFromPlan(plan)
+func ContributionRevision(plan FirewallPlan, codec NFTCodec) string {
+	value, err := contributionFromPlan(plan, codec)
 	if err != nil {
 		return ""
 	}
@@ -124,13 +123,13 @@ func udpContributionID(resourceID string, family hostresources.AddressFamily) st
 	return "udp:" + revision
 }
 
-func normalizedBaseline(plan FirewallPlan) (FirewallPlan, error) {
+func normalizedBaseline(plan FirewallPlan, codec NFTCodec) (FirewallPlan, error) {
 	copy := cloneFirewallPlan(plan)
 	for index := range copy.Endpoints {
 		copy.Endpoints[index].UDPFlowPolicy = nil
 	}
 	copy.Revision = firewallPlanRevision(copy)
-	if err := Preflight(copy); err != nil {
+	if err := Preflight(copy, codec); err != nil {
 		return FirewallPlan{}, err
 	}
 	return copy, nil
@@ -174,7 +173,7 @@ func finalizeContribution(value ManagedFirewallContributionV1) ManagedFirewallCo
 	return value
 }
 
-func validateContribution(value ManagedFirewallContributionV1) error {
+func validateContribution(value ManagedFirewallContributionV1, codec NFTCodec) error {
 	if value.Schema != FirewallContributionSchemaV1 || value.ContributionID == "" || len(value.ContributionID) > 128 || value.ResourceID == "" || len(value.ResourceID) > 256 ||
 		value.SemanticRevision == "" || value.SemanticRevision != finalizeContribution(value).SemanticRevision {
 		return ErrCompositionInvalid
@@ -184,7 +183,7 @@ func validateContribution(value ManagedFirewallContributionV1) error {
 		if value.ContributionID != BaselineContributionID || value.Baseline == nil || value.BaselineFallback != nil || value.UDPPolicy != nil {
 			return ErrCompositionInvalid
 		}
-		baseline, err := normalizedBaseline(*value.Baseline)
+		baseline, err := normalizedBaseline(*value.Baseline, codec)
 		if err != nil || baseline.Revision != value.Baseline.Revision {
 			return ErrCompositionInvalid
 		}
@@ -194,7 +193,7 @@ func validateContribution(value ManagedFirewallContributionV1) error {
 			value.ContributionID != udpContributionID(value.ResourceID, value.AddressFamily) {
 			return ErrCompositionInvalid
 		}
-		fallback, err := normalizedBaseline(*value.BaselineFallback)
+		fallback, err := normalizedBaseline(*value.BaselineFallback, codec)
 		if err != nil || fallback.Revision != value.BaselineFallback.Revision {
 			return ErrCompositionInvalid
 		}
@@ -204,7 +203,7 @@ func validateContribution(value ManagedFirewallContributionV1) error {
 	return nil
 }
 
-func composeFirewall(values []ManagedFirewallContributionV1) (FirewallCompositionV2, error) {
+func composeFirewall(values []ManagedFirewallContributionV1, codec NFTCodec) (FirewallCompositionV2, error) {
 	ordered := append([]ManagedFirewallContributionV1(nil), values...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].ContributionID < ordered[j].ContributionID })
 	seen := map[string]bool{}
@@ -213,7 +212,7 @@ func composeFirewall(values []ManagedFirewallContributionV1) (FirewallCompositio
 	var fallbackRevision string
 	bindings := make([]compositionBinding, 0, len(ordered))
 	for _, value := range ordered {
-		if err := validateContribution(value); err != nil || seen[value.ContributionID] {
+		if err := validateContribution(value, codec); err != nil || seen[value.ContributionID] {
 			return FirewallCompositionV2{}, ErrCompositionInvalid
 		}
 		seen[value.ContributionID] = true
@@ -247,15 +246,15 @@ func composeFirewall(values []ManagedFirewallContributionV1) (FirewallCompositio
 			return FirewallCompositionV2{}, err
 		}
 	}
-	if err := Preflight(plan); err != nil {
+	if err := Preflight(plan, codec); err != nil {
 		return FirewallCompositionV2{}, err
 	}
-	candidate := RenderManagedNFT(plan)
-	semanticSHA, err := protectionhelper.ManagedSemanticSHA256([]byte(candidate))
+	candidate := RenderManagedNFT(plan, codec)
+	semanticSHA, err := codec.ManagedSemanticSHA256([]byte(candidate))
 	if err != nil {
 		return FirewallCompositionV2{}, err
 	}
-	timedMembershipSHA, err := protectionhelper.ManagedTimedMembershipSHA256([]byte(candidate))
+	timedMembershipSHA, err := codec.ManagedTimedMembershipSHA256([]byte(candidate))
 	if err != nil {
 		return FirewallCompositionV2{}, err
 	}
@@ -268,8 +267,8 @@ func composeFirewall(values []ManagedFirewallContributionV1) (FirewallCompositio
 	return result, nil
 }
 
-func contributionModel(value ManagedFirewallContributionV1) (protectionrepository.FirewallContributionModel, error) {
-	if err := validateContribution(value); err != nil {
+func contributionModel(value ManagedFirewallContributionV1, codec NFTCodec) (protectionrepository.FirewallContributionModel, error) {
+	if err := validateContribution(value, codec); err != nil {
 		return protectionrepository.FirewallContributionModel{}, err
 	}
 	data, err := json.Marshal(value)
@@ -281,10 +280,10 @@ func contributionModel(value ManagedFirewallContributionV1) (protectionrepositor
 		SemanticRevision: value.SemanticRevision, SemanticJSON: data}, nil
 }
 
-func contributionFromModel(model protectionrepository.FirewallContributionModel) (ManagedFirewallContributionV1, error) {
+func contributionFromModel(model protectionrepository.FirewallContributionModel, codec NFTCodec) (ManagedFirewallContributionV1, error) {
 	var value ManagedFirewallContributionV1
 	if len(model.SemanticJSON) == 0 || len(model.SemanticJSON) > 2<<20 || json.Unmarshal(model.SemanticJSON, &value) != nil ||
-		validateContribution(value) != nil || model.ContributionID != value.ContributionID || model.SemanticRevision != value.SemanticRevision ||
+		validateContribution(value, codec) != nil || model.ContributionID != value.ContributionID || model.SemanticRevision != value.SemanticRevision ||
 		model.Schema != value.Schema || model.Network != string(value.Network) || model.AddressFamily != string(value.AddressFamily) || model.Kind != value.Kind || model.ResourceID != value.ResourceID || model.EndpointID != value.EndpointID {
 		return ManagedFirewallContributionV1{}, ErrCompositionInvalid
 	}
@@ -298,7 +297,7 @@ func matchesCommittedComposition(value FirewallCompositionV2, model protectionre
 		value.CandidateSHA == model.CandidateSHA256 && value.CandidateSemanticSHA == model.CandidateSemanticSHA256 && value.CandidateTimedMembershipSHA == model.CandidateTimedMembershipSHA256
 }
 
-func contributionsFromSnapshot(snapshot protectionrepository.FirewallAuthoritySnapshot) ([]ManagedFirewallContributionV1, error) {
+func contributionsFromSnapshot(snapshot protectionrepository.FirewallAuthoritySnapshot, codec NFTCodec) ([]ManagedFirewallContributionV1, error) {
 	if snapshot.HasComposition && snapshot.Composition.State != "ACTIVE" {
 		return nil, ErrContributionConflict
 	}
@@ -308,13 +307,13 @@ func contributionsFromSnapshot(snapshot protectionrepository.FirewallAuthoritySn
 		snapshot.Observation.CurrentTimedMembershipSHA256 != snapshot.Observation.ExpectedTimedMembershipSHA256) {
 		return nil, ErrContributionConflict
 	}
-	return contributionsFromModels(snapshot.Contributions)
+	return contributionsFromModels(snapshot.Contributions, codec)
 }
 
-func contributionsFromModels(models []protectionrepository.FirewallContributionModel) ([]ManagedFirewallContributionV1, error) {
+func contributionsFromModels(models []protectionrepository.FirewallContributionModel, codec NFTCodec) ([]ManagedFirewallContributionV1, error) {
 	values := make([]ManagedFirewallContributionV1, 0, len(models))
 	for _, model := range models {
-		value, err := contributionFromModel(model)
+		value, err := contributionFromModel(model, codec)
 		if err != nil {
 			return nil, err
 		}
@@ -323,8 +322,8 @@ func contributionsFromModels(models []protectionrepository.FirewallContributionM
 	return values, nil
 }
 
-func expectedTimedMembershipSHA(values []ManagedFirewallContributionV1, now time.Time) (string, error) {
-	composition, err := composeFirewall(values)
+func expectedTimedMembershipSHA(values []ManagedFirewallContributionV1, now time.Time, codec NFTCodec) (string, error) {
+	composition, err := composeFirewall(values, codec)
 	if err != nil {
 		return "", err
 	}
@@ -339,7 +338,7 @@ func expectedTimedMembershipSHA(values []ManagedFirewallContributionV1, now time
 		}
 		plan.Endpoints[endpointIndex].Contributions = kept
 	}
-	return protectionhelper.ManagedTimedMembershipSHA256([]byte(RenderManagedNFT(plan)))
+	return codec.ManagedTimedMembershipSHA256([]byte(RenderManagedNFT(plan, codec)))
 }
 
 // EffectiveBaselineAuthorityRevision returns the exact baseline plan revision
@@ -347,8 +346,8 @@ func expectedTimedMembershipSHA(values []ManagedFirewallContributionV1, now time
 // wins; a UDP-only aggregate may use only one agreed secret-free fallback.
 // The persisted composition is re-derived before the revision is exposed so a
 // stale or restored row can never make a current baseline appear active.
-func EffectiveBaselineAuthorityRevision(snapshot protectionrepository.FirewallAuthoritySnapshot) (string, error) {
-	values, err := contributionsFromSnapshot(snapshot)
+func EffectiveBaselineAuthorityRevision(snapshot protectionrepository.FirewallAuthoritySnapshot, codec NFTCodec) (string, error) {
+	values, err := contributionsFromSnapshot(snapshot, codec)
 	if err != nil {
 		return "", err
 	}
@@ -358,7 +357,7 @@ func EffectiveBaselineAuthorityRevision(snapshot protectionrepository.FirewallAu
 		}
 		return "", nil
 	}
-	composition, err := composeFirewall(values)
+	composition, err := composeFirewall(values, codec)
 	if err != nil || composition.Revision != snapshot.Composition.Revision || composition.PlanRevision != snapshot.Composition.ManagedPlanRevision || composition.CandidateSHA != snapshot.Composition.CandidateSHA256 || composition.CandidateSemanticSHA != snapshot.Composition.CandidateSemanticSHA256 || composition.CandidateTimedMembershipSHA != snapshot.Composition.CandidateTimedMembershipSHA256 {
 		return "", errors.Join(ErrCompositionInvalid, err)
 	}
@@ -384,12 +383,12 @@ func EffectiveBaselineAuthorityRevision(snapshot protectionrepository.FirewallAu
 
 // BaselineAuthorityMatchesPlan compares the current authority with the same
 // normalized baseline representation used when contributions are persisted.
-func BaselineAuthorityMatchesPlan(snapshot protectionrepository.FirewallAuthoritySnapshot, plan FirewallPlan) (bool, error) {
-	current, err := EffectiveBaselineAuthorityRevision(snapshot)
+func BaselineAuthorityMatchesPlan(snapshot protectionrepository.FirewallAuthoritySnapshot, plan FirewallPlan, codec NFTCodec) (bool, error) {
+	current, err := EffectiveBaselineAuthorityRevision(snapshot, codec)
 	if err != nil {
 		return false, err
 	}
-	expected, err := normalizedBaseline(plan)
+	expected, err := normalizedBaseline(plan, codec)
 	if err != nil {
 		return false, err
 	}
@@ -427,9 +426,9 @@ func contributionJSON(value ManagedFirewallContributionV1) json.RawMessage {
 	return data
 }
 
-func decodeContributionJSON(data json.RawMessage) (ManagedFirewallContributionV1, error) {
+func decodeContributionJSON(data json.RawMessage, codec NFTCodec) (ManagedFirewallContributionV1, error) {
 	var value ManagedFirewallContributionV1
-	if len(data) == 0 || strings.EqualFold(string(data), "null") || json.Unmarshal(data, &value) != nil || validateContribution(value) != nil {
+	if len(data) == 0 || strings.EqualFold(string(data), "null") || json.Unmarshal(data, &value) != nil || validateContribution(value, codec) != nil {
 		return ManagedFirewallContributionV1{}, ErrCompositionInvalid
 	}
 	return value, nil

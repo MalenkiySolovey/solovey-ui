@@ -1,12 +1,14 @@
 package firewall
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendnetwork"
+
 import (
 	"encoding/json"
 	"testing"
 )
 
 func TestFirewallPreviewEmptyCollectionsMarshalAsArrays(t *testing.T) {
-	preview := Preview(FirewallPlan{}, PreviewOptions{})
+	preview := Preview(FirewallPlan{}, PreviewOptions{Codec: backendnetwork.NFTCodec{}})
 	if preview.WouldKeep == nil || preview.WouldOpen == nil || preview.WouldWarn == nil || preview.WouldBlock == nil || preview.Warnings == nil || preview.ProtectedKeep == nil {
 		t.Fatalf("preview contains nil collection: %#v", preview)
 	}

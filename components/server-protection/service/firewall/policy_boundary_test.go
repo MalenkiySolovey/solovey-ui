@@ -1,5 +1,7 @@
 package firewall
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendnetwork"
+
 import (
 	"bytes"
 	"encoding/json"
@@ -38,7 +40,7 @@ func TestProtectionPolicyBoundaryPreservesAcceptedSemantics(t *testing.T) {
 				Plan      FirewallPlan
 				Intent    any
 				Candidate string
-			}{plan, protectionIntent(plan), RenderManagedNFT(plan)})
+			}{plan, protectionIntent(plan), RenderManagedNFT(plan, backendnetwork.NFTCodec{})})
 			if got != want[intent] {
 				t.Fatalf("accepted policy/intent/candidate changed: got %s, want %s", got, want[intent])
 			}
@@ -49,7 +51,7 @@ func TestProtectionPolicyBoundaryPreservesAcceptedSemantics(t *testing.T) {
 		Plan      FirewallPlan
 		Intent    any
 		Candidate string
-	}{plan, protectionIntent(plan), RenderManagedNFT(plan)})
+	}{plan, protectionIntent(plan), RenderManagedNFT(plan, backendnetwork.NFTCodec{})})
 	if got != "0727d9c4efb87b7f8db8f3f61ae40d72ad4def682958032be9d34019d6f801c7" {
 		t.Fatalf("accepted legacy policy/intent/candidate changed: %s", got)
 	}
@@ -57,7 +59,7 @@ func TestProtectionPolicyBoundaryPreservesAcceptedSemantics(t *testing.T) {
 
 func TestProtectionPolicyPlanRoundTrip(t *testing.T) {
 	plan := endpointTemporalEndpointPlan(time.Unix(1000, 0).UTC(), true)
-	if err := Preflight(plan); err != nil {
+	if err := Preflight(plan, backendnetwork.NFTCodec{}); err != nil {
 		t.Fatal(err)
 	}
 	intent, err := json.Marshal(protectionIntent(plan))
@@ -68,7 +70,7 @@ func TestProtectionPolicyPlanRoundTrip(t *testing.T) {
 		Plan      FirewallPlan
 		Intent    json.RawMessage
 		Candidate string
-	}{plan, intent, RenderManagedNFT(plan)}
+	}{plan, intent, RenderManagedNFT(plan, backendnetwork.NFTCodec{})}
 	data, err := json.Marshal(fixture)
 	if err != nil {
 		t.Fatal(err)
@@ -81,11 +83,11 @@ func TestProtectionPolicyPlanRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(data, &restored); err != nil {
 		t.Fatal(err)
 	}
-	if err := Preflight(restored.Plan); !errors.Is(err, ErrPlanRevision) {
+	if err := Preflight(restored.Plan, backendnetwork.NFTCodec{}); !errors.Is(err, ErrPlanRevision) {
 		t.Fatalf("serialized evidence must not revive current mutation authority: %v", err)
 	}
 	restoredIntent, err := json.Marshal(protectionIntent(restored.Plan))
-	if err != nil || !bytes.Equal(restoredIntent, intent) || RenderManagedNFT(restored.Plan) != fixture.Candidate || restored.Plan.Revision != plan.Revision {
+	if err != nil || !bytes.Equal(restoredIntent, intent) || RenderManagedNFT(restored.Plan, backendnetwork.NFTCodec{}) != fixture.Candidate || restored.Plan.Revision != plan.Revision {
 		t.Fatal("candidate serialization changed policy, revision, intent or rendered bytes")
 	}
 	// An optional qualification destination exports these actual production

@@ -143,7 +143,7 @@ func TestExpiredRuntimeProcessChild(t *testing.T) {
 	if err := manager.SetReconcilerForKind(operations.KindFirewall, RuntimeLossReconciler{Workflow: &workflow}); err != nil {
 		t.Fatal(err)
 	}
-	if err := manager.SetRecovery(BackendRecovery{Helper: client, Manager: manager, Storage: storage, Repository: repo, Health: workflow.RollbackHealth, Workflow: &workflow}); err != nil {
+	if err := manager.SetRecovery(BackendRecovery{Helper: client, Manager: manager, Storage: storage, Repository: repo, Bundles: artifacts.OperationRecovery{Storage: storage, Repository: repo}, Health: workflow.RollbackHealth, Workflow: &workflow}); err != nil {
 		t.Fatal(err)
 	}
 	if err := manager.Start(t.Context()); err != nil {

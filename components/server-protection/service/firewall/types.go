@@ -83,6 +83,7 @@ type FirewallPreview struct {
 type PreviewOptions struct {
 	IncludeGeneratedNFT bool
 	NFTCapability       NFTPreviewCapability
+	Codec               NFTCodec `json:"-"`
 }
 
 // NFTPreviewCapability is the narrow helper-owned fact needed by preview.

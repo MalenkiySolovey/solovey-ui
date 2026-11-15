@@ -1,5 +1,7 @@
 package firewall
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendnetwork"
+
 import (
 	"runtime"
 	"strings"
@@ -42,11 +44,11 @@ func TestAttachUDPFlowPolicyChangesOnlyExactUDPContribution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidate := RenderManagedNFT(guarded)
+	candidate := RenderManagedNFT(guarded, backendnetwork.NFTCodec{})
 	allocations := testing.AllocsPerRun(1, func() {
 		value, attachErr := AttachUDPFlowPolicy(plan, udp.EndpointRevision, policy)
 		if attachErr == nil {
-			_ = RenderManagedNFT(value)
+			_ = RenderManagedNFT(value, backendnetwork.NFTCodec{})
 		}
 	})
 	after := runtime.NumGoroutine()

@@ -16,8 +16,8 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/enforcement"
 	protectionpolicy "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/policy"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
-	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
-	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
+
+	networkintent "github.com/MalenkiySolovey/solovey-host/network/intent"
 )
 
 type EndpointActionInput = enforcement.EndpointActionInput
@@ -382,7 +382,10 @@ func sortedUniqueInts(values []int) []int {
 	return result
 }
 
-func preflightEndpointPlan(plan FirewallPlan) error {
+func preflightEndpointPlan(plan FirewallPlan, codec NFTCodec) error {
+	if codec == nil {
+		return ErrMissingCapability
+	}
 	if plan.Schema != FirewallPlanSchemaV2 || !exactHexRevision(plan.InputRevision) ||
 		plan.BaselineEligibility.Kind != FirewallBaselineEligibilityKind || !validBaselineEligibility(plan.BaselineEligibility) {
 		return ErrPlanRevision
@@ -411,7 +414,7 @@ func preflightEndpointPlan(plan FirewallPlan) error {
 		if endpoint.ResourceID == "" || !exactHexRevision(endpoint.EndpointRevision) || !exactHexRevision(endpoint.ConfigurationRevision) || endpoint.ActualStatus != "NOT_APPLIED" || endpoint.Key.Port == 0 {
 			return fmt.Errorf("%w: endpoint identity or configuration revision is incomplete", ErrUnsafeResource)
 		}
-		if !networkplan.ValidProtectionEndpoint(endpoint.Key, "") {
+		if !networkintent.ValidProtectionEndpoint(endpoint.Key, "") {
 			return fmt.Errorf("%w: endpoint key is invalid", ErrUnsafeResource)
 		}
 		if endpoint.Strategy == protectionresources.StrategyUnclassified || endpoint.Strategy == "" {
@@ -442,12 +445,12 @@ func preflightEndpointPlan(plan FirewallPlan) error {
 		}
 	}
 	for _, exemption := range plan.ManagementExemptions {
-		if exemption.EndpointID == "" || exemption.RecoveryPathID == "" || canonicalPrefix(exemption.SourcePrefix) == "" || !networkplan.ValidProtectionEndpoint(exemption.Key, exemption.SourcePrefix) || (exemption.RecoveryPathID != "trusted-source" && (exemption.ExpiresAt <= 0 || exemption.ExpiresAt > 253402300799)) {
+		if exemption.EndpointID == "" || exemption.RecoveryPathID == "" || canonicalPrefix(exemption.SourcePrefix) == "" || !networkintent.ValidProtectionEndpoint(exemption.Key, exemption.SourcePrefix) || (exemption.RecoveryPathID != "trusted-source" && (exemption.ExpiresAt <= 0 || exemption.ExpiresAt > 253402300799)) {
 			return fmt.Errorf("%w: management exemption is not exact", ErrUnsafeResource)
 		}
 	}
-	candidate := RenderManagedNFT(plan)
-	return nftables.CheckProtectionCandidate([]byte(candidate), plan.Revision, artifactSHA([]byte(candidate)))
+	candidate := RenderManagedNFT(plan, codec)
+	return codec.CheckProtectionCandidate([]byte(candidate), plan.Revision, artifactSHA([]byte(candidate)))
 }
 
 func hexRevision(value string) bool {

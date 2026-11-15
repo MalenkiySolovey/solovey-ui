@@ -17,10 +17,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	canonical "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifactcontract"
 )
 
 const (
-	ManifestVersion      = 1
+	ManifestVersion      = canonical.ManifestVersion
 	directoryMode        = 0o700
 	fileMode             = 0o600
 	publicationOwnerName = "publication-owner.json"
@@ -35,19 +37,8 @@ var (
 	ownedPublication    = regexp.MustCompile(`^operation-[a-f0-9]{32}--[a-f0-9]{64}$`)
 )
 
-type File struct {
-	Path   string `json:"path"`
-	SHA256 string `json:"sha256"`
-	Bytes  int64  `json:"bytes"`
-}
-
-type Manifest struct {
-	Version     int    `json:"version"`
-	OperationID string `json:"operationId"`
-	Revision    string `json:"revision"`
-	CreatedAt   int64  `json:"createdAt"`
-	Files       []File `json:"files"`
-}
+type File = canonical.File
+type Manifest = canonical.Manifest
 
 type WrittenSet struct {
 	RelativePath   string

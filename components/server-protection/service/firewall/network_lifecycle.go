@@ -5,10 +5,10 @@ import (
 	"errors"
 	"strings"
 
+	networkplan "github.com/MalenkiySolovey/solovey-host/network/planning"
+	operationcoordination "github.com/MalenkiySolovey/solovey-host/operationref"
 	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
 	operations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
-	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
 
 // ProjectOperation reuses coordination envelopes over the existing durable owner row.

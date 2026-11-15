@@ -1,5 +1,7 @@
 package firewall
 
+import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendnetwork"
+
 import (
 	"context"
 	"errors"
@@ -35,7 +37,7 @@ func TestLocalIdentityMetadataPreservesFirewallPlanAndActionScope(t *testing.T) 
 	current := BuildEndpointPlan(EndpointPlanInput{Graph: graph, Resources: []hostresources.ProtectableResource{resource}, Now: now})
 	if legacy.InputRevision != current.InputRevision || legacy.Revision != current.Revision ||
 		legacyScope != EndpointActionScopeRevision([]hostresources.ProtectableResource{resource}) || legacyResource != EndpointActionResourceRevision(resource) ||
-		RenderManagedNFT(legacy) != RenderManagedNFT(current) {
+		RenderManagedNFT(legacy, backendnetwork.NFTCodec{}) != RenderManagedNFT(current, backendnetwork.NFTCodec{}) {
 		t.Fatal("read metadata changed firewall candidate, action fence or rendered rules")
 	}
 }
@@ -55,13 +57,13 @@ func TestEndpointPlanDeterministicConservativeCandidate(t *testing.T) {
 	first := BuildEndpointPlan(input)
 	slices.Reverse(input.Actions)
 	second := BuildEndpointPlan(input)
-	if first.Revision != second.Revision || RenderManagedNFT(first) != RenderManagedNFT(second) {
+	if first.Revision != second.Revision || RenderManagedNFT(first, backendnetwork.NFTCodec{}) != RenderManagedNFT(second, backendnetwork.NFTCodec{}) {
 		t.Fatal("endpoint plan or nft candidate changed with input order")
 	}
-	if err := Preflight(first); err != nil {
-		t.Fatalf("exact endpoint plan failed preflight: %v\n%s", err, RenderManagedNFT(first))
+	if err := Preflight(first, backendnetwork.NFTCodec{}); err != nil {
+		t.Fatalf("exact endpoint plan failed preflight: %v\n%s", err, RenderManagedNFT(first, backendnetwork.NFTCodec{}))
 	}
-	candidate := RenderManagedNFT(first)
+	candidate := RenderManagedNFT(first, backendnetwork.NFTCodec{})
 	want, err := os.ReadFile("testdata/endpoint_ipv4_tcp.golden.nft")
 	if err != nil {
 		t.Fatal(err)
@@ -114,7 +116,7 @@ func TestEndpointPlanDeterministicConservativeCandidate(t *testing.T) {
 func TestRecoveryExemptionUsesAbsoluteExpiryWhileTrustedSourceRemainsPermanent(t *testing.T) {
 	now := time.Unix(1_000, 0).UTC()
 	temporary := endpointTemporalEndpointPlan(now, false)
-	if err := Preflight(temporary); err != nil || len(temporary.ManagementExemptions) != 2 {
+	if err := Preflight(temporary, backendnetwork.NFTCodec{}); err != nil || len(temporary.ManagementExemptions) != 2 {
 		t.Fatalf("temporary recovery plan is invalid: exemptions=%#v err=%v", temporary.ManagementExemptions, err)
 	}
 	var exemption ManagementExemption
@@ -124,8 +126,8 @@ func TestRecoveryExemptionUsesAbsoluteExpiryWhileTrustedSourceRemainsPermanent(t
 		}
 	}
 	rule := "meta time < " + strconv.FormatInt(exemption.ExpiresAt, 10) + " counter accept"
-	if exemption.RecoveryPathID == "trusted-source" || exemption.ExpiresAt != now.Add(time.Hour).Unix() || !strings.Contains(RenderManagedNFT(temporary), rule) {
-		t.Fatalf("temporary recovery exemption is not absolute: %#v\n%s", exemption, RenderManagedNFT(temporary))
+	if exemption.RecoveryPathID == "trusted-source" || exemption.ExpiresAt != now.Add(time.Hour).Unix() || !strings.Contains(RenderManagedNFT(temporary, backendnetwork.NFTCodec{}), rule) {
+		t.Fatalf("temporary recovery exemption is not absolute: %#v\n%s", exemption, RenderManagedNFT(temporary, backendnetwork.NFTCodec{}))
 	}
 	if err := preflightTemporalPlan(temporary, now.Add(time.Second)); err != nil {
 		t.Fatalf("fresh exemption was rejected: %v", err)
@@ -141,7 +143,7 @@ func TestRecoveryExemptionUsesAbsoluteExpiryWhileTrustedSourceRemainsPermanent(t
 	if len(permanent.ManagementExemptions) != 2 || permanent.ManagementExemptions[0].RecoveryPathID != "trusted-source" || permanent.ManagementExemptions[0].ExpiresAt != 0 {
 		t.Fatalf("permanent trusted source did not win duplicate recovery scope: %#v", permanent.ManagementExemptions)
 	}
-	candidate := RenderManagedNFT(permanent)
+	candidate := RenderManagedNFT(permanent, backendnetwork.NFTCodec{})
 	temporalErr := preflightTemporalPlan(permanent, now.Add(24*time.Hour))
 	if strings.Contains(candidate, "meta time <") || !errors.Is(temporalErr, ErrUnsafeResource) {
 		t.Fatalf("permanent rule must remain timeless without authorizing expired management: err=%v\n%s", temporalErr, candidate)
@@ -189,7 +191,7 @@ func TestAppliedReplayRequiresExactImmutablePlanAndFreshLiveAuthority(t *testing
 	variants["contribution revision"] = revision
 	for name, changed := range variants {
 		t.Run("reject "+name, func(t *testing.T) {
-			if err := Preflight(changed); err != nil {
+			if err := Preflight(changed, backendnetwork.NFTCodec{}); err != nil {
 				t.Fatalf("variant is not a valid competing plan: %v", err)
 			}
 			before := len(mock.Requests)
@@ -239,17 +241,17 @@ func endpointTemporalEndpointPlan(now time.Time, trusted bool) FirewallPlan {
 func TestExpiredRuntimeProjectionPreservesCommittedTopology(t *testing.T) {
 	now := time.Unix(2000, 0)
 	plan := endpointTemporalEndpointPlan(now, true)
-	original := RenderManagedNFT(plan)
+	original := RenderManagedNFT(plan, backendnetwork.NFTCodec{})
 	before, err := protectionhelper.ManagedSemanticSHA256([]byte(original))
 	if err != nil {
 		t.Fatal(err)
 	}
-	restored := renderEndpointManagedNFTAt(plan, true, now.Add(time.Hour))
+	restored := renderEndpointManagedNFTAt(plan, true, now.Add(time.Hour), backendnetwork.NFTCodec{})
 	after, err := protectionhelper.ManagedSemanticSHA256([]byte(restored))
 	if err != nil || before != after || strings.Contains(restored, "elements =") || !strings.Contains(restored, "set solovey_block") {
 		t.Fatalf("expired runtime changed static authority or revived members: %v", err)
 	}
-	if RenderManagedNFT(plan) != original {
+	if RenderManagedNFT(plan, backendnetwork.NFTCodec{}) != original {
 		t.Fatal("runtime projection mutated committed plan")
 	}
 }
@@ -308,7 +310,7 @@ func TestEndpointPlanRevisionExcludesListenerOwnerAndDeploymentEvidence(t *testi
 	if firstGraph.Revision == secondGraph.Revision {
 		t.Fatal("fixture did not change listener-owner graph evidence")
 	}
-	if first.InputRevision != second.InputRevision || first.Revision != second.Revision || RenderManagedNFT(first) != RenderManagedNFT(second) {
+	if first.InputRevision != second.InputRevision || first.Revision != second.Revision || RenderManagedNFT(first, backendnetwork.NFTCodec{}) != RenderManagedNFT(second, backendnetwork.NFTCodec{}) {
 		t.Fatal("listener owner or deployment evidence contaminated the firewall baseline candidate")
 	}
 	if !slices.Contains(second.BaselineEligibility.AdvisoryCodes, "resource_apply_blocked") {
@@ -335,7 +337,7 @@ func TestEndpointPlanInputRevisionIsOrderIndependentAndRejectsMalformedFence(t *
 	}
 	input.InputRevision = "malformed"
 	plan := BuildEndpointPlan(input)
-	if !plan.ApplyBlocked || !slices.Contains(plan.ReasonCodes, "snapshot_input_revision_invalid") || Preflight(plan) == nil {
+	if !plan.ApplyBlocked || !slices.Contains(plan.ReasonCodes, "snapshot_input_revision_invalid") || Preflight(plan, backendnetwork.NFTCodec{}) == nil {
 		t.Fatal("malformed snapshot fence did not fail closed")
 	}
 }
@@ -349,13 +351,13 @@ func TestEndpointPlanBlocksStaleActionsWrongFamilyAndAmbiguousResourceScope(t *t
 	stale.Action.ConfigurationRevision = strings.Repeat("e", 64)
 	stale.Action.FinalizeID()
 	stalePlan := BuildEndpointPlan(EndpointPlanInput{Graph: graph, Resources: []hostresources.ProtectableResource{resource}, Actions: []EndpointActionInput{stale}, Now: now})
-	if !stalePlan.ApplyBlocked || !slices.Contains(stalePlan.ReasonCodes, "action_revision_stale") || Preflight(stalePlan) == nil {
+	if !stalePlan.ApplyBlocked || !slices.Contains(stalePlan.ReasonCodes, "action_revision_stale") || Preflight(stalePlan, backendnetwork.NFTCodec{}) == nil {
 		t.Fatalf("stale action revision was materialized: %#v", stalePlan)
 	}
 
 	wrongFamily := endpointActionFixture(graph, resource, strings.Repeat("b", 64), domain.SignalSubjectV2{Type: "ip", Value: "2001:db8::10"}, domain.IntentTemporaryBlock, now, now.Add(time.Hour), "native")
 	wrongFamilyPlan := BuildEndpointPlan(EndpointPlanInput{Graph: graph, Resources: []hostresources.ProtectableResource{resource}, Actions: []EndpointActionInput{wrongFamily}, Now: now})
-	if err := Preflight(wrongFamilyPlan); !errors.Is(err, ErrUnsafeResource) {
+	if err := Preflight(wrongFamilyPlan, backendnetwork.NFTCodec{}); !errors.Is(err, ErrUnsafeResource) {
 		t.Fatalf("cross-family contribution passed preflight: %v", err)
 	}
 
@@ -370,7 +372,7 @@ func TestEndpointPlanBlocksStaleActionsWrongFamilyAndAmbiguousResourceScope(t *t
 	surfaceTwo.SocketInode = "101"
 	multiGraph := protectionresources.BuildSocketOwnershipGraph(protectionresources.SocketGraphInput{Resources: []hostresources.ProtectableResource{resource}, Surfaces: []hostsurface.HostSurfaceFactV1{surfaceOne, surfaceTwo}, Now: now})
 	multiPlan := BuildEndpointPlan(EndpointPlanInput{Graph: multiGraph, Resources: []hostresources.ProtectableResource{resource}, Now: now})
-	if multiPlan.ApplyBlocked || !multiPlan.BaselineEligibility.CandidateEligible || !slices.Contains(multiPlan.BaselineEligibility.AdvisoryCodes, "resource_apply_blocked") || Preflight(multiPlan) != nil {
+	if multiPlan.ApplyBlocked || !multiPlan.BaselineEligibility.CandidateEligible || !slices.Contains(multiPlan.BaselineEligibility.AdvisoryCodes, "resource_apply_blocked") || Preflight(multiPlan, backendnetwork.NFTCodec{}) != nil {
 		t.Fatalf("topology diagnostics incorrectly blocked the configured firewall baseline: %#v", multiPlan)
 	}
 }
@@ -389,12 +391,12 @@ func TestEndpointPlanUnknownOwnerIsAdvisoryButFreshRecoveryStillGatesMutation(t 
 	if plan.ApplyBlocked || !plan.BaselineEligibility.CandidateEligible || plan.BaselineEligibility.MutationReady || !slices.Contains(plan.BaselineEligibility.AdvisoryCodes, "resource_apply_blocked") || !slices.Contains(plan.BaselineEligibility.MutationReasonCodes, "fresh_recovery_path_missing") {
 		t.Fatalf("unknown owner was not advisory or recovery was not deferred to mutation: %#v", plan)
 	}
-	if err := Preflight(plan); err == nil {
+	if err := Preflight(plan, backendnetwork.NFTCodec{}); err == nil {
 		t.Fatal("endpoint plan without fresh recovery passed mutation preflight")
 	}
 	input.RecoveryPaths = []hostresources.RecoveryPathV1{{Schema: hostresources.RecoveryPathSchemaV1, ID: "recovery:panel", Kind: string(hostresources.ManagementPanel), EndpointID: management.ID, PrincipalID: "principal:hash", SourcePrefix: "198.51.100.0/24", VerificationMethod: "fresh_panel_login", VerifiedAt: now.Add(-time.Minute).Unix(), ExpiresAt: now.Add(time.Hour).Unix(), IndependenceClass: "independent_reconnect", VerificationState: "verified", SourceRevision: strings.Repeat("a", 64), ConfigurationRevision: management.ConfigurationRevision}}
 	ready := BuildEndpointPlan(input)
-	if ready.ApplyBlocked || !ready.BaselineEligibility.CandidateEligible || !ready.BaselineEligibility.MutationReady || Preflight(ready) != nil {
+	if ready.ApplyBlocked || !ready.BaselineEligibility.CandidateEligible || !ready.BaselineEligibility.MutationReady || Preflight(ready, backendnetwork.NFTCodec{}) != nil {
 		t.Fatalf("fresh recovery did not make the owner-advisory baseline mutation-ready: %#v", ready)
 	}
 }
@@ -459,7 +461,7 @@ func TestEndpointPlanPreservesEveryManagementSurfaceOnACompleteFixture(t *testin
 	}}
 	input := EndpointPlanInput{Resources: resources, Management: management, RecoveryPaths: recovery, TrustedSources: []string{"198.51.100.0/24"}, RequireSSHKeep: true, Now: now}
 	plan := BuildEndpointPlan(input)
-	if plan.ApplyBlocked || !plan.BaselineEligibility.CandidateEligible || !plan.BaselineEligibility.MutationReady || !plan.BaselineEligibility.ManagementPreserved || Preflight(plan) != nil {
+	if plan.ApplyBlocked || !plan.BaselineEligibility.CandidateEligible || !plan.BaselineEligibility.MutationReady || !plan.BaselineEligibility.ManagementPreserved || Preflight(plan, backendnetwork.NFTCodec{}) != nil {
 		t.Fatalf("complete management fixture did not produce a mutation-ready candidate: %#v", plan)
 	}
 	if !slices.Equal(plan.AllowTCPPorts, []int{2095, 2096, 2222}) {
@@ -480,8 +482,8 @@ func TestEndpointPlanPreservesEveryManagementSurfaceOnACompleteFixture(t *testin
 			t.Fatalf("management port %d is absent from endpoint plan: %#v", port, plan.Endpoints)
 		}
 	}
-	candidate := RenderManagedNFT(plan)
-	if candidate == "" || candidate != RenderManagedNFT(BuildEndpointPlan(input)) || !strings.Contains(candidate, "solovey-revision:"+plan.Revision) {
+	candidate := RenderManagedNFT(plan, backendnetwork.NFTCodec{})
+	if candidate == "" || candidate != RenderManagedNFT(BuildEndpointPlan(input), backendnetwork.NFTCodec{}) || !strings.Contains(candidate, "solovey-revision:"+plan.Revision) {
 		t.Fatalf("managed candidate is empty, unstable, or unbound:\n%s", candidate)
 	}
 }
@@ -525,7 +527,7 @@ func TestEndpointPlanRendersIPv6UDPAsDistinctExactObject(t *testing.T) {
 	surface := hostsurface.HostSurfaceFactV1{Schema: hostsurface.SchemaV1, ID: "surface:udp6", Network: hostsurface.NetworkUDP, Family: hostsurface.FamilyIPv6, Bind: endpoint.Key.BindAddress, Port: endpoint.Key.Port, Exposure: hostsurface.ExposurePublic, SocketInode: "101", Process: hostsurface.ProcessFact{PID: &pid, StartTime: "1", ExeDigest: strings.Repeat("a", 64)}, RegisteredResourceID: resource.ID, DesiredOwner: resource.Owner, OwnershipMode: hostsurface.OwnershipManaged, LastSeen: now.Unix(), ExpiresAt: now.Add(time.Minute).Unix(), Source: "fixture", ConfidenceBP: 10000, ConfigurationRevision: endpoint.ConfigurationRevision, Classification: hostsurface.ClassificationExpectedManaged}
 	graph := protectionresources.BuildSocketOwnershipGraph(protectionresources.SocketGraphInput{Resources: []hostresources.ProtectableResource{resource}, Surfaces: []hostsurface.HostSurfaceFactV1{surface}, Now: now})
 	plan := BuildEndpointPlan(EndpointPlanInput{Graph: graph, Resources: []hostresources.ProtectableResource{resource}, Actions: []EndpointActionInput{endpointActionFixture(graph, resource, strings.Repeat("a", 64), domain.SignalSubjectV2{Type: "ip", Value: "2001:db8::10"}, domain.IntentRateLimit, now, now.Add(time.Hour), "native")}, Now: now})
-	candidate := RenderManagedNFT(plan)
+	candidate := RenderManagedNFT(plan, backendnetwork.NFTCodec{})
 	for _, fragment := range []string{"type ipv6_addr", "meta nfproto ipv6 ip6 daddr 2001:db8::5 meta l4proto udp udp dport 443", "ip6 saddr @solovey_rate6_"} {
 		if !strings.Contains(candidate, fragment) {
 			t.Fatalf("IPv6/UDP endpoint candidate omitted %q:\n%s", fragment, candidate)
