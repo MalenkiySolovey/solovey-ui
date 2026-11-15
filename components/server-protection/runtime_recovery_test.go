@@ -87,7 +87,7 @@ func assertComponentRuntimeExecutionFailureKeepsRecoveryAndSchedules(t *testing.
 	store := &startupAuthorityFailure{Store: backendstore.New(repo), failAt: failAt}
 	unused := startupUnusedDependencies{}
 	health := func(context.Context, []hostresources.ProtectableResource) []componenthealth.Result { return nil }
-	workflow := &firewall.Workflow{Manager: manager, Helper: startupAbsentHelper{}, Contributions: store, Artifacts: unused, Marker: unused, State: unused, Recovery: unused, Health: health, RollbackHealth: health, Codec: backendnetwork.NFTCodec{}}
+	workflow := &firewall.Workflow{Manager: manager, Helper: startupAbsentHelper{}, Contributions: store, Artifacts: unused, Marker: unused, State: unused, Recovery: unused, Health: health, RollbackHealth: health, Codec: backendnetwork.NFTCodec{}, NetworkPlanner: backendnetwork.Planner{}}
 	hooks.Lock()
 	hooks.operationManager, hooks.firewallWorkflow = manager, workflow
 	hooks.Unlock()
