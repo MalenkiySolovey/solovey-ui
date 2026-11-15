@@ -13,14 +13,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-component-server-protection/service/durable"
+	firewall "github.com/MalenkiySolovey/solovey-component-server-protection/service/firewall"
+	operations "github.com/MalenkiySolovey/solovey-component-server-protection/service/operations"
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendstore"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
-	firewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
 	helper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
-	operations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )

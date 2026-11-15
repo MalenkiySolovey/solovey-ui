@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	fronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
+	fronting "github.com/MalenkiySolovey/solovey-component-server-protection/service/fronting"
 	"io/fs"
 	"os"
 	"path/filepath"

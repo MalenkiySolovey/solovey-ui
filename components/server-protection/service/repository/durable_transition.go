@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/service/durable"
 
 	sqlite3 "github.com/mattn/go-sqlite3"
 	"gorm.io/gorm"

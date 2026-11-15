@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	canonical "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifactcontract"
+	canonical "github.com/MalenkiySolovey/solovey-component-server-protection/service/artifactcontract"
 )
 
 const (

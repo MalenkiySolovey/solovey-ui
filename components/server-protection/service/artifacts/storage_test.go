@@ -1,6 +1,6 @@
 package artifacts
 
-import protectiondata "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/durable"
+import protectiondata "github.com/MalenkiySolovey/solovey-component-server-protection/service/durable"
 
 import (
 	"context"

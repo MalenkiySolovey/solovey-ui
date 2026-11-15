@@ -13,9 +13,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	protectionhelper "github.com/MalenkiySolovey/solovey-component-server-protection/service/helpercontract"
 	hostfacts "github.com/MalenkiySolovey/solovey-host/componenthost/hostsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helpercontract"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/sshmanagement"
 )

@@ -5,13 +5,13 @@ import (
 	"context"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-component-server-protection/service/firewall"
 	contractfacts "github.com/MalenkiySolovey/solovey-host/componenthost/hostsurface"
 	contractresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/management"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
 )
 
 type inventoryReader struct{}

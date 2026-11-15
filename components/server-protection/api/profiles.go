@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/domain"
+	protectionresources "github.com/MalenkiySolovey/solovey-component-server-protection/service/resources"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
-	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 	"github.com/gin-gonic/gin"
 )
 

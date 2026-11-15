@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	fronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
+	fronting "github.com/MalenkiySolovey/solovey-component-server-protection/service/fronting"
 	"io"
 	"io/fs"
 	"os"
@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	helper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helpercontract"
+	helper "github.com/MalenkiySolovey/solovey-component-server-protection/service/helpercontract"
 )
 
 type NginxRuntimeInspectorV2 struct {

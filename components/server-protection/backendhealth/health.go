@@ -5,10 +5,10 @@ package backendhealth
 import (
 	"context"
 
+	feature "github.com/MalenkiySolovey/solovey-component-server-protection/service/health"
 	componenthealth "github.com/MalenkiySolovey/solovey-host/componenthost/health"
 	hostresources "github.com/MalenkiySolovey/solovey-host/componenthost/resources"
 	registered "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
-	feature "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/health"
 	sshservice "github.com/MalenkiySolovey/solovey-ui/service/sshmanagement"
 )
 

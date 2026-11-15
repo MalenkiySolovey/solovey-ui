@@ -1,0 +1,264 @@
+{
+  "schema": "solovey.test-source-inputs/v1",
+  "module": "github.com/MalenkiySolovey/solovey-component-server-protection",
+  "sources": [
+    {
+      "asset": "service/enforcement/intent_test.go.txt",
+      "package": "service/enforcement",
+      "file": "intent_test.go",
+      "sha256": "59ef5fac73dcb222193922aff41c2a98263fce40abdc727c8af3d4ec39089fb6"
+    },
+    {
+      "asset": "service/firewall/baseline_source_fixture_test.go.txt",
+      "package": "service/firewall",
+      "file": "baseline_source_fixture_test.go",
+      "sha256": "13db7d4257b5dc17a5928e066a3f151cb50d1057bddd2b7eed38c93fcf0de4c9"
+    },
+    {
+      "asset": "service/firewall/composition_test.go.txt",
+      "package": "service/firewall",
+      "file": "composition_test.go",
+      "sha256": "c190f3d2b7c0993f4f0ba64a5afd069c0b2565a08b2c58a260dbcbf2afcd526b"
+    },
+    {
+      "asset": "service/firewall/contribution_identity_test.go.txt",
+      "package": "service/firewall",
+      "file": "contribution_identity_test.go",
+      "sha256": "f757048ee503aae6497add714d7c4fdbdd8dcdc7e02d5470878e5ab95d892c76"
+    },
+    {
+      "asset": "service/firewall/durable_fixtures_test.go.txt",
+      "package": "service/firewall",
+      "file": "durable_fixtures_test.go",
+      "sha256": "403d4673298d16b729e4cbc6b74aeedecb496fd9028e6a51738cd045b5c4905d"
+    },
+    {
+      "asset": "service/firewall/endpoint_plan_test.go.txt",
+      "package": "service/firewall",
+      "file": "endpoint_plan_test.go",
+      "sha256": "c7e334826b858157b9520b34dcb5d8015e0e8c2b7fd9c1c79c4bfdadcf505bc8"
+    },
+    {
+      "asset": "service/firewall/expired_process_test.go.txt",
+      "package": "service/firewall",
+      "file": "expired_process_test.go",
+      "sha256": "391329efd95e1a9d82867c62f27e862761546863f863537dc82c340fe26d0482"
+    },
+    {
+      "asset": "service/firewall/network_plan_test.go.txt",
+      "package": "service/firewall",
+      "file": "network_plan_test.go",
+      "sha256": "5b29c4cbc140b974a6366bc84c3476893471da43dcc888dacb025d605eddbe44"
+    },
+    {
+      "asset": "service/firewall/network_resource_test.go.txt",
+      "package": "service/firewall",
+      "file": "network_resource_test.go",
+      "sha256": "768279f9c83dd63291d04cd1ecd7152eb57a38d632357bf503ceb00105883a6b"
+    },
+    {
+      "asset": "service/firewall/operator_resolution_test.go.txt",
+      "package": "service/firewall",
+      "file": "operator_resolution_test.go",
+      "sha256": "285bc889fb8a353dc1ae206fa3483ddde8c9903d4e2b6bdbe666373c277f8adc"
+    },
+    {
+      "asset": "service/firewall/package_replacement_test.go.txt",
+      "package": "service/firewall",
+      "file": "package_replacement_test.go",
+      "sha256": "20fb5ac1f798dd6af174c1e0b9b7030c6aba6238689d8c6da1aa5fdaefe8820c"
+    },
+    {
+      "asset": "service/firewall/policy_boundary_test.go.txt",
+      "package": "service/firewall",
+      "file": "policy_boundary_test.go",
+      "sha256": "df90daf40e65b82948dcd77329803349e1c252cf80d6d2cb902994f442e41a3b"
+    },
+    {
+      "asset": "service/firewall/preview_test.go.txt",
+      "package": "service/firewall",
+      "file": "preview_test.go",
+      "sha256": "5f9c4bee4f96ac7764adfd82435a24b294b183de0efb7a82640b8f8e5b42bbc8"
+    },
+    {
+      "asset": "service/firewall/preview_wire_test.go.txt",
+      "package": "service/firewall",
+      "file": "preview_wire_test.go",
+      "sha256": "a4ecc022ae7b01290d3e8d10c525c498372d2326525cfdc9a04da08affd62684"
+    },
+    {
+      "asset": "service/firewall/retained_public_test.go.txt",
+      "package": "service/firewall",
+      "file": "retained_public_test.go",
+      "sha256": "48f1f4d96fa7b79f63fae92cd22afa911ceb664c9ab14d5dc973442d2230ad34"
+    },
+    {
+      "asset": "service/firewall/runtime_crash_test.go.txt",
+      "package": "service/firewall",
+      "file": "runtime_crash_test.go",
+      "sha256": "cd235df4752c69bb9c32b10e573c6731388a98a1867c2b734be3d18a3483e7d7"
+    },
+    {
+      "asset": "service/firewall/runtime_sqlite_lock_test.go.txt",
+      "package": "service/firewall",
+      "file": "runtime_sqlite_lock_test.go",
+      "sha256": "78a508b769f1a20f5b330f2fa7f04ecd44ef9c26a8d94440985f5acad98fb9d3"
+    },
+    {
+      "asset": "service/firewall/runtime_terminalization_test.go.txt",
+      "package": "service/firewall",
+      "file": "runtime_terminalization_test.go",
+      "sha256": "ba14484a3d0772acae5ab39ba8b40a69f53c9d1ade769ee59783d98a4e7ea9c8"
+    },
+    {
+      "asset": "service/firewall/ssh_management_chain_linux_test.go.txt",
+      "package": "service/firewall",
+      "file": "ssh_management_chain_linux_test.go",
+      "sha256": "886333011f1dd20cb133641bb21806a22766f260343004bac304ddc4c8725754"
+    },
+    {
+      "asset": "service/firewall/ssh_management_chain_test.go.txt",
+      "package": "service/firewall",
+      "file": "ssh_management_chain_test.go",
+      "sha256": "5004ebab00ba6f029bd1ca063cb78d76fd12be1d380a4e5c7a6eeb60f7fa17ee"
+    },
+    {
+      "asset": "service/firewall/test_doubles_test.go.txt",
+      "package": "service/firewall",
+      "file": "test_doubles_test.go",
+      "sha256": "c11ef1b7280bdc8dea5293e16297458ae819a61d39db7a719524f5a9d76c91ca"
+    },
+    {
+      "asset": "service/firewall/udp_flow_policy_test.go.txt",
+      "package": "service/firewall",
+      "file": "udp_flow_policy_test.go",
+      "sha256": "c8813e3ac5992a91594177bd95e39064bfd2f32839da1296f7107879386beb1e"
+    },
+    {
+      "asset": "service/firewall/workflow_fake_ci_test.go.txt",
+      "package": "service/firewall",
+      "file": "workflow_fake_ci_test.go",
+      "sha256": "99f803c43ba7845fab645d06fb9d872f05d27bb13da86ed1e3c257964d6c2fcd"
+    },
+    {
+      "asset": "service/firewall/workflow_test.go.txt",
+      "package": "service/firewall",
+      "file": "workflow_test.go",
+      "sha256": "49d01142db42383dde4b1f37f37d10ee32db84771f34e676f83fbbc945ae8d75"
+    },
+    {
+      "asset": "service/fronting/performance_isolated_v2_test.go.txt",
+      "package": "service/fronting",
+      "file": "performance_isolated_v2_test.go",
+      "sha256": "b49c52cebec53f8588fa9ed5c1f449d26c7a8761d629aad0230e44546a72e8f0"
+    },
+    {
+      "asset": "service/fronting/performance_v2_test.go.txt",
+      "package": "service/fronting",
+      "file": "performance_v2_test.go",
+      "sha256": "8b0950b85f08fec560b68fe35d98073e47aaeb8b97ac252f4dbc8eaaeb920471"
+    },
+    {
+      "asset": "service/fronting/product_contract_architecture_test.go.txt",
+      "package": "service/fronting",
+      "file": "product_contract_architecture_test.go",
+      "sha256": "d653bc5c75604b609e71951af0d3b5d5bf1dd6b32454b6863bd5bb69f9971a0a"
+    },
+    {
+      "asset": "service/fronting/semantic_v2_test.go.txt",
+      "package": "service/fronting",
+      "file": "semantic_v2_test.go",
+      "sha256": "c6353fd3223b9e40350dc4bed408ce2fd6d68d5209b807d0fa4d90d18fa1de32"
+    },
+    {
+      "asset": "service/fronting/sni_fallback_workflow_v2_test.go.txt",
+      "package": "service/fronting",
+      "file": "sni_fallback_workflow_v2_test.go",
+      "sha256": "59de1ed7d09ff67f23b88a6e58826bf7b6aa14632bdc6e533b912dfb84b7b13d"
+    },
+    {
+      "asset": "service/fronting/sni_preread_v2_test.go.txt",
+      "package": "service/fronting",
+      "file": "sni_preread_v2_test.go",
+      "sha256": "9d646cce28a566febc810e74c5efa06e985dfc70b41093fe202dd3fb6d543677"
+    },
+    {
+      "asset": "service/fronting/sni_workflow_v2_test.go.txt",
+      "package": "service/fronting",
+      "file": "sni_workflow_v2_test.go",
+      "sha256": "0cddde38dd3c8a3234013a03c3c3e98278bacd15d99a62fa55ab6691c6974a06"
+    },
+    {
+      "asset": "service/fronting/workflow_test.go.txt",
+      "package": "service/fronting",
+      "file": "workflow_test.go",
+      "sha256": "f2f628d0485914bf0ad4ac176396bbe3ce9366bdd95391bc7b66fbc22c97735e"
+    },
+    {
+      "asset": "service/fronting/workflow_v2_test.go.txt",
+      "package": "service/fronting",
+      "file": "workflow_v2_test.go",
+      "sha256": "3d23acbab60a3ef85ec9c08d2214f8e7dbcc58f2a05fdb9fc5fb5814299cd55f"
+    },
+    {
+      "asset": "service/interception/performance_test.go.txt",
+      "package": "service/interception",
+      "file": "performance_test.go",
+      "sha256": "e1598a47a67569f0beab9e701d296f11ef137bd6c4f75791bc3088cd5f5e6f39"
+    },
+    {
+      "asset": "service/interception/service_test.go.txt",
+      "package": "service/interception",
+      "file": "service_test.go",
+      "sha256": "e05982d917568d7f2a78a63480f1aa5bf90a12d31a8a08812c0c2ae5bdaff389"
+    },
+    {
+      "asset": "service/localproxy/localproxy_test.go.txt",
+      "package": "service/localproxy",
+      "file": "localproxy_test.go",
+      "sha256": "12d573107a247b513ae716bb2fd4e49a476e8d3b3c622128199ae34d70eff62d"
+    },
+    {
+      "asset": "service/nativefallback/core_checkpoint_retention_integration_test.go.txt",
+      "package": "service/nativefallback",
+      "file": "core_checkpoint_retention_integration_test.go",
+      "sha256": "b7ec42c0934df37232b707e91da510195396270d642e340046405f2a9fa1df40"
+    },
+    {
+      "asset": "service/nativefallback/performance_test.go.txt",
+      "package": "service/nativefallback",
+      "file": "performance_test.go",
+      "sha256": "07f0a8a266fe9f8ebbae117b6f0b0a5bdaad3c8c8a89719374e8470e9e0dc196"
+    },
+    {
+      "asset": "service/nativefallback/planner_test.go.txt",
+      "package": "service/nativefallback",
+      "file": "planner_test.go",
+      "sha256": "795e97c2f348a49f1accd681cd0082b79f3dd9f538de40f4683aa1c07c83cd31"
+    },
+    {
+      "asset": "service/nativefallback/workflow_test.go.txt",
+      "package": "service/nativefallback",
+      "file": "workflow_test.go",
+      "sha256": "91d45a9aa64c59f33ed1b7288a12843a60fa1f81fd1aff4f432fbcd1c4bd5739"
+    },
+    {
+      "asset": "service/observation/worker_test.go.txt",
+      "package": "service/observation",
+      "file": "worker_test.go",
+      "sha256": "ec43a7ffc23d6acb20b7d33bf95675bf579e26d562404fdaeb26544ae4e21744"
+    },
+    {
+      "asset": "service/operations/manager_test.go.txt",
+      "package": "service/operations",
+      "file": "manager_test.go",
+      "sha256": "d84f2d06dbbdf7206b0f1800a21e1966f8882d4541e560a530cff12f57dabe77"
+    },
+    {
+      "asset": "service/operations/runtime_recovery_test.go.txt",
+      "package": "service/operations",
+      "file": "runtime_recovery_test.go",
+      "sha256": "be44686d32940cfdebc4f135002755633299a94ac8f25ba9b16b60215c292047"
+    }
+  ]
+}

@@ -11,7 +11,7 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/domain"
 	"gorm.io/gorm"
 )
 

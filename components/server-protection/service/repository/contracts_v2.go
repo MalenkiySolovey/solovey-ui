@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-component-server-protection/domain"
+	protectiondecision "github.com/MalenkiySolovey/solovey-component-server-protection/service/decision"
+	protectionevents "github.com/MalenkiySolovey/solovey-component-server-protection/service/events"
 	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
-	protectiondecision "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/decision"
-	protectionevents "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/events"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

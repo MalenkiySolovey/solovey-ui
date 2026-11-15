@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	protectionfronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
+	protectionfronting "github.com/MalenkiySolovey/solovey-component-server-protection/service/fronting"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 )
 

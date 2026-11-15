@@ -2,7 +2,7 @@ package backendfronting
 
 import (
 	"context"
-	fronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
+	fronting "github.com/MalenkiySolovey/solovey-component-server-protection/service/fronting"
 	"os"
 	"path/filepath"
 	"strings"

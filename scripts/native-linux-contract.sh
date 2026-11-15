@@ -63,6 +63,14 @@ run_contract_test() {
     printf '[native-linux-contract] %s: PASS\n' "$layer"
 }
 
+run_protection_owner_test() {
+    local layer=$1
+    local pattern=$2
+    printf '[native-linux-contract] %s: immutable protection source with Product owners\n' "$layer"
+    PATH="$(dirname -- "$go_program"):$PATH" node scripts/protection-owner-tests.mjs -count=1 -run "$pattern"
+    printf '[native-linux-contract] %s: PASS\n' "$layer"
+}
+
 cd -- "$source_dir"
 
 run_test 'Layer A real listener evidence' '.' './internal/ops/listenerevidence'
@@ -90,15 +98,14 @@ run_test 'Layer D coherent resource refresh' \
 run_test 'Layer D coherent SSH projection' \
     '^TestProviderConsumesOneAdjacentSSHGenerationAfterOtherResources$' \
     './components/server-protection/service/hostsurface'
-run_test 'Layer D real listener to typed firewall candidate' \
-    '^(TestNativeLinuxRealListenerAuthorityReachesTypedFirewallCandidate|TestStockDropbearAuthorityReachesPreparedTypedFirewallCandidate|TestCurrentSSHOwnerCrossesSecondBoundaryThroughHostSurfaceAndManagement|TestCurrentSSHProductionBaselineUsesOneOwnerGeneration|TestManagementPlanProductionHealthLifecycle)$' \
-    './components/server-protection/service/firewall'
+run_protection_owner_test 'Layer D real listener to typed firewall candidate' \
+    '^(TestNativeLinuxRealListenerAuthorityReachesTypedFirewallCandidate|TestStockDropbearAuthorityReachesPreparedTypedFirewallCandidate|TestCurrentSSHOwnerCrossesSecondBoundaryThroughHostSurfaceAndManagement|TestCurrentSSHProductionBaselineUsesOneOwnerGeneration|TestManagementPlanProductionHealthLifecycle)$'
 run_test 'Layer D current SSH owner read model' \
     '^(TestCurrentReadUsesOneObservationWithoutWorkflowHistory|TestSSHPreviewValidatesAfterObservationCompletes|TestCurrentPostureScopeRetainsOneGenerationAndRejectsExpiry|TestCurrentReadObservesSSHAfterSlowNeutralProviders|TestSSHPreviewRevisionBindsAuthorityInsteadOfObservationClock)$' \
     './service/sshmanagement'
 run_test 'Layer D exact socket coverage classification' \
     '^TestExactSocketCoverageAvoidsOnlyProvenFalseDualStackAmbiguity$' \
-    './components/server-protection/service/resources'
+    'github.com/MalenkiySolovey/solovey-component-server-protection/service/resources'
 run_test 'Layer F current SSH HTTP composition' \
     '^TestSSHCurrentHTTPExposesOneCurrentOwnerWithoutWorkflowHistory$' \
     './api'
@@ -110,13 +117,12 @@ run_test 'Layer E typed authentication event' \
     './service'
 run_test 'Layer E trusted-source domain contract' \
     '^Test(TrustedSourceNormalizationAndFamily|TrustedSourceRejectsUnusableAndAmbiguousAddresses|BroadTrustedSourceRequiresExactTypedConfirmation)$' \
-    './components/server-protection/service/policy'
+    'github.com/MalenkiySolovey/solovey-component-server-protection/service/policy'
 run_test 'Layer E trusted-source API contract' \
     '^Test(TrustedSourceCreateNormalizesRejectsDuplicatesAndExpiredInput|BroadTrustedSourceRequiresTypedConfirmation|TrustedSourceProposalPreservesClientIdentityAuthority)$' \
     './components/server-protection/api'
-run_test 'Layer F canonical firewall preview arrays' \
-    '^TestFirewallPreviewEmptyCollectionsMarshalAsArrays$' \
-    './components/server-protection/service/firewall'
+run_protection_owner_test 'Layer F canonical firewall preview arrays' \
+    '^TestFirewallPreviewEmptyCollectionsMarshalAsArrays$'
 run_test 'Layer F API preview collections' \
     '^TestMVPAPIInventoryProfileAndMissingApplyCapability$' \
     './components/server-protection/api'

@@ -3,18 +3,15 @@ module github.com/MalenkiySolovey/solovey-ui
 go 1.26.11
 
 require (
+	github.com/AliRizaAynaci/gorl/v2 v2.2.0 // indirect
 	github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0
 	github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0
 	github.com/MalenkiySolovey/solovey-component-telegram v0.1.0
 	github.com/MalenkiySolovey/solovey-contracts v1.0.0
 	github.com/MalenkiySolovey/solovey-host v0.9.0
-	// v1.1.0 omits its license; select the upstream CC0 source grant.
-	github.com/zeebo/assert v1.3.0 // indirect
-	github.com/redis/go-redis/v9 v9.8.0 // indirect
-	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/AliRizaAynaci/gorl/v2 v2.2.0 // indirect
 	github.com/coder/websocket v1.8.14
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/gin-contrib/gzip v1.2.6
 	github.com/gin-contrib/sessions v1.1.0
 	github.com/gin-gonic/gin v1.12.0
@@ -23,12 +20,15 @@ require (
 	github.com/gorilla/securecookie v1.1.2
 	github.com/gorilla/sessions v1.4.0
 	github.com/mattn/go-sqlite3 v1.14.49
+	github.com/redis/go-redis/v9 v9.8.0 // indirect
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sagernet/sing v0.9.7-0.20260929150544-0ad23b637bd4
 	github.com/sagernet/sing-box v1.14.3
 	github.com/sagernet/sing-snell v0.0.0-20260904135315-bc5a12ac736f
 	github.com/shirou/gopsutil/v4 v4.26.5
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
+	// v1.1.0 omits its license; select the upstream CC0 source grant.
+	github.com/zeebo/assert v1.3.0 // indirect
 	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.62.0
 	golang.org/x/term v0.47.0
@@ -99,6 +99,7 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0
+	github.com/MalenkiySolovey/solovey-component-server-protection v0.1.0
 	github.com/OneOfOne/xxhash v1.2.8 // indirect
 	github.com/ajg/form v1.5.1 // indirect
 	github.com/akutz/memconn v0.1.0 // indirect

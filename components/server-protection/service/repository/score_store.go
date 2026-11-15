@@ -7,10 +7,10 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/events"
-	protectionpolicy "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/policy"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/scoring"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/domain"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/service/events"
+	protectionpolicy "github.com/MalenkiySolovey/solovey-component-server-protection/service/policy"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/service/scoring"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

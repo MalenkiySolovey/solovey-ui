@@ -15,12 +15,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-component-server-protection/domain"
+	protectionnativefallback "github.com/MalenkiySolovey/solovey-component-server-protection/service/nativefallback"
+	protectionoperations "github.com/MalenkiySolovey/solovey-component-server-protection/service/operations"
+	protectionresources "github.com/MalenkiySolovey/solovey-component-server-protection/service/resources"
 	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
-	protectionnativefallback "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/nativefallback"
-	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
-	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 	"github.com/gin-gonic/gin"
 )

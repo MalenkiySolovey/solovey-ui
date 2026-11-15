@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-component-server-protection/domain"
+	protectionfronting "github.com/MalenkiySolovey/solovey-component-server-protection/service/fronting"
+	protectionoperations "github.com/MalenkiySolovey/solovey-component-server-protection/service/operations"
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	hostmanagement "github.com/MalenkiySolovey/solovey-ui/componenthost/management"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
-	protectionfronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
-	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 )
 

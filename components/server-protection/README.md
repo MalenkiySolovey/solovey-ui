@@ -8,6 +8,14 @@ endpoint-managed firewall and nginx stream-fronting previews. Mutating
 workflows remain manual and require the release-matched restricted helper plus
 exact Linux capability detection.
 
+The policy, workflows and frontend contribution come from
+`github.com/MalenkiySolovey/solovey-component-server-protection`, selected by
+`components/sources.lock.json` and both provider module files. This directory
+contains the Product adapters for authenticated APIs, durable storage,
+ComponentHost lifecycle, installed identity and restricted privileged execution.
+Run `node scripts/verify-protection-source.mjs` to qualify the pinned feature
+with the preserved Product-owner integration cases.
+
 ## Runtime model
 
 - Generic host registries provide listener, inbound, fallback-site, health,
@@ -21,9 +29,10 @@ exact Linux capability detection.
   wildcard/exact collisions, and permits sharing only through an explicit
   adapter multiplexing contract. Unknown, stale, or ambiguous ownership blocks
   apply.
-- The firewall generator owns only `table inet solovey_protection`. It renders
-  exact endpoint matches, recovery/trusted-source exemptions, bounded timeout
-  sets, conservative rate behavior, counters, and no global ruleset flush.
+- The Network Planner owns `table inet solovey_protection` and renders the
+  feature's typed endpoint intent: exact matches, recovery/trusted-source
+  exemptions, bounded timeout sets, conservative rate behavior and counters.
+  It never flushes the global ruleset.
 - A protection decision is never an applied action. Capability resolution may
   select a safer supported intent or observe-only; only exact helper
   verification can report a current applied action.

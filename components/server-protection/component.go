@@ -6,12 +6,21 @@ import "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backe
 
 import (
 	"context"
-	_ "embed"
 	"errors"
 	"fmt"
 	"sync"
 	"time"
 
+	protectionsource "github.com/MalenkiySolovey/solovey-component-server-protection"
+	protectionfirewall "github.com/MalenkiySolovey/solovey-component-server-protection/service/firewall"
+	protectionfronting "github.com/MalenkiySolovey/solovey-component-server-protection/service/fronting"
+	protectioninterception "github.com/MalenkiySolovey/solovey-component-server-protection/service/interception"
+	protectionlocalproxy "github.com/MalenkiySolovey/solovey-component-server-protection/service/localproxy"
+	protectionnativefallback "github.com/MalenkiySolovey/solovey-component-server-protection/service/nativefallback"
+	protectionobservation "github.com/MalenkiySolovey/solovey-component-server-protection/service/observation"
+	protectionoperations "github.com/MalenkiySolovey/solovey-component-server-protection/service/operations"
+	protectionresources "github.com/MalenkiySolovey/solovey-component-server-protection/service/resources"
+	protectionudpguard "github.com/MalenkiySolovey/solovey-component-server-protection/service/udpguard"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
@@ -29,18 +38,9 @@ import (
 	protectiondeployment "github.com/MalenkiySolovey/solovey-ui/components/server-protection/deploymentadapter"
 	protectionruntime "github.com/MalenkiySolovey/solovey-ui/components/server-protection/runtimecontract"
 	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifacts"
-	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
-	protectionfronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionhostsurface "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/hostsurface"
-	protectioninterception "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/interception"
-	protectionlocalproxy "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/localproxy"
-	protectionnativefallback "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/nativefallback"
-	protectionobservation "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/observation"
-	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
-	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
-	protectionudpguard "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/udpguard"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
@@ -52,8 +52,7 @@ import (
 	"gorm.io/gorm"
 )
 
-//go:embed component.json
-var componentJSON []byte
+var componentJSON = protectionsource.ManifestJSON()
 
 var componentManifest = manifest.MustFromJSON(componentJSON)
 var componentID = componentManifest.ID

@@ -47,26 +47,28 @@ func TestRetiredComponentNetworkAdapterStaysAbsent(t *testing.T) {
 // The migrated writer budget is zero. Allocation names and nft source must
 // remain in the Core Mechanism; Components submit typed intent to its adapter.
 func TestComponentsDoNotAllocateOrRenderHostNetworkResources(t *testing.T) {
-	walkGoFiles(t, filepath.Join(moduleRoot(t), "components"), func(path string) {
-		if strings.HasSuffix(path, "_test.go") {
-			return
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, token := range []string{"solovey_protection", "solovey_endpoint_", "table inet ", "delete table ", "flush ruleset"} {
-			if strings.Contains(string(data), token) {
-				t.Errorf("Component host-network writer/allocation budget exceeded in %s: %q", path, token)
+	for _, directory := range []string{filepath.Join(moduleRoot(t), "components"), protectionSourcePath(t, ".")} {
+		walkGoFiles(t, directory, func(path string) {
+			if strings.HasSuffix(path, "_test.go") {
+				return
 			}
-		}
-	})
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, token := range []string{"solovey_protection", "solovey_endpoint_", "table inet ", "delete table ", "flush ruleset"} {
+				if strings.Contains(string(data), token) {
+					t.Errorf("Component host-network writer/allocation budget exceeded in %s: %q", path, token)
+				}
+			}
+		})
+	}
 }
 
 func TestNetworkPlannerHasNoComponentOrPolicyDependency(t *testing.T) {
 	root := moduleRoot(t)
 	assertNoImports(t, root, []string{"network/planner", "network/nftables"}, []string{
-		modulePath + "/components", modulePath + "/service", modulePath + "/database",
+		modulePath + "/components", modulePath + "/service", modulePath + "/database", protectionSourceModule,
 	}, "network mechanism ownership")
 	for _, relative := range []string{"network/planner"} {
 		walkGoFiles(t, filepath.Join(root, filepath.FromSlash(relative)), func(path string) {

@@ -9,13 +9,13 @@ import (
 	"sync"
 	"time"
 
+	protectionfirewall "github.com/MalenkiySolovey/solovey-component-server-protection/service/firewall"
+	protectionfronting "github.com/MalenkiySolovey/solovey-component-server-protection/service/fronting"
+	protectionresources "github.com/MalenkiySolovey/solovey-component-server-protection/service/resources"
 	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	backendfronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendfronting"
-	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
-	protectionfronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
-	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 )
 
 const productionFrontingPlanCacheLimitV2 = 128

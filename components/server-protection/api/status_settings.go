@@ -9,12 +9,12 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/MalenkiySolovey/solovey-component-server-protection/domain"
+	protectionobservation "github.com/MalenkiySolovey/solovey-component-server-protection/service/observation"
+	protectionoperations "github.com/MalenkiySolovey/solovey-component-server-protection/service/operations"
+	protectionresources "github.com/MalenkiySolovey/solovey-component-server-protection/service/resources"
 	protectionhealth "github.com/MalenkiySolovey/solovey-ui/components/server-protection/backendhealth"
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
-	protectionobservation "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/observation"
-	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
-	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 	"github.com/gin-gonic/gin"
 )
 

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	protectioninterception "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/interception"
+	protectioninterception "github.com/MalenkiySolovey/solovey-component-server-protection/service/interception"
 	"github.com/gin-gonic/gin"
 )
 

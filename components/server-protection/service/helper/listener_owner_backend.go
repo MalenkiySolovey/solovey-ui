@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	canonical "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helpercontract"
+	canonical "github.com/MalenkiySolovey/solovey-component-server-protection/service/helpercontract"
 )
 
 const ListenerOwnerObserverRevision = "pidfd-getfd-getsockname-so-cookie-v6only-process-evidence-systemd-procd-projection-v2"

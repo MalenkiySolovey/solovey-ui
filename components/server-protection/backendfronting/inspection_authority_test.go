@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	fronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
-	helper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helpercontract"
+	fronting "github.com/MalenkiySolovey/solovey-component-server-protection/service/fronting"
+	helper "github.com/MalenkiySolovey/solovey-component-server-protection/service/helpercontract"
 )
 
 type capabilityReader struct {

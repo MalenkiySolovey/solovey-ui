@@ -8,7 +8,7 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/events"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/service/events"
 )
 
 var ErrScoreNotFound = errors.New("server-protection score state not found")

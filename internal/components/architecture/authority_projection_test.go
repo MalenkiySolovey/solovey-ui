@@ -109,6 +109,9 @@ func TestFeaturePreviewAndPlanningConsumeNarrowCapabilityTypes(t *testing.T) {
 	}
 	for _, check := range checks {
 		path := filepath.Join(root, filepath.FromSlash(check.path))
+		if strings.HasPrefix(check.path, "components/server-protection/service/") {
+			path = protectionSourcePath(t, strings.TrimPrefix(check.path, "components/server-protection/"))
+		}
 		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
 		if err != nil {
 			t.Fatal(err)
@@ -116,7 +119,7 @@ func TestFeaturePreviewAndPlanningConsumeNarrowCapabilityTypes(t *testing.T) {
 		if !structFieldHasType(file, check.structure, check.field, check.typeName) {
 			t.Errorf("%s.%s.%s is not the narrow %s projection", check.path, check.structure, check.field, check.typeName)
 		}
-		if check.typeName == "fronting.Availability" && !containsImport(fileImports(t, path), "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting") {
+		if check.typeName == "fronting.Availability" && !containsImport(fileImports(t, path), protectionSourceModule+"/service/fronting") {
 			t.Errorf("nginx inspection does not use the feature's narrow availability contract")
 		}
 		for _, imported := range fileImports(t, path) {

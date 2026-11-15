@@ -3,7 +3,7 @@ package helper
 import (
 	"context"
 	"errors"
-	canonical "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helpercontract"
+	canonical "github.com/MalenkiySolovey/solovey-component-server-protection/service/helpercontract"
 	"os"
 	"time"
 

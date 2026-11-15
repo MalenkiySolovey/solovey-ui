@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { componentRoutes, contributionFor, navItems, slotEntries, unregisterComponent } from './registry'
-import { register, unregister } from '../../../components/server-protection/frontend/index'
+import { register, unregister } from '../../../.component-sources/server-protection/frontend/index'
 const componentId = 'server-protection'
 afterEach(() => { unregisterComponent(componentId) })
 describe('Server Protection Product contribution integration', () => {
