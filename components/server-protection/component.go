@@ -61,6 +61,9 @@ var componentID = componentManifest.ID
 // ComponentHost owns the Product observation instance and its lifecycle.
 var observationWorker = protectionobservation.NewWorker()
 
+// The Product host owns the exact-traffic probe registry instance.
+var frontingHealthRegistry = protectionfronting.NewExactHealthRegistryV2()
+
 var hooks = struct {
 	sync.Mutex
 	unregisterBackup       func()
@@ -604,8 +607,8 @@ func wireProductionFrontingV2(workflow *protectionfronting.Workflow, storage *pr
 	workflow.V2Leases = hostresources.DefaultFrontingBackendsV1
 	workflow.V2Fallbacks = neutralfallback.Default
 	workflow.V2Artifacts = storage
-	workflow.V2Health = protectionfronting.DefaultExactHealthRegistryV2.FixedL4Check()
-	workflow.V2SNIHealth = protectionfronting.DefaultExactHealthRegistryV2.SNIPrereadCheck()
+	workflow.V2Health = frontingHealthRegistry.FixedL4Check()
+	workflow.V2SNIHealth = frontingHealthRegistry.SNIPrereadCheck()
 	return source
 }
 

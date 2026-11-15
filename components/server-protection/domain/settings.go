@@ -16,7 +16,7 @@ const (
 	DefaultArtifactRetentionDays      = 30
 )
 
-var KnownFeatureFlags = map[string]struct{}{
+var knownFeatureFlags = map[string]struct{}{
 	"enable_apply_beta":            {},
 	"enable_fronting_beta":         {},
 	"enable_node_beta":             {},
@@ -95,7 +95,7 @@ func (value Settings) Validate() error {
 		return errors.New("default score threshold must not exceed max score")
 	}
 	for key, enabled := range value.FeatureFlags {
-		if _, ok := KnownFeatureFlags[key]; !ok {
+		if _, ok := knownFeatureFlags[key]; !ok {
 			return fmt.Errorf("unknown feature flag %q", key)
 		}
 		if enabled && value.AdvancedAcknowledgedAt == 0 {

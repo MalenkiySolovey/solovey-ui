@@ -85,5 +85,3 @@ func (r *ExactHealthRegistryV2) SNIPrereadCheck() SNIPrereadHealthCheckV2 {
 		return provider.ProbeSNIPrereadV2(ctx, request)
 	}
 }
-
-var DefaultExactHealthRegistryV2 = NewExactHealthRegistryV2()
