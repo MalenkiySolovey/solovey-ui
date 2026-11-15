@@ -127,6 +127,10 @@ func (ManifestAttestor) ClosePeer(identity PeerIdentity) {
 }
 
 func peerAlive(identity PeerIdentity) error {
+	return peerAliveWithPoll(identity, unix.Poll)
+}
+
+func peerAliveWithPoll(identity PeerIdentity, poll func([]unix.PollFd, int) (int, error)) error {
 	if !identity.hasLiveness || identity.livenessFD < 0 {
 		return attestationFailure(PeerAttestationLivenessUnavailable, errors.New("broker peer pidfd is unavailable"))
 	}
@@ -134,7 +138,18 @@ func peerAlive(identity PeerIdentity) error {
 	// signal 0 still requires matching UIDs or CAP_KILL. A live cross-UID
 	// connector must work under the broker's existing capability boundary.
 	fds := []unix.PollFd{{Fd: int32(identity.livenessFD), Events: unix.POLLIN}}
-	n, err := unix.Poll(fds, 0)
+	var n int
+	var err error
+	// A signal interrupts observation without answering whether the held task
+	// is alive. Retry only that syscall, with the same pidfd and zero timeout.
+	// A signal storm or any other observation failure remains unsupported.
+	for attempt := 0; attempt < 3; attempt++ {
+		fds[0].Revents = 0
+		n, err = poll(fds, 0)
+		if !errors.Is(err, unix.EINTR) {
+			break
+		}
+	}
 	if err != nil {
 		return attestationFailure(PeerAttestationLivenessUnavailable, errors.New("broker peer pidfd observation failed"))
 	}
