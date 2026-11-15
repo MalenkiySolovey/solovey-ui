@@ -38,6 +38,8 @@ test('existing or nested destinations are preserved',t=>{
   assert.throws(()=>materializeOwnerSource(f.source,f.target,f.tree),/preserve existing/)
   assert.equal(fs.readFileSync(path.join(f.target,'sentinel'),'utf8'),'preserved')
   assert.throws(()=>materializeOwnerSource(f.source,path.join(f.source,'nested'),f.tree),/outside/)
+  assert.equal(fs.existsSync(path.join(f.source,'nested')),false)
+  assert.equal(regularSourceTree(f.source),f.tree)
 })
 
 test('source junctions and symlinks cannot expand qualified inputs',t=>{
@@ -46,4 +48,27 @@ test('source junctions and symlinks cannot expand qualified inputs',t=>{
   fs.symlinkSync(foreign,path.join(f.source,'external'),process.platform==='win32'?'junction':'dir')
   assert.throws(()=>materializeOwnerSource(f.source,f.target,f.tree),/unsupported source tree entry/)
   assert.equal(fs.existsSync(f.target),false)
+})
+
+test('a parent alias cannot hide a destination inside accepted source',t=>{
+  const f=fixture(t),alias=path.join(f.directory,'accepted-alias')
+  fs.symlinkSync(f.source,alias,process.platform==='win32'?'junction':'dir')
+  for (const source of [f.source,fs.realpathSync.native(f.source)]) {
+    assert.throws(()=>materializeOwnerSource(source,path.join(alias,'nested'),f.tree),/outside/)
+    assert.equal(fs.existsSync(path.join(f.source,'nested')),false)
+    assert.equal(regularSourceTree(f.source),f.tree)
+  }
+})
+
+test('an outside parent alias resolves to a separate verified copy',t=>{
+  const f=fixture(t),outside=path.join(f.directory,'outside'),alias=path.join(f.directory,'outside-alias')
+  fs.mkdirSync(outside)
+  fs.symlinkSync(outside,alias,process.platform==='win32'?'junction':'dir')
+  const result=materializeOwnerSource(f.source,path.join(alias,'generated'),f.tree)
+  assert.equal(result.directory,path.join(fs.realpathSync.native(outside),'generated'))
+  assert.equal(regularSourceTree(result.directory),f.tree)
+  assert.equal(regularSourceTree(f.source),f.tree)
+  fs.writeFileSync(path.join(result.directory,'sentinel'),'preserved')
+  assert.throws(()=>materializeOwnerSource(f.source,path.join(alias,'generated'),f.tree),/preserve existing/)
+  assert.equal(fs.readFileSync(path.join(result.directory,'sentinel'),'utf8'),'preserved')
 })

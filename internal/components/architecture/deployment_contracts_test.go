@@ -59,17 +59,18 @@ func TestPortableUpdateDeploymentMarkers(t *testing.T) {
 func TestSemanticOwnersDoNotImportDeploymentAssetPackages(t *testing.T) {
 	root := moduleRoot(t)
 	semanticRoots := []string{
-		filepath.Join("internal", "sshmanagement"),
-		filepath.Join("service", "sshmanagement"),
-		filepath.Join("service", "update"),
-		filepath.Join("componenthost", "resources"),
-		filepath.Join("components", "server-protection", "domain"),
-		filepath.Join("components", "server-protection", "service"),
+		filepath.Join(root, "internal", "sshmanagement"),
+		filepath.Join(root, "service", "sshmanagement"),
+		filepath.Join(root, "service", "update"),
+		filepath.Join(root, "componenthost", "resources"),
+		protectionSourcePath(t, "domain"),
+		protectionSourcePath(t, "service"),
+		filepath.Join(root, "components", "server-protection", "service"),
 	}
 	forbidden := []string{modulePath + "/deploy/openwrt", modulePath + "/deploy/systemd", modulePath + "/deploy/docker"}
 	var violations []string
-	for _, relativeRoot := range semanticRoots {
-		walkGoFiles(t, filepath.Join(root, relativeRoot), func(path string) {
+	for _, semanticRoot := range semanticRoots {
+		walkGoFiles(t, semanticRoot, func(path string) {
 			if strings.HasSuffix(path, "_test.go") {
 				return
 			}

@@ -9,7 +9,11 @@ export function materializeOwnerSource(source, target, expectedTree) {
   assert.ok(path.isAbsolute(source) && path.isAbsolute(target))
   assert.match(expectedTree, /^[a-f0-9]{40}$/)
   assert.ok(fs.lstatSync(source).isDirectory() && !fs.lstatSync(source).isSymbolicLink())
-  const relative = path.relative(fs.realpathSync.native(source), path.resolve(target))
+  // Resolve both existing authorities: Windows short names and parent junctions
+  // can otherwise make a child appear to be outside its accepted source.
+  source = fs.realpathSync.native(source)
+  target = path.join(fs.realpathSync.native(path.dirname(target)), path.basename(target))
+  const relative = path.relative(source, target)
   assert.ok(relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative), 'test destination must be outside the accepted source')
   assert.ok(!fs.existsSync(target), 'preserve existing test input')
   assert.equal(regularSourceTree(source), expectedTree, 'accepted archive source drift')
