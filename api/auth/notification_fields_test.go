@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/service"
+	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
 	"github.com/gin-gonic/gin"
 )
 
@@ -40,14 +40,14 @@ func TestSecurityEventRequestFieldsUseOnlyAllowedMetadata(t *testing.T) {
 
 func TestPanelRecoverySessionRevisionIsBoundToConcreteSessionWithoutExposingReference(t *testing.T) {
 	ref := "concrete-server-session-reference"
-	revision := service.SessionAuthenticationRevision(ref)
-	if len(revision) != 64 || revision != service.SessionAuthenticationRevision(ref) || revision == ref {
+	revision := panelsecurity.SessionAuthenticationRevision(ref)
+	if len(revision) != 64 || revision != panelsecurity.SessionAuthenticationRevision(ref) || revision == ref {
 		t.Fatalf("session reference was not converted to an exact opaque revision: %q", revision)
 	}
-	if revision == service.SessionAuthenticationRevision("another-server-session-reference") {
+	if revision == panelsecurity.SessionAuthenticationRevision("another-server-session-reference") {
 		t.Fatal("distinct server sessions share one recovery revision")
 	}
-	if service.SessionAuthenticationRevision("") != "" {
+	if panelsecurity.SessionAuthenticationRevision("") != "" {
 		t.Fatal("missing session reference became verified recovery metadata")
 	}
 }

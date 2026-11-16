@@ -1,8 +1,8 @@
 package auth
 
 import (
+	backendaudit "github.com/MalenkiySolovey/solovey-ui/backend/audit"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-ui/service"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -15,13 +15,13 @@ func (a *Handler) GetUsers(c *gin.Context) {
 		return
 	}
 	loginUser := a.LoginUser(c)
-	result := make([]gin.H, 0, len(*users))
-	for _, user := range *users {
+	result := make([]gin.H, 0, len(users))
+	for _, user := range users {
 		result = append(result, gin.H{
-			"id":        user.Id,
+			"id":        user.ID,
 			"sortOrder": user.SortOrder,
 			"username":  user.Username,
-			"lastLogin": user.LastLogins,
+			"lastLogin": user.LastLogin,
 			"isCurrent": user.Username == loginUser,
 		})
 	}
@@ -42,7 +42,7 @@ func (a *Handler) ChangePass(c *gin.Context) {
 	if err == nil {
 		a.ReloadTokens()
 		logger.Info("change user credentials success")
-		a.Audit(c, currentUser, "admin_credentials_changed", "admin", service.AuditSeverityWarn, map[string]any{
+		a.Audit(c, currentUser, "admin_credentials_changed", "admin", backendaudit.SeverityWarn, map[string]any{
 			"newUsername": newUsername,
 		})
 		a.NotifyEvent("admin_credentials_changed", map[string]string{"user": currentUser})
@@ -81,14 +81,14 @@ func (a *Handler) AddAdmin(c *gin.Context) {
 	)
 	if err == nil {
 		logger.Info("admin user created successfully")
-		a.Audit(c, loginUser, "admin_created", "admin", service.AuditSeverityWarn, map[string]any{
-			"targetUserId": user.Id,
+		a.Audit(c, loginUser, "admin_created", "admin", backendaudit.SeverityWarn, map[string]any{
+			"targetUserId": user.ID,
 			"username":     user.Username,
 		})
 		a.JSONMsgObj(c, "add", gin.H{
-			"id":        user.Id,
+			"id":        user.ID,
 			"username":  user.Username,
-			"lastLogin": user.LastLogins,
+			"lastLogin": user.LastLogin,
 			"isCurrent": false,
 		}, nil)
 	} else {
@@ -111,8 +111,8 @@ func (a *Handler) DeleteAdmin(c *gin.Context) {
 	if err == nil {
 		logger.Info("admin user deleted successfully")
 		a.ReloadTokens()
-		a.Audit(c, loginUser, "admin_deleted", "admin", service.AuditSeverityWarn, map[string]any{
-			"targetUserId":      result.User.Id,
+		a.Audit(c, loginUser, "admin_deleted", "admin", backendaudit.SeverityWarn, map[string]any{
+			"targetUserId":      result.User.ID,
 			"username":          result.User.Username,
 			"deletedTokenCount": result.DeletedTokenCount,
 		})

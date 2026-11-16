@@ -5,7 +5,7 @@ package auditrecord
 import (
 	"encoding/json"
 	"errors"
-	canonical "github.com/MalenkiySolovey/solovey-host/auditrecord"
+	backendaudit "github.com/MalenkiySolovey/solovey-ui/backend/audit"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -16,18 +16,18 @@ import (
 )
 
 const (
-	SeverityInfo      = "info"
-	SeverityWarn      = "warn"
-	ActorMaxBytes     = 256
-	EventMaxBytes     = 128
-	ResourceMaxBytes  = 128
-	SeverityMaxBytes  = 16
-	IPMaxBytes        = 64
-	UserAgentMaxBytes = 512
-	DetailsMaxBytes   = 16 * 1024
+	SeverityInfo      = backendaudit.SeverityInfo
+	SeverityWarn      = backendaudit.SeverityWarn
+	ActorMaxBytes     = backendaudit.ActorMaxBytes
+	EventMaxBytes     = backendaudit.EventMaxBytes
+	ResourceMaxBytes  = backendaudit.ResourceMaxBytes
+	SeverityMaxBytes  = backendaudit.SeverityMaxBytes
+	IPMaxBytes        = backendaudit.IPMaxBytes
+	UserAgentMaxBytes = backendaudit.UserAgentMaxBytes
+	DetailsMaxBytes   = backendaudit.DetailsMaxBytes
 )
 
-type Event = canonical.Event
+type Event = backendaudit.Event
 
 func Build(event Event) (model.AuditEvent, error) {
 	if event.Severity == "" {
