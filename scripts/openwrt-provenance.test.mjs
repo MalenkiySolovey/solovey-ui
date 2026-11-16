@@ -562,8 +562,9 @@ test('canonical stage producer fails closed on ambient selectors and toolchain a
   const goArchive = path.join(root, 'go.tar.gz')
   fs.writeFileSync(trustRoots, 'dHJ1c3Q=\n')
   fs.writeFileSync(goArchive, 'fixture archive\n')
+  // Each case supplies one forbidden input; CI Go and frontend selectors must not mask it.
   const base = {
-    ...process.env,
+    PATH: process.env.PATH,
     GOOS: 'linux',
     GOARCH: 'amd64',
     CGO_ENABLED: '1',
@@ -571,13 +572,13 @@ test('canonical stage producer fails closed on ambient selectors and toolchain a
     CC: '/usr/bin/true --target=x86_64-openwrt-linux-musl --sysroot=/tmp',
     CXX: '/usr/bin/true --target=x86_64-openwrt-linux-musl --sysroot=/tmp',
   }
-  for (const forbidden of ['GOROOT', 'GOMODCACHE', 'GOPATH', 'GOCACHE', 'GOPROXY', 'GOSUMDB', 'GONOSUMDB', 'GOPRIVATE', 'GONOPROXY', 'GOVCS', 'GOAUTH', 'GOINSECURE', 'GOTELEMETRY']) delete base[forbidden]
   for (const [name, value, pattern] of [
     ['SUI_E2E', '1', /forbidden target selector.*SUI_E2E/],
     ['SUI_E2E_WEB_PATH', '/injected/', /forbidden target selector.*SUI_E2E_WEB_PATH/],
     ['SUI_E2E_BACKEND_ORIGIN', 'http://injected', /forbidden target selector.*SUI_E2E_BACKEND_ORIGIN/],
     ['VITE_ENABLE_NEXUS', '1', /forbidden target selector.*VITE_ENABLE_NEXUS/],
     ['GOEXPERIMENT', 'fieldtrack', /forbidden target environment override.*GOEXPERIMENT/],
+    ['GOTOOLCHAIN', 'local', /forbidden target environment override.*GOTOOLCHAIN/],
     ['GOROOT', '/caller/go', /forbidden target environment override.*GOROOT/],
     ['GOMODCACHE', '/caller/mod', /forbidden target environment override.*GOMODCACHE/],
     ['GOPATH', '/caller/gopath', /forbidden target environment override.*GOPATH/],

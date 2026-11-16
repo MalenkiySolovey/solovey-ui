@@ -204,6 +204,48 @@ func nativeUDPWitness(t *testing.T, peer adapter.Outbound, contexts ...context.C
 	}
 }
 
+func TestNativeMieruReplacementRejectsTCPPortCollision(t *testing.T) {
+	f := newNativeMieruFixture(t, "TCP")
+	occupied, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer occupied.Close()
+	address := occupied.Addr().String()
+	udpCandidate, err := net.ListenPacket("udp", address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer udpCandidate.Close()
+	candidatePort := udpCandidate.LocalAddr().(*net.UDPAddr).Port
+	calls, rejectedTCP := 0, false
+	probe := func(network, target string) (io.Closer, int, error) {
+		calls++
+		if calls == 1 {
+			// Exercise the UDP allocator after a failed TCP allocator probe.
+			return nil, 0, fmt.Errorf("fixture TCP allocator unavailable")
+		}
+		if calls == 2 {
+			if network != "udp" || target != "127.0.0.1:0" {
+				t.Fatalf("replacement did not sample the UDP allocator: %s %s", network, target)
+			}
+			return udpCandidate, candidatePort, nil
+		}
+		if network == "tcp" && target == address {
+			rejectedTCP = true
+		}
+		return probeQUICFixturePort(network, target)
+	}
+	if err := f.replaceWithPortProbe(probe, 9); err != nil {
+		t.Fatal("qualified Mieru replacement failed", err)
+	}
+	if !rejectedTCP || f.port == candidatePort {
+		t.Fatal("replacement accepted a UDP port already occupied by TCP")
+	}
+	remaining := nativeInboundPeer(t, f, "TCP", 9, quicFixturePassword)
+	_ = nativeStream(t, remaining, f)
+}
+
 func TestNativeInboundAuthenticatedDataPlaneAndIsolation(t *testing.T) {
 	for _, fixture := range []struct{ kind, transport string }{{"mieru", "TCP"}, {"mieru", "UDP"}, {"trusttunnel", "tcp"}, {"trusttunnel", "udp"}} {
 		t.Run(fixture.kind+"/"+fixture.transport, func(t *testing.T) {

@@ -71,3 +71,19 @@ func TestQUICFixturePortRequiresBothProtocolsAndReportsBindFailure(t *testing.T)
 		}
 	}
 }
+
+func TestQUICReplacementPortFailurePreservesFixture(t *testing.T) {
+	denied := errors.New("all loopback ports denied")
+	f := &quicFixture{port: 50000, inbound: map[string]any{"listen_port": 50000, "users": "accepted-users"}}
+	probes := 0
+	err := f.replaceWithPortProbe(func(string, string) (io.Closer, int, error) {
+		probes++
+		return nil, 0, denied
+	}, 9)
+	if !errors.Is(err, denied) || probes != 32 {
+		t.Fatalf("replacement lost its bounded bind failure: probes=%d err=%v", probes, err)
+	}
+	if f.port != 50000 || f.inbound["listen_port"] != 50000 || f.inbound["users"] != "accepted-users" {
+		t.Fatal("failed replacement changed the accepted fixture or selected an unqualified zero port")
+	}
+}

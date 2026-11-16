@@ -198,7 +198,7 @@ func fetchWithClientContext(ctx context.Context, rawURL string, userAgent string
 		ctx = context.WithValue(ctx, sourceHeaderNamesKey{}, names)
 	}
 	if err := ValidateURLContext(ctx, rawURL); err != nil {
-		logger.Warning("sub: invalid external URL:", err)
+		logger.Warning("sub: external URL validation failed")
 		return "", err
 	}
 
@@ -212,13 +212,15 @@ func fetchWithClientContext(ctx context.Context, rawURL string, userAgent string
 	if strings.TrimSpace(userAgent) != "" {
 		req.Header.Set("User-Agent", strings.TrimSpace(userAgent))
 	}
+	// Transport errors can contain source credentials in URL paths or queries.
+	// Log only the failed operation; the source owner redacts returned diagnostics.
 	response, err := client.Do(req)
 	if err != nil {
 		if errors.Is(err, errBlockedExternalAddress) {
-			logger.Warning("sub: external URL resolves to blocked address:", err)
+			logger.Warning("sub: external URL resolves to blocked address")
 			return "", err
 		}
-		logger.Warning("sub: Error making HTTP request:", err)
+		logger.Warning("sub: HTTP request failed")
 		return "", err
 	}
 	defer response.Body.Close()
@@ -228,7 +230,7 @@ func fetchWithClientContext(ctx context.Context, rawURL string, userAgent string
 
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxExternalSubBytes+1))
 	if err != nil {
-		logger.Warning("sub: Error reading response body:", err)
+		logger.Warning("sub: response body read failed")
 		return "", err
 	}
 	if len(body) > maxExternalSubBytes {

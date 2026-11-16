@@ -5,7 +5,7 @@ package remote
 import (
 	"context"
 	"encoding/json"
-	feature "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/source/domain"
+	feature "github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions/domain"
 	"strings"
 	"sync"
 

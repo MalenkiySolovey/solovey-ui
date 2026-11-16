@@ -1,0 +1,14 @@
+{
+  "SourceCommit": "ab55c89d4309c6b0f76107d57e19d37cd287b114",
+  "BackupSHA256": "4c17a5e1c41a1982efe4a69177ad27e157ccebb802422945b79323b7e0e6707f",
+  "StateDigests": {
+    "linked_outbounds": "e0ac868ae7ba4c3512b201561aba0f3681d17e85a0271daf9e2ea20e2950d3cb",
+    "migration": "24924c46de9099b36e429ec6c13a0155a01e892b0612f6542774a3508d25d8b2",
+    "owned_settings": "3a5b329a539c598092c83b5ac14a5d0ef5ad827c9752f144be50edf71b9f3a88",
+    "remote_outbound_connections": "4951d6260cb04a7b23c4936482545cf445589148fa13e71ee575b815e5e40a2f",
+    "remote_outbound_group_connections": "e35a5f8770ffcd15304a782758dd94f8107afeb38bd663dc5c8707b0664383d8",
+    "remote_outbound_groups": "a069066cc911cc3bab8eaacc93aa15b84afb0c7fd4bbee5abf9cf938edae5cec",
+    "remote_outbound_subscriptions": "9802004d898ef6b81cb5c4cb2a3a24198fec4e5f227245fbcbf60d2ec8045654",
+    "schema": "90f23eb8804d0901de707a256db0baeb2719fa11dfd64a8bf6e70e8c566f91e2"
+  }
+}

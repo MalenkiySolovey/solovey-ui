@@ -17,6 +17,9 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/supervisor"
+	// Link the actual durable owner for this fixture even when the generated
+	// application profile selects another component. Production imports remain selected.
+	_ "github.com/MalenkiySolovey/solovey-ui/components/fallback-html"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
 	fallbackservice "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/service"
 	componentmanager "github.com/MalenkiySolovey/solovey-ui/components/panel-update-ui/service"

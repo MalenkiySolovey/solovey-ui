@@ -4,7 +4,7 @@ package remote
 
 import (
 	"context"
-	feature "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/source/domain"
+	feature "github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions/domain"
 	subexternal "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/external"
 	subparser "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/parser"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
