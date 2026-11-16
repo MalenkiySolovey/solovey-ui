@@ -1,0 +1,35 @@
+package architecture
+
+import (
+	"sort"
+	"strings"
+	"testing"
+)
+
+func TestBackendStepUpHasOnlySecurityAndPanelStorageClosure(t *testing.T) {
+	root := moduleRoot(t)
+	allowed := map[string]bool{
+		modulePath + "/backend/security/stepup": true,
+	}
+	for _, target := range []string{
+		"./backend/security",
+		"./backend/security/crypto",
+		"./backend/storage/model",
+		"./backend/storage/sqlite",
+		"gorm.io/gorm",
+	} {
+		for name := range goListDependencies(t, root, target) {
+			allowed[name] = true
+		}
+	}
+	var violations []string
+	for name, info := range goListDependencies(t, root, "./backend/security/stepup") {
+		if !info.Standard && !allowed[name] {
+			violations = append(violations, name)
+		}
+	}
+	if len(violations) > 0 {
+		sort.Strings(violations)
+		t.Fatalf("Backend Step-Up imports Product runtime or unrelated owners: %s", strings.Join(violations, ", "))
+	}
+}
