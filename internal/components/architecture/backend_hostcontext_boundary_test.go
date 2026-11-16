@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -82,24 +81,18 @@ func TestBackendHostContextIsTheAPIIngressOwner(t *testing.T) {
 
 func goListDependencies(t *testing.T, root, pattern string) map[string]goListPackage {
 	t.Helper()
-	goTool := filepath.Join(runtime.GOROOT(), "bin", "go")
-	if runtime.GOOS == "windows" {
-		goTool += ".exe"
-	}
-	if _, err := os.Stat(goTool); err != nil {
-		goTool = "go"
-	}
-
-	command := exec.Command(goTool, "list", "-deps", "-json", pattern)
+	command := exec.Command("go", "list", "-mod=readonly", "-deps", "-json", pattern)
 	command.Dir = root
-	command.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local", "GOFLAGS=-mod=readonly")
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("go list dependency closure for %s: %v\n%s", pattern, err, output)
+	command.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
+	var stdout, stderr bytes.Buffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	if err := command.Run(); err != nil {
+		t.Fatalf("go list dependency closure for %s: %v\n%s", pattern, err, strings.TrimSpace(stderr.String()))
 	}
 
 	packages := map[string]goListPackage{}
-	decoder := json.NewDecoder(bytes.NewReader(output))
+	decoder := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
 	for {
 		var packageInfo goListPackage
 		err := decoder.Decode(&packageInfo)
