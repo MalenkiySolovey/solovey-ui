@@ -7,6 +7,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,10 +19,22 @@ import (
 )
 
 func TestExternalDialRejectsPrivateDNSAnswerAfterPublicValidation(t *testing.T) {
+	// A canceled lookup can outlive its caller. Keep the process-wide resolver
+	// fixture separate from other tests and their outstanding DNS goroutines.
+	const child = "SOLOVEY_TEST_DNS_REBINDING_CHILD"
+	if os.Getenv(child) != "1" {
+		ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+		defer cancel()
+		command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestExternalDialRejectsPrivateDNSAnswerAfterPublicValidation$", "-test.timeout=10s")
+		command.Env = append(os.Environ(), child+"=1")
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("isolated DNS rebinding check failed: %v\n%s", err, output)
+		}
+		return
+	}
 	t.Setenv("SUI_ALLOW_PRIVATE_SUB_URLS", "")
 	var private atomic.Bool
 	var workers sync.WaitGroup
-	previous := net.DefaultResolver
 	net.DefaultResolver = &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
 		client, server := net.Pipe()
 		workers.Add(1)
@@ -63,7 +77,7 @@ func TestExternalDialRejectsPrivateDNSAnswerAfterPublicValidation(t *testing.T) 
 		}()
 		return client, nil
 	}}
-	t.Cleanup(func() { workers.Wait(); net.DefaultResolver = previous })
+	t.Cleanup(workers.Wait)
 	if err := ValidateURLContext(t.Context(), "https://source.fixture.invalid/subscription"); err != nil {
 		t.Fatalf("public validation fixture failed: %v", err)
 	}

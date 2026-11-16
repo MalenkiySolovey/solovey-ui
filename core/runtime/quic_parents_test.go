@@ -451,21 +451,19 @@ func (f *quicFixture) parents(t *testing.T, client uint) ConnectionSnapshot {
 }
 
 func (f *quicFixture) replace(users ...uint) error {
-	f.port = quicPortForReplacement()
+	return f.replaceWithPortProbe(probeQUICFixturePort, users...)
+}
+
+func (f *quicFixture) replaceWithPortProbe(bind func(string, string) (io.Closer, int, error), users ...uint) error {
+	port, err := findQUICFixturePort(bind)
+	if err != nil {
+		return err
+	}
+	f.port = port
 	f.inbound["listen_port"] = f.port
 	f.users(users...)
 	raw, _ := json.Marshal(f.inbound)
 	return f.core.AddInboundWithBindings(raw, quicBindings(users...))
-}
-
-func quicPortForReplacement() int {
-	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
-	if err != nil {
-		return 0
-	}
-	port := conn.LocalAddr().(*net.UDPAddr).Port
-	_ = conn.Close()
-	return port
 }
 
 func TestQUICTUICEarlyListenerParentControl(t *testing.T) {
