@@ -10,6 +10,7 @@ import (
 	"testing/fstest"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
 func TestFrontendInputServesTemplatesAndAssetsFromOneBundle(t *testing.T) {
@@ -19,7 +20,7 @@ func TestFrontendInputServesTemplatesAndAssetsFromOneBundle(t *testing.T) {
 		"index.html":         {Data: []byte("<!doctype html><title>product-frontend</title><script src=\"{{.BASE_URL}}assets/selected.js\"></script>")},
 		"assets/selected.js": {Data: []byte("selected-product-bundle")},
 	}
-	server, err := NewServer(WithFrontend(bundle))
+	server, err := NewServer(WithFrontend(bundle), WithComponents(productComponentFixture(service.DefaultRuntime())))
 	if err != nil {
 		t.Fatal(err)
 	}
