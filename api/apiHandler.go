@@ -9,8 +9,8 @@ import (
 	failoverhttp "github.com/MalenkiySolovey/solovey-ui/api/failover"
 	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
 	telemetryhttp "github.com/MalenkiySolovey/solovey-ui/api/telemetry"
+	"github.com/MalenkiySolovey/solovey-ui/backend/hostcontext"
 	"github.com/MalenkiySolovey/solovey-ui/middleware/databaseoperation"
-	"github.com/MalenkiySolovey/solovey-ui/middleware/hostcontext"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"

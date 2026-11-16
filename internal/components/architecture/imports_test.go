@@ -334,7 +334,7 @@ func componentDatabaseResources(t *testing.T, root string) (map[string]string, m
 }
 
 func coreSourceRoots() []string {
-	return []string{"api", "app", "cmd", "componenthost", "config", "core", "database", "deploy", filepath.Join("frontend", "src"), "internal", "ipmonitor", "logger", "middleware", "realtime", "service", "sub", "util", "web"}
+	return []string{"api", "app", "backend", "cmd", "componenthost", "config", "core", "database", "deploy", filepath.Join("frontend", "src"), "internal", "ipmonitor", "logger", "middleware", "realtime", "service", "sub", "util", "web"}
 }
 
 func walkProductGoFiles(t *testing.T, root string, visit func(string)) {

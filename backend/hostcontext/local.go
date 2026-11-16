@@ -6,7 +6,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
+	"github.com/MalenkiySolovey/solovey-host/hostref"
 	"github.com/gin-gonic/gin"
 )
 
