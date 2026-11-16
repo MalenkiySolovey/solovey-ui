@@ -80,7 +80,7 @@ jobs:
         shell: bash
         run: |
           go test -race -count=1 -timeout=5m -tags "$EXTENDED_TAGS" ./components/fallback-html/... ./componenthost/durable ./componenthost/resources ./componenthost/health ./componenthost/publicsurface
-          go test -race -count=1 -timeout=5m -tags "$EXTENDED_TAGS,minimal" ./internal/components/... ./api ./app ./web
+          go test -race -p 1 -count=1 -timeout=5m -tags "$EXTENDED_TAGS,minimal" ./internal/components/... ./api ./app ./web
 
       - name: Protection policy, Planner and broker boundary regressions
         shell: bash
@@ -173,7 +173,7 @@ jobs:
             echo "custom app depends on unselected components" >&2
             exit 1
           fi
-          go test -race -count=1 -timeout=5m -tags "$EXTENDED_TAGS" ./app ./api ./web
+          go test -race -p 1 -count=1 -timeout=5m -tags "$EXTENDED_TAGS" ./app ./api ./web
           go build -tags "$EXTENDED_TAGS" -o "$RUNNER_TEMP/solovey-extended-fallback-custom${{ runner.os == 'Windows' && '.exe' || '' }}" main.go
           node scripts/generate-component-imports.mjs --profile full
 
@@ -383,7 +383,7 @@ jobs:
             echo "custom app depends on unselected components" >&2
             exit 1
           fi
-          go test -race -count=1 -timeout=5m ./app ./api ./web
+          go test -race -p 1 -count=1 -timeout=5m ./app ./api ./web
           go build -o "$RUNNER_TEMP/solovey-fallback-custom" main.go
           node scripts/generate-component-imports.mjs --profile full
 

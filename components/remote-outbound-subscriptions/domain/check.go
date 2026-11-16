@@ -5,117 +5,40 @@ package remote
 import (
 	"context"
 	"encoding/json"
+	feature "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/source/domain"
 	"strings"
 	"sync"
-	"time"
 
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	"gorm.io/gorm"
 )
 
 const checkConcurrency = 8
 
-type CheckResult struct {
-	ConnectionId uint                            `json:"connectionId"`
-	OutboundTag  string                          `json:"outboundTag"`
-	Skipped      bool                            `json:"skipped,omitempty"`
-	Error        string                          `json:"error,omitempty"`
-	Result       coreruntime.CheckOutboundResult `json:"result"`
-}
 type tempCoreCheckConfig struct {
 	Outbounds []json.RawMessage
 	CheckTags []string
 }
 
 func CheckConnection(ctx context.Context, db *gorm.DB, id uint, target string) (*CheckResult, error) {
-	var connection RemoteOutboundConnection
-	if err := db.First(&connection, id).Error; err != nil {
-		return nil, err
-	}
-	return CheckConnectionRecordWithDB(ctx, db, connection, target), nil
+	return feature.CheckConnection(ctx, &backendStore{db: db}, id, target)
 }
 func CheckSubscription(ctx context.Context, db *gorm.DB, subscriptionID uint, target string) ([]CheckResult, error) {
-	var connections []RemoteOutboundConnection
-	if err := db.
-		Where("subscription_id = ?", subscriptionID).
-		Order(entityorder.Clause).
-		Find(&connections).Error; err != nil {
-		return nil, err
-	}
-	return CheckConnectionRecordsWithDB(ctx, db, connections, target), nil
+	return feature.CheckSubscription(ctx, &backendStore{db: db}, subscriptionID, target)
 }
 func CheckAll(ctx context.Context, db *gorm.DB, target string) ([]CheckResult, error) {
-	var connections []RemoteOutboundConnection
-	if err := db.
-		Where("enabled = ?", true).
-		Order("subscription_id ASC, sort_order ASC, id ASC").
-		Find(&connections).Error; err != nil {
-		return nil, err
-	}
-	return CheckConnectionRecordsWithDB(ctx, db, connections, target), nil
+	return feature.CheckAll(ctx, &backendStore{db: db}, target)
 }
 func CheckConnectionRecords(ctx context.Context, connections []RemoteOutboundConnection, target string) []CheckResult {
-	return CheckConnectionRecordsWithDB(ctx, nil, connections, target)
+	return feature.CheckConnectionRecordsWithDB(ctx, &backendStore{}, connections, target)
 }
 func CheckConnectionRecordsWithDB(ctx context.Context, db *gorm.DB, connections []RemoteOutboundConnection, target string) []CheckResult {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	results := make([]CheckResult, len(connections))
-	if len(connections) == 0 {
-		return results
-	}
-	workerCount := min(checkConcurrency, len(connections))
-	jobs := make(chan int)
-	var wg sync.WaitGroup
-	for range workerCount {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for index := range jobs {
-				item := connections[index]
-				if err := ctx.Err(); err != nil {
-					results[index] = cancelledCheckResult(item, err)
-					continue
-				}
-				checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-				results[index] = *CheckConnectionRecordWithDB(checkCtx, db, item, target)
-				cancel()
-			}
-		}()
-	}
-	for index := range connections {
-		jobs <- index
-	}
-	close(jobs)
-	wg.Wait()
-	return results
-}
-
-func cancelledCheckResult(connection RemoteOutboundConnection, err error) CheckResult {
-	return CheckResult{
-		ConnectionId: connection.Id,
-		OutboundTag:  connection.OutboundTag,
-		Error:        coreruntime.ClassifyOutboundCheckError(err),
-	}
+	return feature.CheckConnectionRecordsWithDB(ctx, &backendStore{db: db}, connections, target)
 }
 func CheckConnectionRecordWithDB(ctx context.Context, db *gorm.DB, connection RemoteOutboundConnection, target string) *CheckResult {
-	result := &CheckResult{
-		ConnectionId: connection.Id,
-		OutboundTag:  connection.OutboundTag,
-	}
-	switch {
-	case !connection.Enabled:
-		result.Skipped = true
-		result.Error = "connection is disabled"
-	default:
-		result.Result = CheckConnectionWithTempCoreDB(ctx, db, connection, target)
-		result.Error = result.Result.Error
-	}
-	return result
+	return feature.CheckConnectionRecordWithDB(ctx, &backendStore{db: db}, connection, target)
 }
 func CheckConnectionWithTempCoreDB(ctx context.Context, db *gorm.DB, connection RemoteOutboundConnection, target string) (result coreruntime.CheckOutboundResult) {
 	defer func() {

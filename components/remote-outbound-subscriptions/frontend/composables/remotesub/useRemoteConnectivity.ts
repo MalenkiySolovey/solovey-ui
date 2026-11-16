@@ -1,8 +1,8 @@
 import { nextTick, onMounted, onUnmounted, reactive, ref, watch, type Ref } from 'vue'
 import { push } from 'notivue'
-import HttpUtils from '@/plugins/httputil'
-import Data from '@/store/modules/data'
-import { runWithConcurrency, useAsyncTaskQueue } from '@/shared/composables/useAsyncTaskQueue'
+import { HttpUtils } from '@solovey/component-ui/subscription-sources'
+import { sourceOutboundHealth } from '@solovey/component-ui/subscription-sources'
+import { runWithConcurrency, useAsyncTaskQueue } from '@solovey/component-ui/subscription-sources'
 import type {
   RemoteOutboundConnection,
   RemoteOutboundGroup,
@@ -31,14 +31,14 @@ export const useRemoteConnectivity = ({
   const testingConnections = connectionCheckQueue.active
   const testResults = reactive<Record<number, TestState>>({})
   const healthNow = ref(Date.now())
-  watch(() => Data().onlines.outboundHealth, () => { healthNow.value = Date.now() }, { flush: 'sync' })
+  watch(() => sourceOutboundHealth(), () => { healthNow.value = Date.now() }, { flush: 'sync' })
   let healthTimer = 0
   onMounted(() => { healthTimer = window.setInterval(() => { healthNow.value = Date.now() }, 30000) })
   onUnmounted(() => window.clearInterval(healthTimer))
 
   const sourceHealth = (subscription: RemoteOutboundSubscription, connection: RemoteOutboundConnection) => {
     if (!subscription.enabled || !subscription.healthCheck?.enabled || !connection.enabled || !connection.synced) return undefined
-    const health = Data().onlines.outboundHealth?.[connection.outboundTag]
+    const health = sourceOutboundHealth()?.[connection.outboundTag]
     if (!health || health.source !== 'subscription' || health.targetId !== subscription.healthTargetId ||
         health.checkedAt > healthNow.value / 1000 || healthNow.value / 1000 - health.checkedAt >= 600) return undefined
     return health

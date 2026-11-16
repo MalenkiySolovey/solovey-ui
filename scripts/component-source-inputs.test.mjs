@@ -188,3 +188,15 @@ test('a contribution lifecycle export is independently pinned and rejects privat
   delete pin.files[file];pin.files['src/componentSystem/registry.ts']=digest('private');write()
   assert.throws(()=>verifyUIAPI(root,directory),/unsupported UI API inputs/)
 })
+
+test('a source contribution can pin the existing source UI owner exports',t => {
+  const {root,directory} = fixture(t)
+  const file='src/componentSystem/subscriptionSources.ts'
+  fs.writeFileSync(path.join(root,'frontend',file),'export const sourceView = true\n')
+  const pin=JSON.parse(fs.readFileSync(path.join(directory,'HOST_UI_PIN.json')))
+  pin.files[file]=digest(fs.readFileSync(path.join(root,'frontend',file)))
+  fs.writeFileSync(path.join(directory,'HOST_UI_PIN.json'),JSON.stringify(pin))
+  verifyUIAPI(root,directory)
+  fs.appendFileSync(path.join(root,'frontend',file),'changed')
+  assert.throws(()=>verifyUIAPI(root,directory),/UI API input drift/)
+})

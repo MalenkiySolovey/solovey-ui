@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { push } from 'notivue'
-import HttpUtils from '@/plugins/httputil'
+import { HttpUtils } from '@solovey/component-ui/subscription-sources'
 import type {
   ClientConversionTarget,
   ConversionFeature,

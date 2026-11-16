@@ -1,4 +1,4 @@
-import type { Link } from '@/types/clients'
+import type { Link } from '@solovey/component-ui/subscription-sources'
 
 export const isRemoteGroupLink = (link: Link) =>
   link.type === 'remoteGroup' && Boolean(link.groupId || link.remoteGroupId)

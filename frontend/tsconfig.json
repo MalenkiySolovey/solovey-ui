@@ -16,6 +16,7 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
+      "@solovey/component-ui/subscription-sources": ["./src/componentSystem/subscriptionSources.ts"],
       "@solovey/component-ui": ["./src/componentSystem/sdk.ts"],
       "@solovey/component-ui/api": ["./src/componentSystem/api.ts"],
       "@solovey/component-ui/contributions": ["./src/componentSystem/contributions.ts"],

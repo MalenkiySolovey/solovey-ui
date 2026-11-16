@@ -14,13 +14,6 @@ import (
 	subexternal "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/external"
 )
 
-type SourceHealthCheck struct {
-	Enabled  bool   `json:"enabled"`
-	URL      string `json:"url,omitempty"`
-	Interval string `json:"interval,omitempty"`
-	Timeout  string `json:"timeout,omitempty"`
-}
-
 var ErrSourceHealthCheck = errors.New("SUBSCRIPTION_HEALTH_CHECK_INVALID")
 
 func ParseSourceHealthCheck(raw json.RawMessage) (SourceHealthCheck, error) {

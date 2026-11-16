@@ -196,10 +196,10 @@
 
 <script lang="ts" setup>
 import { reactive } from 'vue'
-import SecretCredentialField from '@/components/fields/SecretCredentialField.vue'
-import Dial from '@/components/fields/Dial.vue'
-import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
-import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
+import { SecretCredentialField } from '@solovey/component-ui/subscription-sources'
+import { Dial } from '@solovey/component-ui/subscription-sources'
+import { PageHeader } from '@solovey/component-ui/subscription-sources'
+import { PageToolbar } from '@solovey/component-ui/subscription-sources'
 import RemoteOutboundSubscriptionDialogs from '../components/RemoteOutboundSubscriptionDialogs.vue'
 import RemoteOutboundSubscriptionPanels from '../components/RemoteOutboundSubscriptionPanels.vue'
 import { useRemoteOutboundSubscriptionsPage } from '../composables/pages/useRemoteOutboundSubscriptionsPage'

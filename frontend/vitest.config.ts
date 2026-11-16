@@ -14,6 +14,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      '@solovey/component-ui/subscription-sources': fileURLToPath(new URL('./src/componentSystem/subscriptionSources.ts', import.meta.url)),
       '@solovey/component-ui/api': fileURLToPath(new URL('./src/componentSystem/api.ts', import.meta.url)),
       '@solovey/component-ui/contributions': fileURLToPath(new URL('./src/componentSystem/contributions.ts', import.meta.url)),
       '@solovey/component-ui/observation': fileURLToPath(new URL('./src/componentSystem/observation.ts', import.meta.url)),

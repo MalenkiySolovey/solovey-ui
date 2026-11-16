@@ -20,7 +20,7 @@
           density="compact"
           :model-value="selectedSet.has(connection.id)"
           :disabled="loading"
-          @update:model-value="(checked) => emit('toggle', connection.id, Boolean(checked))"
+          @update:model-value="emit('toggle', connection.id, Boolean($event))"
         />
         <span class="remote-group-connection-list__text">
           <strong>{{ connection.name }}</strong>

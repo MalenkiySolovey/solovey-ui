@@ -18,7 +18,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import SettingInfo from '@/components/settings/SettingInfo.vue'
+import { SettingInfo } from '@solovey/component-ui/subscription-sources'
 
 type SettingsMap = Record<string, string>
 
