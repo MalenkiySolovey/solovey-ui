@@ -11,7 +11,7 @@ import (
 	"time"
 
 	wire "github.com/MalenkiySolovey/solovey-contracts/management/v1"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
+	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

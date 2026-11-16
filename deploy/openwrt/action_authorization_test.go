@@ -2,7 +2,7 @@ package openwrt
 
 import (
 	"errors"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
+	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 	"strings"
 	"testing"
