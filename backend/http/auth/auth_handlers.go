@@ -7,7 +7,6 @@ import (
 
 	backendaudit "github.com/MalenkiySolovey/solovey-ui/backend/audit"
 	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
-	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 
 	"github.com/gin-gonic/gin"
 )
@@ -57,14 +56,14 @@ func (a *Handler) Login(c *gin.Context) {
 
 	sessionLifetime, err := a.SettingService.ResolveSessionLifetime()
 	if err != nil {
-		logger.Warning("unable to resolve session lifetime policy:", err)
+		a.LogWarning("unable to resolve session lifetime policy:", err)
 		a.JSONMsg(c, "", err)
 		return
 	}
 
 	sessionGeneration, err := a.SettingService.GetSessionGeneration()
 	if err != nil {
-		logger.Warning("unable to get session generation:", err)
+		a.LogWarning("unable to get session generation:", err)
 	}
 
 	remembered, _ := strconv.ParseBool(c.Request.FormValue("remember"))
@@ -85,14 +84,14 @@ func (a *Handler) Login(c *gin.Context) {
 		LegacyMaxAge:         sessionLifetime.LegacyMaxAge,
 	})
 	if err != nil {
-		logger.Warning("login failed: ", err)
+		a.LogWarning("login failed: ", err)
 		a.Audit(c, loginUser, "login_session_failed", "auth", backendaudit.SeverityWarn, map[string]any{
 			"reason": "session_establishment_failed",
 		})
 		a.JSONMsg(c, "", err)
 		return
 	}
-	logger.Info("admin login success")
+	a.LogInfo("admin login success")
 	a.Audit(c, loginUser, "login_success", "auth", backendaudit.SeverityInfo, nil)
 	a.NotifyEvent("login_success", map[string]string{
 		"user":            loginUser,
@@ -110,7 +109,7 @@ func (a *Handler) Login(c *gin.Context) {
 func (a *Handler) Logout(c *gin.Context) {
 	loginUser := a.LoginUser(c)
 	if loginUser != "" {
-		logger.Info("admin logout")
+		a.LogInfo("admin logout")
 		a.Audit(c, loginUser, "logout", "auth", backendaudit.SeverityInfo, nil)
 		a.NotifyEvent("logout", map[string]string{"user": loginUser})
 	}
@@ -130,7 +129,7 @@ func (a *Handler) LogoutAllAdmins(c *gin.Context) {
 	_, err := a.SettingService.RotateSessionGeneration()
 	if err == nil {
 		if loginUser != "" {
-			logger.Info("all admin web sessions logged out")
+			a.LogInfo("all admin web sessions logged out")
 		}
 		a.Audit(c, loginUser, "logout_all_admins", "auth", backendaudit.SeverityWarn, nil)
 		a.NotifyEvent("logout_all_admins", map[string]string{

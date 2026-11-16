@@ -4,7 +4,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	clientidentity "github.com/MalenkiySolovey/solovey-ui/internal/httpsecurity/clientidentity"
+	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
 )
 
 func TestOriginAllowedV1DirectAuthorityMatrix(t *testing.T) {

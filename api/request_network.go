@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	clientidentity "github.com/MalenkiySolovey/solovey-ui/internal/httpsecurity/clientidentity"
+	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 )

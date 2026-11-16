@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	clientidentity "github.com/MalenkiySolovey/solovey-ui/internal/httpsecurity/clientidentity"
+	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
 	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/security"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 

@@ -9,7 +9,7 @@ import (
 	hostports "github.com/MalenkiySolovey/solovey-host/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
 	"github.com/MalenkiySolovey/solovey-ui/backend/componentview"
-	clientidentity "github.com/MalenkiySolovey/solovey-ui/internal/httpsecurity/clientidentity"
+	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
 	"github.com/gin-gonic/gin"
 )
 

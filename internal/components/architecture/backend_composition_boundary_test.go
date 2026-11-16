@@ -10,7 +10,7 @@ import (
 func TestComponentRouteInputHasNoProductOwnerClosure(t *testing.T) {
 	root := moduleRoot(t)
 	allowed := map[string]bool{}
-	for _, name := range []string{"backend/componentroutes", "backend/componentview", "backend/actions", "internal/httpsecurity/clientidentity"} {
+	for _, name := range []string{"backend/componentroutes", "backend/componentview", "backend/actions", "backend/security/clientidentity"} {
 		allowed[modulePath+"/"+name] = true
 	}
 	for _, target := range []string{"github.com/gin-gonic/gin", "github.com/MalenkiySolovey/solovey-host/componenthost", "github.com/MalenkiySolovey/solovey-host/operationref", "github.com/MalenkiySolovey/solovey-host/componenthost/manifest"} {
