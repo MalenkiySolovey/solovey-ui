@@ -574,6 +574,11 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Linux package source and release builder contracts
+        run: |
+          node scripts/openwrt-package-static-check.mjs
+          node --test scripts/openwrt-release-workflow-contract.test.mjs scripts/openwrt-provenance.test.mjs
+
       - name: Frontend utility script syntax
         run: |
           node --test scripts/audit/architecture-policy.test.mjs

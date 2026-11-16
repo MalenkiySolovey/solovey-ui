@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { verifyLinuxReleaseBuilder } from './openwrt-release-workflow-contract.mjs'
 import {
   packageUnixTextAssets,
   verifySourceUnixTextAssets,
@@ -206,9 +207,7 @@ assert.match(apkRootfs, /APK installed rootfs differs from the canonical stage/)
 assert.match(apkRootfs, /apk-tools-v3-generated-package-registration/)
 assert.match(apkRootfs, /proveInstalledUnixTextAssets/)
 
-assert.match(releaseWorkflow, /bash scripts\/build-linux-target\.sh --mode release --profile full/)
-assert.match(releaseWorkflow, /bash scripts\/build-linux-target\.sh --mode release --profile core/)
-assert.doesNotMatch(releaseWorkflow.slice(releaseWorkflow.indexOf('  build-linux:')), /\bgo build\b/)
+verifyLinuxReleaseBuilder(releaseWorkflow)
 
 assert.match(initScript, /procd_set_param user solovey-ui/)
 assert.match(initScript, /SUI_DEPLOYMENT_KIND=openwrt-package-managed/)
