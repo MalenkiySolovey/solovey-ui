@@ -38,7 +38,7 @@ func TestComponentRouteTelegramBackupRequiresComponentOrAdminScope(t *testing.T)
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	NewAPIv2Handler(router.Group("/apiv2"))
+	newComposedAPIv2Handler(router.Group("/apiv2"))
 
 	recorder := performComponentTelegramBackupRequest(router, "/apiv2/telegram/backup", readToken)
 	if recorder.Code != http.StatusForbidden {
@@ -73,7 +73,7 @@ func TestComponentRouteTelegramBackupDisabledFailureAuditsWithoutKey(t *testing.
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	NewAPIv2Handler(router.Group("/apiv2"))
+	newComposedAPIv2Handler(router.Group("/apiv2"))
 
 	recorder := performComponentTelegramBackupRequest(router, "/apiv2/telegram/backup", adminToken)
 	if recorder.Code != http.StatusServiceUnavailable {
@@ -175,8 +175,8 @@ func newComponentTelegramBackupFullRouter(t *testing.T, settingService *service.
 		}
 		c.Status(http.StatusNoContent)
 	})
-	apiv2 := NewAPIv2Handler(router.Group("/apiv2"))
-	NewAPIHandler(router.Group("/api"), apiv2)
+	apiv2 := newComposedAPIv2Handler(router.Group("/apiv2"))
+	newComposedAPIHandler(router.Group("/api"), apiv2)
 
 	loginRecorder := httptest.NewRecorder()
 	router.ServeHTTP(loginRecorder, httptest.NewRequest(http.MethodGet, "/login", nil))

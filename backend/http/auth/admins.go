@@ -2,7 +2,6 @@ package auth
 
 import (
 	backendaudit "github.com/MalenkiySolovey/solovey-ui/backend/audit"
-	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -41,7 +40,7 @@ func (a *Handler) ChangePass(c *gin.Context) {
 	err := a.UserService.ChangePass(currentUser, oldPass, newUsername, newPass)
 	if err == nil {
 		a.ReloadTokens()
-		logger.Info("change user credentials success")
+		a.LogInfo("change user credentials success")
 		a.Audit(c, currentUser, "admin_credentials_changed", "admin", backendaudit.SeverityWarn, map[string]any{
 			"newUsername": newUsername,
 		})
@@ -51,18 +50,18 @@ func (a *Handler) ChangePass(c *gin.Context) {
 		// then re-establish only THIS session under the new generation so the
 		// admin who changed the password is not logged out of their own session.
 		if newGen, rerr := a.SettingService.RotateSessionGeneration(); rerr != nil {
-			logger.Warning("session rotation after credential change failed:", rerr)
+			a.LogWarning("session rotation after credential change failed:", rerr)
 		} else {
 			sessionMaxAge, _ := a.SettingService.GetSessionMaxAge()
 			if serr := a.SetLoginUser(c, newUsername, sessionMaxAge, newGen); serr != nil {
-				logger.Warning("re-establishing session after credential change failed:", serr)
+				a.LogWarning("re-establishing session after credential change failed:", serr)
 			} else {
 				a.NotifyEvent("session_reestablished_after_credential_change", map[string]string{"user": newUsername})
 			}
 		}
 		a.JSONMsg(c, "save", nil)
 	} else {
-		logger.Warning("change user credentials failed:", err)
+		a.LogWarning("change user credentials failed:", err)
 		a.JSONMsg(c, "", err)
 	}
 }
@@ -80,7 +79,7 @@ func (a *Handler) AddAdmin(c *gin.Context) {
 		c.Request.FormValue("password"),
 	)
 	if err == nil {
-		logger.Info("admin user created successfully")
+		a.LogInfo("admin user created successfully")
 		a.Audit(c, loginUser, "admin_created", "admin", backendaudit.SeverityWarn, map[string]any{
 			"targetUserId": user.ID,
 			"username":     user.Username,
@@ -92,7 +91,7 @@ func (a *Handler) AddAdmin(c *gin.Context) {
 			"isCurrent": false,
 		}, nil)
 	} else {
-		logger.Warning("create admin user failed:", err)
+		a.LogWarning("create admin user failed:", err)
 		a.JSONMsg(c, "", err)
 	}
 }
@@ -109,7 +108,7 @@ func (a *Handler) DeleteAdmin(c *gin.Context) {
 		targetID,
 	)
 	if err == nil {
-		logger.Info("admin user deleted successfully")
+		a.LogInfo("admin user deleted successfully")
 		a.ReloadTokens()
 		a.Audit(c, loginUser, "admin_deleted", "admin", backendaudit.SeverityWarn, map[string]any{
 			"targetUserId":      result.User.ID,
@@ -119,7 +118,7 @@ func (a *Handler) DeleteAdmin(c *gin.Context) {
 		a.NotifyEvent("admin_deleted", map[string]string{"user": result.User.Username})
 		a.JSONMsg(c, "del", nil)
 	} else {
-		logger.Warning("delete admin user failed:", err)
+		a.LogWarning("delete admin user failed:", err)
 		a.JSONMsg(c, "", err)
 	}
 }

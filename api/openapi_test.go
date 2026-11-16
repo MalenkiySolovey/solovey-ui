@@ -49,7 +49,7 @@ func TestOpenAPIInventoryAndStrictRequests(t *testing.T) {
 	prepareComponentRouteMetadata(t)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := &APIHandler{}
+	handler := &APIHandler{ApiService: newComposedApiService()}
 	handler.initRouter(router.Group("/api"))
 
 	actual := map[string]map[string]bool{}

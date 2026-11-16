@@ -12,9 +12,9 @@ import (
 
 	"net/http/httptest"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/componentroutes"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/gin-gonic/gin"
@@ -38,7 +38,7 @@ func TestComponentRoutesRespectInstalledMetadata(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := &APIHandler{}
+	handler := &APIHandler{ApiService: newComposedApiService()}
 	handler.initRouter(router.Group("/api"))
 
 	if !routeExists(router, http.MethodPost, "/api/telegram/detect-chat") {
@@ -97,7 +97,7 @@ func TestComponentRoutesRespectEnabledSetting(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := &APIHandler{}
+	handler := &APIHandler{ApiService: newComposedApiService()}
 	handler.initRouter(router.Group("/api"))
 
 	if !routeExists(router, http.MethodPost, "/api/telegram/detect-chat") {
@@ -117,7 +117,8 @@ func TestComponentRoutesRespectEnabledSetting(t *testing.T) {
 	}
 
 	bareRouter := gin.New()
-	registerComponentAPIRoutes(bareRouter.Group("/api"), componenthost.APIDeps{})
+	apiService := newComposedApiService()
+	apiService.registerComponentAPIRoutes(bareRouter.Group("/api"), componentroutes.Ports{})
 	discoveryRecorder := httptest.NewRecorder()
 	bareRouter.ServeHTTP(discoveryRecorder, httptest.NewRequest(http.MethodPost, "/api/telegram/detect-chat", strings.NewReader(`{}`)))
 	if discoveryRecorder.Code != http.StatusConflict {
@@ -166,7 +167,7 @@ func TestComponentStatusEndpointReturnsRuntimeInventoryOnly(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := &APIHandler{}
+	handler := &APIHandler{ApiService: newComposedApiService()}
 	handler.registerComponentStatusRoutes(router.Group("/api"))
 
 	recorder := httptest.NewRecorder()

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/MalenkiySolovey/solovey-ui/backend/componentroutes"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	datalifecycleservice "github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"
 	deploymentservice "github.com/MalenkiySolovey/solovey-ui/service/deployment"
@@ -9,6 +10,7 @@ import (
 )
 
 type ApiService struct {
+	Components         componentroutes.Composition
 	Runtime            *service.Runtime
 	RestartScheduler   service.RestartScheduler
 	SettingService     service.SettingService
@@ -32,6 +34,10 @@ type ApiService struct {
 }
 
 type Option func(*ApiService)
+
+func WithComponents(components componentroutes.Composition) Option {
+	return func(a *ApiService) { a.Components = components }
+}
 
 func WithRuntime(runtime *service.Runtime) Option {
 	return func(a *ApiService) {

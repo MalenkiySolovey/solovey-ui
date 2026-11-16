@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -12,13 +13,13 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/service"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
 func TestNewServerInitializesEmbeddedAssets(t *testing.T) {
-	server, err := NewServer()
+	server, err := NewServer(WithComponents(productComponentFixture(service.DefaultRuntime())))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +38,7 @@ func TestNoRouteDelegatesOutsideAdminBaseToPublicSurface(t *testing.T) {
 	}
 	t.Cleanup(unregister)
 
-	server, err := NewServer()
+	server, err := NewServer(WithComponents(productComponentFixture(service.DefaultRuntime())))
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}

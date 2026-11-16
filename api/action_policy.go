@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 	"net/http"
@@ -34,8 +33,7 @@ func (a *ApiService) actionPolicy(requireStepUp func(*gin.Context, string, strin
 			}
 			actualComponent := c.GetString(componentAuthorityKey)
 			if descriptor.ComponentID != "" {
-				component, registered := registry.ComponentByID(actualComponent)
-				if !registered || !actions.ComponentAllowed(actualComponent, component.Manifest.Actions, descriptor.ID) {
+				if actualComponent != descriptor.ComponentID || a.Components == nil || !a.Components.DeclaresAction(actualComponent, descriptor.ID) {
 					return deny()
 				}
 			} else if actualComponent != "" {

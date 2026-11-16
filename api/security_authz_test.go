@@ -117,7 +117,7 @@ func TestSecurityAuthZAPIV2InvalidAndExpiredTokenCurrentStatus(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	NewAPIv2Handler(router.Group("/apiv2"))
+	newComposedAPIv2Handler(router.Group("/apiv2"))
 
 	for _, req := range []*http.Request{
 		httptest.NewRequest(http.MethodGet, "/apiv2/settings", nil),
@@ -155,8 +155,8 @@ func TestSecurityAuthZImportXUISharedRegistryPreservesAuthSurfaces(t *testing.T)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(t)))
-	apiv2 := NewAPIv2Handler(router.Group("/apiv2"))
-	NewAPIHandler(router.Group("/api"), apiv2)
+	apiv2 := newComposedAPIv2Handler(router.Group("/apiv2"))
+	newComposedAPIHandler(router.Group("/api"), apiv2)
 	if !routeExists(router, http.MethodPost, "/api/import-xui/plan") {
 		t.Skip("import-xui component is not registered in this profile")
 	}

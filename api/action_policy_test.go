@@ -34,8 +34,8 @@ func TestActionAdapterPreservesRealSessionCSRFPlanAndOneUseStepUp(t *testing.T) 
 	store := newAPITestSessionStore(t)
 	store.Options(sessions.Options{Path: "/", HttpOnly: true, Secure: true})
 	router.Use(sessions.Sessions("s-ui", store))
-	apiv2 := NewAPIv2Handler(router.Group("/apiv2"))
-	handler := &APIHandler{ApiService: NewApiService(), apiv2: apiv2}
+	apiv2 := newComposedAPIv2Handler(router.Group("/apiv2"))
+	handler := &APIHandler{ApiService: newComposedApiService(), apiv2: apiv2}
 	group := router.Group("/api")
 	handler.initRouter(group)
 	accepted := 0

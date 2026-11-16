@@ -80,7 +80,7 @@ func newSecurityCSRFTestRouter(t *testing.T, settingService *service.SettingServ
 		}
 		c.Status(http.StatusNoContent)
 	})
-	handler := &APIHandler{}
+	handler := &APIHandler{ApiService: newComposedApiService()}
 	handler.initRouter(router.Group("/api"))
 	router.POST("/test/csrf-protected", handler.csrfMiddleware, func(c *gin.Context) {
 		c.Status(http.StatusNoContent)

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"github.com/MalenkiySolovey/solovey-ui/service"
 	"testing"
 	"time"
 
@@ -12,7 +13,7 @@ func TestRunningPanelPublishesOnlyFreshListenerProposition(t *testing.T) {
 	db := initWebRouterTestDB(t)
 	setWebRouterSetting(t, db, "webListen", "127.0.0.1")
 	setWebRouterSetting(t, db, "webPort", "0")
-	server, err := NewServer()
+	server, err := NewServer(WithComponents(productComponentFixture(service.DefaultRuntime())))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +43,7 @@ func TestPanelStopDrainsWorkerBeforeListenerReuse(t *testing.T) {
 	db := initWebRouterTestDB(t)
 	setWebRouterSetting(t, db, "webListen", "127.0.0.1")
 	setWebRouterSetting(t, db, "webPort", "0")
-	server, err := NewServer()
+	server, err := NewServer(WithComponents(productComponentFixture(service.DefaultRuntime())))
 	if err != nil {
 		t.Fatal(err)
 	}

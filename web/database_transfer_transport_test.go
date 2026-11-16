@@ -3,14 +3,13 @@ package web
 import (
 	"bytes"
 	"crypto/rand"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
 	"testing"
 	"time"
-
-	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
 type transferDeadlineWriter struct {
@@ -40,7 +39,7 @@ func TestDatabaseTransferProductionMiddlewarePreservesTransportDeadlines(t *test
 			if err := (&service.UserService{}).UpdateFirstUser("admin", password); err != nil {
 				t.Fatal(err)
 			}
-			panel, err := NewServer()
+			panel, err := NewServer(WithComponents(productComponentFixture(service.DefaultRuntime())))
 			if err != nil {
 				t.Fatal(err)
 			}

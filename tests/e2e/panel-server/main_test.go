@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"os"
 	"os/exec"
@@ -95,6 +96,7 @@ func TestFullComponentCompositionStarts(t *testing.T) {
 			if response.StatusCode != http.StatusOK {
 				t.Fatalf("fixture login returned %d", response.StatusCode)
 			}
+			assertComponentRoutesRetainAuthorization(t, ctx, client, "http://"+endpoint)
 			return
 		}
 	}
@@ -104,4 +106,34 @@ func backendAddressReadPending(err error) bool {
 	// A Windows sharing violation during address publication is pending under
 	// the existing readiness deadline. Other read errors remain terminal.
 	return os.IsNotExist(err) || backendAddressSharingViolation(err)
+}
+
+// Qualify the actual browser fixture's Component routes. An omitted Product
+// input used to leave login healthy while every Component route returned 404.
+func assertComponentRoutesRetainAuthorization(t *testing.T, ctx context.Context, client *http.Client, base string) {
+	t.Helper()
+	defer client.CloseIdleConnections()
+	for _, route := range []struct{ method, path string }{
+		{http.MethodGet, "/composition-test/api/update/components"},
+		{http.MethodPost, "/composition-test/api/update/components/telegram/enable"},
+	} {
+		request, err := http.NewRequestWithContext(ctx, route.method, base+route.path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("X-Requested-With", "XMLHttpRequest")
+		response, err := client.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body struct {
+			Success bool
+			Msg     string
+		}
+		err = json.NewDecoder(response.Body).Decode(&body)
+		_ = response.Body.Close()
+		if response.StatusCode != http.StatusOK || err != nil || body.Success || body.Msg != "Invalid login" {
+			t.Fatalf("Component route did not retain existing authorization: %s %s status=%d body=%+v err=%v", route.method, route.path, response.StatusCode, body, err)
+		}
+	}
 }

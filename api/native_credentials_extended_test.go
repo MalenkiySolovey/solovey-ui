@@ -58,8 +58,8 @@ func TestNativeCredentialHTTPAuthorizationMaskingAndStaleDraft(t *testing.T) {
 				tokens[scope] = value
 			}
 			router, cookies := newAuthenticatedTestRouter(t, settings, func(router *gin.Engine) {
-				v2 := NewAPIv2Handler(router.Group("/apiv2"), WithRuntime(runtime))
-				NewAPIHandler(router.Group("/api"), v2, WithRuntime(runtime))
+				v2 := newComposedAPIv2Handler(router.Group("/apiv2"), WithRuntime(runtime))
+				newComposedAPIHandler(router.Group("/api"), v2, WithRuntime(runtime))
 			})
 			firstSecret, secondSecret := "synthetic-native-api-first", "synthetic-native-api-second"
 			if kind == "mtproxy" {

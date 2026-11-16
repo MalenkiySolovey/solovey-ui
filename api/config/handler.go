@@ -4,11 +4,13 @@ package config
 import (
 	"context"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/componentroutes"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
+	Components        componentroutes.Composition
 	Runtime           *service.Runtime
 	RestartScheduler  service.RestartScheduler
 	ConfigService     *service.ConfigService
@@ -36,6 +38,7 @@ type Handler struct {
 
 // Deps contains the host capabilities required by configuration routes.
 type Deps struct {
+	Components       componentroutes.Composition
 	Runtime          *service.Runtime
 	RestartScheduler service.RestartScheduler
 	ConfigService    *service.ConfigService
@@ -67,6 +70,7 @@ func NewHandler(deps Deps) *Handler {
 		notifyEvent = func(string, map[string]string) {}
 	}
 	h := &Handler{
+		Components:       deps.Components,
 		Runtime:          deps.Runtime,
 		RestartScheduler: deps.RestartScheduler,
 		ConfigService:    deps.ConfigService,

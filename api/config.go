@@ -16,6 +16,7 @@ func (a *ApiService) configDeps() confighttp.Deps {
 		a.ConfigService = configService
 	}
 	return confighttp.Deps{
+		Components:       a.Components,
 		Runtime:          a.Runtime,
 		RestartScheduler: a.RestartScheduler,
 		ConfigService:    configService,

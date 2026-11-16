@@ -35,7 +35,7 @@ func TestComponentInventoryPreservesEligibilityAndSerializesLifecycle(t *testing
 	publisher.RecordStart("telegram", false)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	(&APIHandler{}).registerComponentStatusRoutes(router.Group("/api"))
+	(&APIHandler{ApiService: newComposedApiService()}).registerComponentStatusRoutes(router.Group("/api"))
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/components", nil))
 	var response struct {

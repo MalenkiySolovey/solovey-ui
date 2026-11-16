@@ -31,7 +31,7 @@ func newCSRFTestRouter(t *testing.T, settingService *service.SettingService) *gi
 		}
 		c.Status(http.StatusNoContent)
 	})
-	handler := &APIHandler{}
+	handler := &APIHandler{ApiService: newComposedApiService()}
 	handler.initRouter(router.Group("/api"))
 	return router
 }

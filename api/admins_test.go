@@ -148,8 +148,8 @@ func newAdminFlowRouter(t *testing.T) (*gin.Engine, *APIv2Handler) {
 	store := newAPITestSessionStore(t)
 	store.Options(sessions.Options{Path: "/", HttpOnly: true, Secure: true})
 	router.Use(sessions.Sessions("s-ui", store))
-	apiv2 := NewAPIv2Handler(router.Group("/apiv2"))
-	NewAPIHandler(router.Group("/api"), apiv2)
+	apiv2 := newComposedAPIv2Handler(router.Group("/apiv2"))
+	newComposedAPIHandler(router.Group("/api"), apiv2)
 	return router, apiv2
 }
 

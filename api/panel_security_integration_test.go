@@ -99,8 +99,8 @@ func TestPanelSecurityForcedPasswordTransitionIsRestrictedStrictAndAtomic(t *tes
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(t)))
-	apiv2 := NewAPIv2Handler(router.Group("/apiv2"))
-	NewAPIHandler(router.Group("/api"), apiv2)
+	apiv2 := newComposedAPIv2Handler(router.Group("/apiv2"))
+	newComposedAPIHandler(router.Group("/api"), apiv2)
 	if res := performAPIV2TokenRequest(router, "Authorization", "Bearer "+apiToken); res.Code != http.StatusUnauthorized {
 		t.Fatalf("reset-required owner token status=%d, want 401", res.Code)
 	}
@@ -264,7 +264,7 @@ func TestPanelSecurityRecoveryCodeCannotBypassForcedRecoveryTransition(t *testin
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(t)))
-	NewAPIHandler(router.Group("/api"), nil)
+	newComposedAPIHandler(router.Group("/api"), nil)
 	jar := integrationCookieJar{}
 
 	preauth := performIntegrationRequest(router, httptest.NewRequest(http.MethodGet, "/api/csrf", nil), &jar)

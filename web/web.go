@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"embed"
+	"github.com/MalenkiySolovey/solovey-ui/backend/componentroutes"
 	"html/template"
 	"io"
 	"io/fs"
@@ -46,6 +47,7 @@ import (
 var content embed.FS
 
 type Server struct {
+	components       componentroutes.Composition
 	httpServer       *http.Server
 	listener         net.Listener
 	settingService   service.SettingService
@@ -57,6 +59,10 @@ type Server struct {
 }
 
 type Option func(*Server)
+
+func WithComponents(components componentroutes.Composition) Option {
+	return func(s *Server) { s.components = components }
+}
 
 func WithRuntime(runtime *service.Runtime) Option {
 	return func(s *Server) {
@@ -81,6 +87,9 @@ func NewServer(options ...Option) (*Server, error) {
 }
 
 func (s *Server) initRouter() (*gin.Engine, error) {
+	if s.components == nil {
+		return nil, componentroutes.ErrUnavailable
+	}
 	if configlogging.IsDebug() {
 		gin.SetMode(gin.DebugMode)
 	} else {
@@ -165,10 +174,10 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	engine.HEAD(assetsBasePath+"*filepath", assetsHandler)
 
 	group_apiv2 := engine.Group(base_url + "apiv2")
-	apiv2 := api.NewAPIv2Handler(group_apiv2, api.WithRuntime(s.runtime))
+	apiv2 := api.NewAPIv2Handler(group_apiv2, api.WithRuntime(s.runtime), api.WithComponents(s.components))
 
 	group_api := engine.Group(base_url + "api")
-	api.NewAPIHandler(group_api, apiv2, api.WithRuntime(s.runtime))
+	api.NewAPIHandler(group_api, apiv2, api.WithRuntime(s.runtime), api.WithComponents(s.components))
 	budgetRegistry.DeclareGinRoutes(engine.Routes())
 
 	// Serve index.html as the entry point

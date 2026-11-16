@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -15,7 +16,6 @@ import (
 	"time"
 
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
-	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
 // Use the real router, including gzip, authorization and request budgets. The
@@ -49,7 +49,7 @@ func TestRuntimeLogsProductionMiddlewarePreservesTransportDeadlines(t *testing.T
 				if err != nil {
 					t.Fatal(err)
 				}
-				panel, err := NewServer(WithRuntime(runtime))
+				panel, err := NewServer(WithRuntime(runtime), WithComponents(productComponentFixture(runtime)))
 				if err != nil {
 					t.Fatal(err)
 				}

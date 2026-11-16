@@ -14,7 +14,7 @@ func TestImportCompletionCapabilitiesRefreshOwnedTokenSnapshot(t *testing.T) {
 	completeTokenOwnerResetForTest(t)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	v2 := NewAPIv2Handler(router.Group("/apiv2"))
+	v2 := newComposedAPIv2Handler(router.Group("/apiv2"))
 	browser := &APIHandler{ApiService: v2.ApiService, apiv2: v2}
 	for name, completion := range map[string]func(){
 		"browser component":     browser.componentAPI(nil, browser.reloadTokens).Auth.AuthorizationChanged,
@@ -48,5 +48,5 @@ func TestImportCompletionCapabilitiesRefreshOwnedTokenSnapshot(t *testing.T) {
 			}
 		})
 	}
-	(&APIHandler{}).componentAPI(nil, (&APIHandler{}).reloadTokens).Auth.AuthorizationChanged()
+	(&APIHandler{ApiService: newComposedApiService()}).componentAPI(nil, (&APIHandler{ApiService: newComposedApiService()}).reloadTokens).Auth.AuthorizationChanged()
 }

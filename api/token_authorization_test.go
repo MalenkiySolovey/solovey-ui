@@ -36,7 +36,7 @@ func TestAPIV2CachedTokenUsesCurrentAccountAndPermission(t *testing.T) {
 	}
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	h := NewAPIv2Handler(router.Group("/apiv2"))
+	h := newComposedAPIv2Handler(router.Group("/apiv2"))
 	router.GET("/principal", h.checkToken, func(c *gin.Context) {
 		c.String(http.StatusOK, c.GetString(apiUsernameKey)+":"+c.GetString(apiTokenScopeKey))
 	})

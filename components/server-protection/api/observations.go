@@ -11,9 +11,9 @@ import (
 	"time"
 
 	protectionpolicy "github.com/MalenkiySolovey/solovey-component-server-protection/service/policy"
+	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
-	clientidentity "github.com/MalenkiySolovey/solovey-ui/internal/httpsecurity/clientidentity"
 	"github.com/gin-gonic/gin"
 )
 

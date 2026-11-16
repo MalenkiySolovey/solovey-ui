@@ -3,13 +3,13 @@ package api
 import (
 	"sync"
 
-	authhttp "github.com/MalenkiySolovey/solovey-ui/api/auth"
 	confighttp "github.com/MalenkiySolovey/solovey-ui/api/config"
 	dbtransferhttp "github.com/MalenkiySolovey/solovey-ui/api/dbtransfer"
 	failoverhttp "github.com/MalenkiySolovey/solovey-ui/api/failover"
 	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
 	telemetryhttp "github.com/MalenkiySolovey/solovey-ui/api/telemetry"
 	"github.com/MalenkiySolovey/solovey-ui/backend/hostcontext"
+	authhttp "github.com/MalenkiySolovey/solovey-ui/backend/http/auth"
 	"github.com/MalenkiySolovey/solovey-ui/middleware/databaseoperation"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
@@ -94,7 +94,7 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	})
 
 	a.registerComponentStatusRoutes(g)
-	registerComponentAPIRoutes(g, a.componentAPI(a.requireStepUpAction, a.reloadTokens))
+	a.registerComponentAPIRoutes(g, a.componentAPI(a.requireStepUpAction, a.reloadTokens))
 
 	realtimehttp.RegisterRoutes(g, realtimehttp.Deps{
 		SettingService: a.SettingService,

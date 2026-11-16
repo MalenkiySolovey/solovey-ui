@@ -34,7 +34,7 @@ func TestRuntimeRoutesUseCurrentBearerScopesAndAudit(t *testing.T) {
 		tokens[scope] = plain
 	}
 	router := gin.New()
-	h := NewAPIv2Handler(router.Group("/apiv2"), WithRuntime(runtime))
+	h := newComposedAPIv2Handler(router.Group("/apiv2"), WithRuntime(runtime))
 	request := func(method, route, token, body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, "/apiv2/runtime/"+route, strings.NewReader(body))
 		req.Header.Set("Authorization", "Bearer "+token)
