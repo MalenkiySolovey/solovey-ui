@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/middleware/hostcontext"
+	"github.com/MalenkiySolovey/solovey-ui/backend/hostcontext"
 )
 
 func TestHostContextAllAPICompositionsRejectForeignHost(t *testing.T) {
