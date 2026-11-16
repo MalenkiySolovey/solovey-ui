@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/database/schema"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )

@@ -12,9 +12,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/sagernet/sing-box/option"
 	shadowsocks "github.com/sagernet/sing-shadowsocks2"
 	M "github.com/sagernet/sing/common/metadata"

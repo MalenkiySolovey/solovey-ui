@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry/facts"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilityview"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 )

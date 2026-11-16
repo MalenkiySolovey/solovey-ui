@@ -3,7 +3,7 @@ package netentity
 import (
 	"encoding/json"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 

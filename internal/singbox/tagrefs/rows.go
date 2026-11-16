@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	outboundcomposition "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds/composition"
-	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 )
 
 func ssmServersOf(row model.Service) map[string]string {

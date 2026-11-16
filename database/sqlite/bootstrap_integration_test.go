@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbschema "github.com/MalenkiySolovey/solovey-ui/database/schema"
 
 	"gorm.io/driver/sqlite"

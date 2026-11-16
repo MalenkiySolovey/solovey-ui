@@ -9,9 +9,9 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	corebox "github.com/MalenkiySolovey/solovey-ui/core/box"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 	"github.com/sagernet/sing-box/log"

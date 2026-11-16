@@ -3,7 +3,7 @@ package entityclients
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"

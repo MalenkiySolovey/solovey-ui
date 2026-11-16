@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 )
 
 func snellKey(t *testing.T, client model.Client) string {

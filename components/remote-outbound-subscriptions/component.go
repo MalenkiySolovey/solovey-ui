@@ -10,6 +10,7 @@ import (
 	subscriptionsource "github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions"
 
 	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
@@ -18,7 +19,6 @@ import (
 	remotesettings "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/internal/settings"
 	remotesubservice "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/service"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	outboundentities "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
 	operationcoordination "github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 	"gorm.io/gorm"

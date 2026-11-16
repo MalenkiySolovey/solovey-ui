@@ -4,7 +4,7 @@ import (
 	"math"
 	"reflect"
 
-	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
 	"gorm.io/gorm"
 )
 

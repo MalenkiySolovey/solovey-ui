@@ -1,6 +1,6 @@
 package model
 
-import entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
+import entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
 
 // VPNUserID projects the existing Client storage identity. Protocol credentials,
 // subscription retrieval secrets and IP observations have separate lifecycles.

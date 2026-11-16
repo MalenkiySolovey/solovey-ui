@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	backupenvelope "github.com/MalenkiySolovey/solovey-ui/internal/backup/envelope"
 	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"

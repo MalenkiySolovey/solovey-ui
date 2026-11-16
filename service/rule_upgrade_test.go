@@ -10,8 +10,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	validation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 )

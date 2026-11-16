@@ -6,8 +6,8 @@ import (
 	"errors"
 	"regexp"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	settingscrypto "github.com/MalenkiySolovey/solovey-ui/internal/settings/crypto"
 	settingsstore "github.com/MalenkiySolovey/solovey-ui/internal/settings/store"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"

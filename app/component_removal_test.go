@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
@@ -17,7 +18,6 @@ import (
 	panelupdateservice "github.com/MalenkiySolovey/solovey-ui/components/panel-update-ui/service"
 	_ "github.com/MalenkiySolovey/solovey-ui/components/server-protection"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"
 	"gorm.io/driver/sqlite"

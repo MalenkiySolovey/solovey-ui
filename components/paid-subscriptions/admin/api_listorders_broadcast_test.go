@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	paidcore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
 	paidtest "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/testutil"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 )
 
 // TestListOrdersHandler closes the T3 gap for listOrders: it must succeed on an

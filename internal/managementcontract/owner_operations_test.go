@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	boundary "github.com/MalenkiySolovey/solovey-ui/internal/managementcontract"
 	"github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/service/update"

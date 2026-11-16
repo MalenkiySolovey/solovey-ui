@@ -5,7 +5,7 @@ import (
 
 	authhttp "github.com/MalenkiySolovey/solovey-ui/api/auth"
 	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 

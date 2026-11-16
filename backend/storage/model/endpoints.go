@@ -3,7 +3,7 @@ package model
 import (
 	"encoding/json"
 
-	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
 )
 
 type Endpoint struct {

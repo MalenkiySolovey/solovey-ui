@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
 	sqlite3 "github.com/mattn/go-sqlite3"
 	"gorm.io/gorm"

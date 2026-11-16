@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/sshmanagement"
 	"gorm.io/gorm"
 )

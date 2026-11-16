@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	entityvalidation "github.com/MalenkiySolovey/solovey-ui/internal/entities"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
@@ -110,20 +110,7 @@ func ensureDeploymentRetentionCompatibility(database *gorm.DB) error {
 }
 
 func schemaModels() []any {
-	return []any{
-		&model.Setting{}, &model.Tls{}, &model.TLSCertificateProvider{}, &model.Inbound{}, &model.Outbound{},
-		&model.Service{}, &model.Endpoint{}, &model.User{}, &model.Tokens{},
-		&model.Stats{}, &model.ClientIP{}, &model.Client{}, &model.Changes{},
-		&model.AuditEvent{}, &model.FailoverMemberState{}, &model.InboundDraft{},
-		&model.ComponentMigration{}, &model.InboundFallbackCheckpoint{}, &model.InboundEndpointLease{},
-		&model.AdminMFAFactor{}, &model.AdminRecoveryCode{}, &model.SecuritySession{}, &model.StepUpGrant{},
-		&model.SSHPostureSnapshot{}, &model.SSHManagementCandidate{}, &model.SSHManagedArtifactCheckpoint{},
-		&model.SSHReconnectChallenge{}, &model.SSHRecoveryEvidence{}, &model.SSHManagementJournal{},
-		&model.DeploymentState{}, &model.DeploymentOperation{}, &model.DeploymentJournal{}, &model.DeploymentDoctorSnapshot{},
-		&model.UpdateReleaseState{}, &model.UpdateOperation{}, &model.UpdateJournal{},
-		&model.ResourcePressureState{}, &model.ResourcePressureTransition{}, &model.MigrationJournal{},
-		&model.DataLifecycleOperation{}, &model.DataLifecycleJournal{},
-	}
+	return model.SchemaModels()
 }
 
 func ensureInitialAdmin(database *gorm.DB, dbPath string) error {

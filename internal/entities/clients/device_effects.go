@@ -3,7 +3,7 @@ package entityclients
 import (
 	"encoding/json"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	clientdevices "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients/devices"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"

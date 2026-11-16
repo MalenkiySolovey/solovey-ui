@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	telegramservice "github.com/MalenkiySolovey/solovey-ui/components/telegram/service"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 )

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	"gorm.io/gorm"
 )

@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 )
 
 // ProviderKind identifies a payment backend.

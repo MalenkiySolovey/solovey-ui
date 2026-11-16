@@ -5,8 +5,8 @@ import (
 	"net"
 	"testing"
 
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
 	"github.com/MalenkiySolovey/solovey-ui/core/inboundidentity"
-	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"

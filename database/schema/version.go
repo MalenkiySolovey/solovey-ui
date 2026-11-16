@@ -3,8 +3,8 @@ package schema
 
 import (
 	"errors"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/config/versionpolicy"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"gorm.io/gorm"
 )
 

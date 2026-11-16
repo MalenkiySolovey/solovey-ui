@@ -3,7 +3,7 @@ package service
 import (
 	"encoding/json"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	settingsmanager "github.com/MalenkiySolovey/solovey-ui/internal/settings/manager"
 	subformats "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/formats"
 

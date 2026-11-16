@@ -7,10 +7,10 @@ import (
 	"slices"
 	"strings"
 
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/composition"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
-	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	sbjson "github.com/sagernet/sing/common/json"
 )

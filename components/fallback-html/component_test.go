@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	neutral "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
@@ -21,7 +22,6 @@ import (
 	fallbackservice "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/service"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

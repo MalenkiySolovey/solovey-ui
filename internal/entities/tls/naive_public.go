@@ -5,7 +5,7 @@ import (
 	"errors"
 	"maps"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 )
 
 // NaivePublicTrust adapts one self-signed SPKI pin to the public certificate

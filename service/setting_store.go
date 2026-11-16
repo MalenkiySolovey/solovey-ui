@@ -4,7 +4,7 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 	subformats "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/formats"

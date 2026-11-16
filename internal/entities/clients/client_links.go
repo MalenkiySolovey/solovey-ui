@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"

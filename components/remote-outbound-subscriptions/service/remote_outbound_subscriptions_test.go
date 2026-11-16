@@ -22,10 +22,10 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	remotesub "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	outboundentities "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"

@@ -1,6 +1,6 @@
 // Package types owns the panel's semantic identities, independently of storage,
 // compiled runtime implementations and consumers such as Doctor or imports.
-package types
+package entityidentity
 
 type Mapping struct {
 	Category, Type, RuntimeType string
