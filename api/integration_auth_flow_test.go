@@ -45,7 +45,7 @@ func TestIntegrationAuthFlowLoginCSRFSaveSettingsPublishesRealtime(t *testing.T)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(t)))
-	NewAPIHandler(router.Group("/api"), nil)
+	newComposedAPIHandler(router.Group("/api"), nil)
 	jar := integrationCookieJar{}
 	preauthCSRFReq := httptest.NewRequest(http.MethodGet, "/api/csrf", nil)
 	preauthCSRFRecorder := performIntegrationRequest(router, preauthCSRFReq, &jar)

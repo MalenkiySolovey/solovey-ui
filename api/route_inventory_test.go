@@ -13,7 +13,7 @@ func TestRouteInventoryIsUnique(t *testing.T) {
 	prepareComponentRouteMetadata(t)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := &APIHandler{}
+	handler := &APIHandler{ApiService: newComposedApiService()}
 	handler.initRouter(router.Group("/api"))
 
 	var routes []string

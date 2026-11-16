@@ -35,7 +35,7 @@ func TestRuntimeLogHTTPProjectionCancelsAndReleasesSubscriptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	router := gin.New()
-	NewAPIv2Handler(router.Group("/apiv2"), WithRuntime(runtime))
+	newComposedAPIv2Handler(router.Group("/apiv2"), WithRuntime(runtime))
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 	generation := core.RuntimeStatus(t.Context()).Generation
@@ -98,7 +98,7 @@ func TestRuntimeLogHTTP2IdleBetweenFramesDoesNotExpireWriteDeadline(t *testing.T
 		t.Fatal(err)
 	}
 	router := gin.New()
-	NewAPIv2Handler(router.Group("/apiv2"), WithRuntime(runtime))
+	newComposedAPIv2Handler(router.Group("/apiv2"), WithRuntime(runtime))
 	server := httptest.NewUnstartedServer(router)
 	server.EnableHTTP2 = true
 	server.StartTLS()

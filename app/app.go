@@ -14,6 +14,7 @@ import (
 	managementregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/management"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	componentsupervisor "github.com/MalenkiySolovey/solovey-ui/componenthost/supervisor"
+	"github.com/MalenkiySolovey/solovey-ui/composition/componenthttp"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
@@ -125,14 +126,15 @@ func (a *APP) Init() (err error) {
 
 	a.cronScheduler = scheduler.New()
 	runtime := a.runtime
+	componentOwners := componenthost.APIDeps{
+		Runtime: a.runtime,
+		OutboundHTTP: componenthost.OutboundHTTPClientFunc(func(tag string, timeout time.Duration) (*http.Client, error) {
+			return service.NewOutboundHTTPClientForRuntime(runtime, tag, timeout)
+		}),
+		Audit: componenthost.AuditDeps{Recorder: &service.AuditService{Runtime: runtime}},
+	}.WithObservationOwners()
 	a.components = componentsupervisor.New(componenthost.Deps{
-		API: componenthost.APIDeps{
-			Runtime: a.runtime,
-			OutboundHTTP: componenthost.OutboundHTTPClientFunc(func(tag string, timeout time.Duration) (*http.Client, error) {
-				return service.NewOutboundHTTPClientForRuntime(runtime, tag, timeout)
-			}),
-			Audit: componenthost.AuditDeps{Recorder: &service.AuditService{Runtime: runtime}},
-		}.WithObservationOwners(),
+		API:               componentOwners,
 		Scheduler:         a.cronScheduler,
 		DropOwnedSettings: (&service.SettingService{}).DropOwnedComponentSettings,
 	})
@@ -140,7 +142,7 @@ func (a *APP) Init() (err error) {
 	service.RegisterComponentMigrator(a.components.Migrate)
 	service.RegisterComponentDataDropper(a.components.DropData)
 	service.RegisterComponentRemovalAdmitter(a.components.TryAdmitRemoval)
-	a.webServer, err = web.NewServer(web.WithRuntime(a.runtime))
+	a.webServer, err = web.NewServer(web.WithRuntime(a.runtime), web.WithComponents(componenthttp.New(componentOwners)))
 	if err != nil {
 		return err
 	}

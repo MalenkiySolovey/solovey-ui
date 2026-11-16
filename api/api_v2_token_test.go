@@ -29,7 +29,7 @@ func newAPIV2TokenTestRouter(t *testing.T) *gin.Engine {
 	}
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	NewAPIv2Handler(router.Group("/apiv2"))
+	newComposedAPIv2Handler(router.Group("/apiv2"))
 	return router
 }
 
@@ -145,7 +145,7 @@ func TestAPIV2TokenExpiresAtExactBoundary(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	NewAPIv2Handler(router.Group("/apiv2"))
+	newComposedAPIv2Handler(router.Group("/apiv2"))
 	recorder := performAPIV2TokenRequest(router, "Authorization", "Bearer boundary-token")
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("token at its expiry boundary returned %d, want 401", recorder.Code)
@@ -163,7 +163,7 @@ func TestAPIV2ReloadTokensFailsClosedOnLoaderError(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := NewAPIv2Handler(router.Group("/apiv2"))
+	handler := newComposedAPIv2Handler(router.Group("/apiv2"))
 	if recorder := performAPIV2TokenRequest(router, "Authorization", "Bearer reload-token"); recorder.Code != http.StatusOK {
 		t.Fatalf("baseline token returned %d", recorder.Code)
 	}

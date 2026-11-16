@@ -143,7 +143,7 @@ func deploymentTestRouter(t *testing.T) (*gin.Engine, []*http.Cookie) {
 	t.Cleanup(func() { closeAPITestDB(t) })
 	settings := &service.SettingService{}
 	router, cookies := newAuthenticatedTestRouter(t, settings, func(router *gin.Engine) {
-		apiService := NewApiService()
+		apiService := newComposedApiService()
 		apiService.Deployment = deploymentservice.Shared()
 		handler := &APIHandler{ApiService: apiService}
 		handler.registerDeploymentRoutes(router.Group("/api"))

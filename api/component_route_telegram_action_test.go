@@ -27,7 +27,7 @@ func TestComponentRouteTelegramActionRequiresAdminScope(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	NewAPIv2Handler(router.Group("/apiv2"))
+	newComposedAPIv2Handler(router.Group("/apiv2"))
 
 	recorder := performComponentTelegramActionRequest(router, readToken)
 	if recorder.Code != http.StatusForbidden {
@@ -57,7 +57,7 @@ func TestComponentRouteTelegramActionAuditsWithoutSecrets(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	NewAPIv2Handler(router.Group("/apiv2"))
+	newComposedAPIv2Handler(router.Group("/apiv2"))
 
 	recorder := performComponentTelegramActionRequest(router, adminToken)
 	if recorder.Code != http.StatusOK {

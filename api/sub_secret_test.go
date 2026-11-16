@@ -40,7 +40,7 @@ func TestAPIV2RotateSubSecretRequiresWriteScopeAndAudits(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	NewAPIv2Handler(router.Group("/apiv2"))
+	newComposedAPIv2Handler(router.Group("/apiv2"))
 
 	readRecorder := performRotateSubSecretRequest(router, readToken, client.Id)
 	if readRecorder.Code != http.StatusForbidden {

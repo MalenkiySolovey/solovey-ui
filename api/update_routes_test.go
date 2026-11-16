@@ -99,7 +99,7 @@ func updateTestRouter(t *testing.T) (*gin.Engine, []*http.Cookie) {
 	initAPITestDB(t, filepath.Join(t.TempDir(), "update-api.db"))
 	t.Cleanup(func() { closeAPITestDB(t) })
 	router, cookies := newAuthenticatedTestRouter(t, &service.SettingService{}, func(router *gin.Engine) {
-		handler := &APIHandler{ApiService: NewApiService()}
+		handler := &APIHandler{ApiService: newComposedApiService()}
 		handler.registerUpdateRoutes(router.Group("/api"))
 	})
 	return router, cookies

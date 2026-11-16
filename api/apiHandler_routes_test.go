@@ -14,7 +14,7 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 	prepareComponentRouteMetadata(t)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := &APIHandler{}
+	handler := &APIHandler{ApiService: newComposedApiService()}
 	handler.initRouter(router.Group("/api"))
 
 	routes := map[string]bool{}
@@ -102,8 +102,8 @@ func TestAdminAPIRouteSecurityInventoryIsComplete(t *testing.T) {
 	prepareComponentRouteMetadata(t)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	apiv2 := NewAPIv2Handler(router.Group("/apiv2"))
-	NewAPIHandler(router.Group("/api"), apiv2)
+	apiv2 := newComposedAPIv2Handler(router.Group("/apiv2"))
+	newComposedAPIHandler(router.Group("/api"), apiv2)
 
 	registry := requestbudget.NewRegistry("")
 	registry.DeclareGinRoutes(router.Routes())

@@ -60,7 +60,7 @@ func TestComponentRemovalRequiresBoundSingleUseGrant(t *testing.T) {
 	c.Request = httptest.NewRequest(http.MethodPost, path, nil)
 	c.Set(apiUsernameKey, "admin")
 	c.Set(apiTokenScopeKey, "admin")
-	if (&APIHandler{}).requireStepUpAction(c, "component.remove", "component:telegram") || recorder.Code != http.StatusForbidden {
+	if (&APIHandler{ApiService: newComposedApiService()}).requireStepUpAction(c, "component.remove", "component:telegram") || recorder.Code != http.StatusForbidden {
 		t.Fatal("bearer token crossed the browser assurance boundary")
 	}
 }

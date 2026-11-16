@@ -399,7 +399,7 @@ func TestAPIV2SecurityAuditRequiresAdminScope(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	NewAPIv2Handler(router.Group("/apiv2"))
+	newComposedAPIv2Handler(router.Group("/apiv2"))
 	if !routeExists(router, http.MethodGet, "/apiv2/security/audit") {
 		t.Skip("full security audit route is owned by optional observability-extra component")
 	}

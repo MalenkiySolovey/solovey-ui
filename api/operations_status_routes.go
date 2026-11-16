@@ -8,9 +8,6 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
-	componentregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/database/schema"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
@@ -69,7 +66,7 @@ func (a *APIHandler) operationsStatus(c *gin.Context) {
 	}
 	pressure := pressureService.Shared().Current()
 	sqliteStatus, sqliteErr := dbsqlite.InspectRuntime(dbsqlite.DB())
-	owners, ownerReasons := installedOwnerStatus()
+	owners, ownerReasons := a.installedOwnerStatus()
 	updateManager := a.Update
 	if updateManager == nil {
 		updateManager = updateservice.SharedLifecycle()
@@ -337,33 +334,27 @@ func (a *APIHandler) dataOwnerStatus(c *gin.Context) {
 	if _, ok := requireAuthenticatedSecurityContext(c); !ok {
 		return
 	}
-	owners, reasons := installedOwnerStatus()
+	owners, reasons := a.installedOwnerStatus()
 	jsonObj(c, gin.H{"state": ownerAggregateState(owners), "items": owners, "reasonCodes": reasons}, nil)
 }
 
-func installedOwnerStatus() ([]ownerStatus, []string) {
+func (a *APIHandler) installedOwnerStatus() ([]ownerStatus, []string) {
 	result := []ownerStatus{{ID: "core", Kind: "core", Installed: true, Available: true, Enabled: "ENABLED",
 		DurableData: "PRESENT", Backup: "SUPPORTED", Restore: "SUPPORTED", DropData: "NOT_APPLICABLE"}}
-	installed, err := installstate.InstalledComponents()
+	installed, err := a.componentOwners()
 	if err != nil {
 		return result, []string{"installed_owner_manifest_unavailable"}
 	}
-	available := map[string]componentregistry.Component{}
-	for _, component := range componentregistry.Components() {
-		available[component.Manifest.ID] = component
-	}
 	reasons := []string{}
 	for _, component := range installed {
-		availableComponent, isAvailable := available[component.ID]
-		status := ownerStatus{ID: component.ID, Kind: "component", Installed: true, Available: isAvailable,
+		status := ownerStatus{ID: component.ID, Kind: "component", Installed: true, Available: component.Available,
 			Enabled: "UNKNOWN", DurableData: "PRESERVED", Backup: "OPAQUE_PRESERVATION_REQUIRED", Restore: "FAIL_CLOSED_IF_UNAVAILABLE", DropData: "PREVIEW_REQUIRED"}
 		if status.Available {
 			status.Backup, status.Restore = "SUPPORTED", "SUPPORTED"
-			enabled, enabledErr := enabledstate.Enabled(availableComponent.Manifest)
-			if enabledErr != nil {
+			if component.EnabledUnavailable {
 				status.ReasonCode = "owner_enabled_state_unavailable"
 				reasons = append(reasons, status.ReasonCode+":"+component.ID)
-			} else if enabled {
+			} else if component.Enabled {
 				status.Enabled = "ENABLED"
 			} else {
 				status.Enabled = "DISABLED"

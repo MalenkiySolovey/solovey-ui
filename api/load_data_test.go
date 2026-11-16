@@ -34,7 +34,8 @@ func TestLoadDataIncludesSubscriptionURIOverrides(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "http://panel.example/api/load", nil)
 
-	data, err := (&ApiService{}).configHandler().GetData(c)
+	apiService := newComposedApiService()
+	data, err := apiService.configHandler().GetData(c)
 	if err != nil {
 		t.Fatal(err)
 	}

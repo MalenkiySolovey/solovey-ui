@@ -30,7 +30,7 @@ func TestCoreJournalRequiresAuthenticationAndBoundsOwnerMetadata(t *testing.T) {
 	if err := db.Create(&model.DataLifecycleJournal{OperationID: operation.OperationID, Revision: 3, State: "APPLIED", Event: "restore_applied", CreatedAt: 1}).Error; err != nil {
 		t.Fatal(err)
 	}
-	a := &APIHandler{}
+	a := &APIHandler{ApiService: newComposedApiService()}
 	router, cookies := newAuthenticatedTestRouter(t, settings, func(r *gin.Engine) { r.GET("/journal", a.operationJournal) })
 	unauthenticated := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/journal", nil))
 	if unauthenticated.Code != http.StatusForbidden || strings.Contains(unauthenticated.Body.String(), "restore_applied") {

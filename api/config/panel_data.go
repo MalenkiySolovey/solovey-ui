@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
+	"github.com/MalenkiySolovey/solovey-ui/backend/componentroutes"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	inbounddrafts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/drafts"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -88,7 +88,8 @@ func (a *Handler) GetData(c *gin.Context) (interface{}, error) {
 			return err
 		})
 		group.Go(func() error {
-			result, err := state.Components()
+			inventory, err := componentroutes.Inventory(a.Components)
+			result := inventory.Components
 			components = result
 			return err
 		})

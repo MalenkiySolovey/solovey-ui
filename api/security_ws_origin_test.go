@@ -45,7 +45,7 @@ func TestRequestAuthorityMiddlewareRejectsAmbiguousHostBeforeAuthentication(t *t
 	initSessionTestDB(t)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	NewAPIHandler(router.Group("/api"), nil)
+	newComposedAPIHandler(router.Group("/api"), nil)
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/security/posture", nil)
 	request.Host = "panel.example,evil.example"
 	recorder := httptest.NewRecorder()

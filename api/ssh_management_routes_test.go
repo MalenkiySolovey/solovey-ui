@@ -122,7 +122,7 @@ func sshManagementTestRouter(t *testing.T, managers ...*sshmanagementservice.Man
 	t.Cleanup(func() { closeAPITestDB(t) })
 	settings := &service.SettingService{}
 	router, cookies := newAuthenticatedTestRouter(t, settings, func(router *gin.Engine) {
-		handler := &APIHandler{ApiService: NewApiService()}
+		handler := &APIHandler{ApiService: newComposedApiService()}
 		handler.SSHManagement = sshmanagementservice.Shared()
 		if len(managers) > 0 {
 			handler.SSHManagement = managers[0]
