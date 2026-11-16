@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"crypto/tls"
-	"embed"
 	"github.com/MalenkiySolovey/solovey-ui/backend/componentroutes"
 	"html/template"
 	"io"
@@ -37,21 +36,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// all: is required so Go embeds asset files whose names begin with "_" or ".".
-// Rolldown hashes are URL-safe base64 and occasionally produce "_"-leading
-// chunk/style names; a plain `//go:embed *` silently drops them, yielding a 404
-// on a dynamically imported module and a blank panel. (Vite is also configured
-// to prefix asset names so they never start with "_".)
-//
-//go:embed all:*
-var content embed.FS
-
 type Server struct {
 	components       componentroutes.Composition
 	httpServer       *http.Server
 	listener         net.Listener
 	settingService   service.SettingService
 	runtime          *service.Runtime
+	frontendFS       fs.FS
 	assetsFS         fs.FS
 	unregisterHealth func()
 	running          atomic.Bool
@@ -70,19 +61,27 @@ func WithRuntime(runtime *service.Runtime) Option {
 	}
 }
 
+// WithFrontend supplies the Product's trusted frontend bundle, rooted at
+// index.html and assets/. Component assets retain their existing overlay.
+func WithFrontend(bundle fs.FS) Option {
+	return func(s *Server) { s.frontendFS = bundle }
+}
+
 func NewServer(options ...Option) (*Server, error) {
-	assetsFS, err := newAssetsFS()
-	if err != nil {
-		return nil, err
-	}
-	server := &Server{
-		assetsFS: assetsFS,
-	}
+	server := &Server{frontendFS: EmbeddedFrontend()}
 	for _, option := range options {
 		if option != nil {
 			option(server)
 		}
 	}
+	if err := validateFrontend(server.frontendFS); err != nil {
+		return nil, err
+	}
+	assets, err := newAssetsFS(server.frontendFS)
+	if err != nil {
+		return nil, err
+	}
+	server.assetsFS = assets
 	return server, nil
 }
 
@@ -102,7 +101,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 
 	// Load the HTML template
 	t := template.New("").Funcs(engine.FuncMap)
-	template, err := t.ParseFS(content, "html/index.html")
+	template, err := t.ParseFS(s.frontendFS, "index.html")
 	if err != nil {
 		return nil, err
 	}

@@ -133,7 +133,7 @@ test('non-regular generated files cannot enter the published tree',{skip:process
 
 test('the real embed contract includes underscore assets and Vite metadata',t => {
   const {root,dist}=fixture(t)
-  const directive=fs.readFileSync(fileURLToPath(new URL('../web/web.go',import.meta.url)),'utf8').match(/^\/\/go:embed (.+)$/m)?.[1]
+  const directive=fs.readFileSync(fileURLToPath(new URL('../web/frontend_bundle.go',import.meta.url)),'utf8').match(/^\/\/go:embed (.+)$/m)?.[1]
   assert.ok(directive)
   fs.cpSync(dist,path.join(root,'html'),{recursive:true})
   fs.writeFileSync(path.join(root,'html/assets/_chunk.js'),'export default 1')
