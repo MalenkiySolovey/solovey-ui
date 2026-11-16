@@ -311,6 +311,20 @@ func firstFetchAttemptError(attempts []FetchAttempt) error {
 	return sourceError("unable to fetch subscription")
 }
 
+// RedactFetchError preserves error identity for cancellation/retry while keeping
+// private source locations and credentials out of API, storage and log sinks.
+func RedactFetchError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return redactedFetchError{cause: err}
+}
+
+type redactedFetchError struct{ cause error }
+
+func (e redactedFetchError) Error() string { return SanitizeFetchErrorText(e.cause.Error()) }
+func (e redactedFetchError) Unwrap() error { return e.cause }
+
 func sanitizeFetchError(err error) string {
 	if err == nil {
 		return ""

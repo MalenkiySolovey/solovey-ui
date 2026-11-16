@@ -58,7 +58,7 @@ func TestRefreshFailureKeepsAcceptedSnapshotAndRedactsDiagnostic(t *testing.T) {
 		t.Fatal("failed fetch changed accepted state or omitted error evidence")
 	}
 	for _, secret := range []string{"password", "private-token", "credential"} {
-		if strings.Contains(store.mark, secret) {
+		if strings.Contains(store.mark, secret) || strings.Contains(err.Error(), secret) {
 			t.Fatal("durable error leaked source credentials")
 		}
 	}

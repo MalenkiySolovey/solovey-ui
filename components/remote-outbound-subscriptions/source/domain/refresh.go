@@ -20,7 +20,7 @@ type RefreshResult struct {
 }
 
 func MarkRefreshError(tx Store, subscriptionID uint, message string, now int64) error {
-	return tx.MarkRefreshError(subscriptionID, message, now)
+	return tx.MarkRefreshError(subscriptionID, SanitizeFetchErrorText(message), now)
 }
 
 func RefreshFetchedSubscription(tx Store, subscription *RemoteOutboundSubscription, fetched *FetchedSubscription, now int64) (RefreshResult, bool, error) {

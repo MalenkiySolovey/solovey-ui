@@ -327,6 +327,7 @@ func (s *Service) refreshSubscription(ctx context.Context, id uint, loginUser st
 	fetched, fetchErr := s.Fetcher.FetchSource(ctx, db, subscription, s.fetchOptions())
 	now := time.Now().Unix()
 	if fetchErr != nil {
+		fetchErr = remotesub.RedactFetchError(fetchErr)
 		// An old failed fetch has no authority over a replacement source's UI
 		// state, just as an old successful fetch cannot replace its collection.
 		err := db.Transaction(func(tx Store) error {
