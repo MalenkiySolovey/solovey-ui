@@ -3,7 +3,7 @@ package uri
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	"net/url"
 	"strconv"
 	"strings"

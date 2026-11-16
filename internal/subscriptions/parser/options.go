@@ -3,7 +3,7 @@ package parser
 import (
 	"strings"
 
-	subconversion "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/conversion"
+	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
 )
 
 const (

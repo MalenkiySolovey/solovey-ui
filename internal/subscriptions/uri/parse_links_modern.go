@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	uricodec "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )

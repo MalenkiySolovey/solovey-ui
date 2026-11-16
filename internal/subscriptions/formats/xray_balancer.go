@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+	subcanonical "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 )
 
 func xrayBalancers(groupOutbounds []map[string]interface{}, proxyTags []string) []map[string]interface{} {

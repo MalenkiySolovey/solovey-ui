@@ -116,7 +116,7 @@ func FetchSourceContext(ctx context.Context, db *gorm.DB, s RemoteOutboundSubscr
 			return ErrSourceContentInvalid
 		}
 		var parseErr error
-		fetched, parseErr = ParseFetchedSubscriptionWithOptions(string(raw), options)
+		fetched, parseErr = parseFetchedSubscriptionWithOptionsContext(ctx, string(raw), options)
 		if parseErr != nil {
 			return ErrSourceContentInvalid
 		}

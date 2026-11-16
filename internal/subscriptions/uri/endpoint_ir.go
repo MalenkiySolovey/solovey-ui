@@ -2,7 +2,7 @@ package uri
 
 import (
 	"encoding/json"
-	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"
 	"net/url"
 	"strings"

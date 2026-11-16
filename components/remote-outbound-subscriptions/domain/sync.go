@@ -8,10 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-host/hostref"
+	hostoutbounds "github.com/MalenkiySolovey/solovey-host/outbounds"
+	subcanonical "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
+	"github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/backendoutbounds"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
-	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
-	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
 )
@@ -97,86 +98,23 @@ func syncSingleConnectionToOutbound(tx *gorm.DB, connection *RemoteOutboundConne
 	if strings.TrimSpace(connection.OutboundTag) == "" {
 		return common.NewError("connection outbound tag is empty")
 	}
-	var outbound model.Outbound
-	var err error
-	if connection.OutboundId != nil && *connection.OutboundId != 0 {
-		err = tx.First(&outbound, *connection.OutboundId).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			err = nil
-		}
-	}
-	if outbound.Id == 0 && err == nil {
-		err = tx.Where("tag = ?", connection.OutboundTag).First(&outbound).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			err = nil
-		}
-	}
-	if err != nil {
-		return err
-	}
-	if outbound.Id != 0 {
-		if connection.OutboundId == nil || outbound.Id != *connection.OutboundId {
-			var linked int64
-			if err := tx.Model(&RemoteOutboundConnection{}).
-				Where("outbound_id = ? AND id = ?", outbound.Id, connection.Id).
-				Count(&linked).Error; err != nil {
-				return err
-			}
-			if linked == 0 {
-				return common.NewError("outbound tag already exists outside this remote connection")
-			}
-		}
-		if connection.OutboundId != nil && outbound.Id != *connection.OutboundId {
-			return common.NewError("outbound tag belongs to another outbound")
-		}
-		var linkedCount int64
-		if err := tx.Model(&RemoteOutboundConnection{}).
-			Where("outbound_id = ? AND id <> ?", outbound.Id, connection.Id).
-			Count(&linkedCount).Error; err != nil {
-			return err
-		}
-		if linkedCount > 0 {
-			return common.NewError("outbound is already linked to another remote connection")
-		}
-	} else {
-		outbound.Tag = connection.OutboundTag
-	}
 	config, err := connectionOutboundConfigForSync(tx, *connection)
 	if err != nil {
 		return err
 	}
-	config, err = entityoutbounds.PrepareImportedCredentialDraft(config)
+	owner := bindingOwner(tx, *connection)
+	candidate, err := owner.Prepare(tx.Statement.Context, hostoutbounds.Upsert, config, hostoutbounds.Missing{})
 	if err != nil {
 		return err
 	}
-	candidate := map[string]any{}
-	if err := json.Unmarshal(config, &candidate); err != nil {
-		return err
-	}
-	candidate["id"] = outbound.Id
-	// Imported protocol fields are saved by the same semantic owner as the
-	// canonical editor. The Component retains its own binding/missing state.
-	candidate["remoteMissing"] = false
-	candidate["remoteMissingReason"] = ""
-	candidate["remoteMissingSince"] = 0
-	candidate["remoteMissingSource"] = ""
-	data, err := json.Marshal(candidate)
+	receipt, err := hostoutbounds.ApplyBinding(tx.Statement.Context, candidate, owner)
 	if err != nil {
 		return err
 	}
-	action := "new"
-	if outbound.Id != 0 {
-		action = "edit"
+	if receipt.State != hostoutbounds.Pending && receipt.State != hostoutbounds.Applied {
+		return hostoutbounds.ErrObservation
 	}
-	if _, err := entityoutbounds.Save(tx, action, data); err != nil {
-		return err
-	}
-	// Existing service transactions perform the full post-commit runtime
-	// invalidation. Read the owner's persisted ID for the existing binding.
-	if err := tx.Where("tag = ?", connection.OutboundTag).First(&outbound).Error; err != nil {
-		return err
-	}
-	connection.OutboundId = &outbound.Id
+	connection.OutboundId = &receipt.Resource.ID
 	connection.Synced = true
 	connection.UpdatedAt = time.Now().Unix()
 	return nil
@@ -185,33 +123,21 @@ func MarkConnectionOutboundMissing(tx *gorm.DB, connection *RemoteOutboundConnec
 	if connection == nil {
 		return nil
 	}
-	var outbound model.Outbound
-	var err error
-	if connection.OutboundId != nil && *connection.OutboundId != 0 {
-		err = tx.First(&outbound, *connection.OutboundId).Error
-	}
-	if (connection.OutboundId == nil || *connection.OutboundId == 0 || errors.Is(err, gorm.ErrRecordNotFound)) && strings.TrimSpace(connection.OutboundTag) != "" {
-		err = tx.Where("tag = ?", connection.OutboundTag).First(&outbound).Error
-	}
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if outbound.Id == 0 {
-		return nil
-	}
-	source := remoteMissingSource(tx, *connection)
 	if strings.TrimSpace(reason) == "" {
 		reason = "not present in latest successful refresh"
 	}
-	outbound.RemoteMissing = true
-	outbound.RemoteMissingReason = reason
-	outbound.RemoteMissingSince = now
-	outbound.RemoteMissingSource = source
-	return tx.Save(&outbound).Error
+	owner := bindingOwner(tx, *connection)
+	candidate, err := owner.Prepare(tx.Statement.Context, hostoutbounds.MarkMissing, nil, hostoutbounds.Missing{Reason: reason, Since: now, Source: remoteMissingSource(tx, *connection)})
+	if err != nil {
+		return err
+	}
+	if candidate.ExpectedResourceRevision == "ABSENT" {
+		return nil
+	}
+	_, err = hostoutbounds.ApplyBinding(tx.Statement.Context, candidate, owner)
+	return err
 }
+
 func remoteMissingSource(tx *gorm.DB, connection RemoteOutboundConnection) string {
 	var subscription RemoteOutboundSubscription
 	if connection.SubscriptionId != 0 && tx.First(&subscription, connection.SubscriptionId).Error == nil {
@@ -374,22 +300,21 @@ func deleteLinkedOutbound(tx *gorm.DB, connection RemoteOutboundConnection) (boo
 	if connection.OutboundId == nil || *connection.OutboundId == 0 {
 		return false, nil
 	}
-	if err := validateDownloadOutboundDeletion(tx, connection.OutboundTag); err != nil {
-		return false, err
-	}
-	refs, err := tagrefs.Outbound(tx, connection.OutboundTag, *connection.OutboundId, 0)
+	owner := bindingOwner(tx, connection)
+	candidate, err := owner.Prepare(tx.Statement.Context, hostoutbounds.Remove, nil, hostoutbounds.Missing{})
 	if err != nil {
 		return false, err
 	}
-	if len(refs) > 0 {
-		return false, tagrefs.FormatError("outbound", connection.OutboundTag, refs)
+	if candidate.ExpectedResourceRevision == "ABSENT" {
+		return false, nil
 	}
-	result := tx.Where("id = ? AND tag = ?", *connection.OutboundId, connection.OutboundTag).Delete(&model.Outbound{})
-	if result.Error != nil {
-		return false, result.Error
-	}
-	return result.RowsAffected > 0, nil
+	_, err = hostoutbounds.ApplyBinding(tx.Statement.Context, candidate, owner)
+	return err == nil, err
 }
+func bindingOwner(tx *gorm.DB, c RemoteOutboundConnection) *backendoutbounds.Owner {
+	return backendoutbounds.New(tx, backendoutbounds.Source{Id: c.Id, SubscriptionId: c.SubscriptionId, SourceKey: c.SourceKey, Name: c.Name, Type: c.Type, OutboundTag: c.OutboundTag, OutboundId: c.OutboundId, Enabled: c.Enabled, Options: c.Options, Canonical: c.Canonical})
+}
+
 func ReconcileOutboundLinks(tx *gorm.DB) (bool, error) {
 	if !tx.Migrator().HasTable(&RemoteOutboundConnection{}) {
 		return false, nil
@@ -402,6 +327,18 @@ func ReconcileOutboundLinks(tx *gorm.DB) (bool, error) {
 	now := time.Now().Unix()
 	for _, connection := range connections {
 		if connection.OutboundId == nil || *connection.OutboundId == 0 {
+			if err := markConnectionUnsynced(tx, connection.Id, now); err != nil {
+				return false, err
+			}
+			changed = true
+			continue
+		}
+		query := hostoutbounds.Query{Binding: bindingOwner(tx, connection).BindingRef(), Resource: hostoutbounds.ResourceRef{Host: hostref.Local(), ID: *connection.OutboundId, Tag: connection.OutboundTag}}
+		observed, observeErr := hostoutbounds.ObserveBinding(tx.Statement.Context, query, bindingOwner(tx, connection))
+		if observeErr != nil {
+			return false, observeErr
+		}
+		if !observed.Present {
 			if err := markConnectionUnsynced(tx, connection.Id, now); err != nil {
 				return false, err
 			}

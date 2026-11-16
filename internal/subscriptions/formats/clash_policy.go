@@ -1,6 +1,6 @@
 package formats
 
-import "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+import "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 
 type ClashUDPPolicy = canonical.ClashUDPPolicy
 

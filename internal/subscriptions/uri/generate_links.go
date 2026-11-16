@@ -3,8 +3,8 @@ package uri
 import (
 	"encoding/base64"
 	"fmt"
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
-	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"
 	"net/url"
 	"strings"

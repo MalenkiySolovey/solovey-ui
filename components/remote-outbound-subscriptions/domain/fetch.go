@@ -9,11 +9,11 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
-	subconversion "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/conversion"
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
+	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/parseport"
 	subexternal "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/external"
 	subparser "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/parser"
-	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/MalenkiySolovey/solovey-ui/util/redact"
 )
@@ -62,6 +62,7 @@ type CollectionSnapshot struct {
 }
 
 type FetchOptions struct {
+	Parser           parseport.Parser
 	UserAgent        string
 	Headers          http.Header
 	OutboundClient   *http.Client
@@ -113,14 +114,14 @@ func FetchSubscriptionWithOptions(rawURL string, options FetchOptions) (*Fetched
 	if len(options.Headers) != 0 || options.OutboundClient != nil {
 		return FetchSubscriptionWithOptionsContext(context.Background(), rawURL, options)
 	}
-	return fetchSubscriptionWithOptions(rawURL, options, fetchCandidateData)
+	return fetchSubscriptionWithOptions(context.Background(), rawURL, options, fetchCandidateData)
 }
 
 func FetchSubscriptionWithOptionsContext(ctx context.Context, rawURL string, options FetchOptions) (*FetchedSubscription, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return fetchSubscriptionWithOptions(rawURL, options, func(candidate fetchCandidate) (string, error) {
+	return fetchSubscriptionWithOptions(ctx, rawURL, options, func(candidate fetchCandidate) (string, error) {
 		if options.OutboundClient != nil {
 			return subexternal.FetchWithOutboundContext(ctx, candidate.URL, candidate.UserAgent, options.Headers, options.OutboundClient)
 		}
@@ -131,7 +132,7 @@ func FetchSubscriptionWithOptionsContext(ctx context.Context, rawURL string, opt
 	})
 }
 
-func fetchSubscriptionWithOptions(rawURL string, options FetchOptions, fetch func(fetchCandidate) (string, error)) (*FetchedSubscription, error) {
+func fetchSubscriptionWithOptions(ctx context.Context, rawURL string, options FetchOptions, fetch func(fetchCandidate) (string, error)) (*FetchedSubscription, error) {
 	if err := ValidateSourceUserAgent(options.UserAgent); err != nil {
 		return nil, err
 	}
@@ -151,6 +152,9 @@ func fetchSubscriptionWithOptions(rawURL string, options FetchOptions, fetch fun
 	var fetchedParts []*FetchedSubscription
 	seenFormats := map[string]struct{}{}
 	for _, candidate := range candidates {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		attempt := FetchAttempt{Variant: candidate.Variant}
 		data, err := fetch(candidate)
 		if err != nil {
@@ -158,7 +162,7 @@ func fetchSubscriptionWithOptions(rawURL string, options FetchOptions, fetch fun
 			attempts = append(attempts, attempt)
 			continue
 		}
-		fetched, err := ParseFetchedSubscriptionWithOptions(data, options)
+		fetched, err := parseFetchedSubscriptionWithOptionsContext(ctx, data, options)
 		if err != nil {
 			attempt.Error = sanitizeFetchError(err)
 			attempts = append(attempts, attempt)
@@ -204,25 +208,30 @@ func ParseFetchedSubscription(data string) (*FetchedSubscription, error) {
 }
 
 func ParseFetchedSubscriptionWithOptions(data string, options FetchOptions) (*FetchedSubscription, error) {
+	return parseFetchedSubscriptionWithOptionsContext(context.Background(), data, options)
+}
+
+func parseFetchedSubscriptionWithOptionsContext(ctx context.Context, data string, options FetchOptions) (*FetchedSubscription, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	data = strings.TrimSpace(data)
 	if data == "" {
 		return nil, common.NewError("no result")
 	}
-	parseOptions := subparser.ParseOptions{
-		GroupAdaptation:  options.GroupAdaptation,
-		ConversionPolicy: fetchConversionPolicy(options),
+	parser := options.Parser
+	if parser == nil {
+		parser = subparser.SourceParser{}
 	}
-	formats := []FormatResult{
-		parseFetchedFormat(canonical.FormatXray, data, func(raw string) ([]map[string]interface{}, error) {
-			return subparser.ParseXrayOutboundsWithOptions(raw, parseOptions)
-		}),
-		parseFetchedFormat(canonical.FormatClash, data, func(raw string) ([]map[string]interface{}, error) {
-			return subparser.ParseClashOutboundsWithOptions(raw, parseOptions)
-		}),
-		parseFetchedFormat(canonical.FormatSingBox, data, subparser.ParseSingBoxOutbounds),
-		parseFetchedFormat(canonical.FormatURI, data, func(raw string) ([]map[string]interface{}, error) {
-			return subparser.ParseExternalLinkOutbounds(raw, suburi.Parse)
-		}),
+	parse := func(format string) FormatResult {
+		return parseFetchedFormat(format, data, func(raw string) ([]map[string]interface{}, error) {
+			result, err := parser.Parse(ctx, []byte(raw), parseport.Options{Format: format, GroupAdaptation: options.GroupAdaptation, ConversionPolicy: fetchConversionPolicy(options)})
+			return result.Outbounds, err
+		})
+	}
+	formats := []FormatResult{parse(canonical.FormatXray), parse(canonical.FormatClash), parse(canonical.FormatSingBox), parse(canonical.FormatURI)}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	snapshots := make([]canonical.Snapshot, 0, len(formats))
 	for _, result := range formats {

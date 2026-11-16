@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
-	subconversion "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/conversion"
+	subcanonical "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
+	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
 )
 
 func canonicalAdaptations(raw json.RawMessage) []subcanonical.Adaptation {

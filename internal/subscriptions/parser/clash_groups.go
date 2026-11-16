@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	subconversion "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/conversion"
+	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
 )
 
 func clashProxyGroupOutbounds(config map[string]interface{}, knownTags map[string]struct{}, options ParseOptions) []map[string]interface{} {

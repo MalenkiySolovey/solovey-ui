@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"time"
 
+	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	subconversion "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/conversion"
 	subformats "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/formats"
 	localsub "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/local"
 	subserver "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/server"

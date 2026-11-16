@@ -1,7 +1,7 @@
 package parser
 
 import (
-	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	"strings"
 )
 

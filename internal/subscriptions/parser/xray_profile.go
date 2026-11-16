@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	subconversion "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/conversion"
+	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
 )
 
 const xrayBalancerProbeURL = "http://www.gstatic.com/generate_204"

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"regexp"
 
-	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 )
 
 var ErrSourceFilterInvalid = errors.New("SUBSCRIPTION_SOURCE_FILTER_INVALID")

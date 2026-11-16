@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
-	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"
 )
 

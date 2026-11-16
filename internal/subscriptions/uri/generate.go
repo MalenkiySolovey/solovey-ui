@@ -10,10 +10,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
-	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
