@@ -379,3 +379,48 @@ func (o *Owner) ObserveBinding(ctx context.Context, q hostoutbounds.Query) (host
 	}
 	return hostoutbounds.Observation{Binding: o.ref(), Resource: resource, Provider: hostcore.Provider{ID: p.ID, Revision: p.Revision}, SourceRevision: revision, ResourceRevision: resourceRevision(row), Present: row.Id != 0, Missing: row.RemoteMissing}, nil
 }
+
+// Retag keeps source identity, provider admission and the exact resource lease
+// together while the canonical Outbounds owner performs the tag mutation.
+func (o *Owner) Retag(ctx context.Context, oldTag, newTag string) (bool, error) {
+	if o.tx == nil || ctx == nil {
+		return false, hostoutbounds.ErrLease
+	}
+	if oldTag != o.source.OutboundTag {
+		return false, hostoutbounds.ErrRevision
+	}
+	candidate, err := o.Prepare(ctx, hostoutbounds.MarkMissing, nil, hostoutbounds.Missing{})
+	if err != nil {
+		return false, err
+	}
+	changed := false
+	_, err = o.WithBindingLease(ctx, candidate, func(ctx context.Context, lease hostoutbounds.Lease) error {
+		admitted := lease.Admission()
+		if !admitted.Owned {
+			return hostoutbounds.ErrConflict
+		}
+		if admitted.SourceRevision != candidate.SourceRevision || admitted.ResourceRevision != candidate.ExpectedResourceRevision {
+			return hostoutbounds.ErrRevision
+		}
+		if admitted.Capability != hostcore.Available {
+			return hostoutbounds.ErrCapability
+		}
+		if admitted.Provider != candidate.Provider {
+			return hostoutbounds.ErrProvider
+		}
+		if admitted.Resource.ID == 0 {
+			return nil
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		var writeErr error
+		scoped, ok := lease.(*bindingLease)
+		if !ok {
+			return hostoutbounds.ErrLease
+		}
+		changed, writeErr = entityoutbounds.RetagSource(scoped.owner.tx.WithContext(ctx), admitted.Resource.ID, oldTag, newTag)
+		return writeErr
+	})
+	return changed, err
+}

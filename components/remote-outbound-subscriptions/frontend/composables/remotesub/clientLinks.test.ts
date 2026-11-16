@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { remoteClientSelectionValues, replaceRemoteClientLinks } from './clientLinks'
-import type { Link } from '@/types/clients'
+import type { Link } from '@solovey/component-ui/subscription-sources'
 
 describe('remote subscription client links', () => {
   it('keeps links owned by other components while replacing remote selections', () => {

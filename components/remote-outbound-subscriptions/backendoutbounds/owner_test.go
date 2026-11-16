@@ -235,3 +235,99 @@ func TestActualBindingFencesLocalOptionsChangedAfterPreview(t *testing.T) {
 		t.Fatal("local options replaced", err)
 	}
 }
+
+func TestRetagSourceBindingPreservesResourceAndRollback(t *testing.T) {
+	for _, rollback := range []bool{false, true} {
+		t.Run(map[bool]string{false: "commit", true: "rollback"}[rollback], func(t *testing.T) {
+			db, source, definition := fixture(t)
+			owner := backendoutbounds.New(db, source)
+			candidate, err := owner.Prepare(db.Statement.Context, hostoutbounds.Upsert, definition, hostoutbounds.Missing{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			receipt, err := hostoutbounds.ApplyBinding(db.Statement.Context, candidate, owner)
+			if err != nil {
+				t.Fatal(err)
+			}
+			source.OutboundId = &receipt.Resource.ID
+			if err := db.Table("remote_outbound_connections").Where("id = ?", source.Id).Updates(map[string]any{"outbound_id": receipt.Resource.ID, "synced": true}).Error; err != nil {
+				t.Fatal(err)
+			}
+			var before model.Outbound
+			if err := db.First(&before, receipt.Resource.ID).Error; err != nil {
+				t.Fatal(err)
+			}
+			sentinel := errors.New("rollback retag")
+			err = db.Transaction(func(tx *gorm.DB) error {
+				changed, err := backendoutbounds.New(tx, source).Retag(tx.Statement.Context, source.OutboundTag, "renamed-node")
+				if err != nil {
+					return err
+				}
+				if !changed {
+					t.Fatal("owned retag did not change the resource")
+				}
+				if rollback {
+					return sentinel
+				}
+				return tx.Table("remote_outbound_connections").Where("id = ?", source.Id).Update("outbound_tag", "renamed-node").Error
+			})
+			if rollback && !errors.Is(err, sentinel) || !rollback && err != nil {
+				t.Fatal(err)
+			}
+			var after model.Outbound
+			if err := db.First(&after, before.Id).Error; err != nil {
+				t.Fatal(err)
+			}
+			want := source.OutboundTag
+			if !rollback {
+				want = "renamed-node"
+			}
+			if after.Tag != want || after.Type != before.Type || after.SortOrder != before.SortOrder || string(after.Options) != string(before.Options) {
+				t.Fatalf("retag changed unrelated resource or escaped rollback: %+v", after)
+			}
+		})
+	}
+}
+func TestRetagRejectsChangedSourceAndCompetingBinding(t *testing.T) {
+	for _, competing := range []bool{false, true} {
+		t.Run(map[bool]string{false: "changed source", true: "competing binding"}[competing], func(t *testing.T) {
+			db, source, definition := fixture(t)
+			owner := backendoutbounds.New(db, source)
+			candidate, err := owner.Prepare(db.Statement.Context, hostoutbounds.Upsert, definition, hostoutbounds.Missing{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			receipt, err := hostoutbounds.ApplyBinding(db.Statement.Context, candidate, owner)
+			if err != nil {
+				t.Fatal(err)
+			}
+			source.OutboundId = &receipt.Resource.ID
+			if err := db.Table("remote_outbound_connections").Where("id = ?", source.Id).Update("outbound_id", receipt.Resource.ID).Error; err != nil {
+				t.Fatal(err)
+			}
+			expected := hostoutbounds.ErrRevision
+			if competing {
+				expected = hostoutbounds.ErrConflict
+				other := remote.RemoteOutboundConnection{SubscriptionId: source.SubscriptionId, SourceKey: "other", OutboundTag: "other-tag", OutboundId: source.OutboundId}
+				if err := db.Create(&other).Error; err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := db.Table("remote_outbound_connections").Where("id = ?", source.Id).Update("name", "changed source").Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			changed, err := backendoutbounds.New(db, source).Retag(db.Statement.Context, source.OutboundTag, "renamed-node")
+			if changed || !errors.Is(err, expected) {
+				t.Fatalf("unowned retag accepted: %v %v", changed, err)
+			}
+			var after model.Outbound
+			if err := db.First(&after, receipt.Resource.ID).Error; err != nil {
+				t.Fatal(err)
+			}
+			if after.Tag != source.OutboundTag {
+				t.Fatal("rejected retag changed resource")
+			}
+		})
+	}
+}

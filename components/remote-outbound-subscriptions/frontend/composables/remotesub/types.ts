@@ -1,5 +1,5 @@
-import type { ConfirmOptions } from '@/components/nexus/primitives/useConfirm'
-import type { SecretView } from '@/features/secretCredentialDraft'
+import type { ConfirmOptions } from '@solovey/component-ui/subscription-sources'
+import type { SecretView } from '@solovey/component-ui/subscription-sources'
 
 export interface RemoteOutboundGroup {
   id: number
@@ -42,7 +42,7 @@ export interface RemoteOutboundSubscription {
   include?: string
   exclude?: string
   removeEmojis?: boolean
-  dialerOverride?: import('@/types/dial').Dial
+  dialerOverride?: import('@solovey/component-ui/subscription-sources').DialOptions
   healthCheck?: { enabled: boolean; url?: string; interval?: string; timeout?: string }
   healthTargetId?: string
   enabled: boolean

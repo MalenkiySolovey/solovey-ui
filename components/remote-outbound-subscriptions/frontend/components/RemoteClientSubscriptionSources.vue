@@ -16,7 +16,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import StrictSelect from '@/shared/ui/StrictSelect.vue'
+import { StrictSelect } from '@solovey/component-ui/subscription-sources'
 import { loadRemoteOutboundSubscriptions } from '../composables/useRemoteOutboundCatalog'
 import { remoteClientSelectionValues, replaceRemoteClientLinks } from '../composables/remotesub/clientLinks'
 

@@ -1,7 +1,7 @@
 import { computed, reactive, ref, type Ref } from 'vue'
 import { push } from 'notivue'
-import Data from '@/store/modules/data'
-import HttpUtils from '@/plugins/httputil'
+import { reloadSourceHostData } from '@solovey/component-ui/subscription-sources'
+import { HttpUtils } from '@solovey/component-ui/subscription-sources'
 import {
   connectionGroupIds,
   connectionGroupNames,
@@ -165,7 +165,7 @@ export const useRemoteGroups = ({ subscriptions, load, t, confirm }: UseRemoteGr
     }
 
     await saveGroupConnections(group.id, next)
-    await Data().loadData()
+    await reloadSourceHostData()
   }
 
   const toggleGroupOutbounds = async (groupId: number) => {
@@ -174,7 +174,7 @@ export const useRemoteGroups = ({ subscriptions, load, t, confirm }: UseRemoteGr
       const msg = await HttpUtils.post('api/remote-outbound-subscriptions/groups/outbounds', { groupId })
       if (msg.success) {
         await load()
-        await Data().loadData()
+        await reloadSourceHostData()
       }
     } finally {
       togglingGroups[groupId] = false

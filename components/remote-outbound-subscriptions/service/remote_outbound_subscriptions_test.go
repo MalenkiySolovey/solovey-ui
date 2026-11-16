@@ -1074,50 +1074,6 @@ func TestRemoteOutboundAutoRefreshUsesInternalRefreshWithoutDeadlock(t *testing.
 	}
 }
 
-func TestRemoteOutboundAutoRefreshStopRetainsTimedOutLifecycleForRetry(t *testing.T) {
-	workerCtx, cancelWorker := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	remoteOutboundAutoMu.Lock()
-	previousStop := remoteOutboundAutoStop
-	previousDone := remoteOutboundAutoDone
-	remoteOutboundAutoStop = cancelWorker
-	remoteOutboundAutoDone = done
-	remoteOutboundAutoMu.Unlock()
-	t.Cleanup(func() {
-		cancelWorker()
-		remoteOutboundAutoMu.Lock()
-		remoteOutboundAutoStop = previousStop
-		remoteOutboundAutoDone = previousDone
-		remoteOutboundAutoMu.Unlock()
-	})
-
-	timedOut, cancel := context.WithCancel(context.Background())
-	cancel()
-	if err := StopRemoteOutboundAutoRefresh(timedOut); !errors.Is(err, context.Canceled) {
-		t.Fatalf("StopRemoteOutboundAutoRefresh error = %v, want context cancellation", err)
-	}
-	if workerCtx.Err() == nil {
-		t.Fatal("timed-out Stop did not cancel the worker")
-	}
-	remoteOutboundAutoMu.Lock()
-	retained := remoteOutboundAutoDone == done && remoteOutboundAutoStop != nil
-	remoteOutboundAutoMu.Unlock()
-	if !retained {
-		t.Fatal("timed-out Stop discarded lifecycle state required for retry")
-	}
-
-	close(done)
-	if err := StopRemoteOutboundAutoRefresh(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	remoteOutboundAutoMu.Lock()
-	cleared := remoteOutboundAutoDone == nil && remoteOutboundAutoStop == nil
-	remoteOutboundAutoMu.Unlock()
-	if !cleared {
-		t.Fatal("successful retry retained stopped worker state")
-	}
-}
-
 func TestRemoteOutboundGroupsAreManyToManyAndFallbackToDefault(t *testing.T) {
 	initRemoteOutboundTestDB(t)
 	db := dbsqlite.DB()

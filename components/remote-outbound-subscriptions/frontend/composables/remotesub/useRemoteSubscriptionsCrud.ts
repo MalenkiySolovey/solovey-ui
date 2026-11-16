@@ -1,9 +1,9 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
-import Data from '@/store/modules/data'
-import HttpUtils from '@/plugins/httputil'
-import { availableCreationChoices } from '@/types/capabilityEditors'
-import type { RuntimeCapability } from '@/types/runtimeCapabilities'
-import { secretMutation, type SecretView, type SecretMutation } from '@/features/secretCredentialDraft'
+import { reloadSourceHostData } from '@solovey/component-ui/subscription-sources'
+import { HttpUtils } from '@solovey/component-ui/subscription-sources'
+import { availableCreationChoices } from '@solovey/component-ui/subscription-sources'
+import type { RuntimeCapability } from '@solovey/component-ui/subscription-sources'
+import { secretMutation, type SecretView, type SecretMutation } from '@solovey/component-ui/subscription-sources'
 import {
   connectionConvertedType,
   connectionSourceType,
@@ -52,7 +52,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     include: '',
     exclude: '',
     removeEmojis: false,
-    dialerOverride: {} as import('@/types/dial').Dial,
+    dialerOverride: {} as import('@solovey/component-ui/subscription-sources').DialOptions,
     healthCheck: { enabled: false, url: 'https://www.gstatic.com/generate_204', interval: '10m', timeout: '3s' },
     tagPrefix: '',
     enabled: true,
@@ -184,7 +184,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
       if (msg.success) {
         resetForm()
         await load()
-        await Data().loadData()
+        await reloadSourceHostData()
       }
     } finally {
       saving.value = false
@@ -247,7 +247,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
     const msg = await HttpUtils.post('api/remote-outbound-subscriptions/delete', { id: subscription.id })
     if (msg.success) {
       await load()
-      await Data().loadData()
+      await reloadSourceHostData()
     }
   }
 
@@ -257,7 +257,7 @@ export const useRemoteSubscriptionsCrud = ({ t, confirm, loadConversionPolicy }:
       const msg = await HttpUtils.post('api/remote-outbound-subscriptions/refresh', { id })
       if (msg.success) {
         await load()
-        await Data().loadData()
+        await reloadSourceHostData()
       }
     } finally {
       refreshing[id] = false

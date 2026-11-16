@@ -363,3 +363,27 @@ terminal-state and typed owner-fencing race regressions qualify this boundary.
 Only the existing HeartbeatOperationLock mutation digest is replaced with
 fcfbce2b6d87d16bf35fbfcfcb3f654038ee0f77612655d8d1de2892e6e04890;
 the original budget base, site count and all unrelated entries remain fixed.
+
+Remote source portability reviews the existing subscription/group/connection
+mutations relocated into the Backend domain and service stores. Only those
+exact typed methods are admitted: membership creation/deletion, source/group/
+connection saves, selected group flags, primary-key-scoped refresh metadata,
+legacy group projection, and deletion of one source's four-table graph. Their
+original predicates and caller-owned transaction handles are retained. No SQL,
+table name or database handle crosses the feature Store interfaces. The former
+repeated call sites collapse into these finite Backend operations; retired
+source-file entries are removed, and unrelated entries and the original base
+identity remain fixed. The real SQLite/API/backup and source-binding suites
+exercise the portable policies through these adapters.
+
+The existing eight-worker connection check and eight-worker source-health
+loops move with their cancellation, per-probe deadlines and joined completion.
+The existing single minute ticker and refresh worker move into Scheduler; Start
+still requires Component admission, construction does no work, and Stop cancels
+and drains while retaining timed-out state for retry. This replaces the exact
+four worker sites with four reviewed sites. Deterministic cancellation/barrier,
+duplicate Start, parent cancellation and Stop retry tests qualify the lifetime.
+No per-source daemon or additional scheduler is introduced. Outbound retagging
+now calls the canonical Outbounds writer under the admitted binding lease and
+its actual transaction; the former direct Outbound table mutation is retired.
+Commit/rollback and source/writer-conflict tests qualify that owner boundary.

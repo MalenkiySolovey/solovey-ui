@@ -53,8 +53,7 @@ func validateDownloadOutbound(db *gorm.DB, id, previous uint) error {
 	return err
 }
 
-func (s *Service) fetchSource(ctx context.Context, db *gorm.DB, source remotesub.RemoteOutboundSubscription) (*remotesub.FetchedSubscription, error) {
-	options := s.fetchOptions()
+func (s *Service) fetchSourceWithOptions(ctx context.Context, db *gorm.DB, source remotesub.RemoteOutboundSubscription, options remotesub.FetchOptions) (*remotesub.FetchedSubscription, error) {
 	if source.DownloadOutboundID != 0 {
 		if source.SourceKind() != remotesub.SourceRemote || s.OutboundHTTP == nil {
 			return nil, errDownloadOutbound

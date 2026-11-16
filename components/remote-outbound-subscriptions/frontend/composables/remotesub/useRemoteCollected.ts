@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import HttpUtils from '@/plugins/httputil'
+import { HttpUtils } from '@solovey/component-ui/subscription-sources'
 import type { CollectedSubscriptionData, RemoteOutboundSubscription } from './types'
 
 export const useRemoteCollected = () => {
