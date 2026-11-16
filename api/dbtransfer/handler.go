@@ -2,7 +2,7 @@
 package dbtransfer
 
 import (
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
+	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	datalifecycle "github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"
 	"github.com/gin-gonic/gin"

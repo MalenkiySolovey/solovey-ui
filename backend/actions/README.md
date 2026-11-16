@@ -1,11 +1,12 @@
 # Semantic owner actions
 
-The fixed descriptor catalog covers two existing write commands:
+The fixed descriptor catalog covers three existing write commands:
 
 | Action | Existing owner | Semantic permission | Existing authority |
 | --- | --- | --- | --- |
 | `backup.restore` | Data Lifecycle | `backup.restore` | authenticated browser admin scope and one-use step-up for `database:restore:<rehearsal revision>` |
 | `component.remove` | RuntimeManager component lifecycle | `component.uninstall` | authenticated browser update/admin scope and one-use step-up for `component:<id>` |
+| `update.provider-maintenance` | Product Update | `update.maintain` | authenticated browser admin/update scope and one-use step-up for the exact maintenance plan digest |
 
 Each descriptor supplies owner, permission, Local Host/resource scope, risk,
 typed input schema, current preview support, step-up policy and audit class.
@@ -20,7 +21,7 @@ or permission, foreign Host/resource, mismatched schema/input/decision, or
 cancelled context denies execution. A policy result is an in-process value for
 that invocation, never a reusable approval receipt.
 
-Core API policy adapts the current session/scopes and existing step-up engine.
+Panel API policy adapts the current session/scopes and existing step-up engine.
 Credential/MFA generations, session binding, client identity, expiry, nonce and
 one-use consumption remain there. Restore approvals retain their exact archive
 rehearsal binding; the owner independently rehearses again. Component removal

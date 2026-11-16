@@ -2,15 +2,13 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
+	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
@@ -26,21 +24,25 @@ const UpdateComponentID = "panel-update-ui"
 var componentMutationMu sync.Mutex
 
 type RuntimeManager struct {
-	ConfigService *coreservice.ConfigService
-	Catalog       Catalog
-	Reconcile     func(context.Context) error
-	Migrate       func(context.Context) error
-	Timeout       time.Duration
-	Removal       *RemovalAdmission
+	Settings  ComponentSettings
+	Catalog   Catalog
+	Reconcile func(context.Context) error
+	Migrate   func(context.Context) error
+	Timeout   time.Duration
+	Removal   *RemovalAdmission
 }
 
-func NewRuntimeManager(configService *coreservice.ConfigService) RuntimeManager {
+type ComponentSettings interface {
+	SetComponentEnabled(id string, enabled bool, actor, hostname string) error
+}
+
+func NewRuntimeManager(settings ComponentSettings) RuntimeManager {
 	return RuntimeManager{
-		ConfigService: configService,
-		Catalog:       NewCatalog(),
-		Reconcile:     coreservice.ReconcileComponents,
-		Migrate:       coreservice.MigrateComponents,
-		Timeout:       10 * time.Second,
+		Settings:  settings,
+		Catalog:   NewCatalog(),
+		Reconcile: coreservice.ReconcileComponents,
+		Migrate:   coreservice.MigrateComponents,
+		Timeout:   10 * time.Second,
 	}
 }
 
@@ -155,26 +157,14 @@ func (m RuntimeManager) setEnabled(ctx OperationContext, id string, enabled bool
 	if !status.Installed {
 		return ComponentStatus{}, fmt.Errorf("component is not installed: %s", id)
 	}
-	payload, err := json.Marshal(map[string]string{
-		enabledstate.SettingKey(id): strconv.FormatBool(enabled),
-	})
-	if err != nil {
-		return ComponentStatus{}, err
-	}
-	if m.ConfigService == nil {
+	if m.Settings == nil {
 		return ComponentStatus{}, errors.New("component settings authority is unavailable")
 	}
-	if _, err := m.ConfigService.Save("settings", "set", payload, "", ctx.Actor, ctx.Hostname); err != nil {
+	if err := m.Settings.SetComponentEnabled(id, enabled, ctx.Actor, ctx.Hostname); err != nil {
 		return ComponentStatus{}, err
 	}
 	if err := m.reconcile(); err != nil {
-		rollbackPayload, marshalErr := json.Marshal(map[string]string{
-			enabledstate.SettingKey(id): strconv.FormatBool(status.Enabled),
-		})
-		if marshalErr != nil {
-			return ComponentStatus{}, errors.Join(err, marshalErr)
-		}
-		_, saveErr := m.ConfigService.Save("settings", "set", rollbackPayload, "", ctx.Actor, ctx.Hostname)
+		saveErr := m.Settings.SetComponentEnabled(id, status.Enabled, ctx.Actor, ctx.Hostname)
 		reconcileErr := m.reconcile()
 		return ComponentStatus{}, errors.Join(err, wrapCompensationError("restore component enabled state", saveErr), wrapCompensationError("reconcile restored component state", reconcileErr))
 	}

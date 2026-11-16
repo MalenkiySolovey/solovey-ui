@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
+	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
 	"io"
 	"os"
 	"path/filepath"

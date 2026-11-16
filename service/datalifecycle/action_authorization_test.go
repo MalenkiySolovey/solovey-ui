@@ -3,7 +3,7 @@ package datalifecycle
 import (
 	"context"
 	"errors"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
+	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
 	"gorm.io/gorm"
 	"strings"
 	"testing"

@@ -5,13 +5,12 @@ package panelupdateui
 import (
 	_ "embed"
 
+	panelupdatehttp "github.com/MalenkiySolovey/solovey-ui/backend/componentapi"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
-	panelupdatehttp "github.com/MalenkiySolovey/solovey-ui/components/panel-update-ui/api"
 	panelupdateservice "github.com/MalenkiySolovey/solovey-ui/components/panel-update-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
-	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
 //go:embed component.json
@@ -32,7 +31,7 @@ func init() {
 }
 
 func panelUpdateDeps(host componenthost.APIDeps) panelupdatehttp.Deps {
-	componentManager := panelupdateservice.NewManager(panelupdateservice.NewRuntimeManager(service.NewConfigServiceWithRuntime(host.Runtime)))
+	componentManager := componentManagerHTTP{owner: panelupdateservice.NewManager(panelupdateservice.NewRuntimeManager(host.ComponentSettings))}
 	return panelupdatehttp.Deps{
 		Components:       componentManager,
 		ComponentManager: componentManager,

@@ -3,7 +3,7 @@ package componenthost
 import (
 	"context"
 	hostports "github.com/MalenkiySolovey/solovey-host/componenthost"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
+	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
 	"time"
 
 	clientidentity "github.com/MalenkiySolovey/solovey-ui/internal/httpsecurity/clientidentity"
@@ -30,14 +30,15 @@ type Scheduler = hostports.Scheduler
 
 type APIDeps struct {
 	ObservationPorts
-	Runtime      *service.Runtime
-	OutboundHTTP OutboundHTTPClientProvider
-	Auth         AuthDeps
-	Request      RequestDeps
-	Rate         RateLimitDeps
-	Audit        AuditDeps
-	HTTP         HTTPDeps
-	Update       UpdateDeps
+	Runtime           *service.Runtime
+	ComponentSettings ComponentSettings
+	OutboundHTTP      OutboundHTTPClientProvider
+	Auth              AuthDeps
+	Request           RequestDeps
+	Rate              RateLimitDeps
+	Audit             AuditDeps
+	HTTP              HTTPDeps
+	Update            UpdateDeps
 }
 
 type AuthDeps struct {
@@ -95,4 +96,10 @@ type RouteAdapter[T any] struct {
 func (a RouteAdapter[T]) RegisterRoutes(g *gin.RouterGroup, host APIDeps) error {
 	a.Register(g, a.Build(host))
 	return nil
+}
+
+// ComponentSettings is the existing Panel command used by lifecycle enable and
+// compensation. It retains the ConfigService transaction and post-commit effects.
+type ComponentSettings interface {
+	SetComponentEnabled(id string, enabled bool, actor, hostname string) error
 }

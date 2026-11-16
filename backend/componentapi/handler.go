@@ -1,25 +1,25 @@
-package api
+package componentapi
 
 import (
 	requestcontext "context"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
+	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
 	"net/http"
 
-	panelupdateservice "github.com/MalenkiySolovey/solovey-ui/components/panel-update-ui/service"
-	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
-	"github.com/MalenkiySolovey/solovey-ui/service"
+	"github.com/MalenkiySolovey/solovey-host/componenthost/manifest"
+	backendaudit "github.com/MalenkiySolovey/solovey-ui/backend/audit"
+	"github.com/MalenkiySolovey/solovey-ui/backend/componentview"
 	"github.com/gin-gonic/gin"
 )
 
 type ComponentCatalog interface {
-	Inventory() (panelupdateservice.Inventory, error)
+	Inventory() (componentview.Inventory, error)
 }
 
 type ComponentManager interface {
-	Enable(panelupdateservice.OperationContext, string) (panelupdateservice.ComponentStatus, error)
-	Disable(panelupdateservice.OperationContext, string) (panelupdateservice.ComponentStatus, error)
-	Install(panelupdateservice.OperationContext, string) (panelupdateservice.ComponentStatus, error)
-	Remove(panelupdateservice.OperationContext, string) (panelupdateservice.ComponentStatus, error)
+	Enable(componentview.OperationContext, string) (componentview.ComponentStatus, error)
+	Disable(componentview.OperationContext, string) (componentview.ComponentStatus, error)
+	Install(componentview.OperationContext, string) (componentview.ComponentStatus, error)
+	Remove(componentview.OperationContext, string) (componentview.ComponentStatus, error)
 }
 
 type Deps struct {
@@ -78,7 +78,7 @@ func (h Handler) componentSetEnabled(context *gin.Context, enabled bool) {
 		return
 	}
 	var (
-		status panelupdateservice.ComponentStatus
+		status componentview.ComponentStatus
 		err    error
 	)
 	if enabled {
@@ -90,7 +90,7 @@ func (h Handler) componentSetEnabled(context *gin.Context, enabled bool) {
 		context.AbortWithStatusJSON(http.StatusConflict, gin.H{"success": false, "msg": "component state change rejected"})
 		return
 	}
-	h.deps.Audit(context, h.deps.LoginUser(context), "component_enabled_changed", "component", service.AuditSeverityInfo, map[string]any{
+	h.deps.Audit(context, h.deps.LoginUser(context), "component_enabled_changed", "component", backendaudit.SeverityInfo, map[string]any{
 		"component": id,
 		"enabled":   enabled,
 	})
@@ -110,7 +110,7 @@ func (h Handler) componentInstall(context *gin.Context) {
 		h.deps.JSONMsg(context, "", err)
 		return
 	}
-	h.deps.Audit(context, h.deps.LoginUser(context), "component_installed_changed", "component", service.AuditSeverityWarn, map[string]any{
+	h.deps.Audit(context, h.deps.LoginUser(context), "component_installed_changed", "component", backendaudit.SeverityWarn, map[string]any{
 		"component": id,
 		"installed": true,
 	})
@@ -147,7 +147,7 @@ func (h Handler) componentRemove(context *gin.Context) {
 		h.deps.JSONMsg(context, "", err)
 		return
 	}
-	h.deps.Audit(context, h.deps.LoginUser(context), "component_installed_changed", "component", service.AuditSeverityWarn, map[string]any{
+	h.deps.Audit(context, h.deps.LoginUser(context), "component_installed_changed", "component", backendaudit.SeverityWarn, map[string]any{
 		"actionId": actionInvocation.ID, "inputDigest": actionInvocation.InputDigest,
 		"correlation": actionInvocation.Reference.Correlation(),
 		"component":   id,
@@ -186,7 +186,7 @@ func (h Handler) validComponentID(context *gin.Context) (string, bool) {
 	return id, true
 }
 
-func (h Handler) componentOperationContext(context *gin.Context) panelupdateservice.OperationContext {
+func (h Handler) componentOperationContext(context *gin.Context) componentview.OperationContext {
 	actor := ""
 	if h.deps.LoginUser != nil {
 		actor = h.deps.LoginUser(context)
@@ -195,7 +195,7 @@ func (h Handler) componentOperationContext(context *gin.Context) panelupdateserv
 	if h.deps.Hostname != nil {
 		hostname = h.deps.Hostname(context)
 	}
-	return panelupdateservice.OperationContext{
+	return componentview.OperationContext{
 		RequestContext: context.Request.Context(),
 		Actor:          actor,
 		Hostname:       hostname,

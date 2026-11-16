@@ -8,7 +8,7 @@ import (
 	"errors"
 
 	wire "github.com/MalenkiySolovey/solovey-contracts/management/v1"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
+	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 )

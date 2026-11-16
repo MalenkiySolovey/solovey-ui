@@ -2,7 +2,7 @@ package api
 
 import (
 	"context"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
+	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"

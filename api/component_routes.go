@@ -18,7 +18,8 @@ import (
 func (a *ApiService) componentAPI(requireStepUp func(*gin.Context, string, string) bool, authorizationChanged func()) componenthost.APIDeps {
 	runtime := a.Runtime
 	return componenthost.APIDeps{
-		Runtime: a.Runtime,
+		Runtime:           a.Runtime,
+		ComponentSettings: a.ConfigService,
 		OutboundHTTP: componenthost.OutboundHTTPClientFunc(func(tag string, timeout time.Duration) (*http.Client, error) {
 			return service.NewOutboundHTTPClientForRuntime(runtime, tag, timeout)
 		}),

@@ -3,8 +3,8 @@ package actions
 import (
 	"context"
 	"errors"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	"github.com/MalenkiySolovey/solovey-host/hostref"
+	operationcoordination "github.com/MalenkiySolovey/solovey-host/operationref"
 	"strings"
 	"testing"
 )

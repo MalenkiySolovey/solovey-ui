@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
+	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry/facts"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"

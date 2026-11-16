@@ -10,7 +10,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	operationcoordination "github.com/MalenkiySolovey/solovey-host/operationref"
 )
 
 const (

@@ -1,45 +1,45 @@
-package api
+package componentapi
 
 import (
 	"context"
 	"encoding/json"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	operationcoordination "github.com/MalenkiySolovey/solovey-host/operationref"
+	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	panelupdateservice "github.com/MalenkiySolovey/solovey-ui/components/panel-update-ui/service"
-	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
+	"github.com/MalenkiySolovey/solovey-host/componenthost/manifest"
+	"github.com/MalenkiySolovey/solovey-ui/backend/componentview"
 	"github.com/gin-gonic/gin"
 )
 
 type componentManagerStepUpStub struct {
 	removeCalls int
-	operation   panelupdateservice.OperationContext
+	operation   componentview.OperationContext
 }
 
-func (stub *componentManagerStepUpStub) Enable(panelupdateservice.OperationContext, string) (panelupdateservice.ComponentStatus, error) {
-	return panelupdateservice.ComponentStatus{}, nil
+func (stub *componentManagerStepUpStub) Enable(componentview.OperationContext, string) (componentview.ComponentStatus, error) {
+	return componentview.ComponentStatus{}, nil
 }
 
-func (stub *componentManagerStepUpStub) Disable(panelupdateservice.OperationContext, string) (panelupdateservice.ComponentStatus, error) {
-	return panelupdateservice.ComponentStatus{}, nil
+func (stub *componentManagerStepUpStub) Disable(componentview.OperationContext, string) (componentview.ComponentStatus, error) {
+	return componentview.ComponentStatus{}, nil
 }
 
-func (stub *componentManagerStepUpStub) Install(panelupdateservice.OperationContext, string) (panelupdateservice.ComponentStatus, error) {
-	return panelupdateservice.ComponentStatus{}, nil
+func (stub *componentManagerStepUpStub) Install(componentview.OperationContext, string) (componentview.ComponentStatus, error) {
+	return componentview.ComponentStatus{}, nil
 }
 
-func (stub *componentManagerStepUpStub) Remove(operation panelupdateservice.OperationContext, id string) (panelupdateservice.ComponentStatus, error) {
+func (stub *componentManagerStepUpStub) Remove(operation componentview.OperationContext, id string) (componentview.ComponentStatus, error) {
 	invocation := actions.RemoveComponent(operationcoordination.NewReference("component-lifecycle", "component:"+id, "component-remove:fixture"), actions.ComponentRemoveInput{ComponentID: id})
 	if _, err := actions.Require(operation.RequestContext, invocation, operation.Authorize); err != nil {
-		return panelupdateservice.ComponentStatus{}, err
+		return componentview.ComponentStatus{}, err
 	}
 	stub.removeCalls++
 	stub.operation = operation
-	return panelupdateservice.ComponentStatus{ID: id, Installed: false}, nil
+	return componentview.ComponentStatus{ID: id, Installed: false}, nil
 }
 
 func TestComponentRemoveFailsClosedWithoutReauthenticationBoundary(t *testing.T) {
@@ -123,10 +123,10 @@ func TestComponentRemoveRequiresExactActionTargetAtOwner(t *testing.T) {
 }
 
 type componentCatalogStub struct {
-	inventory panelupdateservice.Inventory
+	inventory componentview.Inventory
 }
 
-func (stub componentCatalogStub) Inventory() (panelupdateservice.Inventory, error) {
+func (stub componentCatalogStub) Inventory() (componentview.Inventory, error) {
 	return stub.inventory, nil
 }
 
@@ -135,9 +135,9 @@ func TestComponentsEndpointReturnsUpdateCatalogInventory(t *testing.T) {
 	router := gin.New()
 	RegisterRoutes(router.Group("/api"), Deps{
 		Components: componentCatalogStub{
-			inventory: panelupdateservice.Inventory{
+			inventory: componentview.Inventory{
 				BinaryProfile: "full",
-				Installed: []panelupdateservice.ComponentStatus{
+				Installed: []componentview.ComponentStatus{
 					{
 						ID:                "telegram",
 						Name:              "Telegram",
@@ -148,10 +148,10 @@ func TestComponentsEndpointReturnsUpdateCatalogInventory(t *testing.T) {
 						Installed:         true,
 						Enabled:           true,
 						Active:            true,
-						Group:             panelupdateservice.GroupInstalled,
+						Group:             componentview.GroupInstalled,
 					},
 				},
-				Available: []panelupdateservice.ComponentStatus{
+				Available: []componentview.ComponentStatus{
 					{
 						ID:                "paid-subscriptions",
 						Name:              "Paid Subscriptions",
@@ -159,10 +159,10 @@ func TestComponentsEndpointReturnsUpdateCatalogInventory(t *testing.T) {
 						Delivery:          manifest.DeliveryInProcess,
 						AvailableInBinary: true,
 						Installable:       true,
-						Group:             panelupdateservice.GroupAvailable,
+						Group:             componentview.GroupAvailable,
 					},
 				},
-				Unavailable: []panelupdateservice.ComponentStatus{
+				Unavailable: []componentview.ComponentStatus{
 					{
 						ID:                "future-component",
 						Name:              "Future Component",
@@ -170,7 +170,7 @@ func TestComponentsEndpointReturnsUpdateCatalogInventory(t *testing.T) {
 						Delivery:          manifest.DeliveryInProcess,
 						AvailableInBinary: false,
 						Installable:       false,
-						Group:             panelupdateservice.GroupUnavailable,
+						Group:             componentview.GroupUnavailable,
 						UnavailableReason: "not bundled in this binary profile",
 					},
 				},
@@ -192,9 +192,9 @@ func TestComponentsEndpointReturnsUpdateCatalogInventory(t *testing.T) {
 	var response struct {
 		Success bool `json:"success"`
 		Obj     struct {
-			Installed   []panelupdateservice.ComponentStatus `json:"installed"`
-			Available   []panelupdateservice.ComponentStatus `json:"available"`
-			Unavailable []panelupdateservice.ComponentStatus `json:"unavailable"`
+			Installed   []componentview.ComponentStatus `json:"installed"`
+			Available   []componentview.ComponentStatus `json:"available"`
+			Unavailable []componentview.ComponentStatus `json:"unavailable"`
 		} `json:"obj"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
