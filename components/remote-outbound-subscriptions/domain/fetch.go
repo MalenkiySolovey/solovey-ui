@@ -22,7 +22,6 @@ var fetchSubscriptionDataContext = subexternal.FetchContext
 var fetchSubscriptionDataWithUserAgentContext = subexternal.FetchWithUserAgentContext
 var ValidateSourceUserAgent = feature.ValidateSourceUserAgent
 var mergeFetchedSubscriptions = feature.MergeFetchedSubscriptions
-var sanitizeFetchErrorText = feature.SanitizeFetchErrorText
 
 func ValidateSubscriptionURL(rawURL string) error {
 	if rawURL == "" {

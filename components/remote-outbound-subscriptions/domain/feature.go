@@ -36,16 +36,11 @@ var ConnectionOutboundConfig = feature.ConnectionOutboundConfig
 var HydrateConnectionTypeInfo = feature.HydrateConnectionTypeInfo
 var ApplySourceFilters = feature.ApplySourceFilters
 var canonicalConnection = feature.CanonicalConnection
-var legacyTypedLabelSourceKey = feature.LegacyTypedLabelSourceKey
-var sourceDisplayName = feature.SourceDisplayName
 var connectionOutboundConfig = feature.ConnectionOutboundConfigWithTags
-var connectionOutboundMapForClient = feature.ConnectionOutboundMapForClient
 var applyClientConversion = feature.ApplyClientConversion
 var stringList = feature.StringList
-var cloneOutboundMap = feature.CloneOutboundMap
 var ErrSourceFilterInvalid = feature.ErrSourceFilterInvalid
 var ErrSourceFilterDependency = feature.ErrSourceFilterDependency
-var rewriteOutboundTagReferences = feature.RewriteOutboundTagReferences
 
 const SourceRemote = feature.SourceRemote
 const SourceInline = feature.SourceInline
@@ -58,10 +53,6 @@ type FormatResult = feature.FormatResult
 type FetchAttempt = feature.FetchAttempt
 type FetchedSubscription = feature.FetchedSubscription
 type CollectionSnapshot = feature.CollectionSnapshot
-type clientLinkSelection struct {
-	Kind string
-	ID   uint
-}
 type RefreshResult = feature.RefreshResult
 type GroupActionResult = feature.GroupActionResult
 
