@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	passwordutil "github.com/MalenkiySolovey/solovey-ui/backend/security/password"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	storagesqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
@@ -14,7 +15,6 @@ import (
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
-	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 
 	"gorm.io/gorm"
 )

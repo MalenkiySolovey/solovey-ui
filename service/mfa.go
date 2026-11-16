@@ -13,12 +13,12 @@ import (
 	"strings"
 	"time"
 
+	passwordutil "github.com/MalenkiySolovey/solovey-ui/backend/security/password"
+	totputil "github.com/MalenkiySolovey/solovey-ui/backend/security/totp"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	settingscrypto "github.com/MalenkiySolovey/solovey-ui/internal/settings/crypto"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
-	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
-	totputil "github.com/MalenkiySolovey/solovey-ui/util/totp"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

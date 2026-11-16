@@ -14,11 +14,11 @@ import (
 	"time"
 
 	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
+	passwordutil "github.com/MalenkiySolovey/solovey-ui/backend/security/password"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
-	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 	"github.com/MalenkiySolovey/solovey-ui/util/ratelimit"
 
 	"github.com/gin-contrib/sessions"

@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
+	passwordutil "github.com/MalenkiySolovey/solovey-ui/backend/security/password"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
-	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

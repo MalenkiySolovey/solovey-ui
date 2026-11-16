@@ -13,10 +13,10 @@ import (
 	"time"
 
 	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
+	passwordutil "github.com/MalenkiySolovey/solovey-ui/backend/security/password"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
-	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 
 	"github.com/coder/websocket"
 	"github.com/gin-contrib/sessions"

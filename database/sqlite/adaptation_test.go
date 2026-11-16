@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	passwordutil "github.com/MalenkiySolovey/solovey-ui/backend/security/password"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
-	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 )
 
 // TestAdaptRehashesLegacyPlaintextPassword simulates an imported legacy backup

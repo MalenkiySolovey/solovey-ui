@@ -6,12 +6,12 @@ import (
 	"strings"
 	"time"
 
+	passwordutil "github.com/MalenkiySolovey/solovey-ui/backend/security/password"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
-	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 
 	"gorm.io/gorm"
 )
