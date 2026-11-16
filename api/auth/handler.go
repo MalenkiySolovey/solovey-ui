@@ -5,14 +5,14 @@ import (
 	"net/http"
 	"time"
 
+	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
 	clientidentity "github.com/MalenkiySolovey/solovey-ui/internal/httpsecurity/clientidentity"
-	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
-	UserService               service.UserService
-	SettingService            service.SettingService
+	UserService               UserCommands
+	SettingService            SessionSettings
 	NotifyEvent               func(string, map[string]string)
 	NotifyAuthenticationEvent func(string, string, string, clientidentity.V1)
 	ClientIdentity            func(*gin.Context) clientidentity.V1
@@ -22,7 +22,7 @@ type Handler struct {
 	Audit                     func(*gin.Context, string, string, string, string, map[string]any)
 	LoginUser                 func(*gin.Context) string
 	SetLoginUser              func(*gin.Context, string, int, string) error
-	SetLoginSecurity          func(*gin.Context, service.LoginSessionSpec) (service.LoginSessionEstablishment, error)
+	SetLoginSecurity          func(*gin.Context, panelsecurity.LoginSessionSpec) (panelsecurity.LoginSessionEstablishment, error)
 	ClearSession              func(*gin.Context)
 	RemoteIP                  func(*gin.Context) string
 	CheckLoginRateLimit       func(string) error
@@ -48,8 +48,8 @@ func (a *Handler) requireStepUp(c *gin.Context, operation, target string) bool {
 
 // Deps contains the host capabilities required by authentication routes.
 type Deps struct {
-	UserService               service.UserService
-	SettingService            service.SettingService
+	UserService               UserCommands
+	SettingService            SessionSettings
 	NotifyEvent               func(string, map[string]string)
 	NotifyAuthenticationEvent func(string, string, string, clientidentity.V1)
 	ClientIdentity            func(*gin.Context) clientidentity.V1
@@ -59,7 +59,7 @@ type Deps struct {
 	Audit                     func(*gin.Context, string, string, string, string, map[string]any)
 	LoginUser                 func(*gin.Context) string
 	SetLoginUser              func(*gin.Context, string, int, string) error
-	SetLoginSecurity          func(*gin.Context, service.LoginSessionSpec) (service.LoginSessionEstablishment, error)
+	SetLoginSecurity          func(*gin.Context, panelsecurity.LoginSessionSpec) (panelsecurity.LoginSessionEstablishment, error)
 	ClearSession              func(*gin.Context)
 	RemoteIP                  func(*gin.Context) string
 	CheckLoginRateLimit       func(string) error

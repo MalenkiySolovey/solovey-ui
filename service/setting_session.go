@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
 	configsecurity "github.com/MalenkiySolovey/solovey-ui/config/security"
 	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 	settingsstore "github.com/MalenkiySolovey/solovey-ui/internal/settings/store"
@@ -39,10 +40,7 @@ func (s *SettingService) GetSessionMaxAge() (int, error) {
 	return s.getInt(settingcatalog.SessionMaxAgeKey)
 }
 
-type SessionLifetime struct {
-	Posture      string
-	LegacyMaxAge time.Duration
-}
+type SessionLifetime = panelsecurity.SessionLifetime
 
 // ResolveSessionLifetime keeps upgraded installations on their explicit
 // compatibility posture until the administrator adopts bounded_v1. A legacy

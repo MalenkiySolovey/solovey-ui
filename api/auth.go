@@ -12,8 +12,8 @@ func (a *ApiService) authHandler() *authhttp.Handler {
 
 func (a *ApiService) authDeps() authhttp.Deps {
 	return authhttp.Deps{
-		UserService:    a.UserService,
-		SettingService: a.SettingService,
+		UserService:    administratorCommands{service: &a.UserService},
+		SettingService: &a.SettingService,
 		NotifyEvent:    service.NotifyPanelEvent,
 		NotifyAuthenticationEvent: func(event, user, sessionRevision string, identity clientidentity.V1) {
 			service.NotifyPanelAuthenticationEvent(service.PanelAuthenticationEventV1{Event: event, User: user, SessionRevision: sessionRevision, ClientIdentity: identity})

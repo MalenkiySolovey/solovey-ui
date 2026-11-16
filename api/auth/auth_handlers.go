@@ -5,8 +5,9 @@ import (
 	"strconv"
 	"time"
 
+	backendaudit "github.com/MalenkiySolovey/solovey-ui/backend/audit"
+	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -19,7 +20,7 @@ func (a *Handler) Login(c *gin.Context) {
 	// username (a distributed brute-force on one account from rotating IPs,
 	// which the per-IP limit alone cannot stop).
 	if err := a.CheckLoginRateLimit(remoteIP); err != nil {
-		a.Audit(c, username, "login_blocked", "auth", service.AuditSeverityWarn, map[string]any{
+		a.Audit(c, username, "login_blocked", "auth", backendaudit.SeverityWarn, map[string]any{
 			"reason": "rate_limit_ip",
 		})
 		// Real-time alert on the lockout transition (T1110): brute-force reaching
@@ -43,7 +44,7 @@ func (a *Handler) Login(c *gin.Context) {
 	if err != nil {
 		a.RecordLoginFailure(remoteIP)
 		a.RecordLoginFailure(userKey)
-		a.Audit(c, username, "login_failed", "auth", service.AuditSeverityWarn, map[string]any{
+		a.Audit(c, username, "login_failed", "auth", backendaudit.SeverityWarn, map[string]any{
 			"reason": "authentication_failed",
 		})
 		a.NotifyEvent("login_failed", a.securityEventRequestFields(c))
@@ -67,7 +68,7 @@ func (a *Handler) Login(c *gin.Context) {
 	}
 
 	remembered, _ := strconv.ParseBool(c.Request.FormValue("remember"))
-	established, err := a.SetLoginSecurity(c, service.LoginSessionSpec{
+	established, err := a.SetLoginSecurity(c, panelsecurity.LoginSessionSpec{
 		UserID:               authResult.UserID(),
 		Username:             loginUser,
 		AuthState:            authResult.AuthState,
@@ -79,20 +80,20 @@ func (a *Handler) Login(c *gin.Context) {
 		Remembered:           remembered,
 		ClientProvenance:     "resolved",
 		ClientPrefix:         remoteIP,
-		UserAgentHash:        service.UserAgentDigest(c.Request.UserAgent()),
+		UserAgentHash:        panelsecurity.UserAgentDigest(c.Request.UserAgent()),
 		DeviceLabel:          boundedUserAgent(c.Request.UserAgent()),
 		LegacyMaxAge:         sessionLifetime.LegacyMaxAge,
 	})
 	if err != nil {
 		logger.Warning("login failed: ", err)
-		a.Audit(c, loginUser, "login_session_failed", "auth", service.AuditSeverityWarn, map[string]any{
+		a.Audit(c, loginUser, "login_session_failed", "auth", backendaudit.SeverityWarn, map[string]any{
 			"reason": "session_establishment_failed",
 		})
 		a.JSONMsg(c, "", err)
 		return
 	}
 	logger.Info("admin login success")
-	a.Audit(c, loginUser, "login_success", "auth", service.AuditSeverityInfo, nil)
+	a.Audit(c, loginUser, "login_success", "auth", backendaudit.SeverityInfo, nil)
 	a.NotifyEvent("login_success", map[string]string{
 		"user":            loginUser,
 		"ip":              remoteIP,
@@ -110,7 +111,7 @@ func (a *Handler) Logout(c *gin.Context) {
 	loginUser := a.LoginUser(c)
 	if loginUser != "" {
 		logger.Info("admin logout")
-		a.Audit(c, loginUser, "logout", "auth", service.AuditSeverityInfo, nil)
+		a.Audit(c, loginUser, "logout", "auth", backendaudit.SeverityInfo, nil)
 		a.NotifyEvent("logout", map[string]string{"user": loginUser})
 	}
 	a.ClearSession(c)
@@ -131,7 +132,7 @@ func (a *Handler) LogoutAllAdmins(c *gin.Context) {
 		if loginUser != "" {
 			logger.Info("all admin web sessions logged out")
 		}
-		a.Audit(c, loginUser, "logout_all_admins", "auth", service.AuditSeverityWarn, nil)
+		a.Audit(c, loginUser, "logout_all_admins", "auth", backendaudit.SeverityWarn, nil)
 		a.NotifyEvent("logout_all_admins", map[string]string{
 			"user": loginUser,
 		})

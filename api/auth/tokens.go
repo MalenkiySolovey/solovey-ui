@@ -3,7 +3,7 @@ package auth
 import (
 	"strconv"
 
-	"github.com/MalenkiySolovey/solovey-ui/service"
+	backendaudit "github.com/MalenkiySolovey/solovey-ui/backend/audit"
 
 	"github.com/gin-gonic/gin"
 )
@@ -34,7 +34,7 @@ func (a *Handler) AddToken(c *gin.Context) {
 	token, err := a.UserService.AddToken(loginUser, expiryInt, desc, scope)
 	if err == nil {
 		a.ReloadTokens()
-		a.Audit(c, loginUser, "api_token_created", "api_token", service.AuditSeverityWarn, map[string]any{
+		a.Audit(c, loginUser, "api_token_created", "api_token", backendaudit.SeverityWarn, map[string]any{
 			"desc":   desc,
 			"expiry": expiryInt,
 			"scope":  scope,
@@ -51,7 +51,7 @@ func (a *Handler) DeleteToken(c *gin.Context) {
 	err := a.UserService.DeleteToken(a.LoginUser(c), tokenId)
 	if err == nil {
 		a.ReloadTokens()
-		a.Audit(c, a.LoginUser(c), "api_token_deleted", "api_token", service.AuditSeverityWarn, map[string]any{
+		a.Audit(c, a.LoginUser(c), "api_token_deleted", "api_token", backendaudit.SeverityWarn, map[string]any{
 			"id": tokenId,
 		})
 	}
@@ -71,7 +71,7 @@ func (a *Handler) SetTokenEnabled(c *gin.Context) {
 	err = a.UserService.SetTokenEnabled(a.LoginUser(c), id, enabled)
 	if err == nil {
 		a.ReloadTokens()
-		a.Audit(c, a.LoginUser(c), "api_token_enabled_changed", "api_token", service.AuditSeverityWarn, map[string]any{
+		a.Audit(c, a.LoginUser(c), "api_token_enabled_changed", "api_token", backendaudit.SeverityWarn, map[string]any{
 			"id":      id,
 			"enabled": enabled,
 		})
