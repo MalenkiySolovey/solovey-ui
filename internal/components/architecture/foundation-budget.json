@@ -2434,30 +2434,6 @@
     },
     {
       "rule": "worker-lifetime",
-      "path": "components/remote-outbound-subscriptions/source/domain/check.go",
-      "symbol": "CheckConnectionRecordsWithDB",
-      "digest": "e1f747c7c3e633a1459b398926a749e3c98205b08eaff662ed46869889c58ef8"
-    },
-    {
-      "rule": "worker-lifetime",
-      "path": "components/remote-outbound-subscriptions/source/service/scheduler.go",
-      "symbol": "*Scheduler.Start",
-      "digest": "5da5cb496e27d0bf5464b6b45a51757e5273f9b978daa24f9bfaa091546ed0cd"
-    },
-    {
-      "rule": "worker-lifetime",
-      "path": "components/remote-outbound-subscriptions/source/service/scheduler.go",
-      "symbol": "*Scheduler.startLocked",
-      "digest": "a2ddc4dab8c7bac2f7b6fe411503d376363b88a4701e9c17be3b1b7c683f9230"
-    },
-    {
-      "rule": "worker-lifetime",
-      "path": "components/remote-outbound-subscriptions/source/service/source_health.go",
-      "symbol": "*Service.probeSourceTargets",
-      "digest": "7455526ea3f111ada9e36123daa6357206f0c3752ee6ca3fc5284ff8eef1e0ef"
-    },
-    {
-      "rule": "worker-lifetime",
       "path": "components/server-protection/component.go",
       "symbol": "component.Start",
       "digest": "a3c4075fa192f36e4dd5aa952f4a1cfad9ef69fc8b35e11e296cbbc4b9cec706"

@@ -4,8 +4,8 @@ package service
 
 import (
 	"context"
+	feature "github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions/service"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
-	feature "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/source/service"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 )

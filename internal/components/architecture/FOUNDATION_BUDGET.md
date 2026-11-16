@@ -387,3 +387,10 @@ No per-source daemon or additional scheduler is introduced. Outbound retagging
 now calls the canonical Outbounds writer under the admitted binding lease and
 its actual transaction; the former direct Outbound table mutation is retired.
 Commit/rollback and source/writer-conflict tests qualify that owner boundary.
+
+Remote subscription source integration retires the four exact portable worker
+sites from the Product budget because their only editable implementation now
+lives in the selected immutable Component module. The producer architecture
+and race suites qualify those same bounded workers and cancellation behavior.
+All Backend adapter sites, original base identity and unrelated entries remain
+fixed; no new Product worker or database authority is admitted.

@@ -4,9 +4,10 @@ package remoteoutboundsubscriptions
 
 import (
 	"context"
-	_ "embed"
 	"errors"
 	"sync"
+
+	subscriptionsource "github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions"
 
 	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
@@ -26,8 +27,7 @@ import (
 	"gorm.io/gorm"
 )
 
-//go:embed component.json
-var componentJSON []byte
+var componentJSON = subscriptionsource.ManifestJSON()
 
 var componentManifest = manifest.MustFromJSON(componentJSON)
 var id = componentManifest.ID

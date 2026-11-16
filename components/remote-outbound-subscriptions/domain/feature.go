@@ -3,7 +3,7 @@
 package remote
 
 import (
-	feature "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/source/domain"
+	feature "github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions/domain"
 	"gorm.io/gorm"
 )
 

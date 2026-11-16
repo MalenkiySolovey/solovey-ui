@@ -4,8 +4,8 @@ package remotesubservice
 
 import (
 	"context"
+	feature "github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions/service"
 	remotesub "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
-	feature "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/source/service"
 )
 
 func (s *Service) RefreshDueSubscriptions(loginUser string) (int, error) {
