@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	remote "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 func TestUnusableProviderResponsesKeepAcceptedSnapshotAndWorkingBindings(t *testing.T) {

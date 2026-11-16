@@ -9,9 +9,9 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/mapping"
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

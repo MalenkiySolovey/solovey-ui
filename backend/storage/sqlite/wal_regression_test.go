@@ -200,7 +200,7 @@ func TestCloseForFileSwapCheckpointsAndDetachesExactLiveDatabase(t *testing.T) {
 	if err := CloseForFileSwap(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if DB() != nil || currentDatabasePath() != "" {
+	if DB() != nil || CurrentPath() != "" {
 		t.Fatal("file-swap close left the live database attached")
 	}
 	observed := openWALRegressionDB(t, path)

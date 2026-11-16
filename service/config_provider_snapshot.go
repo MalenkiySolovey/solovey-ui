@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	clientdevices "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients/devices"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/targetcheck"

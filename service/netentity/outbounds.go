@@ -3,7 +3,7 @@ package netentity
 import (
 	"encoding/json"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 

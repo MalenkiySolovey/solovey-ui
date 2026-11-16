@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"

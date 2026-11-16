@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	componentregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/database/schema"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	pressuredomain "github.com/MalenkiySolovey/solovey-ui/internal/ops/resourcepressure"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 	deploymentservice "github.com/MalenkiySolovey/solovey-ui/service/deployment"

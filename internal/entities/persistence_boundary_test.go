@@ -36,7 +36,7 @@ func TestR4DomainPackagesDoNotImportConcreteDatabaseLifecycle(t *testing.T) {
 					return err
 				}
 				for _, forbidden := range []string{
-					"github.com/MalenkiySolovey/solovey-ui/database/sqlite",
+					"github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite",
 					"github.com/MalenkiySolovey/solovey-ui/database/migration",
 					"github.com/MalenkiySolovey/solovey-ui/database/backup",
 					"github.com/MalenkiySolovey/solovey-ui/database/restorestate",

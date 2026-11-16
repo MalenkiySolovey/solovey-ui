@@ -5,17 +5,15 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 )
 
 func prepareForInit(ctx context.Context) error {
@@ -91,17 +89,13 @@ type dbPoolSetter interface {
 	SetConnMaxLifetime(time.Duration)
 }
 
-func open(dbPath string) error {
-	return openContext(context.Background(), dbPath)
-}
-
-func openContext(ctx context.Context, dbPath string) error {
+func openContext(ctx context.Context, dbPath string, debug bool) error {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o750); err != nil {
 		return err
 	}
 
 	gormLog := gormlogger.Interface(gormlogger.Discard)
-	if configlogging.IsDebug() {
+	if debug {
 		gormLog = gormlogger.Default
 	}
 	separator := "?"
@@ -130,7 +124,7 @@ func openContext(ctx context.Context, dbPath string) error {
 	if owner != nil {
 		sqlDB.SetMaxIdleConns(0)
 	}
-	if configlogging.IsDebug() {
+	if debug {
 		openedDB = openedDB.Debug()
 	}
 
@@ -184,7 +178,8 @@ func DB() *gorm.DB {
 	return db
 }
 
-func currentDatabasePath() string {
+// CurrentPath observes the active database identity without acquiring authority.
+func CurrentPath() string {
 	dbMu.RLock()
 	defer dbMu.RUnlock()
 	return activeDBPath

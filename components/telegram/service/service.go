@@ -10,7 +10,7 @@ import (
 	"time"
 
 	canonical "github.com/MalenkiySolovey/solovey-component-telegram/service"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 )
 
 type Settings interface {

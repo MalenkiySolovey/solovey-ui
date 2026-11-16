@@ -9,10 +9,10 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
 	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	datalifecycle "github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"
 	"gorm.io/gorm"
 )

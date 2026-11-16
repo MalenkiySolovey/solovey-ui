@@ -165,7 +165,7 @@ func TestFileSwapDrainsSupportedSQLResourceLifetimes(t *testing.T) {
 			case <-time.After(3 * time.Second):
 				t.Fatal("released resources did not drain")
 			}
-			if DB() != nil || currentDatabasePath() != "" {
+			if DB() != nil || CurrentPath() != "" {
 				t.Fatal("standalone close did not report final nil state")
 			}
 			if err := old.Raw("SELECT 1").Scan(&count).Error; err == nil {
@@ -191,7 +191,7 @@ func TestFileSwapCancellationKeepsOriginalGenerationHealthy(t *testing.T) {
 	if err := CloseForFileSwap(ctx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("bounded drain: %v", err)
 	}
-	if DB() != old || currentDatabasePath() != path {
+	if DB() != old || CurrentPath() != path {
 		t.Fatal("failed drain changed live identity")
 	}
 	var value string
