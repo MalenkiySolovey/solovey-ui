@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
+	backendsecuritycrypto "github.com/MalenkiySolovey/solovey-ui/backend/security/crypto"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
-	settingscrypto "github.com/MalenkiySolovey/solovey-ui/internal/settings/crypto"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
@@ -155,7 +155,7 @@ func (s *StepUpService) digest(token string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	key, err := settingscrypto.DeriveHKDFKey(secret, salt, []byte("sui:step-up-grant:v1"))
+	key, err := backendsecuritycrypto.DeriveHKDFKey(secret, salt, []byte("sui:step-up-grant:v1"))
 	if err != nil {
 		return "", err
 	}

@@ -2,17 +2,15 @@ package crypto
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/base64"
-	"io"
 	"os"
 	"strings"
 	"sync"
 
+	backendsecuritycrypto "github.com/MalenkiySolovey/solovey-ui/backend/security/crypto"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
-	"golang.org/x/crypto/hkdf"
 )
 
 var (
@@ -249,18 +247,8 @@ func DecodeKeyMaterial(value string) ([]byte, bool) {
 	return nil, false
 }
 
-const hkdfDerivedKeyLen = 32
-
 func DeriveHKDFKey(masterKey []byte, salt []byte, info []byte) ([]byte, error) {
-	if len(masterKey) == 0 {
-		return nil, common.NewError("empty master key")
-	}
-	key := make([]byte, hkdfDerivedKeyLen)
-	reader := hkdf.New(sha256.New, masterKey, salt, info)
-	if _, err := io.ReadFull(reader, key); err != nil {
-		return nil, err
-	}
-	return key, nil
+	return backendsecuritycrypto.DeriveHKDFKey(masterKey, salt, info)
 }
 
 func AppendUniqueKey(keys [][]byte, key []byte) [][]byte {

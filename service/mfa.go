@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
+	backendsecuritycrypto "github.com/MalenkiySolovey/solovey-ui/backend/security/crypto"
 	passwordutil "github.com/MalenkiySolovey/solovey-ui/backend/security/password"
 	totputil "github.com/MalenkiySolovey/solovey-ui/backend/security/totp"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
-	settingscrypto "github.com/MalenkiySolovey/solovey-ui/internal/settings/crypto"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -422,7 +422,7 @@ func (s *MFAService) recoveryVerifier(userID uint, code string) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	key, err := settingscrypto.DeriveHKDFKey(secret, salt, []byte("sui:admin-recovery-code:v1"))
+	key, err := backendsecuritycrypto.DeriveHKDFKey(secret, salt, []byte("sui:admin-recovery-code:v1"))
 	if err != nil {
 		return "", err
 	}
