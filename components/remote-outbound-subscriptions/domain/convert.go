@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
-	subconversion "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/conversion"
+	subcanonical "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
+	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 

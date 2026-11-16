@@ -5,10 +5,10 @@ package remotesubservice
 import (
 	"encoding/json"
 
+	subcanonical "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	remotesub "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
-	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
 )

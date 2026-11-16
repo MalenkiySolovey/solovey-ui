@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+	subcanonical "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	"gorm.io/gorm"
 )
 

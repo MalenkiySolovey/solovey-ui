@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 )
 
 func TestMieruEndpointSimpleURIRoundTrip(t *testing.T) {

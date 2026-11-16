@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+	subcanonical "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 )
 
 func renderClashGroups(groupOutbounds []map[string]interface{}, proxyNameMap map[string]string, providerNames map[string]struct{}) ([]map[string]interface{}, []string) {

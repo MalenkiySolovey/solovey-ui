@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 )
 
 func TestXHTTPUnmappedSourceRemainsInspectOnly(t *testing.T) {

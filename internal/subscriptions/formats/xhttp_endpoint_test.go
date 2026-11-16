@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
-	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/parser"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 )

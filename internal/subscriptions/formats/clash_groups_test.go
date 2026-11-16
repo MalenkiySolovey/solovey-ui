@@ -3,7 +3,7 @@ package formats
 import (
 	"testing"
 
-	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+	subcanonical "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	"gopkg.in/yaml.v3"
 )
 

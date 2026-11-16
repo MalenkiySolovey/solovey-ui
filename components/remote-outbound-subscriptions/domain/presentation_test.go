@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+	subcanonical "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 )
 
 func TestHydrateConnectionTypeInfoSeparatesSourceAndConvertedTypes(t *testing.T) {

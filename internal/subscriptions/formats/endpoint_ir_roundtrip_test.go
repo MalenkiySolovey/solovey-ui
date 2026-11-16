@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
-	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/parser"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 )

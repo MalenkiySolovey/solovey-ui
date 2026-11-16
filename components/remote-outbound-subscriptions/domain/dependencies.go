@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
+	subcanonical "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
-	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"gorm.io/gorm"
 )
 

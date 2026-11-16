@@ -4,7 +4,7 @@
 package settings
 
 import (
-	subconversion "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/conversion"
+	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 

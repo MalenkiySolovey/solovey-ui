@@ -56,7 +56,7 @@ func fetchHostFileSource(ctx context.Context, path string, options FetchOptions)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	fetched, err := ParseFetchedSubscriptionWithOptions(string(raw), options)
+	fetched, err := parseFetchedSubscriptionWithOptionsContext(ctx, string(raw), options)
 	if err != nil {
 		// Parser errors may quote source data. File contents, paths and native
 		// OS errors must not disclose credentials through refresh status.

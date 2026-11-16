@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 )
 
 func TestNativeCriticalShapesCannotBecomeParserDefaults(t *testing.T) {

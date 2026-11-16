@@ -4,7 +4,7 @@ package remote
 
 import (
 	"encoding/json"
-	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 )
 
 type RemoteOutboundSubscription struct {

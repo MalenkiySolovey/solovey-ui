@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
+	subcanonical "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	remotesub "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
-	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 )
 
 func collectedProfile(subscription remotesub.RemoteOutboundSubscription) []CollectedProfileBlock {

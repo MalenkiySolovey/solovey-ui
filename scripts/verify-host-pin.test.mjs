@@ -77,3 +77,22 @@ test('altered Host algorithm and duplicate former implementation are rejected',(
     fs.rmSync(directory,{recursive:true,force:true})
   }
 })
+
+test('duplicate editable subscription projections are rejected while runtime oracle tests remain allowed',()=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'solovey-shared-subscriptions-'))
+ try {
+  for(const name of ['canonical','conversion']) {
+   const former=path.join(directory,'internal/subscriptions',name)
+   fs.mkdirSync(former,{recursive:true})
+   fs.writeFileSync(path.join(former,'runtime_test.go'),'package projection_test\n')
+   assertRetired(directory)
+   fs.writeFileSync(path.join(former,'editable.go'),'package projection\n')
+   assert.throws(()=>assertRetired(directory),/duplicate editable subscription/)
+   fs.unlinkSync(path.join(former,'editable.go'))
+  }
+ } finally {
+  assert.equal(path.dirname(path.resolve(directory)),path.resolve(os.tmpdir()))
+  assert.ok(path.basename(directory).startsWith('solovey-shared-subscriptions-'))
+  fs.rmSync(directory,{recursive:true,force:true})
+ }
+})

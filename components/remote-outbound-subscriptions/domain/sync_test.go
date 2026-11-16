@@ -3,14 +3,18 @@
 package remote
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/backendoutbounds"
+	"github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/internal/bindingfixture"
+	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"strings"
 	"testing"
 
+	subcanonical "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
+	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
-	subconversion "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/conversion"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -91,6 +95,8 @@ func newRemoteSyncDB(t *testing.T) *gorm.DB {
 		}
 		t.Fatal(err)
 	}
+	identity := bindingfixture.Provider(t)
+	db = db.WithContext(backendoutbounds.WithProviderObservation(context.Background(), func() coreprovider.Identity { return identity }))
 	return db
 }
 

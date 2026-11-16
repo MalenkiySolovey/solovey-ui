@@ -75,6 +75,11 @@ export function verifyFiles(directory,pin) {
 }
 
 export function assertRetired(directory) {
+  for(const name of ['canonical','conversion']) {
+    const former=path.join(directory,'internal/subscriptions',name)
+    if(fs.existsSync(former))assert.ok(!fs.readdirSync(former).some(file=>file.endsWith('.go')&&!file.endsWith('_test.go')),
+      'duplicate editable subscription implementation: '+name)
+  }
   assert.ok(!fs.existsSync(path.join(directory,'internal/networkidentity')),'duplicate editable Network Identity implementation')
   const shim=path.join(directory,'componenthost/hostref/local.go')
   if(fs.existsSync(shim))assert.equal(read(directory,'componenthost/hostref/local.go'),

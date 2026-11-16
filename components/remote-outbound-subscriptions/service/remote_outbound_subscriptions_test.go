@@ -6,11 +6,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/backendoutbounds"
+	"github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/internal/bindingfixture"
+	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -613,6 +617,8 @@ func initSettingTestDB(t *testing.T) *coreservice.SettingService {
 		t.Fatal(err)
 	}
 	testDB := dbsqlite.DB()
+	identity := bindingfixture.Provider(t)
+	testDB.Statement.Context = backendoutbounds.WithProviderObservation(context.Background(), func() coreprovider.Identity { return identity })
 	t.Cleanup(func() {
 		if testDB != nil {
 			if sqlDB, err := testDB.DB(); err == nil {
@@ -1393,5 +1399,84 @@ func seedRemoteOutboundConfig(t *testing.T, raw string) {
 		return (&coreservice.SettingService{}).SaveConfig(tx, json.RawMessage(raw))
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRefreshCancellationAfterFetchPreservesAcceptedSourceAndBinding(t *testing.T) {
+	initRemoteOutboundTestDB(t)
+	db := dbsqlite.DB()
+	svc := newTestRemoteOutboundService()
+	path := filepath.Join(t.TempDir(), "source.json")
+	payload := `{"outbounds":[{"type":"socks","tag":"accepted","server":"192.0.2.1","server_port":1080}]}`
+	if err := os.WriteFile(path, []byte(payload), 0600); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := svc.SaveSubscription(remotesub.RemoteOutboundSubscription{Name: "cancellation", SourceType: remotesub.SourceFile, SourcePath: path, Enabled: true}, true, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RefreshSubscriptionContext(context.Background(), saved.Id, "test"); err != nil {
+		t.Fatal(err)
+	}
+	var connection remotesub.RemoteOutboundConnection
+	if err := db.Where("subscription_id = ?", saved.Id).First(&connection).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.SyncConnectionToOutbound(connection.Id, "test"); err != nil {
+		t.Fatal(err)
+	}
+	var before remotesub.RemoteOutboundSubscription
+	var beforeConnection remotesub.RemoteOutboundConnection
+	var beforeOutbound model.Outbound
+	if err := db.First(&before, saved.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.First(&beforeConnection, connection.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.First(&beforeOutbound, *beforeConnection.OutboundId).Error; err != nil {
+		t.Fatal(err)
+	}
+	replacement := strings.ReplaceAll(payload, "192.0.2.1", "192.0.2.2")
+	if err := os.WriteFile(path, []byte(replacement), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	reads := 0
+	const hook = "test:cancel-after-source-fetch"
+	if err := db.Callback().Query().After("gorm:query").Register(hook, func(tx *gorm.DB) {
+		if tx.Statement.Table == "remote_outbound_subscriptions" {
+			reads++
+			// The first read captures the desired source. The next verifies its
+			// revision after a successful file fetch and parse, before any mutation.
+			if reads == 2 {
+				cancel()
+			}
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	result, refreshErr := svc.RefreshSubscriptionContext(ctx, saved.Id, "test")
+	if err := db.Callback().Query().Remove(hook); err != nil {
+		t.Fatal(err)
+	}
+	if reads < 2 || ctx.Err() == nil || refreshErr == nil || result != nil {
+		t.Fatalf("post-fetch cancellation committed a result: reads=%d result=%+v err=%v", reads, result, refreshErr)
+	}
+	var after remotesub.RemoteOutboundSubscription
+	var afterConnection remotesub.RemoteOutboundConnection
+	var afterOutbound model.Outbound
+	if err := db.First(&after, saved.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.First(&afterConnection, connection.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.First(&afterOutbound, beforeOutbound.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(before, after) || !reflect.DeepEqual(beforeConnection, afterConnection) || !reflect.DeepEqual(beforeOutbound, afterOutbound) {
+		t.Fatal("cancelled refresh changed accepted source, stable binding or Outbound")
 	}
 }

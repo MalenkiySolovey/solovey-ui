@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gopkg.in/yaml.v3"

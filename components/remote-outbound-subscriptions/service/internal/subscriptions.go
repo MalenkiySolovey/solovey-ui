@@ -8,12 +8,13 @@ import (
 	"strings"
 	"time"
 
+	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
+	"github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/backendoutbounds"
 	remotesub "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
-	subconversion "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/conversion"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
 )
@@ -333,6 +334,8 @@ func (s *Service) refreshSubscription(ctx context.Context, id uint, loginUser st
 	}
 	var subscription remotesub.RemoteOutboundSubscription
 	db := dbsqlite.DB()
+	ctx = backendoutbounds.OperationContext(ctx, db)
+	db = db.WithContext(ctx)
 	if err := db.First(&subscription, id).Error; err != nil {
 		return nil, err
 	}

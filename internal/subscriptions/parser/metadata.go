@@ -1,6 +1,6 @@
 package parser
 
-import subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+import subcanonical "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 
 func markXrayBalancerAdaptation(outbound map[string]interface{}, targetType string, strategy string) {
 	markSubscriptionAdaptation(outbound, subcanonical.FormatXray, "routing.balancer", "balancer", targetType, strategy, "")

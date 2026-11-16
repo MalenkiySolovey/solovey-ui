@@ -8,6 +8,7 @@ import (
 	"errors"
 	"sync"
 
+	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
@@ -20,7 +21,6 @@ import (
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	outboundentities "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
-	subconversion "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/conversion"
 	localsub "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/local"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"gorm.io/gorm"
