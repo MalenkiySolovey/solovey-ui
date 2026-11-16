@@ -9,16 +9,16 @@ import (
 )
 
 const (
-	PolicyVersion   = backendpassword.PolicyVersion
-	BlocklistID     = backendpassword.BlocklistID
-	MinCharacters   = backendpassword.MinCharacters
-	MaxUTF8Bytes    = backendpassword.MaxUTF8Bytes
-	ArgonVersion    = backendpassword.ArgonVersion
-	ArgonMemoryKiB  = backendpassword.ArgonMemoryKiB
-	ArgonTime       = backendpassword.ArgonTime
+	PolicyVersion    = backendpassword.PolicyVersion
+	BlocklistID      = backendpassword.BlocklistID
+	MinCharacters    = backendpassword.MinCharacters
+	MaxUTF8Bytes     = backendpassword.MaxUTF8Bytes
+	ArgonVersion     = backendpassword.ArgonVersion
+	ArgonMemoryKiB   = backendpassword.ArgonMemoryKiB
+	ArgonTime        = backendpassword.ArgonTime
 	ArgonParallelism = backendpassword.ArgonParallelism
-	ArgonSaltBytes  = backendpassword.ArgonSaltBytes
-	ArgonKeyBytes   = backendpassword.ArgonKeyBytes
+	ArgonSaltBytes   = backendpassword.ArgonSaltBytes
+	ArgonKeyBytes    = backendpassword.ArgonKeyBytes
 )
 
 var (
