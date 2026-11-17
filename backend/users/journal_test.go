@@ -1,4 +1,4 @@
-package client
+package users
 
 import (
 	"encoding/json"
@@ -7,7 +7,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 )
 
-// TestClientChangeNameJSONProducesValidChangesFeed pins the M5 fix: a client
+// TestClientChangeNameJSONProducesValidChangesFeed pins journal serialization: a client
 // name containing JSON metacharacters must still produce a valid Changes.Obj
 // that survives json.Marshal of the whole changes feed (the path CheckChanges
 // uses). Before the fix, DepleteJob/ResetClients built Obj by raw string
