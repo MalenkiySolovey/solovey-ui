@@ -33,6 +33,8 @@ export function qualifyStandaloneFrontend({root = productRoot, out, previousDist
   const env = {...process.env, SOLOVEY_UI_INPUTS_SHA256: input.manifestSHA256, CI: 'true'}
   for (const key of Object.keys(env)) if (key.toLowerCase() === 'path') delete env[key]
   env.PATH = [path.dirname(process.execPath), ...(process.platform === 'win32' ? [path.join(process.env.SystemRoot, 'System32')] : [])].join(path.delimiter)
+  // npm needs a shell, but PATH must still exclude Go and Git.
+  if (process.platform !== 'win32') env.npm_config_script_shell = '/bin/sh'
   env.SOLOVEY_UI_PROFILE = 'full'
   delete env.SOLOVEY_UI_COMPONENT_IDS
   const npm = npmCLI()
