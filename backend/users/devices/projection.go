@@ -112,7 +112,7 @@ func ipv4Address(value uint64) netip.Addr {
 
 // RuntimePeers is a projection of active User-owned device records. Private
 // client keys are never borrowed for server runtime construction.
-func RuntimePeers(ctx context.Context, tx *gorm.DB, policy Policy, now int64) ([]map[string]any, error) {
+func RuntimePeers(ctx context.Context, tx *gorm.DB, policy Policy, now int64, warnings ...func(...any)) ([]map[string]any, error) {
 	if !policy.Available {
 		return nil, nil
 	}
@@ -153,7 +153,7 @@ func RuntimePeers(ctx context.Context, tx *gorm.DB, policy Policy, now int64) ([
 				}
 				psk = string(value)
 				return nil
-			}); err != nil {
+			}, warnings...); err != nil {
 				return nil, err
 			}
 			result = append(result, map[string]any{"public_key": device.PublicKey, "pre_shared_key": psk, "allowed_ips": []string{device.Address}})
@@ -167,7 +167,7 @@ func RuntimePeers(ctx context.Context, tx *gorm.DB, policy Policy, now int64) ([
 
 // WithPrivateKeys admits one authorized delivery. Keys never enter an Info,
 // ordinary User view, endpoint desired peer list or a second credential store.
-func WithPrivateKeys(ctx context.Context, tx *gorm.DB, clientID uint, deviceID string, now int64, use func(Info, []byte, []byte) error) error {
+func WithPrivateKeys(ctx context.Context, tx *gorm.DB, clientID uint, deviceID string, now int64, use func(Info, []byte, []byte) error, warnings ...func(...any)) error {
 	client, state, err := Load(tx, clientID)
 	if err != nil {
 		return err
@@ -181,8 +181,8 @@ func WithPrivateKeys(ctx context.Context, tx *gorm.DB, clientID uint, deviceID s
 		}
 		view := Info{ID: device.ID, EndpointID: device.EndpointID, Name: device.Name, Address: device.Address, PublicKey: device.PublicKey, CreatedAt: device.CreatedAt, ExpiresAt: device.ExpiresAt, Revision: device.Revision}
 		return borrow(ctx, tx, clientID, device, "private_key", "wireguard-device-delivery", func(private []byte) error {
-			return borrow(ctx, tx, clientID, device, "preshared_key", "wireguard-device-delivery", func(psk []byte) error { return use(view, private, psk) })
-		})
+			return borrow(ctx, tx, clientID, device, "preshared_key", "wireguard-device-delivery", func(psk []byte) error { return use(view, private, psk) }, warnings...)
+		}, warnings...)
 	}
 	return ErrUnavailable
 }

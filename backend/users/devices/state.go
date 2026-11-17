@@ -19,10 +19,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/MalenkiySolovey/solovey-host/secretref"
+	"github.com/MalenkiySolovey/solovey-ui/backend/secrets/ownerdb"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/jsonvalue"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/secretref"
-	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
-	"github.com/MalenkiySolovey/solovey-ui/internal/secrets/ownerdb"
 	"gorm.io/gorm"
 )
 
@@ -336,7 +336,7 @@ func reference(clientID uint, deviceID, field string) (secretref.Reference, erro
 	return ownerdb.Reference("users", clientID, "wireguard-device:"+deviceID+":"+field)
 }
 
-func generateKeys(tx *gorm.DB, clientID uint, record *Record) error {
+func generateKeys(tx *gorm.DB, clientID uint, record *Record, warnings ...func(...any)) error {
 	private, err := ecdh.X25519().GenerateKey(rand.Reader)
 	if err != nil {
 		return ErrUnavailable
@@ -358,7 +358,7 @@ func generateKeys(tx *gorm.DB, clientID uint, record *Record) error {
 			return err
 		}
 		mutation, _ := json.Marshal(map[string]string{"intent": "replace", "value": base64.StdEncoding.EncodeToString(item.plain)})
-		sealed, err := ownerdb.Apply(tx, ref, *item.target, mutation)
+		sealed, err := ownerdb.Apply(tx, ref, *item.target, mutation, warnings...)
 		clear(mutation)
 		if err != nil {
 			return ErrUnavailable
@@ -369,7 +369,7 @@ func generateKeys(tx *gorm.DB, clientID uint, record *Record) error {
 	return nil
 }
 
-func borrow(ctx context.Context, tx *gorm.DB, clientID uint, record Record, field, intent string, use func([]byte) error) error {
+func borrow(ctx context.Context, tx *gorm.DB, clientID uint, record Record, field, intent string, use func([]byte) error, warnings ...func(...any)) error {
 	ref, err := reference(clientID, record.ID, field)
 	if err != nil {
 		return err
@@ -378,7 +378,7 @@ func borrow(ctx context.Context, tx *gorm.DB, clientID uint, record Record, fiel
 	if field == "preshared_key" {
 		captured = record.PresharedKey
 	}
-	_, err = ownerdb.Access(ctx, tx, secretref.Access{Reference: ref, Actor: secretref.Actor{Component: "users"}, Operation: secretref.UseForOwner, IntentID: intent}, captured, use)
+	_, err = ownerdb.Access(ctx, tx, secretref.Access{Reference: ref, Actor: secretref.Actor{Component: "users"}, Operation: secretref.UseForOwner, IntentID: intent}, captured, use, warnings...)
 	if err != nil {
 		return ErrUnavailable
 	}
@@ -422,7 +422,7 @@ func DecodeRequest(raw []byte) (Request, error) {
 	return request, nil
 }
 
-func Mutate(tx *gorm.DB, request Request, resolve ResolvePolicy, now int64) ([]uint, error) {
+func Mutate(tx *gorm.DB, request Request, resolve ResolvePolicy, now int64, warnings ...func(...any)) ([]uint, error) {
 	client, state, err := Load(tx, request.ClientID)
 	if err != nil {
 		return nil, err
@@ -504,7 +504,7 @@ func Mutate(tx *gorm.DB, request Request, resolve ResolvePolicy, now int64) ([]u
 			return nil, ErrUnavailable
 		}
 		record := Record{ID: hex.EncodeToString(identity), EndpointID: request.EndpointID, Name: request.Name, Address: address.String() + "/32", CreateRequest: hash, CreatedAt: now, ExpiresAt: request.ExpiresAt, Revision: 1}
-		if err := generateKeys(tx, client.Id, &record); err != nil {
+		if err := generateKeys(tx, client.Id, &record, warnings...); err != nil {
 			return nil, err
 		}
 		state.Devices = append(state.Devices, record)
@@ -532,7 +532,7 @@ func Mutate(tx *gorm.DB, request Request, resolve ResolvePolicy, now int64) ([]u
 			if err != nil || !policy.Available || !AvailableRecord(state, *device, client, now) {
 				return nil, ErrUnavailable
 			}
-			if err := generateKeys(tx, client.Id, device); err != nil {
+			if err := generateKeys(tx, client.Id, device, warnings...); err != nil {
 				return nil, err
 			}
 			device.RotateRequest = hash

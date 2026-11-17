@@ -7,8 +7,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 
-	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/clientfacts"
+	backendcrypto "github.com/MalenkiySolovey/solovey-ui/backend/security/crypto"
 )
 
 // Generate belongs to the existing Users assignment/rotation operation. The
@@ -19,10 +19,10 @@ func Generate(protocol string) (string, error) {
 		return "", ErrInvalid
 	}
 	if protocol != "mtproxy" {
-		return common.SecureRandom(32)
+		return backendcrypto.SecureRandom(32)
 	}
 	key := make([]byte, 16)
-	defer common.WipeBytes(key)
+	defer clear(key)
 	if _, err := rand.Read(key); err != nil {
 		return "", ErrInvalid
 	}
@@ -42,7 +42,7 @@ func validateReplacement(protocol string, mutation json.RawMessage) error {
 	if err != nil {
 		decoded, err = base64.RawURLEncoding.DecodeString(intent.Value)
 	}
-	defer common.WipeBytes(decoded)
+	defer clear(decoded)
 	if err != nil || len(decoded) < 18 || decoded[0] != 0xee || bytes.Equal(decoded[1:17], make([]byte, 16)) {
 		return ErrInvalid
 	}
