@@ -184,7 +184,7 @@ func (h *Handler) revokeSession(c *gin.Context) {
 	h.Response.JSONMsg(c, "revoke", err)
 }
 
-type stepUpTokenRequest struct {
+type StepUpTokenRequest struct {
 	StepUpToken string `json:"stepUpToken"`
 }
 
@@ -193,7 +193,7 @@ func (h *Handler) revokeOtherSessions(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var request stepUpTokenRequest
+	var request StepUpTokenRequest
 	if !DecodeJSON(c, &request) {
 		return
 	}
@@ -221,7 +221,7 @@ func (h *Handler) adoptBoundedSessions(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var request stepUpTokenRequest
+	var request StepUpTokenRequest
 	if !DecodeJSON(c, &request) {
 		return
 	}
@@ -253,7 +253,7 @@ func (h *Handler) adoptBoundedSessions(c *gin.Context) {
 	h.Response.JSONObj(c, gin.H{"policy": panelsecurity.LifetimePostureBoundedV1}, nil)
 }
 
-type passwordTransitionRequest struct {
+type PasswordTransitionRequest struct {
 	CurrentPassword string `json:"currentPassword"`
 	NewUsername     string `json:"newUsername"`
 	NewPassword     string `json:"newPassword"`
@@ -265,7 +265,7 @@ func (h *Handler) passwordTransition(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusForbidden, response.Msg{Success: false, Msg: "Password transition is not active"})
 		return
 	}
-	var request passwordTransitionRequest
+	var request PasswordTransitionRequest
 	if !DecodeJSON(c, &request) {
 		return
 	}
@@ -343,7 +343,7 @@ func (h *Handler) passwordTransition(c *gin.Context) {
 	h.Response.JSONObj(c, gin.H{"state": nextAuthState, "assurance": panelsecurity.AssurancePassword}, nil)
 }
 
-type passwordChangeRequest struct {
+type PasswordChangeRequest struct {
 	NewUsername string `json:"newUsername"`
 	NewPassword string `json:"newPassword"`
 	StepUpToken string `json:"stepUpToken"`
@@ -354,7 +354,7 @@ func (h *Handler) changePassword(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var request passwordChangeRequest
+	var request PasswordChangeRequest
 	if !DecodeJSON(c, &request) {
 		return
 	}
@@ -528,7 +528,7 @@ func (h *Handler) beginMFAEnrollment(c *gin.Context) {
 	h.Response.JSONObj(c, enrollment, err)
 }
 
-type mfaCodeRequest struct {
+type MFACodeRequest struct {
 	Code string `json:"code"`
 }
 
@@ -537,7 +537,7 @@ func (h *Handler) confirmMFAEnrollment(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var request mfaCodeRequest
+	var request MFACodeRequest
 	if !DecodeJSON(c, &request) {
 		return
 	}
@@ -621,7 +621,7 @@ func (h *Handler) completePreauthChallenge(c *gin.Context, recovery bool) {
 		c.AbortWithStatusJSON(http.StatusForbidden, response.Msg{Success: false, Msg: "MFA challenge is not active"})
 		return
 	}
-	var request mfaCodeRequest
+	var request MFACodeRequest
 	if !DecodeJSON(c, &request) {
 		return
 	}
@@ -664,7 +664,7 @@ func (h *Handler) completePreauthChallenge(c *gin.Context, recovery bool) {
 	h.Response.JSONObj(c, gin.H{"state": panelsecurity.AuthStateAuthenticated, "assurance": assurance}, nil)
 }
 
-type completeRecoveryTransitionRequest struct {
+type CompleteRecoveryTransitionRequest struct {
 	NewUsername string `json:"newUsername"`
 	NewPassword string `json:"newPassword"`
 }
@@ -675,7 +675,7 @@ func (h *Handler) completeRecoveryTransition(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusForbidden, response.Msg{Success: false, Msg: "MFA recovery is not active"})
 		return
 	}
-	var request completeRecoveryTransitionRequest
+	var request CompleteRecoveryTransitionRequest
 	if !DecodeJSON(c, &request) {
 		return
 	}

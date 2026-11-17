@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/MalenkiySolovey/solovey-ui/backend/http/securityroutes"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -143,7 +144,7 @@ func TestPanelSecurityForcedPasswordTransitionIsRestrictedStrictAndAtomic(t *tes
 		t.Fatalf("unknown JSON field status=%d body=%s", unknownResult.Code, unknownResult.Body.String())
 	}
 
-	for _, interrupted := range []passwordTransitionRequest{
+	for _, interrupted := range []securityroutes.PasswordTransitionRequest{
 		{
 			CurrentPassword: "wrong current password",
 			NewUsername:     "security-admin",
@@ -180,7 +181,7 @@ func TestPanelSecurityForcedPasswordTransitionIsRestrictedStrictAndAtomic(t *tes
 		}
 	}
 
-	payload, err := json.Marshal(passwordTransitionRequest{
+	payload, err := json.Marshal(securityroutes.PasswordTransitionRequest{
 		CurrentPassword: oldPassword,
 		NewUsername:     "security-admin",
 		NewPassword:     "Панельный секрет 2026 · v9! delta",
@@ -280,7 +281,7 @@ func TestPanelSecurityRecoveryCodeCannotBypassForcedRecoveryTransition(t *testin
 		t,
 		performIntegrationRequest(router, httptest.NewRequest(http.MethodGet, "/api/csrf", nil), &jar),
 	)
-	challengePayload, err := json.Marshal(mfaCodeRequest{Code: recoveryCodes[0]})
+	challengePayload, err := json.Marshal(securityroutes.MFACodeRequest{Code: recoveryCodes[0]})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +302,7 @@ func TestPanelSecurityRecoveryCodeCannotBypassForcedRecoveryTransition(t *testin
 		t,
 		performIntegrationRequest(router, httptest.NewRequest(http.MethodGet, "/api/csrf", nil), &jar),
 	)
-	completePayload, err := json.Marshal(completeRecoveryTransitionRequest{
+	completePayload, err := json.Marshal(securityroutes.CompleteRecoveryTransitionRequest{
 		NewUsername: "recovered-admin",
 		NewPassword: "Recovered account secret 2026 · delta",
 	})
@@ -362,7 +363,7 @@ func TestPanelSecurityPasswordChangeConsumesStepUpAndRotatesGlobalSessions(t *te
 		"admin.credential",
 		"user:"+strconv.FormatUint(uint64(before.Id), 10),
 	)
-	payload, err := json.Marshal(passwordChangeRequest{
+	payload, err := json.Marshal(securityroutes.PasswordChangeRequest{
 		NewUsername: "secure-admin",
 		NewPassword: newPassword,
 		StepUpToken: grant,
@@ -431,7 +432,7 @@ func TestPanelSecurityLegacySessionPolicyRequiresStepUpAdoption(t *testing.T) {
 	jar := &integrationCookieJar{}
 	loginAdminFlowUser(t, router, jar, "admin", password)
 	grant, csrf := adminFlowStepUp(t, router, jar, password, "sessions.adopt_bounded", "policy:bounded_v1")
-	payload, err := json.Marshal(stepUpTokenRequest{StepUpToken: grant})
+	payload, err := json.Marshal(securityroutes.StepUpTokenRequest{StepUpToken: grant})
 	if err != nil {
 		t.Fatal(err)
 	}
