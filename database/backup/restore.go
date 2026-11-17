@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/hooks"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/restorestate"
+	"github.com/MalenkiySolovey/solovey-backend/storage/hooks"
+	"github.com/MalenkiySolovey/solovey-backend/storage/restorestate"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"

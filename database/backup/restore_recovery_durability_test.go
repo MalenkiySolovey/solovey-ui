@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )

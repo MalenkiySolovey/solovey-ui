@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 )
 
 func TestClientSaveOwnsManualReasonAndRejectsJSONQuotaAuthority(t *testing.T) {

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
 	fallbackservice "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/service"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"

@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/security/ssrf"
+	"github.com/MalenkiySolovey/solovey-backend/security/ssrf"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"golang.org/x/net/proxy"
 )

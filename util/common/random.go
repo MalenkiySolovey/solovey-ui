@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	backendcrypto "github.com/MalenkiySolovey/solovey-ui/backend/security/crypto"
+	backendcrypto "github.com/MalenkiySolovey/solovey-backend/security/crypto"
 	"github.com/gofrs/uuid/v5"
 )
 

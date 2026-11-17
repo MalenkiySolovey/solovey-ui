@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/durableowner"
+	"github.com/MalenkiySolovey/solovey-backend/storage/durableowner"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 )
 

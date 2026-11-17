@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/security/ssrf"
+	"github.com/MalenkiySolovey/solovey-backend/security/ssrf"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"

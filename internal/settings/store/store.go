@@ -1,8 +1,8 @@
 package store
 
 import (
-	canonical "github.com/MalenkiySolovey/solovey-ui/backend/settings/store"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	canonical "github.com/MalenkiySolovey/solovey-backend/settings/store"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	settingscrypto "github.com/MalenkiySolovey/solovey-ui/internal/settings/crypto"
 	"gorm.io/gorm"
 )

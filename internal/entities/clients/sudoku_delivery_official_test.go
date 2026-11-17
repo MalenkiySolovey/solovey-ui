@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/secretref"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
 	"github.com/MalenkiySolovey/solovey-ui/internal/secrets/ownerdb"

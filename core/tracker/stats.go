@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
+	entitytypes "github.com/MalenkiySolovey/solovey-backend/entityidentity"
 	"github.com/MalenkiySolovey/solovey-ui/core/inboundidentity"
 
 	"github.com/sagernet/sing-box/adapter"

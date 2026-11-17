@@ -1,6 +1,6 @@
 package backup
 
-import canonical "github.com/MalenkiySolovey/solovey-ui/backend/storage/backup"
+import canonical "github.com/MalenkiySolovey/solovey-backend/storage/backup"
 
 func ReadOwnedFile(root, name string) ([]byte, error) { return canonical.ReadOwnedFile(root, name) }
 func PublishOwnedFile(root string, data []byte, publish bool) (string, error) {

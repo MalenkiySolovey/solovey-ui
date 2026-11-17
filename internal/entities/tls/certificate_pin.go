@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 )
 
 // ApplySelfSignedPublicKeyPin keeps client TLS options aligned with a local

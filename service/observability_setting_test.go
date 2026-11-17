@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"gorm.io/gorm"
 )
 

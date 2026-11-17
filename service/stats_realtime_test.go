@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
+	entitytypes "github.com/MalenkiySolovey/solovey-backend/entityidentity"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
 	"gorm.io/gorm"
 )
 

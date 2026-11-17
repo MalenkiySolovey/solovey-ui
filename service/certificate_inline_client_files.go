@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/database/backup"
 	"gorm.io/gorm"
 )

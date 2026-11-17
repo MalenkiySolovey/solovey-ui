@@ -15,7 +15,7 @@ import (
 
 	protectionhelper "github.com/MalenkiySolovey/solovey-component-server-protection/service/helpercontract"
 	hostfacts "github.com/MalenkiySolovey/solovey-host/componenthost/hostsurface"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/sshmanagement"
 )

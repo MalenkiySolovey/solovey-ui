@@ -8,7 +8,7 @@ import (
 	"errors"
 	featuredomain "github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions/domain"
 	feature "github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions/service"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/backendoutbounds"
 	remotesub "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"

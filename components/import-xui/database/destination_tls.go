@@ -3,7 +3,7 @@
 package importxui
 
 import (
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	"gorm.io/gorm"
 )

@@ -16,8 +16,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	dbimport "github.com/MalenkiySolovey/solovey-ui/components/import-xui/database"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"github.com/MalenkiySolovey/solovey-ui/database/backup"

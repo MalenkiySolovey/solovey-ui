@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	backendaccounts "github.com/MalenkiySolovey/solovey-ui/backend/security/accounts"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	backendaccounts "github.com/MalenkiySolovey/solovey-backend/security/accounts"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"

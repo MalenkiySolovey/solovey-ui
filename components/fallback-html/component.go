@@ -7,7 +7,7 @@ import (
 
 	canonical "github.com/MalenkiySolovey/solovey-component-fallback-html"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/durableowner"
+	"github.com/MalenkiySolovey/solovey-backend/storage/durableowner"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"

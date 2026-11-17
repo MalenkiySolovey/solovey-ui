@@ -3,7 +3,7 @@ package runtime
 import (
 	"sync"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 

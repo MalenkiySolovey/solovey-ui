@@ -3,7 +3,7 @@ package update
 import (
 	"context"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	contract "github.com/MalenkiySolovey/solovey-ui/internal/ops/updatebroker"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 )

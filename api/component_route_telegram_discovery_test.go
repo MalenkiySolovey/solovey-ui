@@ -4,8 +4,8 @@ package api
 
 import (
 	"encoding/json"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 	"net/http"

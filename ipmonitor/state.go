@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	dbhooks "github.com/MalenkiySolovey/solovey-ui/backend/storage/hooks"
+	dbhooks "github.com/MalenkiySolovey/solovey-backend/storage/hooks"
 	"golang.org/x/sync/singleflight"
 )
 

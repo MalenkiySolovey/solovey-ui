@@ -8,13 +8,13 @@ import (
 
 func TestBackendOwnedSecretsUsePublishedReferencesAndCandidateStorage(t *testing.T) {
 	root := moduleRoot(t)
-	allowed := map[string]bool{modulePath + "/backend/secrets/ownedvalue": true, modulePath + "/backend/secrets/ownerdb": true, modulePath + "/backend/storage/jsonvalue": true}
-	for _, target := range []string{"./backend/settings/store", "./backend/audit/record", "github.com/MalenkiySolovey/solovey-host/secretref"} {
+	allowed := map[string]bool{backendModulePath + "/secrets/ownedvalue": true, backendModulePath + "/secrets/ownerdb": true, backendModulePath + "/storage/jsonvalue": true}
+	for _, target := range []string{backendModulePath + "/settings/store", backendModulePath + "/audit/record", "github.com/MalenkiySolovey/solovey-host/secretref"} {
 		for name := range goListDependencies(t, root, target) {
 			allowed[name] = true
 		}
 	}
-	for _, target := range []string{"./backend/secrets/ownedvalue", "./backend/secrets/ownerdb", "./backend/storage/jsonvalue"} {
+	for _, target := range []string{backendModulePath + "/secrets/ownedvalue", backendModulePath + "/secrets/ownerdb", backendModulePath + "/storage/jsonvalue"} {
 		var violations []string
 		for name, info := range goListDependencies(t, root, target) {
 			if !info.Standard && !allowed[name] {

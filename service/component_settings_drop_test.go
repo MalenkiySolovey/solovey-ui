@@ -3,9 +3,9 @@ package service
 import (
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/durableowner"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/storage/durableowner"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 )
 

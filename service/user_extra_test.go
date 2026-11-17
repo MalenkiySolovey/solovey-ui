@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	passwordutil "github.com/MalenkiySolovey/solovey-ui/backend/security/password"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	passwordutil "github.com/MalenkiySolovey/solovey-backend/security/password"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"golang.org/x/crypto/bcrypt"
 )
 

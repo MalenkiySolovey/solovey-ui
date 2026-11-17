@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/security/ssrf"
+	"github.com/MalenkiySolovey/solovey-backend/security/ssrf"
 	subparser "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/parser"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 	uricodec "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"

@@ -103,7 +103,7 @@ func inspectFoundationFile(path string, file *ast.File) ([]foundationSite, []str
 		}
 		imports[alias] = imported
 		if typedComponentComposition(path) &&
-			((imported == modulePath+"/database/sqlite" || imported == modulePath+"/backend/storage/sqlite") || imported == "gorm.io/gorm") {
+			((imported == modulePath+"/database/sqlite" || imported == backendModulePath+"/storage/sqlite") || imported == "gorm.io/gorm") {
 			forbidden = append(forbidden, path+": typed Component composition must use its declared owner ports, not raw database access")
 		}
 		if imported == modulePath+"/service" && alias == "." {
@@ -166,8 +166,8 @@ func inspectFoundationDeclaration(path, symbol string, declaration ast.Node, imp
 	coreModel := false
 	databaseAdapter := false
 	for _, imported := range imports {
-		coreModel = coreModel || imported == modulePath+"/backend/storage/model" || imported == modulePath+"/database/model"
-		databaseAdapter = databaseAdapter || imported == "gorm.io/gorm" || (imported == modulePath+"/database/sqlite" || imported == modulePath+"/backend/storage/sqlite")
+		coreModel = coreModel || imported == backendModulePath+"/storage/model" || imported == modulePath+"/database/model"
+		databaseAdapter = databaseAdapter || imported == "gorm.io/gorm" || (imported == modulePath+"/database/sqlite" || imported == backendModulePath+"/storage/sqlite")
 	}
 	ast.Inspect(declaration, func(node ast.Node) bool {
 		switch value := node.(type) {

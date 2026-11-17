@@ -8,14 +8,14 @@ import (
 	"sync"
 	"time"
 
-	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	entitytypes "github.com/MalenkiySolovey/solovey-backend/entityidentity"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	coretracker "github.com/MalenkiySolovey/solovey-ui/core/tracker"
 	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
 
 	"gorm.io/gorm"
 )

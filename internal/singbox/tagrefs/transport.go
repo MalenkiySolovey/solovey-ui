@@ -3,7 +3,7 @@ package tagrefs
 import (
 	"fmt"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 )
 
 func transportDownloadDetour(options map[string]any) string {

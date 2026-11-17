@@ -11,10 +11,10 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/backup"
-	"github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
+	"github.com/MalenkiySolovey/solovey-backend/operations/coordination"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	backupenvelope "github.com/MalenkiySolovey/solovey-ui/internal/backup/envelope"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	datalifecycle "github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"

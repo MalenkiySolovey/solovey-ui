@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"sync"
 
-	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
+	entitytypes "github.com/MalenkiySolovey/solovey-backend/entityidentity"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/sagernet/sing-box/adapter"

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
 )
 
 var securityEventAudit = struct {

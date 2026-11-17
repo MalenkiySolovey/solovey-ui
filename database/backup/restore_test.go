@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/hooks"
+	"github.com/MalenkiySolovey/solovey-backend/storage/hooks"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"io"
 	"os"
@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	passwordutil "github.com/MalenkiySolovey/solovey-ui/backend/security/password"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	passwordutil "github.com/MalenkiySolovey/solovey-backend/security/password"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 

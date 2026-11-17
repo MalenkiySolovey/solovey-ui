@@ -4,7 +4,7 @@ package config
 import (
 	"context"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/componentroutes"
+	"github.com/MalenkiySolovey/solovey-backend/componentroutes"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 )

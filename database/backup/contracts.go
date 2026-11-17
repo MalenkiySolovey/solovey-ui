@@ -1,6 +1,6 @@
 package backup
 
-import canonical "github.com/MalenkiySolovey/solovey-ui/backend/storage/backup"
+import canonical "github.com/MalenkiySolovey/solovey-backend/storage/backup"
 
 const MaxRestoreBytes = canonical.MaxRestoreBytes
 

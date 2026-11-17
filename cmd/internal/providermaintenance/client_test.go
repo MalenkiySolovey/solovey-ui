@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
+	"github.com/MalenkiySolovey/solovey-backend/actions"
 	updateservice "github.com/MalenkiySolovey/solovey-ui/service/update"
 )
 

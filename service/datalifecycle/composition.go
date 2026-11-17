@@ -3,10 +3,10 @@ package datalifecycle
 
 import (
 	"context"
-	owner "github.com/MalenkiySolovey/solovey-ui/backend/datalifecycle"
-	operationcoordination "github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	owner "github.com/MalenkiySolovey/solovey-backend/datalifecycle"
+	operationcoordination "github.com/MalenkiySolovey/solovey-backend/operations/coordination"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"

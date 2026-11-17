@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	corebox "github.com/MalenkiySolovey/solovey-ui/core/box"

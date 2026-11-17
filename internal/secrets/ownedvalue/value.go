@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/MalenkiySolovey/solovey-host/secretref"
-	canonical "github.com/MalenkiySolovey/solovey-ui/backend/secrets/ownedvalue"
+	canonical "github.com/MalenkiySolovey/solovey-backend/secrets/ownedvalue"
 )
 
 const MaxValueBytes = canonical.MaxValueBytes

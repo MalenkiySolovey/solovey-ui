@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 )
 

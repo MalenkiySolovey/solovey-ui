@@ -9,15 +9,15 @@ import (
 func TestBackendMFAHasOnlySecurityAndPanelStorageClosure(t *testing.T) {
 	root := moduleRoot(t)
 	allowed := map[string]bool{
-		modulePath + "/backend/security/mfa": true,
+		backendModulePath + "/security/mfa": true,
 	}
 	for _, target := range []string{
-		"./backend/security",
-		"./backend/security/crypto",
-		"./backend/security/password",
-		"./backend/security/totp",
-		"./backend/storage/model",
-		"./backend/storage/sqlite",
+		backendModulePath + "/security",
+		backendModulePath + "/security/crypto",
+		backendModulePath + "/security/password",
+		backendModulePath + "/security/totp",
+		backendModulePath + "/storage/model",
+		backendModulePath + "/storage/sqlite",
 		"gorm.io/gorm",
 	} {
 		for name := range goListDependencies(t, root, target) {
@@ -25,7 +25,7 @@ func TestBackendMFAHasOnlySecurityAndPanelStorageClosure(t *testing.T) {
 		}
 	}
 	var violations []string
-	for name, info := range goListDependencies(t, root, "./backend/security/mfa") {
+	for name, info := range goListDependencies(t, root, backendModulePath+"/security/mfa") {
 		if !info.Standard && !allowed[name] {
 			violations = append(violations, name)
 		}

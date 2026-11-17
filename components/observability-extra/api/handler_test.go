@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	dbhooks "github.com/MalenkiySolovey/solovey-ui/backend/storage/hooks"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbhooks "github.com/MalenkiySolovey/solovey-backend/storage/hooks"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	observabilitysvc "github.com/MalenkiySolovey/solovey-ui/service/observability"

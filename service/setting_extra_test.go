@@ -3,7 +3,7 @@ package service
 import (
 	"testing"
 
-	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/backend/settings/validation"
+	settingsvalidation "github.com/MalenkiySolovey/solovey-backend/settings/validation"
 )
 
 func TestValidateSubscriptionPathSettingsRejectsConflicts(t *testing.T) {

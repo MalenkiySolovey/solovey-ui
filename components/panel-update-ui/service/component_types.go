@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
+	"github.com/MalenkiySolovey/solovey-backend/actions"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 )

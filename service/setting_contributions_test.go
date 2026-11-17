@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/backend/settings/validation"
+	settingsvalidation "github.com/MalenkiySolovey/solovey-backend/settings/validation"
 )
 
 func TestSettingContributionStaleCleanupPreservesNewRegistration(t *testing.T) {

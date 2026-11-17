@@ -3,7 +3,7 @@
 package panelupdateui
 
 import (
-	"github.com/MalenkiySolovey/solovey-ui/backend/componentview"
+	"github.com/MalenkiySolovey/solovey-backend/componentview"
 	panelupdateservice "github.com/MalenkiySolovey/solovey-ui/components/panel-update-ui/service"
 )
 

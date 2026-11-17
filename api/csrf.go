@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/MalenkiySolovey/solovey-ui/backend/http/browser"
+	"github.com/MalenkiySolovey/solovey-backend/http/browser"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"

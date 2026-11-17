@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/secretref"
 	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
 	"golang.org/x/crypto/ssh"

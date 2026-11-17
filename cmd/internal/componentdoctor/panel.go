@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
-	settingsmanager "github.com/MalenkiySolovey/solovey-ui/backend/settings/manager"
+	settingcatalog "github.com/MalenkiySolovey/solovey-backend/settings/catalog"
+	settingsmanager "github.com/MalenkiySolovey/solovey-backend/settings/manager"
 	"gorm.io/gorm"
 )
 

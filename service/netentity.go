@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	netentitysvc "github.com/MalenkiySolovey/solovey-ui/service/netentity"
 

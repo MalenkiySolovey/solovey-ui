@@ -9,12 +9,12 @@ import (
 func TestBackendAdministratorAndTokenOwnersExcludeProductRuntime(t *testing.T) {
 	root := moduleRoot(t)
 	allowed := map[string]bool{}
-	for _, target := range []string{"./backend/security", "./backend/security/crypto", "./backend/security/password", "./backend/security/mfa", "./backend/storage/model", "./backend/storage/sqlite", "./backend/audit", "gorm.io/gorm"} {
+	for _, target := range []string{backendModulePath + "/security", backendModulePath + "/security/crypto", backendModulePath + "/security/password", backendModulePath + "/security/mfa", backendModulePath + "/storage/model", backendModulePath + "/storage/sqlite", backendModulePath + "/audit", "gorm.io/gorm"} {
 		for name := range goListDependencies(t, root, target) {
 			allowed[name] = true
 		}
 	}
-	for _, target := range []string{"./backend/security/accounts", "./backend/security/tokens"} {
+	for _, target := range []string{backendModulePath + "/security/accounts", backendModulePath + "/security/tokens"} {
 		allowed[modulePath+strings.TrimPrefix(target, ".")] = true
 		var violations []string
 		for name, info := range goListDependencies(t, root, target) {

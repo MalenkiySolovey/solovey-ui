@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	"gorm.io/gorm"
 )

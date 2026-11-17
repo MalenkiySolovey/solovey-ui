@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/security/ssrf"
+	"github.com/MalenkiySolovey/solovey-backend/security/ssrf"
 )
 
 type Result struct {

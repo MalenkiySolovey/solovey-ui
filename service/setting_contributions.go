@@ -5,8 +5,8 @@ import (
 	"strings"
 	"sync"
 
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
-	settingsschema "github.com/MalenkiySolovey/solovey-ui/backend/settings/schema"
+	settingcatalog "github.com/MalenkiySolovey/solovey-backend/settings/catalog"
+	settingsschema "github.com/MalenkiySolovey/solovey-backend/settings/schema"
 )
 
 type SettingValidator func(key string, value string, storedSecretMarker string) error

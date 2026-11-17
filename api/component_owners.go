@@ -1,6 +1,6 @@
 package api
 
-import "github.com/MalenkiySolovey/solovey-ui/backend/componentroutes"
+import "github.com/MalenkiySolovey/solovey-backend/componentroutes"
 
 func (a *ApiService) componentOwners() ([]componentroutes.OwnerAvailability, error) {
 	if a.Components == nil {

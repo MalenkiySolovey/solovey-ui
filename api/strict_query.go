@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/MalenkiySolovey/solovey-ui/backend/http/securityroutes"
+	"github.com/MalenkiySolovey/solovey-backend/http/securityroutes"
 	"github.com/gin-gonic/gin"
 )
 

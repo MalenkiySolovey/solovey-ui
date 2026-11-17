@@ -2,7 +2,7 @@ package sqlite
 
 import (
 	"context"
-	storagesqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	storagesqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"gorm.io/gorm"
 )
 

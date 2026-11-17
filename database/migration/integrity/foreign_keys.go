@@ -2,7 +2,7 @@ package integrity
 
 import (
 	"fmt"
-	canonical "github.com/MalenkiySolovey/solovey-ui/backend/storage/integrity"
+	canonical "github.com/MalenkiySolovey/solovey-backend/storage/integrity"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	"gorm.io/gorm"
 )

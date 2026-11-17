@@ -9,8 +9,8 @@ import (
 	"testing"
 	"unsafe"
 
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	settingcatalog "github.com/MalenkiySolovey/solovey-backend/settings/catalog"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	corebox "github.com/MalenkiySolovey/solovey-ui/core/box"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"

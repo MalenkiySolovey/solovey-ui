@@ -1,6 +1,6 @@
 package service
 
-import settingsvalidation "github.com/MalenkiySolovey/solovey-ui/backend/settings/validation"
+import settingsvalidation "github.com/MalenkiySolovey/solovey-backend/settings/validation"
 
 func (s *SettingService) GetSubListen() (string, error) {
 	return s.getString(settingKeySubListen)

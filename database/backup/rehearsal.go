@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/durableowner"
+	"github.com/MalenkiySolovey/solovey-backend/storage/durableowner"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"

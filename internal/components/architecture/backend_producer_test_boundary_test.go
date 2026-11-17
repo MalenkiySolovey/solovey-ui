@@ -8,8 +8,8 @@ import (
 
 func TestBackendProducerClosureIncludesPortableTests(t *testing.T) {
 	var rejected []string
-	for name := range goListDependencies(t, moduleRoot(t), "./backend/...", "-test") {
-		if (name == modulePath || strings.HasPrefix(name, modulePath+"/")) && !strings.HasPrefix(name, modulePath+"/backend/") {
+	for name := range goListDependencies(t, moduleRoot(t), backendModulePath+"/...", "-test") {
+		if name == modulePath || strings.HasPrefix(name, modulePath+"/") {
 			rejected = append(rejected, name)
 		}
 	}

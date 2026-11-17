@@ -1,7 +1,7 @@
 package service
 
 import (
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	servicefailover "github.com/MalenkiySolovey/solovey-ui/service/failover"
 )
 

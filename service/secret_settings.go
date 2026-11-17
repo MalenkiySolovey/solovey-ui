@@ -3,9 +3,9 @@ package service
 import (
 	"strconv"
 
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
-	settingsmanager "github.com/MalenkiySolovey/solovey-ui/backend/settings/manager"
-	settingsschema "github.com/MalenkiySolovey/solovey-ui/backend/settings/schema"
+	settingcatalog "github.com/MalenkiySolovey/solovey-backend/settings/catalog"
+	settingsmanager "github.com/MalenkiySolovey/solovey-backend/settings/manager"
+	settingsschema "github.com/MalenkiySolovey/solovey-backend/settings/schema"
 	settingscrypto "github.com/MalenkiySolovey/solovey-ui/internal/settings/crypto"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 )

@@ -3,7 +3,7 @@ package entityinbounds
 import (
 	"encoding/json"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/transportcredentials"
 	"gorm.io/gorm"

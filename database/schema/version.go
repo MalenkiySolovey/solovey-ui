@@ -3,7 +3,7 @@ package schema
 
 import (
 	"errors"
-	storageschema "github.com/MalenkiySolovey/solovey-ui/backend/storage/schema"
+	storageschema "github.com/MalenkiySolovey/solovey-backend/storage/schema"
 	"github.com/MalenkiySolovey/solovey-ui/config/versionpolicy"
 	"gorm.io/gorm"
 )

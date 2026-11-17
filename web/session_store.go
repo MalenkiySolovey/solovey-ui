@@ -1,8 +1,8 @@
 package web
 
 import (
-	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
-	"github.com/MalenkiySolovey/solovey-ui/backend/security/sessionstore"
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
+	"github.com/MalenkiySolovey/solovey-backend/security/sessionstore"
 	"gorm.io/gorm"
 )
 

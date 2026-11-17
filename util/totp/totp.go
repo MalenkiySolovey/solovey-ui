@@ -5,7 +5,7 @@ package totp
 import (
 	"time"
 
-	backendtotp "github.com/MalenkiySolovey/solovey-ui/backend/security/totp"
+	backendtotp "github.com/MalenkiySolovey/solovey-backend/security/totp"
 )
 
 const (

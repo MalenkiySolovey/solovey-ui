@@ -10,9 +10,9 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/sqliteident"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/storage/sqliteident"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"

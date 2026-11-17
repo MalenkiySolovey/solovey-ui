@@ -1,6 +1,6 @@
 package common
 
-import backendcrypto "github.com/MalenkiySolovey/solovey-ui/backend/security/crypto"
+import backendcrypto "github.com/MalenkiySolovey/solovey-backend/security/crypto"
 
 // ConstantTimeStringEqual preserves the existing bounded security comparison.
 func ConstantTimeStringEqual(a, b string, maxLen int) int {

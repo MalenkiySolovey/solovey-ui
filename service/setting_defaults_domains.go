@@ -1,7 +1,7 @@
 package service
 
 import (
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
+	settingcatalog "github.com/MalenkiySolovey/solovey-backend/settings/catalog"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 

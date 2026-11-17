@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"errors"
-	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
+	"github.com/MalenkiySolovey/solovey-backend/actions"
 	"testing"
 )
 

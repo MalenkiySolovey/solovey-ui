@@ -343,7 +343,7 @@ func walkProductGoFiles(t *testing.T, root string, visit func(string)) {
 		sourceRoot := filepath.Join(root, relativeRoot)
 		// Retired ingress and realtime roots may be absent in a clean checkout.
 		// If reintroduced, their source remains subject to every import guard.
-		if relativeRoot == "middleware" || relativeRoot == "realtime" {
+		if relativeRoot == "middleware" || relativeRoot == "realtime" || relativeRoot == "backend" {
 			if _, err := os.Stat(sourceRoot); os.IsNotExist(err) {
 				continue
 			} else if err != nil {

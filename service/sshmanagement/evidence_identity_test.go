@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
+	clientidentity "github.com/MalenkiySolovey/solovey-backend/security/clientidentity"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/sshmanagement"
 )
 

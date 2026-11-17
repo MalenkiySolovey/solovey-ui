@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 )

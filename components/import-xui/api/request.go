@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/http/ratelimit"
-	dbhooks "github.com/MalenkiySolovey/solovey-ui/backend/storage/hooks"
+	"github.com/MalenkiySolovey/solovey-backend/http/ratelimit"
+	dbhooks "github.com/MalenkiySolovey/solovey-backend/storage/hooks"
 	dbimport "github.com/MalenkiySolovey/solovey-ui/components/import-xui/database"
 	"github.com/MalenkiySolovey/solovey-ui/internal/httpconn"
 	"github.com/MalenkiySolovey/solovey-ui/service"

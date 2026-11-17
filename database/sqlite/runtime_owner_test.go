@@ -3,7 +3,7 @@ package sqlite
 import (
 	"context"
 	"errors"
-	storagesqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	storagesqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"path/filepath"
 	"testing"
 	"time"

@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
-	"github.com/MalenkiySolovey/solovey-ui/backend/http/ratelimit"
+	"github.com/MalenkiySolovey/solovey-backend/http/ratelimit"
 )
 
 const (

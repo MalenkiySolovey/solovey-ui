@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	entityendpoints "github.com/MalenkiySolovey/solovey-ui/internal/entities/endpoints"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 

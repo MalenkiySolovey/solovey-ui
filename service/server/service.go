@@ -7,8 +7,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"

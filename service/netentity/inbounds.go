@@ -3,11 +3,11 @@ package netentity
 import (
 	"encoding/json"
 	"errors"
-	"github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
+	"github.com/MalenkiySolovey/solovey-backend/entityidentity"
 	"reflect"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/sessionidentity"

@@ -1,6 +1,6 @@
 package secretbox
 
-import canonical "github.com/MalenkiySolovey/solovey-ui/backend/security/secretbox"
+import canonical "github.com/MalenkiySolovey/solovey-backend/security/secretbox"
 
 const Prefix = canonical.Prefix
 

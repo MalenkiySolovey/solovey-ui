@@ -10,8 +10,8 @@ import (
 	"reflect"
 	"sort"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/entityidentity"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"

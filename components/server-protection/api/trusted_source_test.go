@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
+	clientidentity "github.com/MalenkiySolovey/solovey-backend/security/clientidentity"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	"github.com/gin-gonic/gin"
 )

@@ -1,8 +1,8 @@
 package api
 
 import (
-	authhttp "github.com/MalenkiySolovey/solovey-ui/backend/http/auth"
-	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
+	authhttp "github.com/MalenkiySolovey/solovey-backend/http/auth"
+	clientidentity "github.com/MalenkiySolovey/solovey-backend/security/clientidentity"
 	"github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )

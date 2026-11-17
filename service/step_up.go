@@ -3,7 +3,7 @@ package service
 import (
 	"time"
 
-	backendstepup "github.com/MalenkiySolovey/solovey-ui/backend/security/stepup"
+	backendstepup "github.com/MalenkiySolovey/solovey-backend/security/stepup"
 )
 
 const (

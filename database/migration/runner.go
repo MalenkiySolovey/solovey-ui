@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	backendmigration "github.com/MalenkiySolovey/solovey-ui/backend/storage/migration"
+	backendmigration "github.com/MalenkiySolovey/solovey-backend/storage/migration"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"github.com/MalenkiySolovey/solovey-ui/config/versionpolicy"

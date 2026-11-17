@@ -1,7 +1,7 @@
 package service
 
 import (
-	backendaccounts "github.com/MalenkiySolovey/solovey-ui/backend/security/accounts"
+	backendaccounts "github.com/MalenkiySolovey/solovey-backend/security/accounts"
 	"gorm.io/gorm"
 )
 

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	managementregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/management"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"

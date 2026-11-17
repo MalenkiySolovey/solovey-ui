@@ -1,7 +1,7 @@
 package crypto
 
 import (
-	canonical "github.com/MalenkiySolovey/solovey-ui/backend/settings/crypto"
+	canonical "github.com/MalenkiySolovey/solovey-backend/settings/crypto"
 	"github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
 )

@@ -15,7 +15,7 @@ import (
 	hostcore "github.com/MalenkiySolovey/solovey-host/coreruntime"
 	"github.com/MalenkiySolovey/solovey-host/hostref"
 	hostoutbounds "github.com/MalenkiySolovey/solovey-host/outbounds"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"

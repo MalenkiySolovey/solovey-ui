@@ -9,15 +9,15 @@ import (
 func TestBackendSettingsUseCanonicalCryptoAndCandidateStorage(t *testing.T) {
 	root := moduleRoot(t)
 	allowed := map[string]bool{}
-	for _, target := range []string{modulePath + "/backend/settings/catalog", modulePath + "/backend/settings/schema", modulePath + "/backend/settings/crypto", modulePath + "/backend/settings/store", modulePath + "/backend/settings/manager", modulePath + "/backend/security/secretbox"} {
+	for _, target := range []string{backendModulePath + "/settings/catalog", backendModulePath + "/settings/schema", backendModulePath + "/settings/crypto", backendModulePath + "/settings/store", backendModulePath + "/settings/manager", backendModulePath + "/security/secretbox"} {
 		allowed[target] = true
 	}
-	for _, target := range []string{"./backend/storage/model", "./backend/storage/sqlite", "./backend/security/crypto", "gorm.io/gorm"} {
+	for _, target := range []string{backendModulePath + "/storage/model", backendModulePath + "/storage/sqlite", backendModulePath + "/security/crypto", "gorm.io/gorm"} {
 		for name := range goListDependencies(t, root, target) {
 			allowed[name] = true
 		}
 	}
-	for _, target := range []string{"./backend/settings/catalog", "./backend/settings/schema", "./backend/settings/crypto", "./backend/settings/store", "./backend/settings/manager", "./backend/security/secretbox"} {
+	for _, target := range []string{backendModulePath + "/settings/catalog", backendModulePath + "/settings/schema", backendModulePath + "/settings/crypto", backendModulePath + "/settings/store", backendModulePath + "/settings/manager", backendModulePath + "/security/secretbox"} {
 		var violations []string
 		for name, info := range goListDependencies(t, root, target) {
 			if !info.Standard && !allowed[name] {

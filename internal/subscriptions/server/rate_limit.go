@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/http/ratelimit"
+	"github.com/MalenkiySolovey/solovey-backend/http/ratelimit"
 	"github.com/gin-gonic/gin"
 )
 

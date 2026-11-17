@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/actions"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry/facts"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilityview"

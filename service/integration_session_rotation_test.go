@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/api"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	panelweb "github.com/MalenkiySolovey/solovey-ui/web"

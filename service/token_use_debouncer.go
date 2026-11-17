@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	canonical "github.com/MalenkiySolovey/solovey-ui/backend/security/tokenuse"
+	canonical "github.com/MalenkiySolovey/solovey-backend/security/tokenuse"
 	"github.com/MalenkiySolovey/solovey-ui/logger"
 	"time"
 )

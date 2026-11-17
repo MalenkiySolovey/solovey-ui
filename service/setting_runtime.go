@@ -3,7 +3,7 @@ package service
 import (
 	"time"
 
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
+	settingcatalog "github.com/MalenkiySolovey/solovey-backend/settings/catalog"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 )
 

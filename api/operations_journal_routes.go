@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
+	"github.com/MalenkiySolovey/solovey-backend/operations/coordination"
 	datalifecycle "github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"
 	updateservice "github.com/MalenkiySolovey/solovey-ui/service/update"
 	"github.com/gin-gonic/gin"

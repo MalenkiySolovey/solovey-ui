@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/componentroutes"
+	"github.com/MalenkiySolovey/solovey-backend/componentroutes"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	componentprofile "github.com/MalenkiySolovey/solovey-ui/internal/components/profile"

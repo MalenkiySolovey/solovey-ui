@@ -12,9 +12,9 @@ func TestPanelStorageRecordsHaveIndependentTransitiveClosure(t *testing.T) {
 	root := moduleRoot(t)
 	allowed := map[string]bool{}
 	for _, name := range []string{"backend/storage/model", "backend/entityidentity", "backend/security"} {
-		allowed[modulePath+"/"+name] = true
+		allowed[backendModulePath+"/"+strings.TrimPrefix(name, "backend/")] = true
 	}
-	for _, target := range []string{"./backend/storage/model", "./backend/entityidentity"} {
+	for _, target := range []string{backendModulePath + "/storage/model", backendModulePath + "/entityidentity"} {
 		var violations []string
 		for name, info := range goListDependencies(t, root, target) {
 			if !info.Standard && !allowed[name] {
@@ -30,14 +30,14 @@ func TestPanelStorageRecordsHaveIndependentTransitiveClosure(t *testing.T) {
 
 func TestPanelSQLiteRuntimeExcludesProductBootstrapAndProviders(t *testing.T) {
 	root := moduleRoot(t)
-	allowed := map[string]bool{modulePath + "/backend/storage/sqlite": true}
+	allowed := map[string]bool{backendModulePath + "/storage/sqlite": true}
 	for _, target := range []string{"gorm.io/gorm", "gorm.io/driver/sqlite", "github.com/mattn/go-sqlite3"} {
 		for name := range goListDependencies(t, root, target) {
 			allowed[name] = true
 		}
 	}
 	var violations []string
-	for name, info := range goListDependencies(t, root, "./backend/storage/sqlite") {
+	for name, info := range goListDependencies(t, root, backendModulePath+"/storage/sqlite") {
 		if !info.Standard && !allowed[name] {
 			violations = append(violations, name)
 		}
@@ -50,14 +50,14 @@ func TestPanelSQLiteRuntimeExcludesProductBootstrapAndProviders(t *testing.T) {
 
 func TestPanelMigrationAuthorityExcludesProductPolicyAndHostState(t *testing.T) {
 	root := moduleRoot(t)
-	allowed := map[string]bool{modulePath + "/backend/storage/migration": true}
+	allowed := map[string]bool{backendModulePath + "/storage/migration": true}
 	for _, target := range []string{"gorm.io/gorm", "gorm.io/driver/sqlite", "github.com/mattn/go-sqlite3"} {
 		for name := range goListDependencies(t, root, target) {
 			allowed[name] = true
 		}
 	}
 	var violations []string
-	for name, info := range goListDependencies(t, root, "./backend/storage/migration") {
+	for name, info := range goListDependencies(t, root, backendModulePath+"/storage/migration") {
 		if !info.Standard && !allowed[name] {
 			violations = append(violations, name)
 		}

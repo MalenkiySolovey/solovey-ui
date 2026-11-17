@@ -15,7 +15,7 @@ import (
 	protectionobservation "github.com/MalenkiySolovey/solovey-component-server-protection/service/observation"
 	protectionoperations "github.com/MalenkiySolovey/solovey-component-server-protection/service/operations"
 	protectionudpguard "github.com/MalenkiySolovey/solovey-component-server-protection/service/udpguard"
-	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
+	clientidentity "github.com/MalenkiySolovey/solovey-backend/security/clientidentity"
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"

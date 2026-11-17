@@ -2,7 +2,7 @@ package dbtransfer
 
 import (
 	"context"
-	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
+	"github.com/MalenkiySolovey/solovey-backend/actions"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"

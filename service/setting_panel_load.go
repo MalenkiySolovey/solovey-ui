@@ -3,9 +3,9 @@ package service
 import (
 	"strconv"
 
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
-	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/backend/settings/validation"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	settingcatalog "github.com/MalenkiySolovey/solovey-backend/settings/catalog"
+	settingsvalidation "github.com/MalenkiySolovey/solovey-backend/settings/validation"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 

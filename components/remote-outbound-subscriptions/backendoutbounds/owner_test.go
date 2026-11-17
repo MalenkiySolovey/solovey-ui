@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	hostoutbounds "github.com/MalenkiySolovey/solovey-host/outbounds"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/backendoutbounds"
 	remote "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
 	"github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/internal/bindingfixture"

@@ -5,7 +5,7 @@ package password
 import (
 	"context"
 
-	backendpassword "github.com/MalenkiySolovey/solovey-ui/backend/security/password"
+	backendpassword "github.com/MalenkiySolovey/solovey-backend/security/password"
 )
 
 const (

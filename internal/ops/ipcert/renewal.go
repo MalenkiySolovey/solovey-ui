@@ -3,7 +3,7 @@ package ipcert
 import (
 	"time"
 
-	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/backend/settings/validation"
+	settingsvalidation "github.com/MalenkiySolovey/solovey-backend/settings/validation"
 )
 
 // RenewThreshold is the remaining-validity window below which a managed IP

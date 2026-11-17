@@ -21,7 +21,7 @@ import (
 	protectionoperations "github.com/MalenkiySolovey/solovey-component-server-protection/service/operations"
 	protectionresources "github.com/MalenkiySolovey/solovey-component-server-protection/service/resources"
 	protectionudpguard "github.com/MalenkiySolovey/solovey-component-server-protection/service/udpguard"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"

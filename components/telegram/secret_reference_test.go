@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	settingsschema "github.com/MalenkiySolovey/solovey-ui/backend/settings/schema"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	settingsschema "github.com/MalenkiySolovey/solovey-backend/settings/schema"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	telegramapi "github.com/MalenkiySolovey/solovey-ui/components/telegram/api"
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
 	telegramservice "github.com/MalenkiySolovey/solovey-ui/components/telegram/service"

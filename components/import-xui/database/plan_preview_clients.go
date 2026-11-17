@@ -5,7 +5,7 @@ package importxui
 import (
 	"context"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
 
 	"gorm.io/gorm"

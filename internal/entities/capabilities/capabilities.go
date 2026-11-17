@@ -3,7 +3,7 @@
 package capabilities
 
 import (
-	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
+	entitytypes "github.com/MalenkiySolovey/solovey-backend/entityidentity"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/profile"

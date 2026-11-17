@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	wire "github.com/MalenkiySolovey/solovey-contracts/management/v1"
-	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
+	"github.com/MalenkiySolovey/solovey-backend/actions"
 )
 
 func TestCurrentActionCatalogParity(t *testing.T) {

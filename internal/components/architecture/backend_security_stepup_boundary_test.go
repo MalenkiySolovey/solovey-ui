@@ -9,13 +9,13 @@ import (
 func TestBackendStepUpHasOnlySecurityAndPanelStorageClosure(t *testing.T) {
 	root := moduleRoot(t)
 	allowed := map[string]bool{
-		modulePath + "/backend/security/stepup": true,
+		backendModulePath + "/security/stepup": true,
 	}
 	for _, target := range []string{
-		"./backend/security",
-		"./backend/security/crypto",
-		"./backend/storage/model",
-		"./backend/storage/sqlite",
+		backendModulePath + "/security",
+		backendModulePath + "/security/crypto",
+		backendModulePath + "/storage/model",
+		backendModulePath + "/storage/sqlite",
 		"gorm.io/gorm",
 	} {
 		for name := range goListDependencies(t, root, target) {
@@ -23,7 +23,7 @@ func TestBackendStepUpHasOnlySecurityAndPanelStorageClosure(t *testing.T) {
 		}
 	}
 	var violations []string
-	for name, info := range goListDependencies(t, root, "./backend/security/stepup") {
+	for name, info := range goListDependencies(t, root, backendModulePath+"/security/stepup") {
 		if !info.Standard && !allowed[name] {
 			violations = append(violations, name)
 		}

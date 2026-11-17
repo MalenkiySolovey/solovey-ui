@@ -1,9 +1,9 @@
 package api
 
 import (
-	realtimehttp "github.com/MalenkiySolovey/solovey-ui/backend/http/realtime"
-	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
-	dbhooks "github.com/MalenkiySolovey/solovey-ui/backend/storage/hooks"
+	realtimehttp "github.com/MalenkiySolovey/solovey-backend/http/realtime"
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
+	dbhooks "github.com/MalenkiySolovey/solovey-backend/storage/hooks"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 )

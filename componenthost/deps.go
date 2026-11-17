@@ -3,7 +3,7 @@ package componenthost
 import (
 	"context"
 	hostports "github.com/MalenkiySolovey/solovey-host/componenthost"
-	"github.com/MalenkiySolovey/solovey-ui/backend/componentroutes"
+	"github.com/MalenkiySolovey/solovey-backend/componentroutes"
 
 	"github.com/MalenkiySolovey/solovey-ui/service"
 

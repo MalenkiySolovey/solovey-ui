@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	dbhooks "github.com/MalenkiySolovey/solovey-ui/backend/storage/hooks"
+	dbhooks "github.com/MalenkiySolovey/solovey-backend/storage/hooks"
 	subserver "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/server"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )

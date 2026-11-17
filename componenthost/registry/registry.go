@@ -5,8 +5,8 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/durableowner"
+	"github.com/MalenkiySolovey/solovey-backend/actions"
+	"github.com/MalenkiySolovey/solovey-backend/storage/durableowner"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"

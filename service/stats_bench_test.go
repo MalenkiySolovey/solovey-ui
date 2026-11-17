@@ -9,8 +9,8 @@ import (
 	"time"
 	"unsafe"
 
-	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	entitytypes "github.com/MalenkiySolovey/solovey-backend/entityidentity"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	coretracker "github.com/MalenkiySolovey/solovey-ui/core/tracker"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"

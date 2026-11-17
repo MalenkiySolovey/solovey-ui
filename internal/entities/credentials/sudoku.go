@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"filippo.io/edwards25519"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/secretref"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	"github.com/MalenkiySolovey/solovey-ui/internal/secrets/ownerdb"

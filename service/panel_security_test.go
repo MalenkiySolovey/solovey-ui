@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	passwordutil "github.com/MalenkiySolovey/solovey-ui/backend/security/password"
-	totputil "github.com/MalenkiySolovey/solovey-ui/backend/security/totp"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
+	passwordutil "github.com/MalenkiySolovey/solovey-backend/security/password"
+	totputil "github.com/MalenkiySolovey/solovey-backend/security/totp"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
 	"gorm.io/gorm"
 )
 

@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	feature "github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions/domain"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/backendoutbounds"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"

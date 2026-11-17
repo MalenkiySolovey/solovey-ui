@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/MalenkiySolovey/solovey-ui/backend/http/response"
+	"github.com/MalenkiySolovey/solovey-backend/http/response"
 	"github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/gin-gonic/gin"
 )

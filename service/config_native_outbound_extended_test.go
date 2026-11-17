@@ -19,8 +19,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	clientdevices "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients/devices"

@@ -1,6 +1,6 @@
 package service
 
-import settingsschema "github.com/MalenkiySolovey/solovey-ui/backend/settings/schema"
+import settingsschema "github.com/MalenkiySolovey/solovey-backend/settings/schema"
 
 func (s *SettingService) GetSettingSchema() []settingsschema.Field {
 	return currentSettingsSchema().PublicFields()

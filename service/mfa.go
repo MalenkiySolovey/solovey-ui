@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	backendmfa "github.com/MalenkiySolovey/solovey-ui/backend/security/mfa"
+	backendmfa "github.com/MalenkiySolovey/solovey-backend/security/mfa"
 )
 
 const (

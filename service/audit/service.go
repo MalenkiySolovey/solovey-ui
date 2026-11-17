@@ -3,8 +3,8 @@ package audit
 
 import (
 	"context"
-	canonical "github.com/MalenkiySolovey/solovey-ui/backend/audit/store"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	canonical "github.com/MalenkiySolovey/solovey-backend/audit/store"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/logger"
 	"gorm.io/gorm"
 	"time"

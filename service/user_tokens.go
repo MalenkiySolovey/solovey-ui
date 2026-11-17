@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	backendtokens "github.com/MalenkiySolovey/solovey-ui/backend/security/tokens"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	backendtokens "github.com/MalenkiySolovey/solovey-backend/security/tokens"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/logger"
 )
 

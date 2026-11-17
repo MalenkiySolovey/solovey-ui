@@ -5,8 +5,8 @@ package importxui
 import (
 	"context"
 
-	passwordutil "github.com/MalenkiySolovey/solovey-ui/backend/security/password"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	passwordutil "github.com/MalenkiySolovey/solovey-backend/security/password"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	"github.com/MalenkiySolovey/solovey-ui/service"

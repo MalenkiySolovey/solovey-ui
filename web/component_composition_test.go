@@ -2,7 +2,7 @@ package web
 
 import (
 	"errors"
-	"github.com/MalenkiySolovey/solovey-ui/backend/componentroutes"
+	"github.com/MalenkiySolovey/solovey-backend/componentroutes"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/composition/componenthttp"
 	"github.com/MalenkiySolovey/solovey-ui/service"

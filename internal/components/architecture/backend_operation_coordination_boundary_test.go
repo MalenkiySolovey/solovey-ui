@@ -9,12 +9,12 @@ import (
 func TestBackendOperationCoordinationPreservesNarrowDurableOwners(t *testing.T) {
 	root := moduleRoot(t)
 	allowed := map[string]bool{
-		modulePath + "/backend/operations/coordination": true,
+		backendModulePath + "/operations/coordination": true,
 	}
 	for _, target := range []string{
 		"github.com/MalenkiySolovey/solovey-host/operationref",
-		"./backend/storage/model",
-		"./backend/storage/sqlite",
+		backendModulePath + "/storage/model",
+		backendModulePath + "/storage/sqlite",
 		"gorm.io/gorm",
 	} {
 		for name := range goListDependencies(t, root, target) {
@@ -22,7 +22,7 @@ func TestBackendOperationCoordinationPreservesNarrowDurableOwners(t *testing.T) 
 		}
 	}
 	var violations []string
-	for name, info := range goListDependencies(t, root, "./backend/operations/coordination") {
+	for name, info := range goListDependencies(t, root, backendModulePath+"/operations/coordination") {
 		if !info.Standard && !allowed[name] {
 			violations = append(violations, name)
 		}

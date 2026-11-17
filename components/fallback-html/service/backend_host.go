@@ -12,7 +12,7 @@ import (
 	"time"
 
 	feature "github.com/MalenkiySolovey/solovey-component-fallback-html/service"
-	"github.com/MalenkiySolovey/solovey-ui/backend/security/ssrf"
+	"github.com/MalenkiySolovey/solovey-backend/security/ssrf"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 	"gorm.io/gorm"

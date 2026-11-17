@@ -10,7 +10,7 @@ import (
 
 	dbimport "github.com/MalenkiySolovey/solovey-ui/components/import-xui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/backup"
-	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
 
 	"github.com/gin-gonic/gin"
 )

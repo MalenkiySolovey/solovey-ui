@@ -9,12 +9,12 @@ import (
 func TestBackendTokenUseHasOnlyCanonicalStorageClosure(t *testing.T) {
 	root := moduleRoot(t)
 	allowed := map[string]bool{
-		modulePath + "/backend/security/tokenuse": true,
+		backendModulePath + "/security/tokenuse": true,
 	}
 	for _, target := range []string{
-		"./backend/security",
-		"./backend/storage/model",
-		"./backend/storage/sqlite",
+		backendModulePath + "/security",
+		backendModulePath + "/storage/model",
+		backendModulePath + "/storage/sqlite",
 		"gorm.io/gorm",
 	} {
 		for name := range goListDependencies(t, root, target) {
@@ -22,7 +22,7 @@ func TestBackendTokenUseHasOnlyCanonicalStorageClosure(t *testing.T) {
 		}
 	}
 	var violations []string
-	for name, info := range goListDependencies(t, root, "./backend/security/tokenuse") {
+	for name, info := range goListDependencies(t, root, backendModulePath+"/security/tokenuse") {
 		if !info.Standard && !allowed[name] {
 			violations = append(violations, name)
 		}

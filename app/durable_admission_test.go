@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
+	"github.com/MalenkiySolovey/solovey-backend/actions"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/migrations"
@@ -19,7 +19,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/supervisor"
 	// Link the actual durable owner for this fixture even when the generated
 	// application profile selects another component. Production imports remain selected.
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	_ "github.com/MalenkiySolovey/solovey-ui/components/fallback-html"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
 	fallbackservice "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/service"

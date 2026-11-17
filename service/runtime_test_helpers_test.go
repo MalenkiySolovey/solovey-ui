@@ -1,7 +1,7 @@
 package service
 
 import (
-	tokenuse "github.com/MalenkiySolovey/solovey-ui/backend/security/tokenuse"
+	tokenuse "github.com/MalenkiySolovey/solovey-backend/security/tokenuse"
 	"testing"
 )
 

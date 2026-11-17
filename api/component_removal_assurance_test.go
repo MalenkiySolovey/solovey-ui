@@ -4,7 +4,7 @@ package api
 
 import (
 	"encoding/json"
-	"github.com/MalenkiySolovey/solovey-ui/backend/http/securityroutes"
+	"github.com/MalenkiySolovey/solovey-backend/http/securityroutes"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	totputil "github.com/MalenkiySolovey/solovey-ui/backend/security/totp"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	totputil "github.com/MalenkiySolovey/solovey-backend/security/totp"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 )

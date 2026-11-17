@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbschema "github.com/MalenkiySolovey/solovey-ui/database/schema"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"

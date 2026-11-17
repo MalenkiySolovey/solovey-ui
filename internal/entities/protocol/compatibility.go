@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"strconv"
 
-	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
+	entitytypes "github.com/MalenkiySolovey/solovey-backend/entityidentity"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/composition"

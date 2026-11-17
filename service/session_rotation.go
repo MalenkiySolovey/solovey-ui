@@ -1,7 +1,7 @@
 package service
 
 import (
-	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
+	panelsecurity "github.com/MalenkiySolovey/solovey-backend/security"
 	"sync"
 )
 

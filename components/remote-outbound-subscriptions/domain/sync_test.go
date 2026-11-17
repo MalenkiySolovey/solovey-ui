@@ -14,7 +14,7 @@ import (
 
 	subcanonical "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
-	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 	"gorm.io/gorm"
 )

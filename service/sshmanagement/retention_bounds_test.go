@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/sshmanagement"
 	"gorm.io/gorm"
 )

@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	dbhooks "github.com/MalenkiySolovey/solovey-ui/backend/storage/hooks"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/restorestate"
+	dbhooks "github.com/MalenkiySolovey/solovey-backend/storage/hooks"
+	"github.com/MalenkiySolovey/solovey-backend/storage/restorestate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	managementregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/management"

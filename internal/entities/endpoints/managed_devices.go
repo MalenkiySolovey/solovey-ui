@@ -6,7 +6,7 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	clientdevices "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients/devices"

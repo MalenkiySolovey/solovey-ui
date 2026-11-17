@@ -2,13 +2,13 @@ package service
 
 import (
 	"context"
-	tokenuse "github.com/MalenkiySolovey/solovey-ui/backend/security/tokenuse"
+	tokenuse "github.com/MalenkiySolovey/solovey-backend/security/tokenuse"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 

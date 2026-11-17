@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 	componentmanifest "github.com/MalenkiySolovey/solovey-host/componenthost/manifest"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

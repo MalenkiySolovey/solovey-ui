@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	storagesqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	storagesqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 )

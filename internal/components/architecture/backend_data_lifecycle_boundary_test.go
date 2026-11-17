@@ -8,10 +8,10 @@ import (
 
 func TestDataLifecycleExcludesProductCompositionAndComponentRuntime(t *testing.T) {
 	root := moduleRoot(t)
-	for _, target := range []string{"./backend/datalifecycle", "./backend/storage/backup"} {
+	for _, target := range []string{backendModulePath + "/datalifecycle", backendModulePath + "/storage/backup"} {
 		var violations []string
 		for name := range goListDependencies(t, root, target) {
-			if strings.HasPrefix(name, modulePath+"/") && !strings.HasPrefix(name, modulePath+"/backend/") {
+			if strings.HasPrefix(name, modulePath+"/") {
 				violations = append(violations, name)
 			}
 		}

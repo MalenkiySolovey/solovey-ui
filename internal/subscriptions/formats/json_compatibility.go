@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	settingcatalog "github.com/MalenkiySolovey/solovey-backend/settings/catalog"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"

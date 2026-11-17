@@ -3,7 +3,7 @@ package jsonvalue
 
 import (
 	"encoding/json"
-	canonical "github.com/MalenkiySolovey/solovey-ui/backend/storage/jsonvalue"
+	canonical "github.com/MalenkiySolovey/solovey-backend/storage/jsonvalue"
 )
 
 const MaxStrictDepth = canonical.MaxStrictDepth

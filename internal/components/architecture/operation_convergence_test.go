@@ -13,7 +13,7 @@ func TestMigratedOwnerTransitionsUseAtomicCoordination(t *testing.T) {
 		{"service/update/lifecycle.go", "update"},
 		{"backend/datalifecycle/drop.go", "advance"},
 	} {
-		file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(moduleRoot(t), filepath.FromSlash(target.path)), nil, 0)
+		file, err := parser.ParseFile(token.NewFileSet(), canonicalSourcePath(t, target.path), nil, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -80,7 +80,7 @@ func TestCommonPreflightRemainsAReadOnlySemanticFactEvaluator(t *testing.T) {
 
 func TestMigratedLongOperationViewsKeepCommonJobIdentity(t *testing.T) {
 	for _, relative := range []string{"service/update/change.go", "backend/datalifecycle/change.go"} {
-		file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(moduleRoot(t), filepath.FromSlash(relative)), nil, 0)
+		file, err := parser.ParseFile(token.NewFileSet(), canonicalSourcePath(t, relative), nil, 0)
 		if err != nil {
 			t.Fatal(err)
 		}

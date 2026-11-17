@@ -5,33 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/durableowner"
+	"github.com/MalenkiySolovey/solovey-backend/storage/durableowner"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	componentmanifest "github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
-
-func TestBackupOwnerModesAreClosedAndOwnerSpecific(t *testing.T) {
-	for _, test := range []struct {
-		owner string
-		mode  string
-		want  bool
-	}{
-		{"core", "TYPED", true},
-		{"core", "LEGACY_TYPED", true},
-		{"core", "OPAQUE_PRESERVED", false},
-		{"component", "TYPED", true},
-		{"component", "NO_DURABLE_DATA", true},
-		{"component", "OPAQUE_PRESERVED", true},
-		{"component", "LEGACY_TYPED", false},
-		{"component", "FUTURE_MODE", false},
-	} {
-		if got := validBackupOwnerMode(test.owner, test.mode); got != test.want {
-			t.Fatalf("validBackupOwnerMode(%q, %q)=%t, want %t", test.owner, test.mode, got, test.want)
-		}
-	}
-}
 
 func TestInstalledOwnerInventoryIncludesDisabledOwnerAndFailsClosedWhenUnavailable(t *testing.T) {
 	const ownerID = "backup-disabled-fixture"

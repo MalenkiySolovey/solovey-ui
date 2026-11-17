@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	remotedomain "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
 	remotesettings "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/internal/settings"

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/durableowner"
+	"github.com/MalenkiySolovey/solovey-backend/storage/durableowner"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/durable"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"

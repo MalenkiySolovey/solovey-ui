@@ -11,8 +11,8 @@ import (
 	"time"
 
 	_ "github.com/MalenkiySolovey/solovey-ui/app"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/durableowner"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/durableowner"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
