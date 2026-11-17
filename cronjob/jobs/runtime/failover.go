@@ -10,7 +10,7 @@ import (
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-ui/realtime"
+	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/service/failover"
 )

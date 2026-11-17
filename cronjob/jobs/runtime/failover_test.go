@@ -6,7 +6,7 @@ import (
 	"time"
 
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
-	"github.com/MalenkiySolovey/solovey-ui/realtime"
+	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/service/failover"
 )
 
