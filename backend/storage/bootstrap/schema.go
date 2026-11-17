@@ -1,0 +1,118 @@
+package bootstrap
+
+import (
+	"fmt"
+
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/sqliteident"
+
+	"gorm.io/gorm"
+)
+
+func EnsureIndexes(database *gorm.DB) error {
+	if database == nil {
+		return fmt.Errorf("database is unavailable while ensuring indexes")
+	}
+	var duplicateSetting struct {
+		Key   string
+		Count int64
+	}
+	if err := database.Raw(`
+SELECT key, COUNT(*) AS count
+FROM settings
+GROUP BY key
+HAVING COUNT(*) > 1
+ORDER BY key
+LIMIT 1
+`).Scan(&duplicateSetting).Error; err != nil {
+		return fmt.Errorf("inspect setting-key uniqueness: %w", err)
+	}
+	if duplicateSetting.Count > 1 {
+		return fmt.Errorf("stored settings duplicate key %q", duplicateSetting.Key)
+	}
+
+	indexes := []string{
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_settings_key ON settings(key)",
+		"CREATE INDEX IF NOT EXISTS idx_stats_lookup ON stats(date_time, resource, tag)",
+		"CREATE INDEX IF NOT EXISTS idx_stats_resource_tag_dt ON stats(resource, tag, date_time)",
+		"CREATE INDEX IF NOT EXISTS idx_stats_resource_dt ON stats(resource, date_time)",
+		"CREATE INDEX IF NOT EXISTS idx_changes_lookup ON changes(date_time, actor, key)",
+		"CREATE INDEX IF NOT EXISTS idx_audit_events_lookup ON audit_events(date_time, actor, event)",
+		"CREATE INDEX IF NOT EXISTS idx_audit_events_event_dt ON audit_events(event, date_time DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_audit_events_severity_dt ON audit_events(severity, date_time DESC)",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_name ON clients(name)",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_sub_secret ON clients(sub_secret) WHERE sub_secret IS NOT NULL AND sub_secret != ''",
+		"CREATE INDEX IF NOT EXISTS idx_clients_sort_order ON clients(sort_order, id)",
+		"CREATE INDEX IF NOT EXISTS idx_inbounds_sort_order ON inbounds(sort_order, id)",
+		"CREATE INDEX IF NOT EXISTS idx_inbound_drafts_status_expires ON inbound_drafts(status, expires_at, id)",
+		"CREATE INDEX IF NOT EXISTS idx_outbounds_sort_order ON outbounds(sort_order, id)",
+		"CREATE INDEX IF NOT EXISTS idx_endpoints_sort_order ON endpoints(sort_order, id)",
+		"CREATE INDEX IF NOT EXISTS idx_services_sort_order ON services(sort_order, id)",
+		"CREATE INDEX IF NOT EXISTS idx_tls_sort_order ON tls(sort_order, id)",
+		"CREATE INDEX IF NOT EXISTS idx_users_sort_order ON users(sort_order, id)",
+		"CREATE INDEX IF NOT EXISTS idx_client_ips_client_legacy_ip ON client_ips(client_name, ip) WHERE ip IS NOT NULL AND ip != ''",
+		"CREATE INDEX IF NOT EXISTS idx_client_ips_last_seen ON client_ips(last_seen)",
+	}
+	return database.Transaction(func(tx *gorm.DB) error {
+		for _, name := range []string{
+			"idx_client_ips_client_ip",
+			"idx_clients_name",
+			"idx_clients_sub_secret",
+		} {
+			if err := tx.Exec("DROP INDEX IF EXISTS " + name).Error; err != nil {
+				return fmt.Errorf("drop superseded index %s: %w", name, err)
+			}
+		}
+		for _, query := range indexes {
+			if err := tx.Exec(query).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func EnsureSortOrders(database *gorm.DB) error {
+	for _, table := range []string{
+		"inbounds", "clients", "outbounds", "endpoints", "services", "tls", "users",
+	} {
+		if err := ensureTableSortOrder(database, table); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureTableSortOrder(database *gorm.DB, table string) error {
+	if !database.Migrator().HasTable(table) || !database.Migrator().HasColumn(table, "sort_order") {
+		return nil
+	}
+
+	quotedTable := sqliteident.Quote(table)
+	rows := []struct {
+		ID        int64
+		SortOrder int
+	}{}
+	if err := database.Raw(fmt.Sprintf("SELECT id, sort_order FROM %s ORDER BY sort_order ASC, id ASC", quotedTable)).Scan(&rows).Error; err != nil {
+		return err
+	}
+	needsBackfill := false
+	for index, row := range rows {
+		if row.SortOrder != index+1 {
+			needsBackfill = true
+			break
+		}
+	}
+	if !needsBackfill {
+		return nil
+	}
+
+	return database.Transaction(func(tx *gorm.DB) error {
+		query := fmt.Sprintf("UPDATE %s SET sort_order = ? WHERE id = ?", quotedTable)
+		for index, row := range rows {
+			if err := tx.Exec(query, index+1, row.ID).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}

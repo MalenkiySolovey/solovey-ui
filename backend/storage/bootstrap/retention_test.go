@@ -1,4 +1,4 @@
-package sqlite
+package bootstrap
 
 import (
 	"testing"
@@ -23,7 +23,7 @@ func TestRetentionCompatibilityMarksOnlyCompletedRollbackReleased(t *testing.T) 
 	if err := database.Create(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := ensureSSHRetentionCompatibility(database); err != nil {
+	if err := EnsureSSHRetentionCompatibility(database); err != nil {
 		t.Fatal(err)
 	}
 	var rolledBack, committed model.SSHManagementCandidate
@@ -55,7 +55,7 @@ func TestCheckpointDeploymentRetentionCompatibilityPreservesCheckpointDebt(t *te
 	if err := database.Create(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := ensureDeploymentRetentionCompatibility(database); err != nil {
+	if err := EnsureDeploymentRetentionCompatibility(database); err != nil {
 		t.Fatal(err)
 	}
 	var retained []model.DeploymentOperation
