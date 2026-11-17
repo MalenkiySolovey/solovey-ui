@@ -6,6 +6,7 @@ import path from 'node:path'
 import { spawnSync, execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { verifyDist, publishAssets } from './frontend-assets.mjs'
+import { frontendAPIFiles } from '../frontend/scripts/component-build-inputs.mjs'
 
 function fixture(t) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'frontend assets '))
@@ -111,15 +112,21 @@ test('a failed npm build leaves the previous embedded tree untouched',{skip:proc
   const {root,target}=fixture(t)
   const entry=path.join(root,'build.sh'),bin=path.join(root,'bin')
   fs.copyFileSync(fileURLToPath(new URL('../build.sh',import.meta.url)),entry)
-  for(const name of ['scripts/core-provider-build.mjs','core/provider/pins.json','go.mod','go.sum']) {
+  for(const name of ['scripts/core-provider-build.mjs','core/provider/pins.json','go.mod','go.sum',
+    'scripts/frontend.mjs','scripts/frontend-build-inputs.mjs','scripts/component-source-inputs.mjs',
+    'scripts/component-frontend-manifest.mjs','frontend/scripts/component-build-inputs.mjs',
+    'frontend/scripts/component-source-integrity.mjs',...frontendAPIFiles.map(name=>'frontend/'+name)]) {
     const destination=path.join(root,name)
     fs.mkdirSync(path.dirname(destination),{recursive:true})
     fs.copyFileSync(fileURLToPath(new URL(`../${name}`,import.meta.url)),destination)
   }
-  fs.mkdirSync(path.join(root,'frontend'))
+  fs.mkdirSync(path.join(root,'components'))
+  fs.writeFileSync(path.join(root,'components/sources.lock.json'),JSON.stringify({schema:'solovey.component-source-inputs/v1',sources:[]}))
   fs.mkdirSync(bin)
   fs.writeFileSync(path.join(bin,'npm'),'#!/bin/sh\n[ "$1" = ci ] && exit 0\nexit 8\n',{mode:0o755})
-  const result=spawnSync('bash',[entry],{cwd:os.tmpdir(),encoding:'utf8',env:{...process.env,PATH:bin+path.delimiter+process.env.PATH}})
+  const npmCLI=path.join(bin,'npm-cli.cjs')
+  fs.writeFileSync(npmCLI,"process.exitCode = process.argv[2] === 'run' ? 8 : 0\n")
+  const result=spawnSync('bash',[entry],{cwd:os.tmpdir(),encoding:'utf8',env:{...process.env,npm_execpath:npmCLI,PATH:bin+path.delimiter+process.env.PATH}})
   assert.equal(result.status,8,result.stderr)
   previousIntact(target)
 })
