@@ -8,7 +8,7 @@ import (
 	"time"
 
 	backendcrypto "github.com/MalenkiySolovey/solovey-backend/security/crypto"
-	"github.com/gofrs/uuid/v5"
+	backenduuid "github.com/MalenkiySolovey/solovey-backend/security/uuid"
 )
 
 var (
@@ -64,11 +64,5 @@ func RandomInt(n int) int {
 	return int(result.Int64())
 }
 
-// RandomUUID returns a cryptographically random UUIDv4 string.
-func RandomUUID() (string, error) {
-	id, err := uuid.NewV4()
-	if err != nil {
-		return "", err
-	}
-	return id.String(), nil
-}
+// RandomUUID delegates cryptographic UUID generation to the Backend security owner.
+func RandomUUID() (string, error) { return backenduuid.RandomUUID() }

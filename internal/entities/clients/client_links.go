@@ -285,6 +285,3 @@ func UpdateLinksByInboundChange(tx *gorm.DB, inbounds *[]model.Inbound, hostname
 	}
 	return validateSnellUserKeys(tx, nil)
 }
-func UpdateResetFields(tx *gorm.DB, clientID uint, values map[string]interface{}) error {
-	return tx.Model(model.Client{}).Where("id = ?", clientID).Updates(values).Error
-}
