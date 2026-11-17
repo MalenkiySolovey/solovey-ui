@@ -45,8 +45,8 @@ func (assets assetsFS) Open(name string) (fs.File, error) {
 	return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 }
 
-func newAssetsFS() (fs.FS, error) {
-	embeddedAssets, err := fs.Sub(content, "html/assets")
+func newAssetsFS(frontend fs.FS) (fs.FS, error) {
+	embeddedAssets, err := fs.Sub(frontend, "assets")
 	if err != nil {
 		return nil, err
 	}
