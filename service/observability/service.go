@@ -7,9 +7,9 @@ package observability
 import (
 	"sync"
 
-	canonical "github.com/MalenkiySolovey/solovey-component-observability-extra/history"
 	dbhooks "github.com/MalenkiySolovey/solovey-backend/storage/hooks"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	canonical "github.com/MalenkiySolovey/solovey-component-observability-extra/history"
 	"gorm.io/gorm"
 )
 

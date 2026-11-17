@@ -11,11 +11,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-component-server-protection/domain"
 	"github.com/MalenkiySolovey/solovey-component-server-protection/service/events"
 	"github.com/MalenkiySolovey/solovey-component-server-protection/service/observationio"
 	"github.com/MalenkiySolovey/solovey-component-server-protection/service/scoring"
-	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 )

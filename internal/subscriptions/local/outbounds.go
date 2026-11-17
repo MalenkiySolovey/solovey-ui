@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"

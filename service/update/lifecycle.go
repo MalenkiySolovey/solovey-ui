@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	operationcoordination "github.com/MalenkiySolovey/solovey-backend/operations/coordination"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
@@ -23,7 +24,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/schema"
 	componentprofile "github.com/MalenkiySolovey/solovey-ui/internal/components/profile"
 	deploymentdomain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
-	operationcoordination "github.com/MalenkiySolovey/solovey-backend/operations/coordination"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/preflight"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/updatebroker"

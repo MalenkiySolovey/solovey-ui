@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	subcanonical "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	subcanonical "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds/composition"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"

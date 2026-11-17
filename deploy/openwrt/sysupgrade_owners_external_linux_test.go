@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/MalenkiySolovey/solovey-ui/app"
 	"github.com/MalenkiySolovey/solovey-backend/storage/durableowner"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	_ "github.com/MalenkiySolovey/solovey-ui/app"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"

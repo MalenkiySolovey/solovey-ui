@@ -3,13 +3,13 @@ package api
 import (
 	"time"
 
-	confighttp "github.com/MalenkiySolovey/solovey-ui/api/config"
-	dbtransferhttp "github.com/MalenkiySolovey/solovey-ui/api/dbtransfer"
-	telemetryhttp "github.com/MalenkiySolovey/solovey-ui/api/telemetry"
 	"github.com/MalenkiySolovey/solovey-backend/hostcontext"
 	authhttp "github.com/MalenkiySolovey/solovey-backend/http/auth"
 	bearerhttp "github.com/MalenkiySolovey/solovey-backend/http/bearer"
 	"github.com/MalenkiySolovey/solovey-backend/http/databaseoperation"
+	confighttp "github.com/MalenkiySolovey/solovey-ui/api/config"
+	dbtransferhttp "github.com/MalenkiySolovey/solovey-ui/api/dbtransfer"
+	telemetryhttp "github.com/MalenkiySolovey/solovey-ui/api/telemetry"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/gin-gonic/gin"

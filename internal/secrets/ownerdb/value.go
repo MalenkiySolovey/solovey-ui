@@ -4,8 +4,8 @@ package ownerdb
 import (
 	"context"
 	"encoding/json"
-	"github.com/MalenkiySolovey/solovey-host/secretref"
 	canonical "github.com/MalenkiySolovey/solovey-backend/secrets/ownerdb"
+	"github.com/MalenkiySolovey/solovey-host/secretref"
 	"github.com/MalenkiySolovey/solovey-ui/logger"
 	"gorm.io/gorm"
 )

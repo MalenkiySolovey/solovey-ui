@@ -1,8 +1,8 @@
 package outbounds
 
 import (
-	hostoutbounds "github.com/MalenkiySolovey/solovey-host/outbounds"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	hostoutbounds "github.com/MalenkiySolovey/solovey-host/outbounds"
 	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	"gorm.io/gorm"
 )

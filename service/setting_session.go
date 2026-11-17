@@ -4,12 +4,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
 	panelsecurity "github.com/MalenkiySolovey/solovey-backend/security"
 	settingcatalog "github.com/MalenkiySolovey/solovey-backend/settings/catalog"
 	configsecurity "github.com/MalenkiySolovey/solovey-ui/config/security"
 	settingsstore "github.com/MalenkiySolovey/solovey-ui/internal/settings/store"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-backend/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 

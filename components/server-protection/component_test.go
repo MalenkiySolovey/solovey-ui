@@ -16,8 +16,8 @@ import (
 	"strings"
 	"testing"
 
-	protectionoperations "github.com/MalenkiySolovey/solovey-component-server-protection/service/operations"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	protectionoperations "github.com/MalenkiySolovey/solovey-component-server-protection/service/operations"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"

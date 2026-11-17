@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/backup"
 	"github.com/MalenkiySolovey/solovey-backend/operations/coordination"
+	"github.com/MalenkiySolovey/solovey-ui/database/backup"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"

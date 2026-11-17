@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/core/inboundidentity"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
@@ -14,7 +15,6 @@ import (
 	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-backend/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/MalenkiySolovey/solovey-ui/util/redact"

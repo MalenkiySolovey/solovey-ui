@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	"github.com/MalenkiySolovey/solovey-backend/http/requestbudget"
+	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	"github.com/gin-gonic/gin"
 )
 

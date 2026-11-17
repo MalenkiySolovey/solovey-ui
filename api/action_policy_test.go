@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-backend/actions"
+	"github.com/MalenkiySolovey/solovey-backend/operations/coordination"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
-	"github.com/MalenkiySolovey/solovey-backend/operations/coordination"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"

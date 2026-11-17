@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
+	ops "github.com/MalenkiySolovey/solovey-backend/operations/coordination"
 	wire "github.com/MalenkiySolovey/solovey-contracts/management/v1"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
-	ops "github.com/MalenkiySolovey/solovey-backend/operations/coordination"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 )
 

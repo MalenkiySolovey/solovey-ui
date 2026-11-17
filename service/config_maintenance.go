@@ -3,9 +3,9 @@ package service
 import (
 	"context"
 
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
-	"github.com/MalenkiySolovey/solovey-backend/realtime"
 )
 
 // Caller owns ConfigService's established lifecycle serializer. A deliberate

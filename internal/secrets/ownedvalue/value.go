@@ -4,8 +4,8 @@ package ownedvalue
 import (
 	"context"
 	"encoding/json"
-	"github.com/MalenkiySolovey/solovey-host/secretref"
 	canonical "github.com/MalenkiySolovey/solovey-backend/secrets/ownedvalue"
+	"github.com/MalenkiySolovey/solovey-host/secretref"
 )
 
 const MaxValueBytes = canonical.MaxValueBytes

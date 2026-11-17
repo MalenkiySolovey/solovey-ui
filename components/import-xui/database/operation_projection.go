@@ -9,8 +9,8 @@ import (
 	"errors"
 	"path/filepath"
 
-	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-backend/operations/coordination"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 

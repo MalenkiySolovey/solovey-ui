@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-backend/actions"
+	"github.com/MalenkiySolovey/solovey-backend/operations/coordination"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
-	"github.com/MalenkiySolovey/solovey-backend/operations/coordination"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 	"gorm.io/gorm"
 )

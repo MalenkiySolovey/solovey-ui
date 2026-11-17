@@ -7,10 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 
-	wire "github.com/MalenkiySolovey/solovey-contracts/management/v1"
 	"github.com/MalenkiySolovey/solovey-backend/actions"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
 	"github.com/MalenkiySolovey/solovey-backend/operations/coordination"
+	wire "github.com/MalenkiySolovey/solovey-contracts/management/v1"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
 )
 
 func LocalHost() wire.HostRef {

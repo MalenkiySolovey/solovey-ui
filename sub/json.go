@@ -1,9 +1,9 @@
 package sub
 
 import (
-	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
 	subformats "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/formats"
 	localsub "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/local"
 	"github.com/MalenkiySolovey/solovey-ui/service"

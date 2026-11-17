@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	"gorm.io/gorm"
 )
 

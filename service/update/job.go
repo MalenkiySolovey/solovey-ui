@@ -1,8 +1,8 @@
 package update
 
 import (
-	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-backend/operations/coordination"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 )
 
 func ProjectJob(operation model.UpdateOperation) operationcoordination.Job {

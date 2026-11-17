@@ -5,8 +5,8 @@ package datalifecycle
 import (
 	"context"
 	"errors"
-	componentmanifest "github.com/MalenkiySolovey/solovey-host/componenthost/manifest"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	componentmanifest "github.com/MalenkiySolovey/solovey-host/componenthost/manifest"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

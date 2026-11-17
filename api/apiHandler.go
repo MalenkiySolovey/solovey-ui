@@ -3,14 +3,14 @@ package api
 import (
 	"sync"
 
-	confighttp "github.com/MalenkiySolovey/solovey-ui/api/config"
-	dbtransferhttp "github.com/MalenkiySolovey/solovey-ui/api/dbtransfer"
-	failoverhttp "github.com/MalenkiySolovey/solovey-ui/api/failover"
-	telemetryhttp "github.com/MalenkiySolovey/solovey-ui/api/telemetry"
 	"github.com/MalenkiySolovey/solovey-backend/hostcontext"
 	authhttp "github.com/MalenkiySolovey/solovey-backend/http/auth"
 	"github.com/MalenkiySolovey/solovey-backend/http/databaseoperation"
 	realtimehttp "github.com/MalenkiySolovey/solovey-backend/http/realtime"
+	confighttp "github.com/MalenkiySolovey/solovey-ui/api/config"
+	dbtransferhttp "github.com/MalenkiySolovey/solovey-ui/api/dbtransfer"
+	failoverhttp "github.com/MalenkiySolovey/solovey-ui/api/failover"
+	telemetryhttp "github.com/MalenkiySolovey/solovey-ui/api/telemetry"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"

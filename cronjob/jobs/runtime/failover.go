@@ -5,12 +5,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-backend/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/service/failover"
 )

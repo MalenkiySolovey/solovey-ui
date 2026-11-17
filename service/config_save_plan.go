@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-backend/realtime"
 
 	"gorm.io/gorm"
 )

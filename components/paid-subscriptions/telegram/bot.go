@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-backend/http/ratelimit"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
-	"github.com/MalenkiySolovey/solovey-backend/http/ratelimit"
 )
 
 // Bot is the long-poll receiver for the client-facing Telegram bot. One Bot

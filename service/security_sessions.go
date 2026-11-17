@@ -3,9 +3,9 @@ package service
 import (
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
 	backendsecuritysessions "github.com/MalenkiySolovey/solovey-backend/security/sessions"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
-	"github.com/MalenkiySolovey/solovey-backend/realtime"
 )
 
 const (

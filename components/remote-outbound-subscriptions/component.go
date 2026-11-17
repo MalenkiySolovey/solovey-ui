@@ -9,9 +9,9 @@ import (
 
 	subscriptionsource "github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions"
 
-	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"

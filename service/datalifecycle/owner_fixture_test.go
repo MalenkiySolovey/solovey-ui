@@ -6,8 +6,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	componentmanifest "github.com/MalenkiySolovey/solovey-host/componenthost/manifest"
 	"github.com/MalenkiySolovey/solovey-backend/storage/durableowner"
+	componentmanifest "github.com/MalenkiySolovey/solovey-host/componenthost/manifest"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	componentregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 )

@@ -10,9 +10,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-backend/http/ratelimit"
 	feature "github.com/MalenkiySolovey/solovey-component-fallback-html/service"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
-	"github.com/MalenkiySolovey/solovey-backend/http/ratelimit"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )

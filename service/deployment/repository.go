@@ -6,9 +6,9 @@ import (
 	"errors"
 	"time"
 
+	operationcoordination "github.com/MalenkiySolovey/solovey-backend/operations/coordination"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
-	operationcoordination "github.com/MalenkiySolovey/solovey-backend/operations/coordination"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

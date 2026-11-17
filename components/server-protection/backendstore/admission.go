@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/MalenkiySolovey/solovey-component-server-protection/service/durable"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-component-server-protection/service/durable"
 	sqlite3 "github.com/mattn/go-sqlite3"
 )
 
