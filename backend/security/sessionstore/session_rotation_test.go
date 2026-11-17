@@ -1,16 +1,16 @@
-package web
+package sessionstore
 
 import (
 	"net/http"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/service"
+	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
 	ginsessions "github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
 // TestSQLiteSessionStoreRotatesIDOnLogin pins S-k: the login flow sets
-// service.SessionRegenerateKey, which must make the store mint a fresh session
+// panelsecurity.SessionRegenerateKey, which must make the store mint a fresh session
 // ID and erase the old row, so a planted pre-auth (CSRF) session cannot survive
 // authentication under the same ID (session-fixation defense). The marker must
 // be consumed (a subsequent normal save must NOT rotate).
@@ -34,7 +34,7 @@ func TestSQLiteSessionStoreRotatesIDOnLogin(t *testing.T) {
 	router.GET("/login", func(c *gin.Context) {
 		s := ginsessions.Default(c)
 		s.Set("user", "admin")
-		s.Set(service.SessionRegenerateKey, true)
+		s.Set(panelsecurity.SessionRegenerateKey, true)
 		s.Options(opts)
 		_ = s.Save()
 		c.Status(http.StatusNoContent)

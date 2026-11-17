@@ -1,13 +1,15 @@
-package web
+package sessionstore
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	ginsessions "github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/securecookie"
@@ -134,7 +136,7 @@ func TestSQLiteSessionStoreCreatesSchemaAfterLiveDBSwap(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("SUI_DB_FOLDER", tempDir)
 	dbPath := filepath.Join(tempDir, "s-ui.db")
-	if err := dbsqlite.Init(dbPath); err != nil {
+	if err := initializeSessionDatabase(dbPath); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
@@ -188,12 +190,24 @@ func BenchmarkSQLiteSessionStoreProtectedRequest(b *testing.B) {
 	}
 }
 
+func initializeSessionDatabase(path string) error {
+	return dbsqlite.InitializeContext(context.Background(), path, dbsqlite.Bootstrap{
+		BeforeOpen: func() error { return nil },
+		AfterOpen: func(db *gorm.DB) error {
+			if err := db.AutoMigrate(&model.User{}, &model.SecuritySession{}); err != nil {
+				return err
+			}
+			return db.Create(&model.User{Username: "admin", CredentialGeneration: 1, MFAGeneration: 1}).Error
+		},
+	})
+}
+
 func initSQLiteSessionTestDB(tb testing.TB) *gorm.DB {
 	tb.Helper()
 	tempDir := tb.TempDir()
 	tb.Setenv("SUI_DB_FOLDER", tempDir)
 	closeSQLiteSessionTestDB(dbsqlite.DB())
-	if err := dbsqlite.Init(filepath.Join(tempDir, "s-ui.db")); err != nil {
+	if err := initializeSessionDatabase(filepath.Join(tempDir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			tb.Skip(err)
 		}
@@ -206,6 +220,10 @@ func initSQLiteSessionTestDB(tb testing.TB) *gorm.DB {
 
 func closeSQLiteSessionTestDB(db *gorm.DB) {
 	if db == nil {
+		return
+	}
+	if dbsqlite.DB() == db {
+		_ = dbsqlite.Close()
 		return
 	}
 	if sqlDB, err := db.DB(); err == nil {
