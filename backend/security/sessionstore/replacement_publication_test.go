@@ -44,6 +44,8 @@ func TestReplacementPublishesRealtimeInvalidationOnlyAfterCommit(t *testing.T) {
 			setValues := func(c *gin.Context, ref string) {
 				s := ginsessions.Default(c)
 				s.Set(panelsecurity.SessionLoginUserKey, admin.Username)
+				s.Set(panelsecurity.SessionAuthStateKey, panelsecurity.AuthStateAuthenticated)
+				s.Set(panelsecurity.SessionAssuranceKey, panelsecurity.AssurancePassword)
 				s.Set(panelsecurity.SessionRefKey, ref)
 				s.Set(panelsecurity.SessionUserIDKey, uint64(admin.Id))
 				s.Set(panelsecurity.SessionCredentialGenerationKey, uint64(1))
