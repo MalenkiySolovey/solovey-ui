@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	canonical "github.com/MalenkiySolovey/solovey-ui/backend/storage/backup"
 	dbschema "github.com/MalenkiySolovey/solovey-ui/database/schema"
 	"io"
 	"os"
@@ -184,8 +185,8 @@ func synthesizeSupportedLegacyManifest(ctx context.Context, db *gorm.DB) (Backup
 		return BackupManifest{}, errors.New("legacy core schema is unsupported")
 	}
 	known := map[string]bool{}
-	for _, table := range backupTables() {
-		known[table.name] = !table.alwaysExclude
+	for _, table := range canonical.CoreTables() {
+		known[table.Name] = !table.AlwaysExclude
 	}
 	var names []string
 	if err := db.WithContext(ctx).Raw("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").Scan(&names).Error; err != nil {

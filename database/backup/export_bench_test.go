@@ -2,6 +2,7 @@ package backup
 
 import (
 	"fmt"
+	canonical "github.com/MalenkiySolovey/solovey-ui/backend/storage/backup"
 	"io"
 	"os"
 	"path/filepath"
@@ -88,10 +89,10 @@ func prepareBackupBenchFixture(b *testing.B, rowsPerTable int) string {
 	if err := db.Exec("PRAGMA synchronous=OFF").Error; err != nil {
 		b.Fatal(err)
 	}
-	tables := backupTables()
+	tables := canonical.CoreTables()
 	models := make([]any, 0, len(tables))
 	for _, table := range tables {
-		models = append(models, table.model)
+		models = append(models, table.Model)
 	}
 	if err := db.AutoMigrate(models...); err != nil {
 		b.Fatal(err)

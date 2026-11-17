@@ -21,7 +21,7 @@ func TestWALCheckpointFallbackHelperHandlesTruncateFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := walCheckpointWithFallback(probe); err == nil {
+	if err := (Exporter{}).walCheckpointWithFallback(probe); err == nil {
 		t.Fatal("expected FULL checkpoint error after TRUNCATE fails on a closed database")
 	}
 }
@@ -37,7 +37,7 @@ func TestWALCheckpointFallbackHelperSucceeds(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
-	if err := walCheckpointWithFallback(probe); err != nil {
+	if err := (Exporter{}).walCheckpointWithFallback(probe); err != nil {
 		t.Fatalf("expected WAL checkpoint helper to succeed on an open database: %v", err)
 	}
 }
