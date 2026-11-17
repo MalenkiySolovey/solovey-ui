@@ -1,4 +1,4 @@
-package service
+package store
 
 import (
 	"context"
@@ -11,11 +11,11 @@ import (
 )
 
 func BenchmarkAuditWriter_Push(b *testing.B) {
-	writer := newAuditWriter(auditQueueCapacity, auditBatchSize, time.Hour, nil)
+	writer := NewWriter(DefaultQueueCapacity, DefaultBatchSize, time.Hour, nil)
 	auditDroppedTotal.Store(0)
 	event := model.AuditEvent{Event: "benchmark_audit_push", Severity: AuditSeverityInfo}
-	b.ReportMetric(float64(auditQueueCapacity), "capacity")
-	b.ReportMetric(float64(auditBatchSize), "batch")
+	b.ReportMetric(float64(DefaultQueueCapacity), "capacity")
+	b.ReportMetric(float64(DefaultBatchSize), "batch")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		writer.push(event)
@@ -26,7 +26,7 @@ func BenchmarkAuditWriter_Push(b *testing.B) {
 func BenchmarkAuditWriter_Overload10000(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		auditDroppedTotal.Store(0)
-		writer := newAuditWriter(auditQueueCapacity, auditBatchSize, time.Hour, nil)
+		writer := NewWriter(DefaultQueueCapacity, DefaultBatchSize, time.Hour, nil)
 		for j := 0; j < 10_000; j++ {
 			writer.push(auditWriterBenchEvent(j))
 		}
@@ -36,7 +36,7 @@ func BenchmarkAuditWriter_Overload10000(b *testing.B) {
 
 func TestAuditWriterOverloadPreservesSeverityPriority(t *testing.T) {
 	auditDroppedTotal.Store(0)
-	writer := newAuditWriter(auditQueueCapacity, auditBatchSize, time.Hour, nil)
+	writer := NewWriter(DefaultQueueCapacity, DefaultBatchSize, time.Hour, nil)
 	for i := 0; i < 10_000; i++ {
 		writer.push(auditWriterBenchEvent(i))
 	}
@@ -52,17 +52,17 @@ func TestAuditWriterOverloadPreservesSeverityPriority(t *testing.T) {
 	// #nosec G115 -- bench drop counter is well within int range.
 	dropped := int(auditDroppedTotal.Load())
 	wantKeptWarnSecurity := 5000
-	if wantKeptWarnSecurity > auditQueueCapacity {
-		wantKeptWarnSecurity = auditQueueCapacity
+	if wantKeptWarnSecurity > DefaultQueueCapacity {
+		wantKeptWarnSecurity = DefaultQueueCapacity
 	}
-	wantKeptInfo := auditQueueCapacity - wantKeptWarnSecurity
+	wantKeptInfo := DefaultQueueCapacity - wantKeptWarnSecurity
 	lostWarnSecurity := 5000 - kept[AuditSeverityWarn]
 	lostInfo := 5000 - kept[AuditSeverityInfo]
-	if dropped != 10_000-auditQueueCapacity {
-		t.Fatalf("unexpected drop count: got %d want %d", dropped, 10_000-auditQueueCapacity)
+	if dropped != 10_000-DefaultQueueCapacity {
+		t.Fatalf("unexpected drop count: got %d want %d", dropped, 10_000-DefaultQueueCapacity)
 	}
-	if queueLen != auditQueueCapacity {
-		t.Fatalf("queue len=%d want %d", queueLen, auditQueueCapacity)
+	if queueLen != DefaultQueueCapacity {
+		t.Fatalf("queue len=%d want %d", queueLen, DefaultQueueCapacity)
 	}
 	if kept[AuditSeverityWarn] != wantKeptWarnSecurity || kept[AuditSeverityInfo] != wantKeptInfo {
 		t.Fatalf("severity priority eviction kept warn/security=%d info=%d; want warn/security=%d info=%d; kept=%v",
@@ -87,7 +87,7 @@ func auditWriterBenchEvent(i int) model.AuditEvent {
 
 func BenchmarkAuditWriter_EnqueueAndFlush(b *testing.B) {
 	var written atomic.Int64
-	writer := newAuditWriter(auditQueueCapacity, auditBatchSize, time.Millisecond, func(events []model.AuditEvent) error {
+	writer := NewWriter(DefaultQueueCapacity, DefaultBatchSize, time.Millisecond, func(events []model.AuditEvent) error {
 		written.Add(int64(len(events)))
 		return nil
 	})

@@ -174,7 +174,7 @@ func (r *Runtime) replaceAuditWriterIfCurrent(current *auditWriter, pending []mo
 	if r.auditWriter == current {
 		replacement := newAuditWriter(auditQueueCapacity, auditBatchSize, auditFlushInterval, writeAuditEvents)
 		for _, event := range pending {
-			replacement.push(event)
+			replacement.PushPending(event)
 		}
 		r.auditWriter = replacement
 	}

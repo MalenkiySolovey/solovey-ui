@@ -1,4 +1,4 @@
-package service
+package store
 
 import (
 	"context"
@@ -14,7 +14,7 @@ func TestAuditWriterExtraRetriesTransientWriteFailure(t *testing.T) {
 	sentinel := errors.New("temporary audit storage failure")
 	var attempts atomic.Int32
 	wrote := make(chan []model.AuditEvent, 1)
-	writer := newAuditWriter(10, 1, time.Hour, func(events []model.AuditEvent) error {
+	writer := NewWriter(10, 1, time.Hour, func(events []model.AuditEvent) error {
 		if attempts.Add(1) == 1 {
 			return sentinel
 		}
@@ -41,7 +41,7 @@ func TestAuditWriterExtraRetriesTransientWriteFailure(t *testing.T) {
 func TestAuditWriterExtraStopReportsPersistentWriteFailure(t *testing.T) {
 	sentinel := errors.New("persistent audit storage failure")
 	attempted := make(chan struct{}, 1)
-	writer := newAuditWriter(10, 1, time.Hour, func([]model.AuditEvent) error {
+	writer := NewWriter(10, 1, time.Hour, func([]model.AuditEvent) error {
 		select {
 		case attempted <- struct{}{}:
 		default:
@@ -57,7 +57,7 @@ func TestAuditWriterExtraStopReportsPersistentWriteFailure(t *testing.T) {
 	if err := writer.Stop(context.Background()); !errors.Is(err, sentinel) {
 		t.Fatalf("Stop error=%v, want %v", err, sentinel)
 	}
-	pending := writer.drainPending()
+	pending := writer.DrainPending()
 	if len(pending) != 1 || pending[0].Event != "cannot_persist" {
 		t.Fatalf("failed shutdown write was not retained for the next writer: %#v", pending)
 	}
@@ -65,13 +65,13 @@ func TestAuditWriterExtraStopReportsPersistentWriteFailure(t *testing.T) {
 
 func TestAuditWriterExtraOverflowIncrementsDroppedTotal(t *testing.T) {
 	auditDroppedTotal.Store(0)
-	writer := newAuditWriter(1, 10, time.Hour, nil)
+	writer := NewWriter(1, 10, time.Hour, nil)
 
 	writer.push(model.AuditEvent{Event: "first"})
 	writer.push(model.AuditEvent{Event: "second"})
 	writer.push(model.AuditEvent{Event: "third"})
 
-	if got := AuditDroppedTotal(); got != 2 {
+	if got := DroppedTotal(); got != 2 {
 		t.Fatalf("dropped total=%d, want 2", got)
 	}
 	writer.mu.Lock()
@@ -83,7 +83,7 @@ func TestAuditWriterExtraOverflowIncrementsDroppedTotal(t *testing.T) {
 
 func TestAuditWriterExtraFlushesPartialBatchOnInterval(t *testing.T) {
 	wrote := make(chan []model.AuditEvent, 1)
-	writer := newAuditWriter(10, 5, 20*time.Millisecond, func(events []model.AuditEvent) error {
+	writer := NewWriter(10, 5, 20*time.Millisecond, func(events []model.AuditEvent) error {
 		wrote <- append([]model.AuditEvent(nil), events...)
 		return nil
 	})
@@ -108,7 +108,7 @@ func TestAuditWriterExtraFlushesPartialBatchOnInterval(t *testing.T) {
 
 func TestAuditWriterExtraStopFlushesUnsentBatch(t *testing.T) {
 	wrote := make(chan []model.AuditEvent, 1)
-	writer := newAuditWriter(10, 10, time.Hour, func(events []model.AuditEvent) error {
+	writer := NewWriter(10, 10, time.Hour, func(events []model.AuditEvent) error {
 		wrote <- append([]model.AuditEvent(nil), events...)
 		return nil
 	})
