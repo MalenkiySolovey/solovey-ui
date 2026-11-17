@@ -138,7 +138,11 @@ func (s *InboundService) backend() netentitysvc.InboundService {
 	if s != nil {
 		runtime = runtimeOrDefault(s.Runtime)
 	}
-	return netentitysvc.InboundService{ClientHooks: &s.ClientService, Core: runtime.Core()}
+	result := netentitysvc.InboundService{ClientHooks: &s.ClientService}
+	if core := runtime.Core(); core != nil {
+		result.Core = core
+	}
+	return result
 }
 func (s *InboundService) Get(ids string) (*[]map[string]interface{}, error) {
 	backend := s.backend()
