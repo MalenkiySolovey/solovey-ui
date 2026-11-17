@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/gin-gonic/gin"
 	"net"
 	"strings"
 	"testing"
@@ -30,7 +31,10 @@ func TestMissingListenerOwnerRejectsBeforeSettingsOrNetworkEffects(t *testing.T)
 func TestInvalidTLSClosesTheProductSuppliedListener(t *testing.T) {
 	calls := 0
 	var listener net.Listener
-	runtime := NewRuntimeServer(portTestSettings{calls: &calls}, nil, nil, RuntimePorts{
+	runtime := NewRuntimeServer(portTestSettings{calls: &calls}, nil, func() FormatHandlers {
+		handler := func(c *gin.Context) { c.Status(200) }
+		return FormatHandlers{JSON: handler, Clash: handler, Xray: handler, Headers: handler}
+	}, RuntimePorts{
 		Listen: func(address, host, port string) (ListenerResult, error) {
 			var err error
 			listener, err = net.Listen("tcp", "127.0.0.1:0")
