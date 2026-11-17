@@ -10,7 +10,6 @@ import (
 	"testing/fstest"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
-	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
 func TestFrontendInputServesTemplatesAndAssetsFromOneBundle(t *testing.T) {
