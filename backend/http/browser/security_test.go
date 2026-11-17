@@ -10,6 +10,7 @@ import (
 	"time"
 
 	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
+	"github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/gin-contrib/sessions"
@@ -121,7 +122,7 @@ func TestBrowserSessionKeepsDurableGenerationAndPrivacyFences(t *testing.T) {
 		if s.Get(panelsecurity.SessionRegenerateKey) != true || s.Get(CSRFTokenKey) != nil {
 			t.Fatal("login did not rotate the pre-auth session and CSRF token")
 		}
-		if s.Get(panelsecurity.SessionClientPrefixKey) != "198.51.100.0/24" || s.Get(panelsecurity.SessionClientProvenanceKey) != "direct" {
+		if s.Get(panelsecurity.SessionClientPrefixKey) != "198.51.100.0/24" || s.Get(panelsecurity.SessionClientProvenanceKey) != clientidentity.ProvenanceDirect {
 			t.Fatal("session persisted caller-supplied identity instead of canonical privacy facts")
 		}
 		row := model.SecuritySession{SessionID: "durable-session", Ref: ref, UserID: admin.Id, CredentialGeneration: 1, MFAGeneration: 1, State: panelsecurity.SessionStateActive}
