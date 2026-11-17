@@ -21,7 +21,7 @@ import (
 func initializeOperationDatabase(ctx context.Context, path string) error {
 	return dbsqlite.InitializeContext(ctx, path, dbsqlite.Bootstrap{
 		BeforeOpen: func() error { return nil },
-		AfterOpen: func(db *gorm.DB) error { return db.AutoMigrate(&model.Setting{}) },
+		AfterOpen:  func(db *gorm.DB) error { return db.AutoMigrate(&model.Setting{}) },
 	})
 }
 
