@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/users"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
@@ -61,13 +62,8 @@ func FindInboundChanges(tx *gorm.DB, client *model.Client) ([]uint, error) {
 	}
 	return common.DiffUintArray(oldInboundIDs, newInboundIDs), nil
 }
-func DecodeInbounds(clientID uint, raw json.RawMessage, operation string) ([]uint, bool) {
-	var inbounds []uint
-	if err := json.Unmarshal(raw, &inbounds); err != nil {
-		logger.Warningf("%s skipped client %d with invalid inbounds: %v", operation, clientID, err)
-		return nil, false
-	}
-	return inbounds, true
+func DecodeInbounds(id uint, raw json.RawMessage, operation string) ([]uint, bool) {
+	return users.DecodeInboundMembership(id, raw, operation, logger.Warningf)
 }
 func AppendInbound(clientID uint, raw json.RawMessage, inboundID uint, operation string) (json.RawMessage, bool, error) {
 	inboundIDs, ok := DecodeInbounds(clientID, raw, operation)
