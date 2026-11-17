@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/secretref"
-	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
+	"github.com/MalenkiySolovey/solovey-host/secretref"
+	"github.com/MalenkiySolovey/solovey-ui/backend/security/secretbox"
 )
 
 func credentialFixture(t *testing.T) (secretref.Access, *secretbox.Box, string) {
