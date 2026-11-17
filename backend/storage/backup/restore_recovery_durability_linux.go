@@ -4,7 +4,8 @@ package backup
 
 import "os"
 
-func syncRestoreRecoveryDirectory(path string) error {
+// SyncRecoveryDirectory persists directory entries after recovery file publication.
+func SyncRecoveryDirectory(path string) error {
 	directory, err := os.Open(path)
 	if err != nil {
 		return err

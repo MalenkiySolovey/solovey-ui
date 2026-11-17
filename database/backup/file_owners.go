@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	canonical "github.com/MalenkiySolovey/solovey-ui/backend/storage/backup"
 	"os"
 	"sort"
 	"strings"
@@ -19,9 +20,9 @@ const (
 	LogicalFileBackupEnv      = "SUI_LOGICAL_FILE_BACKUP"
 	LogicalFileBackupRequired = "OWNER_FILES_V1"
 	BackupFileTable           = "backup_owner_files_v1"
-	MaxOwnerFiles             = 4096
-	MaxOwnerFileBytes         = 16 << 20
-	MaxOwnerFilesBytes        = 128 << 20
+	MaxOwnerFiles             = canonical.MaxOwnerFiles
+	MaxOwnerFileBytes         = canonical.MaxOwnerFileBytes
+	MaxOwnerFilesBytes        = canonical.MaxOwnerFilesBytes
 )
 
 // OwnerFile contains a semantic owner key, never an archive-authorized output
