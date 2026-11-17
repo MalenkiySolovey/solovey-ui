@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	clientidentity "github.com/MalenkiySolovey/solovey-ui/internal/httpsecurity/clientidentity"
+	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
 )
 
 func WebSocketOriginAllowed(originHeader, requestHost, _ string) (bool, string) {

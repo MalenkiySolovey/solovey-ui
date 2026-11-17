@@ -6,13 +6,15 @@ import (
 	"time"
 
 	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
-	clientidentity "github.com/MalenkiySolovey/solovey-ui/internal/httpsecurity/clientidentity"
+	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
 	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
 	UserService               UserCommands
 	SettingService            SessionSettings
+	LogInfo                   func(...any)
+	LogWarning                func(...any)
 	NotifyEvent               func(string, map[string]string)
 	NotifyAuthenticationEvent func(string, string, string, clientidentity.V1)
 	ClientIdentity            func(*gin.Context) clientidentity.V1
@@ -50,6 +52,8 @@ func (a *Handler) requireStepUp(c *gin.Context, operation, target string) bool {
 type Deps struct {
 	UserService               UserCommands
 	SettingService            SessionSettings
+	LogInfo                   func(...any)
+	LogWarning                func(...any)
 	NotifyEvent               func(string, map[string]string)
 	NotifyAuthenticationEvent func(string, string, string, clientidentity.V1)
 	ClientIdentity            func(*gin.Context) clientidentity.V1
@@ -73,6 +77,13 @@ type Deps struct {
 }
 
 func NewHandler(deps Deps) *Handler {
+	logInfo, logWarning := deps.LogInfo, deps.LogWarning
+	if logInfo == nil {
+		logInfo = func(...any) {}
+	}
+	if logWarning == nil {
+		logWarning = func(...any) {}
+	}
 	reloadTokens := deps.ReloadTokens
 	if reloadTokens == nil {
 		reloadTokens = func() {}
@@ -90,6 +101,8 @@ func NewHandler(deps Deps) *Handler {
 		clientIdentity = func(c *gin.Context) clientidentity.V1 { return clientidentity.ResolveRequest(c.Request) }
 	}
 	return &Handler{
+		LogInfo:                   logInfo,
+		LogWarning:                logWarning,
 		UserService:               deps.UserService,
 		SettingService:            deps.SettingService,
 		NotifyEvent:               notifyEvent,

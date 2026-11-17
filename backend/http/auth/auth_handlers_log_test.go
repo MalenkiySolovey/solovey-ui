@@ -29,7 +29,7 @@ func TestAuthHandlersDoNotLogCredentialIdentifiers(t *testing.T) {
 			return true
 		}
 		owner, ok := selector.X.(*ast.Ident)
-		if !ok || owner.Name != "logger" {
+		if !ok || owner.Name != "a" || (selector.Sel.Name != "LogInfo" && selector.Sel.Name != "LogWarning") {
 			return true
 		}
 		loggerCalls++
@@ -38,7 +38,7 @@ func TestAuthHandlersDoNotLogCredentialIdentifiers(t *testing.T) {
 				identifier, ok := value.(*ast.Ident)
 				if ok {
 					if _, forbidden := credentialIdentifiers[identifier.Name]; forbidden {
-						t.Errorf("logger.%s received credential identifier %q", selector.Sel.Name, identifier.Name)
+						t.Errorf("handler.%s received credential identifier %q", selector.Sel.Name, identifier.Name)
 					}
 				}
 				return true
@@ -47,6 +47,6 @@ func TestAuthHandlersDoNotLogCredentialIdentifiers(t *testing.T) {
 		return true
 	})
 	if loggerCalls == 0 {
-		t.Fatal("authentication handler logger calls were not inspected")
+		t.Fatal("authentication handler log calls were not inspected")
 	}
 }

@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	authhttp "github.com/MalenkiySolovey/solovey-ui/api/auth"
 	confighttp "github.com/MalenkiySolovey/solovey-ui/api/config"
 	dbtransferhttp "github.com/MalenkiySolovey/solovey-ui/api/dbtransfer"
 	telemetryhttp "github.com/MalenkiySolovey/solovey-ui/api/telemetry"
 	"github.com/MalenkiySolovey/solovey-ui/backend/hostcontext"
+	authhttp "github.com/MalenkiySolovey/solovey-ui/backend/http/auth"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/middleware/databaseoperation"
 	"github.com/MalenkiySolovey/solovey-ui/service"

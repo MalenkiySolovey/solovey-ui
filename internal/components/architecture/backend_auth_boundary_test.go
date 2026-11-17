@@ -29,7 +29,7 @@ func TestBackendSecurityValuesHaveNoStorageOrRuntimeDependency(t *testing.T) {
 func TestAuthenticationRoutesHaveNarrowTransitiveOwnerClosure(t *testing.T) {
 	root := moduleRoot(t)
 	allowed := map[string]bool{}
-	for _, name := range []string{"api/auth", "backend/security", "backend/audit", "internal/httpsecurity/clientidentity", "logger", "util/redact"} {
+	for _, name := range []string{"backend/http/auth", "backend/security", "backend/audit", "backend/security/clientidentity"} {
 		allowed[modulePath+"/"+name] = true
 	}
 	for _, target := range []string{"github.com/gin-gonic/gin", "github.com/MalenkiySolovey/solovey-host/auditrecord", "github.com/MalenkiySolovey/solovey-host/redact"} {
@@ -38,7 +38,7 @@ func TestAuthenticationRoutesHaveNarrowTransitiveOwnerClosure(t *testing.T) {
 		}
 	}
 	var violations []string
-	for name, info := range goListDependencies(t, root, "./api/auth") {
+	for name, info := range goListDependencies(t, root, "./backend/http/auth") {
 		if !info.Standard && !allowed[name] {
 			violations = append(violations, name)
 		}
@@ -46,5 +46,14 @@ func TestAuthenticationRoutesHaveNarrowTransitiveOwnerClosure(t *testing.T) {
 	if len(violations) > 0 {
 		sort.Strings(violations)
 		t.Fatalf("auth routes pull storage, execution or unrelated owners: %s", strings.Join(violations, ", "))
+	}
+}
+
+func TestRequestClientIdentityHasOnlyStandardLibraryClosure(t *testing.T) {
+	root := moduleRoot(t)
+	for name, info := range goListDependencies(t, root, "./backend/security/clientidentity") {
+		if !info.Standard && name != modulePath+"/backend/security/clientidentity" {
+			t.Errorf("request client identity imports an external implementation %s", name)
+		}
 	}
 }

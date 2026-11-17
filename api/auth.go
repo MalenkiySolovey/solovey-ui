@@ -1,8 +1,9 @@
 package api
 
 import (
-	authhttp "github.com/MalenkiySolovey/solovey-ui/api/auth"
-	clientidentity "github.com/MalenkiySolovey/solovey-ui/internal/httpsecurity/clientidentity"
+	authhttp "github.com/MalenkiySolovey/solovey-ui/backend/http/auth"
+	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
@@ -12,6 +13,8 @@ func (a *ApiService) authHandler() *authhttp.Handler {
 
 func (a *ApiService) authDeps() authhttp.Deps {
 	return authhttp.Deps{
+		LogInfo:        logger.Info,
+		LogWarning:     logger.Warning,
 		UserService:    administratorCommands{service: &a.UserService},
 		SettingService: &a.SettingService,
 		NotifyEvent:    service.NotifyPanelEvent,

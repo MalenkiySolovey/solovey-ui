@@ -4,7 +4,7 @@ import (
 	"sort"
 	"sync"
 
-	clientidentity "github.com/MalenkiySolovey/solovey-ui/internal/httpsecurity/clientidentity"
+	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 )
 
