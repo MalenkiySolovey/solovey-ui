@@ -34,7 +34,7 @@ import (
 	cronscheduler "github.com/MalenkiySolovey/solovey-ui/cronjob/scheduler"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
-	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/security"
+	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/backend/http/security"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/web"
 
