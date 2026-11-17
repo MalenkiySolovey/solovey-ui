@@ -10,6 +10,8 @@ github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762 h1:0x0
 github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762/go.mod h1:rJFeVxbEej2iuyeCJ3drKW+p5rOgtLIW3XhZ6ty7Fig=
 github.com/MalenkiySolovey/solovey-backend v0.0.0-20261117072609-0f0096e98bc6 h1:oQaTh2nl9yfeOoCTsU0LDIZD30gfpzo79l4j64eAsi8=
 github.com/MalenkiySolovey/solovey-backend v0.0.0-20261117072609-0f0096e98bc6/go.mod h1:S29OQvJBdFtDomXh90XLNdb4quRYQEgwABzyrEfTky4=
+github.com/MalenkiySolovey/solovey-backend v0.0.0-20261117075553-5e04349eb540 h1:rrhULlzQSZ7wrGCxl8GOujNeWtNm4QkEnIZpclWoRmI=
+github.com/MalenkiySolovey/solovey-backend v0.0.0-20261117075553-5e04349eb540/go.mod h1:S29OQvJBdFtDomXh90XLNdb4quRYQEgwABzyrEfTky4=
 github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0 h1:De1pv/fpu8uoM0pfkAJX5roZ8WPCxlHZ4OpALNq+jFI=
 github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0/go.mod h1:JsuupXylmHWCSHtBJAqbHHEXzPfk/JeI4r4ytBjErQk=
 github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0 h1:Qczg9jmPtsLQ5V/7hr8Wk5ErlR5E9OblzxcO4Gym2gM=

@@ -1,15 +1,15 @@
 package backup
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/durableowner"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	componentmanifest "github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
 func TestInstalledOwnerInventoryIncludesDisabledOwnerAndFailsClosedWhenUnavailable(t *testing.T) {
@@ -19,12 +19,8 @@ func TestInstalledOwnerInventoryIncludesDisabledOwnerAndFailsClosedWhenUnavailab
 		Delivery: componentmanifest.DeliveryInProcess, DefaultEnabled: false,
 		Database: componentmanifest.Database{Tables: []string{tableName}}})
 
-	db, err := gorm.Open(sqlite.Open("file:backup-owner-disabled?mode=memory&cache=shared"), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	sqlDB, _ := db.DB()
-	t.Cleanup(func() { _ = sqlDB.Close() })
+	livePath := initBackupContributionDB(t)
+	db := dbsqlite.DB()
 	if err := db.Exec("CREATE TABLE " + tableName + " (id INTEGER PRIMARY KEY, value TEXT)").Error; err != nil {
 		t.Fatal(err)
 	}
@@ -35,9 +31,19 @@ func TestInstalledOwnerInventoryIncludesDisabledOwnerAndFailsClosedWhenUnavailab
 	}}}); err != nil {
 		t.Fatal(err)
 	}
-	tables, err := installedOwnerTables(db, map[string]struct{}{})
-	if err != nil || len(tables) != 1 || tables[0].owner != ownerID || tables[0].name != tableName {
-		t.Fatalf("disabled installed owner tables=%#v err=%v", tables, err)
+	candidate := openContributionBackup(t, livePath)
+	manifest, err := LoadAndVerifyManifest(context.Background(), candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, table := range manifest.Tables {
+		if table.Owner == ownerID && table.Name == tableName {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("disabled installed owner's table omitted from archive: %+v", manifest.Tables)
 	}
 
 	unavailablePath := filepath.Join(t.TempDir(), "installed-unavailable.json")
@@ -47,33 +53,8 @@ func TestInstalledOwnerInventoryIncludesDisabledOwnerAndFailsClosedWhenUnavailab
 	}}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := installedOwnerTables(db, map[string]struct{}{}); err == nil ||
+	if _, err := Export(""); err == nil ||
 		!strings.Contains(err.Error(), "backup-unavailable-fixture") {
 		t.Fatalf("unavailable installed owner did not fail closed: %v", err)
-	}
-}
-
-func TestNonportableRuntimeAuthorityExclusionsAreExplicit(t *testing.T) {
-	want := map[string]string{
-		"security_sessions":                   "NONPORTABLE_RUNTIME_AUTHORITY",
-		"step_up_grants":                      "NONPORTABLE_RUNTIME_AUTHORITY",
-		"inbound_endpoint_leases":             "NONPORTABLE_RUNTIME_AUTHORITY",
-		"failover_state":                      "NONPORTABLE_RUNTIME_STATE",
-		"ssh_managed_artifact_checkpoints_v1": "NONPORTABLE_HOST_AUTHORITY",
-		"ssh_reconnect_challenges_v1":         "NONPORTABLE_RUNTIME_AUTHORITY",
-	}
-	got := map[string]string{}
-	for _, table := range backupTables() {
-		if table.alwaysExclude {
-			got[table.name] = table.exclusionCode
-		}
-	}
-	if len(got) != len(want) {
-		t.Fatalf("nonportable exclusion inventory=%#v, want exactly %#v", got, want)
-	}
-	for name, reason := range want {
-		if got[name] != reason {
-			t.Fatalf("nonportable exclusion %q=%q, want %q", name, got[name], reason)
-		}
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	canonical "github.com/MalenkiySolovey/solovey-backend/storage/backup"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
-	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	"gorm.io/gorm"
 )
 
@@ -25,14 +24,6 @@ func installedBackupOwners() ([]string, error) {
 		result[index] = owner.ID
 	}
 	return result, nil
-}
-
-func writeBackupManifest(ctx context.Context, db *gorm.DB, tables []backupTable, excluded map[string]bool, files ...*FileBackupManifest) error {
-	selected := make([]canonical.ManifestTable, len(tables))
-	for index, table := range tables {
-		selected[index] = canonical.ManifestTable{Name: table.name, Owner: table.owner, Opaque: table.opaque, AlwaysExclude: table.alwaysExclude, ExclusionCode: table.exclusionCode}
-	}
-	return canonical.WriteManifest(ctx, db, selected, excluded, canonical.ManifestFacts{AppVersion: configidentity.GetVersion(), InstalledOwners: installedBackupOwners}, files...)
 }
 
 func LoadAndVerifyManifest(ctx context.Context, db *gorm.DB) (BackupManifest, error) {
