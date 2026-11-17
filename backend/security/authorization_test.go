@@ -68,7 +68,7 @@ func initAuthorizationDB(t *testing.T) (*gorm.DB, uint) {
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatal(err)
 	}
-	return db, user.ID
+	return db, user.Id
 }
 
 func totpCode(t *testing.T, secret string, now time.Time) string {
