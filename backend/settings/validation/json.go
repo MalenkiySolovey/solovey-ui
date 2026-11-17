@@ -2,9 +2,8 @@ package validation
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
-
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
 func ValidateOptionalJSONObject(value string, key string) error {
@@ -14,10 +13,10 @@ func ValidateOptionalJSONObject(value string, key string) error {
 	}
 	var obj map[string]interface{}
 	if err := json.Unmarshal([]byte(value), &obj); err != nil {
-		return common.NewError("invalid JSON setting: ", key)
+		return fmt.Errorf("invalid JSON setting:  %s", key)
 	}
 	if obj == nil {
-		return common.NewError("invalid JSON setting: ", key)
+		return fmt.Errorf("invalid JSON setting:  %s", key)
 	}
 	return nil
 }
@@ -29,10 +28,10 @@ func ValidateOptionalJSONArray(value string, key string) error {
 	}
 	var arr []interface{}
 	if err := json.Unmarshal([]byte(value), &arr); err != nil {
-		return common.NewError("invalid JSON array setting: ", key)
+		return fmt.Errorf("invalid JSON array setting:  %s", key)
 	}
 	if arr == nil {
-		return common.NewError("invalid JSON array setting: ", key)
+		return fmt.Errorf("invalid JSON array setting:  %s", key)
 	}
 	return nil
 }

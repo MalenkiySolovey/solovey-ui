@@ -1,14 +1,14 @@
 package validation
 
 import (
+	"errors"
 	"net/mail"
 	"net/netip"
 	"strconv"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/security/ssrf"
 	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
-	"github.com/MalenkiySolovey/solovey-ui/util/ssrf"
 )
 
 func ValidateIPCertSettingInput(key string, value string) error {
@@ -37,10 +37,10 @@ func ValidateIPCertSettingInput(key string, value string) error {
 func ValidateIssuableIP(raw string) error {
 	addr, err := netip.ParseAddr(strings.TrimSpace(raw))
 	if err != nil {
-		return common.NewError("ip cert: target must be a valid IP literal")
+		return errors.New("ip cert: target must be a valid IP literal")
 	}
 	if ssrf.IsBlockedAddr(addr) {
-		return common.NewError("ip cert: IP is private/loopback/reserved and not issuable")
+		return errors.New("ip cert: IP is private/loopback/reserved and not issuable")
 	}
 	return nil
 }
@@ -51,16 +51,16 @@ func ValidateIPCertEmail(email string, required bool) error {
 	email = strings.TrimSpace(email)
 	if email == "" {
 		if required {
-			return common.NewError("ip cert: email is required when auto-renew is enabled")
+			return errors.New("ip cert: email is required when auto-renew is enabled")
 		}
 		return nil
 	}
 	if len(email) > 254 {
-		return common.NewError("ip cert: email is too long")
+		return errors.New("ip cert: email is too long")
 	}
 	addr, err := mail.ParseAddress(email)
 	if err != nil || addr.Address != email {
-		return common.NewError("ip cert: email is not a valid address")
+		return errors.New("ip cert: email is not a valid address")
 	}
 	return nil
 }
@@ -68,7 +68,7 @@ func ValidateIPCertEmail(email string, required bool) error {
 // ValidateIPCertPort bounds the HTTP-01 challenge port.
 func ValidateIPCertPort(port int) error {
 	if port < 1 || port > 65535 {
-		return common.NewError("ip cert: challenge port must be between 1 and 65535")
+		return errors.New("ip cert: challenge port must be between 1 and 65535")
 	}
 	return nil
 }
@@ -80,10 +80,10 @@ func ValidateIPCertApplyTarget(value string) error {
 	}
 	rest, ok := strings.CutPrefix(value, "inbound:")
 	if !ok {
-		return common.NewError("ipCertApplyTarget must be 'panel' or 'inbound:<id>'")
+		return errors.New("ipCertApplyTarget must be 'panel' or 'inbound:<id>'")
 	}
 	if id, err := strconv.Atoi(rest); err != nil || id <= 0 {
-		return common.NewError("ipCertApplyTarget inbound id must be a positive integer")
+		return errors.New("ipCertApplyTarget inbound id must be a positive integer")
 	}
 	return nil
 }

@@ -2,17 +2,16 @@ package ssrf
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"net/netip"
 	"time"
-
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
 const maxSafeRedirects = 5
 
-var errBlockedDialAddress = common.NewError("url host resolves to a disallowed IP")
+var errBlockedDialAddress = errors.New("url host resolves to a disallowed IP")
 
 // NewHTTPClient returns an HTTP client that validates every request URL before
 // it is sent and re-checks every dialed IP address. The dial-time check matters
@@ -47,7 +46,7 @@ type safeRoundTripper struct {
 
 func (s safeRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
 	if request == nil || request.URL == nil {
-		return nil, common.NewError("missing request url")
+		return nil, errors.New("missing request url")
 	}
 	if err := ValidateOutboundURL(request.Context(), request.URL.String(), s.allowedSchemes...); err != nil {
 		return nil, err
@@ -63,17 +62,17 @@ func safeRedirectPolicy(allowedSchemes ...string) func(*http.Request, []*http.Re
 	allowed := append([]string(nil), allowedSchemes...)
 	return func(request *http.Request, via []*http.Request) error {
 		if len(via) >= maxSafeRedirects {
-			return common.NewError("too many redirects")
+			return errors.New("too many redirects")
 		}
 		if request == nil || request.URL == nil {
-			return common.NewError("missing redirect url")
+			return errors.New("missing redirect url")
 		}
 		request.Header.Del("Authorization")
 		request.Header.Del("Cookie")
 		request.Header.Del("Referer")
 		if len(via) > 0 && via[len(via)-1] != nil && via[len(via)-1].URL != nil &&
 			via[len(via)-1].URL.Scheme == "https" && request.URL.Scheme == "http" {
-			return common.NewError("redirect downgrades https to http")
+			return errors.New("redirect downgrades https to http")
 		}
 		return ValidateOutboundURL(request.Context(), request.URL.String(), allowed...)
 	}

@@ -1,6 +1,6 @@
 package validation
 
-import "github.com/MalenkiySolovey/solovey-ui/util/ssrf"
+import "github.com/MalenkiySolovey/solovey-ui/backend/security/ssrf"
 
 func ValidateProxyURLValue(value string, storedSecretMarker string) error {
 	if value == "" || value == storedSecretMarker {

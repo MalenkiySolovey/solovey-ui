@@ -5,8 +5,8 @@ import (
 
 	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
 	settingsschema "github.com/MalenkiySolovey/solovey-ui/backend/settings/schema"
+	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/backend/settings/validation"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
-	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/internal/settings/validation"
 )
 
 func (s *SettingService) validateAll(settings map[string]string) error {

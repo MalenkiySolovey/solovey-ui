@@ -1,19 +1,19 @@
 package validation
 
 import (
+	"fmt"
 	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
 func ValidateEndpointSettingInput(key string, value string, fileExists func(path string) error) error {
 	if isDomainSetting(key) {
 		if err := ValidateHostname(value); err != nil {
-			return common.NewErrorf("%s: %v", key, err)
+			return fmt.Errorf("%s: %v", key, err)
 		}
 	}
 	if value != "" && isCertificatePathSetting(key) && fileExists != nil {
 		if err := fileExists(value); err != nil {
-			return common.NewError(" -> ", value, " is not exists")
+			return fmt.Errorf(" ->  %s  is not exists", value)
 		}
 	}
 	if IsPathSetting(key) {

@@ -1,9 +1,9 @@
 package validation
 
 import (
+	"errors"
 	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
 	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
 type SubscriptionPaths struct {
@@ -18,17 +18,17 @@ func ValidateSubscriptionPaths(paths SubscriptionPaths) error {
 	seen := make(map[string]struct{}, len(formatPaths))
 	for _, path := range formatPaths {
 		if path == "/" {
-			return common.NewError("subscription format path cannot be root")
+			return errors.New("subscription format path cannot be root")
 		}
 		if _, exists := seen[path]; exists {
-			return common.NewError("subscription format paths must be unique")
+			return errors.New("subscription format paths must be unique")
 		}
 		seen[path] = struct{}{}
 	}
 	if paths.Base != "/" {
 		for _, path := range formatPaths {
 			if urlPathHasPrefix(path, paths.Base) {
-				return common.NewError("subscription format path conflicts with subscription path")
+				return errors.New("subscription format path conflicts with subscription path")
 			}
 		}
 	}

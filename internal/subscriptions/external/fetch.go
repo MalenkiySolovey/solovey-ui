@@ -13,12 +13,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/security/ssrf"
 	subparser "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/parser"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 	uricodec "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
-	"github.com/MalenkiySolovey/solovey-ui/util/ssrf"
 )
 
 const (

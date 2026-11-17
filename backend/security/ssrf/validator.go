@@ -2,14 +2,13 @@ package ssrf
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
 const lookupTimeout = 5 * time.Second
@@ -55,7 +54,7 @@ func ValidateProxyURL(rawURL string) error {
 	}
 	parsed, err := url.Parse(rawURL)
 	if err == nil && parsed.User != nil {
-		return common.NewError("proxy url must not contain credentials; use the username/password fields")
+		return errors.New("proxy url must not contain credentials; use the username/password fields")
 	}
 	return ValidateOutboundURL(context.Background(), rawURL, "http", "https", "socks5")
 }
@@ -67,24 +66,24 @@ func ValidateOutboundURL(ctx context.Context, rawURL string, allowedSchemes ...s
 	}
 	scheme := strings.ToLower(parsed.Scheme)
 	if !isAllowedScheme(scheme, allowedSchemes) {
-		return common.NewError("unsupported url scheme")
+		return errors.New("unsupported url scheme")
 	}
 	host := parsed.Hostname()
 	if host == "" {
-		return common.NewError("missing url host")
+		return errors.New("missing url host")
 	}
 	if strings.EqualFold(host, "localhost") {
-		return common.NewError("localhost url is not allowed")
+		return errors.New("localhost url is not allowed")
 	}
 	if port := parsed.Port(); port != "" {
 		num, err := strconv.Atoi(port)
 		if err != nil || num <= 0 || num > 65535 {
-			return common.NewError("invalid url port")
+			return errors.New("invalid url port")
 		}
 	}
 	if addr, err := netip.ParseAddr(host); err == nil {
 		if isBlockedAddr(addr) {
-			return common.NewError("url host is not allowed")
+			return errors.New("url host is not allowed")
 		}
 		return nil
 	}
@@ -101,7 +100,7 @@ func ValidateOutboundURL(ctx context.Context, rawURL string, allowedSchemes ...s
 		return err
 	}
 	if len(addrs) == 0 {
-		return common.NewError("url host did not resolve")
+		return errors.New("url host did not resolve")
 	}
 	for _, ipAddr := range addrs {
 		addr, ok := netip.AddrFromSlice(ipAddr.IP)
@@ -109,7 +108,7 @@ func ValidateOutboundURL(ctx context.Context, rawURL string, allowedSchemes ...s
 			addr = addr.Unmap()
 		}
 		if !ok || isBlockedAddr(addr) {
-			return common.NewError("url host resolves to a disallowed IP")
+			return errors.New("url host resolves to a disallowed IP")
 		}
 	}
 	return nil
@@ -130,32 +129,32 @@ func isAllowedScheme(scheme string, allowed []string) bool {
 func validateHostname(host string) error {
 	host = strings.TrimSuffix(host, ".")
 	if len(host) == 0 || len(host) > 253 {
-		return common.NewError("invalid url host")
+		return errors.New("invalid url host")
 	}
 	labels := strings.Split(host, ".")
 	if len(labels) < 2 {
-		return common.NewError("url hostname must include a valid TLD")
+		return errors.New("url hostname must include a valid TLD")
 	}
 	for _, label := range labels {
 		if len(label) == 0 || len(label) > 63 {
-			return common.NewError("invalid url host label")
+			return errors.New("invalid url host label")
 		}
 		if label[0] == '-' || label[len(label)-1] == '-' {
-			return common.NewError("invalid url host label")
+			return errors.New("invalid url host label")
 		}
 		for _, r := range label {
 			if r > 127 || !(r == '-' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') {
-				return common.NewError("invalid url host label")
+				return errors.New("invalid url host label")
 			}
 		}
 	}
 	tld := labels[len(labels)-1]
 	if len(tld) < 2 || len(tld) > 63 {
-		return common.NewError("invalid url TLD")
+		return errors.New("invalid url TLD")
 	}
 	for _, r := range tld {
 		if !(r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') {
-			return common.NewError("invalid url TLD")
+			return errors.New("invalid url TLD")
 		}
 	}
 	return nil

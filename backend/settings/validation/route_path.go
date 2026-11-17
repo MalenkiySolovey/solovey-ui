@@ -1,9 +1,9 @@
 package validation
 
 import (
+	"errors"
+	"fmt"
 	"strings"
-
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
 // reservedPathPrefixes are framework-owned routes that custom web/sub paths
@@ -25,23 +25,23 @@ func validatePath(path string, reserved []string) error {
 		return nil
 	}
 	if !strings.HasPrefix(path, "/") {
-		return common.NewError("invalid path")
+		return errors.New("invalid path")
 	}
 	if strings.Contains(path, "\\") ||
 		strings.Contains(path, "..") ||
 		strings.Contains(path, "//") ||
 		strings.Contains(path, ":") ||
 		strings.Contains(path, "*") {
-		return common.NewError("invalid path")
+		return errors.New("invalid path")
 	}
 	for _, r := range path {
 		if r == 0 || r < 0x20 || r == 0x7f {
-			return common.NewError("invalid path")
+			return errors.New("invalid path")
 		}
 	}
 	for _, prefix := range reserved {
 		if hasReservedPathPrefix(path, prefix) {
-			return common.NewError("reserved path prefix:", prefix)
+			return fmt.Errorf("reserved path prefix: %s", prefix)
 		}
 	}
 	return nil

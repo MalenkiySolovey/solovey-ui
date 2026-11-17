@@ -4,7 +4,7 @@ package settings
 
 import (
 	canonical "github.com/MalenkiySolovey/solovey-component-telegram/settings"
-	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/internal/settings/validation"
+	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/backend/settings/validation"
 )
 
 func Validate(key, value, storedSecretMarker string) error {

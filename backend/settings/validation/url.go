@@ -1,17 +1,17 @@
 package validation
 
 import (
+	"errors"
 	"net/netip"
 	"net/url"
 	"strings"
 
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
-	"github.com/MalenkiySolovey/solovey-ui/util/ssrf"
+	"github.com/MalenkiySolovey/solovey-ui/backend/security/ssrf"
 )
 
 func ValidateOptionalHTTPURL(value string) error {
 	if containsControlCharacter(value) {
-		return common.NewError("invalid URL setting")
+		return errors.New("invalid URL setting")
 	}
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -19,27 +19,27 @@ func ValidateOptionalHTTPURL(value string) error {
 	}
 	parsed, err := url.Parse(value)
 	if err != nil || parsed.Host == "" {
-		return common.NewError("invalid URL setting")
+		return errors.New("invalid URL setting")
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return common.NewError("invalid URL setting")
+		return errors.New("invalid URL setting")
 	}
 	if parsed.User != nil {
-		return common.NewError("invalid URL setting")
+		return errors.New("invalid URL setting")
 	}
 	if host := parsed.Hostname(); host != "" {
 		if addr, err := netip.ParseAddr(host); err == nil && ssrf.IsBlockedAddr(addr) {
-			return common.NewError("invalid URL setting")
+			return errors.New("invalid URL setting")
 		}
 	}
 	if strings.Contains(value, "#") || parsed.Fragment != "" || parsed.RawFragment != "" {
-		return common.NewError("invalid URL setting")
+		return errors.New("invalid URL setting")
 	}
 	if containsControlCharacter(parsed.Path) ||
 		containsControlCharacter(parsed.RawPath) ||
 		containsControlCharacter(parsed.RawQuery) ||
 		containsQueryControlCharacter(parsed) {
-		return common.NewError("invalid URL setting")
+		return errors.New("invalid URL setting")
 	}
 	return nil
 }

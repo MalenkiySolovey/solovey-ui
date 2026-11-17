@@ -4,8 +4,8 @@ import (
 	"strconv"
 
 	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
+	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/backend/settings/validation"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/internal/settings/validation"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
