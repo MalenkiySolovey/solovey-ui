@@ -1,44 +1,23 @@
 package sub
 
 import (
-	"strconv"
-	"time"
-
 	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	subformats "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/formats"
 	localsub "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/local"
-	subserver "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/server"
 	"github.com/MalenkiySolovey/solovey-ui/service"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
-type ClashService struct {
-	service.SettingService
+type ClashService struct{ service.SettingService }
+
+func (s *ClashService) GetClash(id string) (*string, []string, error) {
+	return publisherFor(&s.SettingService).GetClash(id)
 }
-
-func (s *ClashService) GetClash(subID string) (*string, []string, error) {
-	now := time.Now()
-	enabled, err := s.SettingService.GetSubClashEnable()
-	if err != nil {
-		return nil, nil, err
-	}
-	if !enabled {
-		return nil, nil, common.NewError("clash subscription disabled")
-	}
-	cacheKey := "clash:" + subID + ":clientHooks=" + strconv.FormatUint(localsub.ClientOutboundContributorsVersion(), 10)
-	if body, headers, ok := subscriptionCacheGet(cacheKey, now); ok {
-		return &body, headers, nil
-	}
-
-	client, inbounds, err := loadClientData(subID)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer common.WipeBytes(client.Config)
+func (s *ClashService) render(client *model.Client, inbounds []*model.Inbound) (string, error) {
 	outboundSet, err := localsub.BuildInboundOutbounds(client.Config, inbounds)
 	if err != nil {
-		return nil, nil, err
+		return "", err
 	}
 	links := resolveClientLinks(client.Links, localsub.LinkModeExternal, "")
 	localsub.AppendExternalLinkOutbounds(outboundSet, links)
@@ -47,7 +26,7 @@ func (s *ClashService) GetClash(subID string) (*string, []string, error) {
 		RawLinks: client.Links,
 		Target:   subconversion.TargetMihomo,
 	}, outboundSet); err != nil {
-		return nil, nil, err
+		return "", err
 	}
 
 	basicConfig, err := s.SettingService.GetSubClashExt()
@@ -56,21 +35,16 @@ func (s *ClashService) GetClash(subID string) (*string, []string, error) {
 	}
 	udpValue, err := s.SettingService.GetSubClashUDP()
 	if err != nil {
-		return nil, nil, err
+		return "", err
 	}
 	udpPolicy, err := subformats.ParseClashUDPPolicy(udpValue)
 	if err != nil {
-		return nil, nil, err
+		return "", err
 	}
 	result, err := subformats.RenderClash(outboundSet.Outbounds, basicConfig, udpPolicy)
 	if err != nil {
-		return nil, nil, err
+		return "", err
 	}
-	displaySettings, err := subserver.CachedDisplaySettings(&s.SettingService, now)
-	if err != nil {
-		return nil, nil, err
-	}
-	headers := safeSubscriptionHeaders(buildClientHeaders(client, displaySettings))
-	subscriptionCacheSet(cacheKey, result, headers, now)
-	return &result, headers, nil
+
+	return result, nil
 }
