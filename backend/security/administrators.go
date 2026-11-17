@@ -42,3 +42,13 @@ type APITokenAccount struct {
 	PasswordHashVersion   int    `json:"passwordHashVersion"`
 	PasswordChangedAt     int64  `json:"passwordChangedAt"`
 }
+
+// APITokenAuthorization is the current principal and permission of a stored
+// token. A cached token is only a candidate; the durable owner decides whether
+// it still authorizes this request.
+type APITokenAuthorization struct {
+	ID          uint
+	TokenPrefix string
+	Scope       string
+	Username    string
+}

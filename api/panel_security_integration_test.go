@@ -197,10 +197,13 @@ func TestPanelSecurityForcedPasswordTransitionIsRestrictedStrictAndAtomic(t *tes
 	if res := performAPIV2TokenRequest(router, "Authorization", "Bearer "+apiToken); res.Code != http.StatusOK {
 		t.Fatalf("completed transition token status=%d, want 200", res.Code)
 	}
-	for _, token := range apiv2.tokens {
-		if token.Username != "security-admin" {
-			t.Fatal("completed transition retained stale token principal")
-		}
+	router.GET("/transition-principal", apiv2.checkToken, func(c *gin.Context) { c.String(http.StatusOK, c.GetString(apiUsernameKey)) })
+	principalRequest := httptest.NewRequest(http.MethodGet, "/transition-principal", nil)
+	principalRequest.Header.Set("Authorization", "Bearer "+apiToken)
+	principalResponse := httptest.NewRecorder()
+	router.ServeHTTP(principalResponse, principalRequest)
+	if principalResponse.Code != http.StatusOK || principalResponse.Body.String() != "security-admin" {
+		t.Fatalf("transition principal status=%d body=%q", principalResponse.Code, principalResponse.Body.String())
 	}
 
 	var changed model.User

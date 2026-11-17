@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
 	backendcrypto "github.com/MalenkiySolovey/solovey-ui/backend/security/crypto"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
@@ -48,15 +49,7 @@ var coreAPITokenScopes = []string{
 
 var ErrTokenNotFound = errors.New("token not found")
 
-// APITokenAuthorization is the current principal and permission of a stored
-// token. A cached token is only a candidate; the durable owner decides whether
-// it still authorizes this request.
-type APITokenAuthorization struct {
-	ID          uint
-	TokenPrefix string
-	Scope       string
-	Username    string
-}
+type APITokenAuthorization = panelsecurity.APITokenAuthorization
 
 func (s *Service) AuthorizeAPIToken(ctx context.Context, id uint, hash string, now int64) (APITokenAuthorization, error) {
 	var authorization APITokenAuthorization
