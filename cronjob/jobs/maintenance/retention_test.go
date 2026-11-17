@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
+	ipmonitor "github.com/MalenkiySolovey/solovey-backend/accounting/ipmonitor"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/cronjob/internal/testutil"
-	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
 )
 
 func TestCronJobTestDBIsIsolatedBetweenInitializations(t *testing.T) {

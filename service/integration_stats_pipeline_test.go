@@ -3,7 +3,7 @@ package service
 import (
 	"testing"
 
-	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
+	ipmonitor "github.com/MalenkiySolovey/solovey-backend/accounting/ipmonitor"
 )
 
 func TestIntegrationStatsPipelineNilCoreSmoke(t *testing.T) {

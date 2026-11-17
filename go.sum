@@ -8,12 +8,8 @@ github.com/MalenkiySolovey/sing-box v1.14.3-0.20261012000247-8b914e4be510 h1:RkQ
 github.com/MalenkiySolovey/sing-box v1.14.3-0.20261012000247-8b914e4be510/go.mod h1:O4q0spxb+xwV/p9HYR+Es1cMjK3bBvYl6k08V9rSpwU=
 github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762 h1:0x0RTO9IyqRHO9rmEpUhCKRBeISM5LwKLsIiIifFbRY=
 github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762/go.mod h1:rJFeVxbEej2iuyeCJ3drKW+p5rOgtLIW3XhZ6ty7Fig=
-github.com/MalenkiySolovey/solovey-backend v0.0.0-20261117072609-0f0096e98bc6 h1:oQaTh2nl9yfeOoCTsU0LDIZD30gfpzo79l4j64eAsi8=
-github.com/MalenkiySolovey/solovey-backend v0.0.0-20261117072609-0f0096e98bc6/go.mod h1:S29OQvJBdFtDomXh90XLNdb4quRYQEgwABzyrEfTky4=
-github.com/MalenkiySolovey/solovey-backend v0.0.0-20261117075553-5e04349eb540 h1:rrhULlzQSZ7wrGCxl8GOujNeWtNm4QkEnIZpclWoRmI=
-github.com/MalenkiySolovey/solovey-backend v0.0.0-20261117075553-5e04349eb540/go.mod h1:S29OQvJBdFtDomXh90XLNdb4quRYQEgwABzyrEfTky4=
-github.com/MalenkiySolovey/solovey-backend v0.0.0-20261117083740-6d7b1cad1111 h1:6S53m6zNsc7ENl0hsuXanbkYcr7IQ+aTVPCUXcspo9w=
-github.com/MalenkiySolovey/solovey-backend v0.0.0-20261117083740-6d7b1cad1111/go.mod h1:S29OQvJBdFtDomXh90XLNdb4quRYQEgwABzyrEfTky4=
+github.com/MalenkiySolovey/solovey-backend v0.0.0-20261117090422-f0891b915767 h1:3mDrtnTKl9dyKbaTGHCuTVY4ykrdSDAKGkHIs4C8WVo=
+github.com/MalenkiySolovey/solovey-backend v0.0.0-20261117090422-f0891b915767/go.mod h1:Unw9DjuF1ivy92j9cEcWfL06glDNDvPaseO7b8m/SnU=
 github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0 h1:De1pv/fpu8uoM0pfkAJX5roZ8WPCxlHZ4OpALNq+jFI=
 github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0/go.mod h1:JsuupXylmHWCSHtBJAqbHHEXzPfk/JeI4r4ytBjErQk=
 github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0 h1:Qczg9jmPtsLQ5V/7hr8Wk5ErlR5E9OblzxcO4Gym2gM=

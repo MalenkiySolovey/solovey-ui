@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
+	ipmonitor "github.com/MalenkiySolovey/solovey-backend/accounting/ipmonitor"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
 )
 
 // TB is the subset of testing.T used by scheduled-job integration tests.

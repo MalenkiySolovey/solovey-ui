@@ -12,6 +12,7 @@ import { readExtendedProvenance } from './extended-integration-provenance.mjs'
 import { linuxBuildTargets } from './release-providers.mjs'
 import { verifySeriesMetadata } from './core-source-provenance.mjs'
 import { readSourceLock, prepareComponentSources, verifyModuleSource } from './component-source-inputs.mjs'
+import { prepareBackendSource, verifyBackendModuleSource, backendSourceProperties } from './backend-source-inputs.mjs'
 
 export const metadataNames = JSON.parse(fs.readFileSync(new URL('./release-targets.json', import.meta.url), 'utf8')).releaseMetadata.toSorted()
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex')
@@ -268,6 +269,7 @@ async function produce(directory, commit) {
   const fingerprint = run(process.execPath, ['scripts/release-source.mjs', root]).trim()
   const integrations = ['sing-box-ssm', 'sing-quic', 'sing-anytls'].map(name => json(`deploy/dependencies/${name}-integration.json`))
   const extendedIntegration = readExtendedProvenance()
+  const backendInput = prepareBackendSource(root)
   prepareComponentSources(root)
   const componentInputs = readComponentInputProvenance(root)
   const componentSources = readSourceLock(root).sources
@@ -372,6 +374,13 @@ async function produce(directory, commit) {
       for (const binding of module.bindings) properties.push({ name: `solovey:requires:${binding.provider}`, value: `${binding.module}@${binding.version}` })
       if (integration) properties.push(...coreSourceProperties(integration), { name: 'solovey:officialSemanticBaseline', value: `${integration.semanticBaseline.module}@${integration.semanticBaseline.version}` }, { name: 'solovey:officialByteIdentical', value: 'false' })
       if (extended) properties.push(...coreSourceProperties(extended), { name: 'solovey:upstreamSource', value: `${extended.original.repository}@${extended.original.commit}` }, { name: 'solovey:upstreamByteIdentical', value: 'false' })
+      if (module.name === backendInput.source.module) {
+        assert.equal(module.version, backendInput.source.version, 'Backend artifact selection differs')
+        assert.equal(bytes.Sum, backendInput.source.moduleChecksum)
+        assert.equal(bytes.GoModSum, backendInput.source.goModChecksum)
+        verifyBackendModuleSource(bytes.Dir, backendInput.source)
+        properties.push(...backendSourceProperties(backendInput.source))
+      }
       const componentSource = componentSources.find(item => item.module === module.name && item.version === module.version)
       let componentLicense
       if (componentSource) {
@@ -418,7 +427,7 @@ async function produce(directory, commit) {
     components.push(...variants)
     for (const [index, provider] of inventory.providers.entries()) dependencies.push({ ref: variants[index]['bom-ref'], dependsOn: [...new Set([...provider.dependencies, ...sharedSources])].sort() })
     components.sort((a, b) => a['bom-ref'].localeCompare(b['bom-ref']))
-    const app = { type: 'application', 'bom-ref': `solovey-ui@${version}`, name: 'solovey-ui', version, licenses: [{ license: { id: 'GPL-3.0-only' } }], properties: [{ name: 'solovey:sourceCommit', value: commit }, { name: 'solovey:sourceTree', value: tree }, { name: 'solovey:sourceFingerprint', value: fingerprint }, { name: 'solovey:componentInputDigest', value: componentInputs.inputDigest }] }
+    const app = { type: 'application', 'bom-ref': `solovey-ui@${version}`, name: 'solovey-ui', version, licenses: [{ license: { id: 'GPL-3.0-only' } }], properties: [{ name: 'solovey:sourceCommit', value: commit }, { name: 'solovey:sourceTree', value: tree }, { name: 'solovey:sourceFingerprint', value: fingerprint }, { name: 'solovey:componentInputDigest', value: componentInputs.inputDigest }, { name: 'solovey:backendInputDigest', value: backendInput.inputDigest }] }
     dependencies.push({ ref: app['bom-ref'], dependsOn: variants.map(item => item['bom-ref']) })
     const bom = { bomFormat: 'CycloneDX', specVersion: '1.6', version: 1, metadata: { timestamp, component: app, properties: [{ name: 'solovey:inventoryScope', value: 'Complete resolved Official and Extended Go module graphs, npm lockfile and pinned native C++ source inventory; provider edges distinguish both graphs. Includes platform alternatives and build tools, not a claim that every source is linked into every artifact. Graph digests bind resolved coordinates; individual components bind authenticated source content checksums.' }] }, components, dependencies }
     writeJSON(path.join(directory, 'solovey-ui-sbom.cdx.json'), bom)
@@ -427,6 +436,7 @@ async function produce(directory, commit) {
     writeJSON(path.join(source, 'DEPENDENCY_SOURCES.json'), sourceRecords)
     writeJSON(path.join(source, 'SOURCE_IDENTITY.json'), { commit, tree, version, sourceFingerprint: fingerprint })
     writeJSON(path.join(source, 'COMPONENT_SOURCE_INPUTS.json'), componentInputs)
+    writeJSON(path.join(source, 'BACKEND_SOURCE_INPUT.json'), backendInput)
     writeJSON(path.join(notices, 'LICENSE_INVENTORY.json'), noticeRecords)
     for (const integration of [...integrations, ...extendedIntegration.sources]) assert.ok(noticeRecords.some(n => n.dependency === `${integration.replacement.module}@${integration.replacement.version}`), 'integration license missing')
     for (const input of componentInputs.sources) {

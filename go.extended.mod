@@ -4,7 +4,7 @@ go 1.26.11
 
 require (
 	github.com/AliRizaAynaci/gorl/v2 v2.2.0 // indirect
-	github.com/MalenkiySolovey/solovey-backend v0.0.0-20261117083740-6d7b1cad1111
+	github.com/MalenkiySolovey/solovey-backend v0.0.0-20261117090422-f0891b915767
 	github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0
 	github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0
 	github.com/MalenkiySolovey/solovey-component-telegram v0.1.0

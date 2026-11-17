@@ -12,7 +12,7 @@ const productRoots = [
   'api', 'app', 'cmd', 'componenthost', 'componentkit', 'components',
   'config', 'core', 'cronjob', 'database', 'deploy', 'frontend', 'internal',
   'ipmonitor', 'logger', 'middleware', 'network', 'realtime', 'service',
-  'sub', 'util', 'web',
+  'sub', 'util', 'web', 'backend',
 ]
 
 const topLevelInputs = new Set(['LICENSE', 'go.mod', 'go.sum', 'go.extended.mod', 'go.extended.sum', 'main.go'])

@@ -9,7 +9,6 @@ import (
 	"time"
 	"unsafe"
 
-	entitytypes "github.com/MalenkiySolovey/solovey-backend/entityidentity"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	coretracker "github.com/MalenkiySolovey/solovey-ui/core/tracker"
@@ -33,41 +32,6 @@ func BenchmarkStatsService_SaveStats(b *testing.B) {
 				seedSyntheticUserStatsForBench(b, tracker, clients)
 				b.StartTimer()
 				if err := statsService.SaveStats(true); err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
-	}
-}
-
-func BenchmarkUpdateClientTrafficDeltas(b *testing.B) {
-	for _, emptyPercent := range []int{0, 50, 90} {
-		emptyPercent := emptyPercent
-		b.Run(fmt.Sprintf("clients_1000_empty_%d_pct", emptyPercent), func(b *testing.B) {
-			initServicePerfDB(b)
-			const clients = 1000
-			seedStatsBenchClients(b, clients)
-			deltas := make(map[entitytypes.VPNUserID]clientTrafficDelta, clients)
-			for i := 0; i < clients; i++ {
-				name := entitytypes.VPNUserID(i + 1)
-				if i%100 < emptyPercent {
-					deltas[name] = clientTrafficDelta{}
-					continue
-				}
-				deltas[name] = clientTrafficDelta{up: int64(i + 1), down: int64(i + 2)}
-			}
-			b.ReportMetric(float64(emptyPercent), "empty_pct")
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				tx := dbsqlite.DB().Begin()
-				if tx.Error != nil {
-					b.Fatal(tx.Error)
-				}
-				if err := updateClientTrafficDeltas(tx, deltas); err != nil {
-					_ = tx.Rollback().Error
-					b.Fatal(err)
-				}
-				if err := tx.Rollback().Error; err != nil {
 					b.Fatal(err)
 				}
 			}

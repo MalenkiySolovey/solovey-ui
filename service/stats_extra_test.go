@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-backend/accounting/ipmonitor"
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	coretracker "github.com/MalenkiySolovey/solovey-ui/core/tracker"
-	"github.com/MalenkiySolovey/solovey-ui/ipmonitor"
-	"github.com/MalenkiySolovey/solovey-backend/realtime"
 	"gorm.io/gorm"
 )
 
@@ -25,9 +25,10 @@ func TestStatsServiceSaveStatsWithEmptyStats(t *testing.T) {
 		_ = coreInstance.Stop()
 	})
 
-	onlineResourcesMu.Lock()
-	onlineResources = &onlines{User: []string{"stale-user"}}
-	onlineResourcesMu.Unlock()
+	initSettingTestDB(t)
+	if err := (&StatsService{}).saveStatsSamples(false, []coretracker.Stat{{Resource: "user", Tag: "stale-user", Direction: true, Traffic: 1}}); err != nil {
+		t.Fatal(err)
+	}
 
 	statsService := &StatsService{Runtime: NewRuntime(coreInstance)}
 	if err := statsService.SaveStats(true); err != nil {
@@ -219,41 +220,6 @@ func TestStatsServiceGetInboundTrafficSummaryUsesExactBucketSums(t *testing.T) {
 	}
 	if got.Buckets[3].Upload < 7 {
 		t.Fatalf("end boundary traffic should be included in the last bucket: %#v", got.Buckets[3])
-	}
-}
-
-func TestStatsServiceDownsampleStatsBucketsExtra(t *testing.T) {
-	statsService := &StatsService{}
-	input := []model.Stats{
-		{DateTime: 100, Resource: "user", Tag: "alice", Direction: false, Traffic: 10},
-		{DateTime: 101, Resource: "user", Tag: "alice", Direction: false, Traffic: 30},
-		{DateTime: 102, Resource: "user", Tag: "alice", Direction: true, Traffic: 40},
-		{DateTime: 110, Resource: "user", Tag: "alice", Direction: false, Traffic: 90},
-		{DateTime: 111, Resource: "user", Tag: "alice", Direction: true, Traffic: 100},
-		{DateTime: 112, Resource: "user", Tag: "alice", Direction: true, Traffic: 140},
-	}
-
-	got := statsService.downsampleStats(input, 4)
-	if len(got) != 4 {
-		t.Fatalf("expected 4 downsampled rows, got %d: %#v", len(got), got)
-	}
-	if got[0].Direction || got[0].Traffic != 20 {
-		t.Fatalf("unexpected first bucket down row: %#v", got[0])
-	}
-	if !got[1].Direction || got[1].Traffic != 40 {
-		t.Fatalf("unexpected first bucket up row: %#v", got[1])
-	}
-	if got[2].Direction || got[2].Traffic != 90 {
-		t.Fatalf("unexpected second bucket down row: %#v", got[2])
-	}
-	if !got[3].Direction || got[3].Traffic != 120 {
-		t.Fatalf("unexpected second bucket up row: %#v", got[3])
-	}
-	if got[0].Resource != "user" || got[0].Tag != "alice" {
-		t.Fatalf("resource/tag not preserved: %#v", got[0])
-	}
-	if got[0].DateTime > got[2].DateTime {
-		t.Fatalf("bucket order regressed: %#v", got)
 	}
 }
 

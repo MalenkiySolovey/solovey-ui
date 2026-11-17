@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
+	ipmonitor "github.com/MalenkiySolovey/solovey-backend/accounting/ipmonitor"
 	telegramschedule "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/schedule"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
 	"github.com/robfig/cron/v3"
 )
 

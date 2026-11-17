@@ -1,19 +1,16 @@
 package service
 
 import (
-	"fmt"
+	"github.com/MalenkiySolovey/solovey-backend/accounting"
 	"testing"
 	"time"
 
-	entitytypes "github.com/MalenkiySolovey/solovey-backend/entityidentity"
-	"github.com/MalenkiySolovey/solovey-backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-backend/realtime"
-	"gorm.io/gorm"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 )
 
 func TestTrafficDeltasAggregatesByResourceAndTag(t *testing.T) {
-	deltas := trafficDeltas([]model.Stats{
+	deltas := accounting.TrafficDeltas([]model.Stats{
 		{Resource: "user", Tag: "alice", Direction: true, Traffic: 10},
 		{Resource: "user", Tag: "alice", Direction: false, Traffic: 3},
 		{Resource: "user", Tag: "alice", Direction: true, Traffic: 7},
@@ -23,10 +20,10 @@ func TestTrafficDeltasAggregatesByResourceAndTag(t *testing.T) {
 	if len(deltas) != 2 {
 		t.Fatalf("expected two deltas, got %#v", deltas)
 	}
-	if deltas[0] != (trafficDelta{Resource: "user", Tag: "alice", Up: 17, Down: 3}) {
+	if deltas[0] != (accounting.TrafficDelta{Resource: "user", Tag: "alice", Up: 17, Down: 3}) {
 		t.Fatalf("unexpected user delta: %#v", deltas[0])
 	}
-	if deltas[1] != (trafficDelta{Resource: "inbound", Tag: "mixed-in", Down: 4}) {
+	if deltas[1] != (accounting.TrafficDelta{Resource: "inbound", Tag: "mixed-in", Down: 4}) {
 		t.Fatalf("unexpected inbound delta: %#v", deltas[1])
 	}
 }
@@ -51,59 +48,9 @@ func TestPublishStatsRealtimePublishesOnlinesAndTrafficDelta(t *testing.T) {
 		t.Fatalf("unexpected onlines payload: %#v", onlinesEvent.Payload)
 	}
 	deltaEvent := expectRealtimeEvent(t, ch, realtime.TopicTrafficDelta)
-	deltas, ok := deltaEvent.Payload.([]trafficDelta)
+	deltas, ok := deltaEvent.Payload.([]accounting.TrafficDelta)
 	if !ok || len(deltas) != 1 || deltas[0].Up != 10 {
 		t.Fatalf("unexpected delta payload: %#v", deltaEvent.Payload)
-	}
-}
-
-func TestUpdateClientTrafficDeltasBatchesTwoHundredClients(t *testing.T) {
-	initSettingTestDB(t)
-
-	clients := make([]model.Client, 0, 200)
-	deltas := make(map[entitytypes.VPNUserID]clientTrafficDelta, 200)
-	expectedUp := make(map[string]int64, 200)
-	expectedDown := make(map[string]int64, 200)
-	for i := 0; i < 200; i++ {
-		name := fmt.Sprintf("client-%03d", i)
-		initialUp := int64(i)
-		initialDown := int64(i * 2)
-		upDelta := int64(i + 10)
-		downDelta := int64(i + 20)
-		clients = append(clients, model.Client{
-			Id:   uint(i + 1),
-			Name: name,
-			Up:   initialUp,
-			Down: initialDown,
-		})
-		deltas[entitytypes.VPNUserID(i+1)] = clientTrafficDelta{
-			up:   upDelta,
-			down: downDelta,
-		}
-		expectedUp[name] = initialUp + upDelta
-		expectedDown[name] = initialDown + downDelta
-	}
-	if err := dbsqlite.DB().Create(&clients).Error; err != nil {
-		t.Fatal(err)
-	}
-
-	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
-		return updateClientTrafficDeltas(tx, deltas)
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	var stored []model.Client
-	if err := dbsqlite.DB().Order("name asc").Find(&stored).Error; err != nil {
-		t.Fatal(err)
-	}
-	if len(stored) != 200 {
-		t.Fatalf("expected 200 clients, got %d", len(stored))
-	}
-	for _, client := range stored {
-		if client.Up != expectedUp[client.Name] || client.Down != expectedDown[client.Name] {
-			t.Fatalf("unexpected traffic for %s: up=%d down=%d", client.Name, client.Up, client.Down)
-		}
 	}
 }
 
