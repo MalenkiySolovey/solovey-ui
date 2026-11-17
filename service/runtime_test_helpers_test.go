@@ -1,6 +1,9 @@
 package service
 
-import "testing"
+import (
+	tokenuse "github.com/MalenkiySolovey/solovey-ui/backend/security/tokenuse"
+	"testing"
+)
 
 func replaceDefaultRuntimeForTest(t testing.TB, runtime *Runtime) {
 	t.Helper()
@@ -13,3 +16,5 @@ func resetTokenUseDebouncerForTest() {
 	DefaultRuntime().resetTokenUseDebouncer()
 	resumeTokenUseFlush()
 }
+
+func resumeTokenUseFlush() { tokenuse.Resume() }

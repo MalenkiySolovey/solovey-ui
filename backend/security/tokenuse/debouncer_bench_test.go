@@ -1,4 +1,4 @@
-package service
+package tokenuse
 
 import (
 	"context"
@@ -16,7 +16,7 @@ func BenchmarkTokenUseDebouncer_Record(b *testing.B) {
 		parallelism := parallelism
 		b.Run(fmt.Sprintf("parallel_%d", parallelism), func(b *testing.B) {
 			var flushed atomic.Int64
-			debouncer := newTokenUseDebouncer(time.Hour, func(updates map[uint]tokenUseUpdate) error {
+			debouncer := New(time.Hour, func(updates map[uint]Update) error {
 				flushed.Add(int64(len(updates)))
 				return nil
 			})
@@ -40,22 +40,22 @@ func BenchmarkTokenUseDebouncer_Record(b *testing.B) {
 }
 
 func BenchmarkTokenUseDebouncer_BatchFlush(b *testing.B) {
-	initServicePerfDB(b)
+	initTokenUseDB(b)
 	const tokens = 10_000
 	rows := make([]model.Tokens, tokens)
-	updates := make(map[uint]tokenUseUpdate, tokens)
+	updates := make(map[uint]Update, tokens)
 	for i := 0; i < tokens; i++ {
 		rows[i] = model.Tokens{Desc: fmt.Sprintf("benchmark-token-%05d", i), TokenHash: fmt.Sprintf("hash-%05d", i), Enabled: true, UserId: 1}
 		// #nosec G115 -- bench loop index, always small and non-negative.
-		updates[uint(i+1)] = tokenUseUpdate{ip: "198.51.100.10", ts: int64(1700000000 + i)}
+		updates[uint(i+1)] = Update{IP: "198.51.100.10", At: int64(1700000000 + i)}
 	}
-	if err := dbsqlite.DB().CreateInBatches(&rows, tokenUseBatchSize).Error; err != nil {
+	if err := dbsqlite.DB().CreateInBatches(&rows, BatchSize).Error; err != nil {
 		b.Fatal(err)
 	}
 	b.ReportMetric(float64(tokens), "tokens")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := flushTokenUseUpdates(updates); err != nil {
+		if err := FlushUpdates(updates); err != nil {
 			b.Fatal(err)
 		}
 	}

@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	tokenuse "github.com/MalenkiySolovey/solovey-ui/backend/security/tokenuse"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
@@ -79,7 +80,7 @@ func NewRuntimeWithCoreProvider(provider CoreProvider) *Runtime {
 		lastUpdate:        NewLastUpdateStore(),
 		auditWriter:       newAuditWriter(auditQueueCapacity, auditBatchSize, auditFlushInterval, writeAuditEvents),
 		auditDenials:      auditsvc.NewDenialAggregator(auditsvc.DefaultDenialAggregationWindow, auditsvc.DefaultDenialAggregationKeys),
-		tokenUse:          newTokenUseDebouncer(tokenUseFlushInterval, flushTokenUseUpdates),
+		tokenUse:          newTokenUseDebouncer(tokenUseFlushInterval),
 		coreStartCooldown: defaultCoreStartCooldown,
 	}
 }
@@ -198,21 +199,21 @@ func (r *Runtime) resetTokenUseDebouncerContext(ctx context.Context) {
 	if r == nil {
 		return
 	}
-	finishReset := beginTokenUseReset()
+	finishReset := tokenuse.BeginReset()
 	defer finishReset()
 	r.mu.Lock()
 	current := r.tokenUse
 	if current != nil {
 		if !dbsqlite.IsMaintenanceContext(ctx) {
-			if err := current.flushNow(ctx, true, false); err != nil {
+			if err := current.FlushForReset(ctx); err != nil {
 				logger.Warning("token use flush before reset failed:", err)
 			}
 		}
 		// Numeric token IDs queued on the prior generation cannot be applied
 		// to an imported table. Retire even stale references to this debouncer.
-		current.retire()
+		current.Retire()
 	}
-	r.tokenUse = newTokenUseDebouncer(tokenUseFlushInterval, flushTokenUseUpdates)
+	r.tokenUse = newTokenUseDebouncer(tokenUseFlushInterval)
 	r.mu.Unlock()
 }
 
