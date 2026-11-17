@@ -11,10 +11,11 @@ func TestUserAccessLifecycleExcludesProductRuntimeAndDelivery(t *testing.T) {
 	allowed := map[string]bool{}
 	for _, name := range []string{
 		"backend/users", "backend/storage/model", "backend/storage/sqlite", "backend/entityidentity", "backend/security",
+		"backend/security/crypto", "backend/storage/entityidentity", "backend/storage/entityorder", "backend/storage/saveidentity", "backend/storage/jsonvalue",
 	} {
 		allowed[modulePath+"/"+name] = true
 	}
-	for _, target := range []string{"gorm.io/gorm", "gorm.io/driver/sqlite", "github.com/mattn/go-sqlite3"} {
+	for _, target := range []string{"gorm.io/gorm", "gorm.io/driver/sqlite", "github.com/mattn/go-sqlite3", "github.com/gofrs/uuid/v5", "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"} {
 		for name := range goListDependencies(t, root, target) {
 			allowed[name] = true
 		}
