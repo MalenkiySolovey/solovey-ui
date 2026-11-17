@@ -1,20 +1,20 @@
 package realtimehttp
 
 import (
+	"github.com/MalenkiySolovey/solovey-ui/backend/audit"
 	"net/http"
 	"net/url"
 	"strings"
 
-	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
 	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/backend/http/security"
-	"github.com/MalenkiySolovey/solovey-ui/service"
+	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
 
 	"github.com/gin-gonic/gin"
 )
 
 func (a *Handler) ValidateOrigin(c *gin.Context, user string) bool {
 	if len(c.Request.Header.Values("Origin")) != 1 {
-		a.Audit(c, user, "ws_origin_rejected", "realtime", service.AuditSeverityWarn, map[string]any{
+		a.Audit(c, user, "ws_origin_rejected", "realtime", audit.SeverityWarn, map[string]any{
 			"reason": "missing_or_multiple_origin",
 		})
 		c.Status(http.StatusForbidden)
@@ -22,7 +22,7 @@ func (a *Handler) ValidateOrigin(c *gin.Context, user string) bool {
 	}
 	originHeader := strings.TrimSpace(c.GetHeader("Origin"))
 	if originHeader == "" {
-		a.Audit(c, user, "ws_origin_rejected", "realtime", service.AuditSeverityWarn, map[string]any{
+		a.Audit(c, user, "ws_origin_rejected", "realtime", audit.SeverityWarn, map[string]any{
 			"reason": "missing_origin",
 		})
 		c.Status(http.StatusForbidden)
@@ -35,7 +35,7 @@ func (a *Handler) ValidateOrigin(c *gin.Context, user string) bool {
 		return true
 	}
 	originHost, originScheme := securitymiddleware.OriginAuditParts(originHeader)
-	a.Audit(c, user, "ws_origin_rejected", "realtime", service.AuditSeverityWarn, map[string]any{
+	a.Audit(c, user, "ws_origin_rejected", "realtime", audit.SeverityWarn, map[string]any{
 		"reason":       reason,
 		"originScheme": originScheme,
 		"originHost":   originHost,

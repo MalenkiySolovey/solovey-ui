@@ -424,3 +424,12 @@ once-only Close and ticker Stop are byte-identical. Fixed key capacities,
 window pruning and failure/threshold decisions remain at one canonical owner.
 Existing concurrency, eviction, expiry and background-GC tests move with it.
 This change introduces no new worker, listener or policy.
+
+
+Realtime transport source ownership relocates the two existing `startWSHeartbeat`
+worker/ticker entries from `api/realtime/handler.go` to
+`backend/http/realtime/handler.go`. Their exact digests remain
+`51fc4eac1f0de34d579a85df1efcb605ab2a2eb346a05c28ea37dadccec78546` and
+`5db1967d4d1b154855eb569b58bee8ecbee60560dfc7a20a5c776887725bad99`. The request-linked cancellation, deferred stop/join,
+bounded ping context and connection close behavior are unchanged. No worker is
+added; the base, cardinality and every unrelated budget entry remain unchanged.

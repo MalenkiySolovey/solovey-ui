@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
+	realtimehttp "github.com/MalenkiySolovey/solovey-ui/backend/http/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"

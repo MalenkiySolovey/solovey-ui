@@ -1,14 +1,21 @@
 package api
 
 import (
-	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
+	realtimehttp "github.com/MalenkiySolovey/solovey-ui/backend/http/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
+	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 )
 
+func init() {
+	dbhooks.RegisterResetHook("api.ws_tokens", func() { _ = realtimehttp.ResetTokens() })
+	service.RegisterWSTokenInvalidationHook("api.ws_tokens", realtimehttp.ResetTokens)
+}
+
 func (a *ApiService) realtimeHandler() *realtimehttp.Handler {
 	return &realtimehttp.Handler{
-		SettingService: a.SettingService,
+		SettingService: &a.SettingService,
 		LoginUser:      GetLoginUser,
 		RemoteIP:       getRemoteIp,
 		SessionBinding: realtimeSessionBinding,

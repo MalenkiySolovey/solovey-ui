@@ -1,14 +1,16 @@
 package realtimehttp
 
 import (
+	"errors"
+	"github.com/MalenkiySolovey/solovey-ui/backend/audit"
+	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
+	securitycrypto "github.com/MalenkiySolovey/solovey-ui/backend/security/crypto"
 	"net/http"
 	"strconv"
 	"strings"
 	stdatomic "sync/atomic"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/service"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/MalenkiySolovey/solovey-ui/backend/http/ratelimit"
 
 	"github.com/gin-gonic/gin"
@@ -31,7 +33,7 @@ func (a *Handler) IssueWSToken(c *gin.Context) {
 	}
 	user := a.LoginUser(c)
 	if user == "" {
-		a.JSONMsg(c, "wsToken", common.NewError("invalid login"))
+		a.JSONMsg(c, "wsToken", errors.New("invalid login"))
 		return
 	}
 	if !a.ValidateOrigin(c, user) {
@@ -39,16 +41,16 @@ func (a *Handler) IssueWSToken(c *gin.Context) {
 	}
 	now := time.Now()
 	expiresAt := now.Add(wsTokenTTL)
-	token, err := common.SecureRandom(32)
+	token, err := securitycrypto.SecureRandom(32)
 	if err != nil {
 		a.JSONMsg(c, "wsToken", err)
 		return
 	}
-	binding := service.RealtimeSessionBinding{Username: user}
+	binding := panelsecurity.RealtimeSessionBinding{Username: user}
 	if a.SessionBinding != nil {
 		resolved, ok := a.SessionBinding(c)
 		if !ok || resolved.Username != user {
-			a.JSONMsg(c, "wsToken", common.NewError("invalid session"))
+			a.JSONMsg(c, "wsToken", errors.New("invalid session"))
 			return
 		}
 		binding = resolved
@@ -65,7 +67,7 @@ func (a *Handler) EnforceHandshakeRateLimit(c *gin.Context, endpoint string) boo
 	if err == nil {
 		return true
 	}
-	a.Audit(c, "", "ws_rate_limited", "realtime", service.AuditSeverityWarn, map[string]any{
+	a.Audit(c, "", "ws_rate_limited", "realtime", audit.SeverityWarn, map[string]any{
 		"endpoint": endpoint,
 	})
 	c.Header("Retry-After", strconv.Itoa(int(handshakeWindow/time.Second)))
@@ -103,14 +105,14 @@ func (a *Handler) recordLegacyProtocolOnce(c *gin.Context, user string) {
 	if !legacyWSProtocolAuditWarned.CompareAndSwap(false, true) {
 		return
 	}
-	a.Audit(c, user, "ws_protocol_deprecated", "realtime", service.AuditSeverityWarn, map[string]any{
+	a.Audit(c, user, "ws_protocol_deprecated", "realtime", audit.SeverityWarn, map[string]any{
 		"format": "legacy_token_subprotocol",
 	})
 }
 
 func CheckHandshakeRateLimit(key string) error {
 	if !handshakeRateLimiter.Allow(key).Allowed {
-		return common.NewError("too many websocket handshake attempts")
+		return errors.New("too many websocket handshake attempts")
 	}
 	return nil
 }

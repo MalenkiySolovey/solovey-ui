@@ -4,12 +4,12 @@ package realtimehttp
 import (
 	"context"
 	"encoding/json"
+	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
 	"net/http"
 	"time"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	realtime "github.com/MalenkiySolovey/solovey-ui/backend/realtime"
-	"github.com/MalenkiySolovey/solovey-ui/service"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 
 	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
@@ -33,12 +33,17 @@ type Config struct {
 
 type Option func(*Config)
 
+// Settings supplies the configured Panel domain for origin audit projection.
+type Settings interface {
+	GetWebDomain() (string, error)
+}
+
 type Handler struct {
-	SettingService service.SettingService
+	SettingService Settings
 	LoginUser      func(*gin.Context) string
 	RemoteIP       func(*gin.Context) string
-	SessionBinding func(*gin.Context) (service.RealtimeSessionBinding, bool)
-	SessionValid   func(service.RealtimeSessionBinding) bool
+	SessionBinding func(*gin.Context) (panelsecurity.RealtimeSessionBinding, bool)
+	SessionValid   func(panelsecurity.RealtimeSessionBinding) bool
 	Scope          func(*gin.Context) realtime.Scope
 	Audit          func(*gin.Context, string, string, string, string, map[string]any)
 	JSONObj        func(*gin.Context, interface{}, error)
@@ -196,7 +201,7 @@ func (a *Handler) realtimeWS(c *gin.Context, config Config) {
 	}
 }
 
-func sameRealtimeSessionBinding(ticket, request service.RealtimeSessionBinding) bool {
+func sameRealtimeSessionBinding(ticket, request panelsecurity.RealtimeSessionBinding) bool {
 	return ticket.UserID != 0 && ticket.UserID == request.UserID &&
 		ticket.Username != "" && ticket.Username == request.Username &&
 		ticket.SessionRef != "" && ticket.SessionRef == request.SessionRef &&

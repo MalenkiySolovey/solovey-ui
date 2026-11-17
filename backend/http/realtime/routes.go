@@ -2,18 +2,18 @@ package realtimehttp
 
 import (
 	apprealtime "github.com/MalenkiySolovey/solovey-ui/backend/realtime"
-	"github.com/MalenkiySolovey/solovey-ui/service"
+	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
 
 	"github.com/gin-gonic/gin"
 )
 
 // Deps contains the host capabilities required by the realtime transport.
 type Deps struct {
-	SettingService service.SettingService
+	SettingService Settings
 	LoginUser      func(*gin.Context) string
 	RemoteIP       func(*gin.Context) string
-	SessionBinding func(*gin.Context) (service.RealtimeSessionBinding, bool)
-	SessionValid   func(service.RealtimeSessionBinding) bool
+	SessionBinding func(*gin.Context) (panelsecurity.RealtimeSessionBinding, bool)
+	SessionValid   func(panelsecurity.RealtimeSessionBinding) bool
 	Scope          func(*gin.Context) apprealtime.Scope
 	Audit          func(*gin.Context, string, string, string, string, map[string]any)
 	JSONObj        func(*gin.Context, interface{}, error)

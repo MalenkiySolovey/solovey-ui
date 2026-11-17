@@ -4,13 +4,10 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"crypto/subtle"
+	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
 	"sort"
 	"sync"
 	"time"
-
-	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
-
-	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
 const (
@@ -19,7 +16,7 @@ const (
 )
 
 type realtimeToken struct {
-	binding   service.RealtimeSessionBinding
+	binding   panelsecurity.RealtimeSessionBinding
 	expiresAt time.Time
 }
 
@@ -33,22 +30,15 @@ var wsTokens = struct {
 	tokens: map[[sha256.Size]byte]realtimeToken{},
 }
 
-func init() {
-	dbhooks.RegisterResetHook("api.ws_tokens", func() {
-		_ = sweepAllWSTokens()
-	})
-	service.RegisterWSTokenInvalidationHook("api.ws_tokens", sweepAllWSTokens)
-}
-
 func wsTokenDigest(token string) [sha256.Size]byte {
 	return sha256.Sum256([]byte(token))
 }
 
 func StoreToken(token string, user string, expiresAt time.Time) {
-	StoreBoundToken(token, service.RealtimeSessionBinding{Username: user}, expiresAt)
+	StoreBoundToken(token, panelsecurity.RealtimeSessionBinding{Username: user}, expiresAt)
 }
 
-func StoreBoundToken(token string, binding service.RealtimeSessionBinding, expiresAt time.Time) {
+func StoreBoundToken(token string, binding panelsecurity.RealtimeSessionBinding, expiresAt time.Time) {
 	now := time.Now()
 	wsTokens.Lock()
 	maybeSweepWSTokensLocked(now)
@@ -84,9 +74,9 @@ func SweepExpired(now time.Time) {
 	sweepWSTokensLocked(now)
 }
 
-func consumeBoundWSToken(token string) (service.RealtimeSessionBinding, bool) {
+func consumeBoundWSToken(token string) (panelsecurity.RealtimeSessionBinding, bool) {
 	if token == "" {
-		return service.RealtimeSessionBinding{}, false
+		return panelsecurity.RealtimeSessionBinding{}, false
 	}
 	wsTokens.Lock()
 	defer wsTokens.Unlock()
@@ -104,7 +94,7 @@ func consumeBoundWSToken(token string) (service.RealtimeSessionBinding, bool) {
 	var matchedKey [sha256.Size]byte
 	matchedExpiresAtUnixNano := int64(0)
 	matchedUserIndex := 0
-	bindings := make([]service.RealtimeSessionBinding, len(keys))
+	bindings := make([]panelsecurity.RealtimeSessionBinding, len(keys))
 	for i, key := range keys {
 		data := wsTokens.tokens[key]
 		bindings[i] = data.binding
@@ -118,7 +108,7 @@ func consumeBoundWSToken(token string) (service.RealtimeSessionBinding, bool) {
 	now := time.Now()
 	matchedExpiresAt := time.Unix(0, matchedExpiresAtUnixNano)
 	if matched != 1 || !now.Before(matchedExpiresAt) {
-		return service.RealtimeSessionBinding{}, false
+		return panelsecurity.RealtimeSessionBinding{}, false
 	}
 	return bindings[matchedUserIndex-1], true
 }

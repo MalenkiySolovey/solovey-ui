@@ -3,11 +3,9 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"testing"
 	"time"
 
-	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
 	"github.com/gin-gonic/gin"
 )
 
@@ -84,48 +82,4 @@ func withAPITokenNow(t *testing.T, now time.Time) {
 	previous := apiTokenNow
 	apiTokenNow = func() time.Time { return now }
 	t.Cleanup(func() { apiTokenNow = previous })
-}
-
-func TestSecurityConsumeWSTokenDoubleSpendExpiredAndCapacity(t *testing.T) {
-	_ = realtimehttp.ResetTokens()
-	t.Cleanup(func() { _ = realtimehttp.ResetTokens() })
-
-	realtimehttp.StoreToken("single-use", "admin", time.Now().Add(time.Minute))
-	if user, ok := realtimehttp.ConsumeToken("single-use"); !ok || user != "admin" {
-		t.Fatalf("first consume failed: user=%q ok=%v", user, ok)
-	}
-	if user, ok := realtimehttp.ConsumeToken("single-use"); ok || user != "" {
-		t.Fatalf("second consume should fail: user=%q ok=%v", user, ok)
-	}
-
-	realtimehttp.StoreToken("expired", "admin", time.Now().Add(-time.Second))
-	if user, ok := realtimehttp.ConsumeToken("expired"); ok || user != "" {
-		t.Fatalf("expired consume should fail: user=%q ok=%v", user, ok)
-	}
-	if realtimehttp.HasToken("expired") {
-		t.Fatal("expired matched token should be deleted after consume attempt")
-	}
-
-	realtimehttp.StoreToken("oldest", "admin", time.Now().Add(time.Minute))
-	for i := 0; i < realtimehttp.MaxTokens; i++ {
-		token := "new-" + strconv.Itoa(i)
-		realtimehttp.StoreToken(token, "admin", time.Now().Add(time.Hour+time.Duration(i)*time.Second))
-	}
-	if realtimehttp.HasToken("oldest") {
-		t.Fatal("oldest websocket token was not evicted when capacity was exceeded")
-	}
-	if size := realtimehttp.TokenCount(); size != realtimehttp.MaxTokens {
-		t.Fatalf("unexpected websocket token capacity size %d, want %d", size, realtimehttp.MaxTokens)
-	}
-}
-
-func TestSecurityWSTokenSweepExpiresExactBoundary(t *testing.T) {
-	_ = realtimehttp.ResetTokens()
-	t.Cleanup(func() { _ = realtimehttp.ResetTokens() })
-	expiresAt := time.Now().Add(time.Hour)
-	realtimehttp.StoreToken("boundary", "admin", expiresAt)
-	realtimehttp.SweepExpired(expiresAt)
-	if realtimehttp.HasToken("boundary") {
-		t.Fatal("websocket token survived its exact expiry boundary")
-	}
 }

@@ -2266,13 +2266,13 @@
     },
     {
       "rule": "worker-lifetime",
-      "path": "api/realtime/handler.go",
+      "path": "backend/http/realtime/handler.go",
       "symbol": "startWSHeartbeat",
       "digest": "51fc4eac1f0de34d579a85df1efcb605ab2a2eb346a05c28ea37dadccec78546"
     },
     {
       "rule": "worker-lifetime",
-      "path": "api/realtime/handler.go",
+      "path": "backend/http/realtime/handler.go",
       "symbol": "startWSHeartbeat",
       "digest": "5db1967d4d1b154855eb569b58bee8ecbee60560dfc7a20a5c776887725bad99"
     },
