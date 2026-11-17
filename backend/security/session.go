@@ -63,6 +63,10 @@ const (
 	SessionPreAuthChallengeRevision = "__sui_security_preauth_challenge_revision__"
 )
 
+// SessionRegenerateKey asks the durable store to replace a pre-authentication
+// session ID on its next successful Save.
+const SessionRegenerateKey = "__sui_session_regenerate__"
+
 // PanelAccountID is a Panel administrator identity, distinct from VPN user IDs.
 type PanelAccountID uint
 
