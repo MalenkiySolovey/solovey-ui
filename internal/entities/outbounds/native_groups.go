@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds/composition"

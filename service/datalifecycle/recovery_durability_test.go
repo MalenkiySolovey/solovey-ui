@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	componentmanifest "github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"gorm.io/driver/sqlite"

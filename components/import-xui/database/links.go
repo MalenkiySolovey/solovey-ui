@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 	"gorm.io/gorm"
 )

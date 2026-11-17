@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	backupdb "github.com/MalenkiySolovey/solovey-ui/database/backup"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	contract "github.com/MalenkiySolovey/solovey-ui/internal/ops/updatebroker"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"

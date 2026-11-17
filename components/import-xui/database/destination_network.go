@@ -5,7 +5,7 @@ package importxui
 import (
 	"fmt"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityendpoints "github.com/MalenkiySolovey/solovey-ui/internal/entities/endpoints"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"

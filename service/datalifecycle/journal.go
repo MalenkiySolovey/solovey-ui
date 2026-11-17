@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 )
 

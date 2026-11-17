@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
 	paidprovider "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
 	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
 	paidsettings "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/settings"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 

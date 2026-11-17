@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	panelapi "github.com/MalenkiySolovey/solovey-ui/api"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	panelweb "github.com/MalenkiySolovey/solovey-ui/web"
 	ginsessions "github.com/gin-contrib/sessions"

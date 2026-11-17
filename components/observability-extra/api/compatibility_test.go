@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	observation "github.com/MalenkiySolovey/solovey-ui/service/observability"
 	"github.com/gin-gonic/gin"
 	"net/http"

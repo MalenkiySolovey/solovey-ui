@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	settingsschema "github.com/MalenkiySolovey/solovey-ui/internal/settings/schema"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

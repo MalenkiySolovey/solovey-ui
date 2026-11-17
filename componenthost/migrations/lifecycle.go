@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

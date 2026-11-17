@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"time"
 
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	clientdevices "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients/devices"
 	entityendpoints "github.com/MalenkiySolovey/solovey-ui/internal/entities/endpoints"
-	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 	"gorm.io/gorm"
 )
 

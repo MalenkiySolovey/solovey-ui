@@ -8,8 +8,8 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/secretref"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
 	"github.com/MalenkiySolovey/solovey-ui/internal/secrets/ownerdb"

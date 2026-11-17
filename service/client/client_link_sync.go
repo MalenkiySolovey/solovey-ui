@@ -1,7 +1,7 @@
 package client
 
 import (
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 
 	"gorm.io/gorm"

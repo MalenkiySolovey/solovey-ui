@@ -24,11 +24,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/util/ratelimit"
 	"github.com/gin-gonic/gin"

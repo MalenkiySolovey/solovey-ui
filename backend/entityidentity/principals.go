@@ -1,4 +1,4 @@
-package types
+package entityidentity
 
 import panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
 

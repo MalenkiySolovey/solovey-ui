@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	operationcoordination "github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/sshmanagement"
 	"gorm.io/gorm"

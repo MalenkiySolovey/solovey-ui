@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	componentmanifest "github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

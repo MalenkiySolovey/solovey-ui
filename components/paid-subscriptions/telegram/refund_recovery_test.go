@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
 	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
 	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
 	paidsettings "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/settings"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 

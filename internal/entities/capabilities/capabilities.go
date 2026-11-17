@@ -3,10 +3,10 @@
 package capabilities
 
 import (
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/profile"
-	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 )
 
 const Schema = "solovey-ui/entity-capabilities/v1"

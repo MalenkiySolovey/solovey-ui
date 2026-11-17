@@ -11,8 +11,8 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/database/backup"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	contract "github.com/MalenkiySolovey/solovey-ui/internal/ops/updatebroker"
 )
 

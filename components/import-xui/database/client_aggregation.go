@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/mapping"
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/gofrs/uuid/v5"
 )
 

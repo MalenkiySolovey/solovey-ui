@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/database/backup"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/ipcert"
 	"gorm.io/gorm"

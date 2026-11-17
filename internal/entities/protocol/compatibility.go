@@ -10,11 +10,11 @@ import (
 	"reflect"
 	"strconv"
 
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/composition"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
-	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/MalenkiySolovey/solovey-ui/util/jsonfields"
 	"github.com/sagernet/sing-box/option"

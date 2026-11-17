@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 	"gorm.io/gorm"

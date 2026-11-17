@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/secretref"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"gorm.io/gorm"
 )
 

@@ -11,10 +11,10 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-host/hostref"
 	hostoutbounds "github.com/MalenkiySolovey/solovey-host/outbounds"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/backendoutbounds"
 	"github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/internal/bindingfixture"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"gorm.io/gorm"
 )
 

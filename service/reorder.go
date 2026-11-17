@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"

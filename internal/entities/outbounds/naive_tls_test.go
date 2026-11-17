@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

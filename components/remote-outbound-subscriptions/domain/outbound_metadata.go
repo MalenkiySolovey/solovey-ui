@@ -3,7 +3,7 @@
 package remote
 
 import (
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"gorm.io/gorm"
 )
 

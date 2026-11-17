@@ -7,8 +7,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 )
 

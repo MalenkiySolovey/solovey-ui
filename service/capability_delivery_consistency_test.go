@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"

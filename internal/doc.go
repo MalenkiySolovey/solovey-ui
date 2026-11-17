@@ -2,7 +2,7 @@
 // supported external API.
 //
 // Placement rules:
-//   - database/model owns persistence records and their storage serialization;
+//   - backend/storage/model owns persistence records and their storage serialization;
 //   - internal/entities owns domain validation, mutations and JSON-field logic;
 //   - internal/integrations owns provider transports without settings or DB access;
 //   - top-level packages own infrastructure and process-level state;

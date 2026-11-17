@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	observationsvc "github.com/MalenkiySolovey/solovey-ui/service/observability"
 	"github.com/gin-gonic/gin"
 	"github.com/robfig/cron/v3"

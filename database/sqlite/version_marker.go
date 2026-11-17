@@ -1,9 +1,9 @@
 package sqlite
 
 import (
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	"github.com/MalenkiySolovey/solovey-ui/config/versionpolicy"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 
 	"gorm.io/gorm"
 )

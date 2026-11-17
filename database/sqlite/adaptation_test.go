@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 )
 

@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/database/backup"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/ipcert"
 	"gorm.io/gorm"
 )

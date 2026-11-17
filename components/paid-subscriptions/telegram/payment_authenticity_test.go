@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
 	"github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 )
 
 // recordingTransport is a fake Telegram Bot API transport. It records each call

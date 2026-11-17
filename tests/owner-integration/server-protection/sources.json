@@ -102,7 +102,7 @@
       "asset": "service/firewall/runtime_sqlite_lock_test.go.txt",
       "package": "service/firewall",
       "file": "runtime_sqlite_lock_test.go",
-      "sha256": "78a508b769f1a20f5b330f2fa7f04ecd44ef9c26a8d94440985f5acad98fb9d3"
+      "sha256": "7ff512f57051b1d15d27c63e6fe96da9e894c983ea813ebb13dd462440f0a666"
     },
     {
       "asset": "service/firewall/runtime_terminalization_test.go.txt",
@@ -222,7 +222,7 @@
       "asset": "service/nativefallback/core_checkpoint_retention_integration_test.go.txt",
       "package": "service/nativefallback",
       "file": "core_checkpoint_retention_integration_test.go",
-      "sha256": "b7ec42c0934df37232b707e91da510195396270d642e340046405f2a9fa1df40"
+      "sha256": "a4cd88a05f4b19cca2a6813af690ca8a41508560af19a50af774c5611e44733e"
     },
     {
       "asset": "service/nativefallback/performance_test.go.txt",

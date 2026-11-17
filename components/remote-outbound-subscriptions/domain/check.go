@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	"gorm.io/gorm"
 )

@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	managementregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/management"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/sshmanagement"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"

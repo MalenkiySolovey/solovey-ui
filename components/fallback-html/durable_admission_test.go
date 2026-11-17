@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/durable"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
@@ -19,7 +20,6 @@ import (
 	fallbackservice "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/service"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/durableowner"
 	"github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"

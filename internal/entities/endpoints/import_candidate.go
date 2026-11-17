@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveeligibility"
 	"gorm.io/gorm"

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"gorm.io/gorm"
 )
 

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
 	sqlite3 "github.com/mattn/go-sqlite3"

@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/secretref"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
 	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
 	sudokucrypto "github.com/sagernet/sing-box/transport/sudoku/crypto"

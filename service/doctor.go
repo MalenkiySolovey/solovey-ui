@@ -14,7 +14,7 @@ import (
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	opsdoctor "github.com/MalenkiySolovey/solovey-ui/internal/ops/doctor"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"

@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	coreregistry "github.com/MalenkiySolovey/solovey-ui/core/registry"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/auth"
 )

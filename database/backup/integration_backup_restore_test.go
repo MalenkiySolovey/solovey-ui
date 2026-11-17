@@ -19,11 +19,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	backupenvelope "github.com/MalenkiySolovey/solovey-ui/internal/backup/envelope"
 	deploymentdomain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"

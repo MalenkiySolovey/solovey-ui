@@ -1,6 +1,6 @@
 package audit
 
-import "github.com/MalenkiySolovey/solovey-ui/database/model"
+import "github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 
 // History queries existing redacted events; it grants no write or prune authority.
 type History interface {

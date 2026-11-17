@@ -6,9 +6,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/restart"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"

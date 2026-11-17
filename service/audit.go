@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	auditsvc "github.com/MalenkiySolovey/solovey-ui/service/audit"
 )
 

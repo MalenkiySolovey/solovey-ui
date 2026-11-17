@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 	"github.com/MalenkiySolovey/solovey-ui/service"

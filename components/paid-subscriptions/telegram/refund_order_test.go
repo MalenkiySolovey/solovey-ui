@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
 	"github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 )
 
 func TestRefundOrderNonPaidIsNotRefundable(t *testing.T) {

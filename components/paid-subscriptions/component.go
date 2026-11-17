@@ -8,6 +8,7 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
@@ -15,7 +16,6 @@ import (
 	paidcore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
 	paidsettings "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/settings"
 	paidtelegram "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/telegram"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"github.com/MalenkiySolovey/solovey-ui/service"

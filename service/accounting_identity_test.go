@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	coretracker "github.com/MalenkiySolovey/solovey-ui/core/tracker"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	clientsvc "github.com/MalenkiySolovey/solovey-ui/service/client"
 	"gorm.io/gorm"

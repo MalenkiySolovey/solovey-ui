@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	contract "github.com/MalenkiySolovey/solovey-ui/internal/ops/updatebroker"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 	providerfixture "github.com/MalenkiySolovey/solovey-ui/testsupport/coreprovider"

@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration/steps"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbschema "github.com/MalenkiySolovey/solovey-ui/database/schema"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
