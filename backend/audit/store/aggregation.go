@@ -1,4 +1,4 @@
-package audit
+package store
 
 import (
 	"crypto/sha256"

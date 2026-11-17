@@ -1,7 +1,7 @@
-package audit
+package store
 
 import (
-	"github.com/MalenkiySolovey/solovey-ui/internal/auditrecord"
+	auditrecord "github.com/MalenkiySolovey/solovey-ui/backend/audit"
 	"gorm.io/gorm"
 )
 

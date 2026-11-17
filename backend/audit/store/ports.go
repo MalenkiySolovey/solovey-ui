@@ -1,4 +1,4 @@
-package audit
+package store
 
 import "github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 
