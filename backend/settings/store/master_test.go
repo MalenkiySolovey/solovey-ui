@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

@@ -1,6 +1,6 @@
 package schema
 
-import settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
+import settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
 
 func ipCertFieldMetadata() []Field {
 	return []Field{

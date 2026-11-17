@@ -5,8 +5,8 @@ import (
 	"time"
 
 	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
+	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
 	configsecurity "github.com/MalenkiySolovey/solovey-ui/config/security"
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 	settingsstore "github.com/MalenkiySolovey/solovey-ui/internal/settings/store"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"

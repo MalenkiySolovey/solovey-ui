@@ -6,6 +6,7 @@ import (
 	"os"
 
 	passwordutil "github.com/MalenkiySolovey/solovey-ui/backend/security/password"
+	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	storagesqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
@@ -13,7 +14,6 @@ import (
 	entityvalidation "github.com/MalenkiySolovey/solovey-ui/internal/entities"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
 	"gorm.io/gorm"

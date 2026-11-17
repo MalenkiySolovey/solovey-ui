@@ -3,7 +3,7 @@ package schema
 import (
 	"strings"
 
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
+	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
 )
 
 const SecretPresenceSuffix = "HasSecret"

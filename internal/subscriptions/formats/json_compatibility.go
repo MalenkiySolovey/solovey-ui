@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strings"
 
+	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"

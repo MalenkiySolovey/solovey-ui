@@ -1,6 +1,6 @@
 package service
 
-import settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
+import settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
 
 const (
 	settingKeySubListen          = settingcatalog.SubListenKey

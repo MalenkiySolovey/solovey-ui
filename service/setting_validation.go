@@ -3,9 +3,9 @@ package service
 import (
 	"os"
 
+	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
+	settingsschema "github.com/MalenkiySolovey/solovey-ui/backend/settings/schema"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
-	settingsschema "github.com/MalenkiySolovey/solovey-ui/internal/settings/schema"
 	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/internal/settings/validation"
 )
 

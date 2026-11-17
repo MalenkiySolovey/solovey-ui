@@ -3,8 +3,8 @@ package store
 import (
 	"errors"
 
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
-	settingscrypto "github.com/MalenkiySolovey/solovey-ui/internal/settings/crypto"
+	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
+	settingscrypto "github.com/MalenkiySolovey/solovey-ui/backend/settings/crypto"
 	"gorm.io/gorm"
 )
 

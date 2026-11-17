@@ -3,9 +3,9 @@ package service
 import (
 	"testing"
 
+	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 )
 
 func TestLoadPanelSettingsForDataUsesSingleSnapshotValues(t *testing.T) {

@@ -7,9 +7,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/security/secretbox"
+	settingscrypto "github.com/MalenkiySolovey/solovey-ui/backend/settings/crypto"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	settingscrypto "github.com/MalenkiySolovey/solovey-ui/internal/settings/crypto"
-	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
 	"gorm.io/gorm"
 )
 

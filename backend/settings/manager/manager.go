@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 
+	"fmt"
+	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
+	settingsschema "github.com/MalenkiySolovey/solovey-ui/backend/settings/schema"
+	settingsstore "github.com/MalenkiySolovey/solovey-ui/backend/settings/store"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
-	settingsschema "github.com/MalenkiySolovey/solovey-ui/internal/settings/schema"
-	settingsstore "github.com/MalenkiySolovey/solovey-ui/internal/settings/store"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
 )
 
@@ -104,7 +104,7 @@ func (m Manager) GetString(key string) (string, error) {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		value, ok := m.defaultValue(key)
 		if !ok {
-			return "", common.NewErrorf("key <%v> not in defaultValueMap", key)
+			return "", fmt.Errorf("key <%v> not in defaultValueMap", key)
 		}
 		return value, nil
 	} else if err != nil {
@@ -112,7 +112,7 @@ func (m Manager) GetString(key string) (string, error) {
 	}
 	if m.Schema.Encrypted(key) {
 		if m.Secret == nil {
-			return "", common.NewError("settings secret codec is not configured")
+			return "", errors.New("settings secret codec is not configured")
 		}
 		return m.Secret.DecryptString(key, setting.Value)
 	}
@@ -132,10 +132,10 @@ func (m Manager) SetString(key string, value string) error {
 
 func (m Manager) SetEncryptedString(key string, value string) error {
 	if !m.Schema.Encrypted(key) {
-		return common.NewError("setting is not encrypted: ", key)
+		return fmt.Errorf("setting is not encrypted:  %v", key)
 	}
 	if m.Secret == nil {
-		return common.NewError("settings secret codec is not configured")
+		return errors.New("settings secret codec is not configured")
 	}
 	encrypted, err := m.Secret.EncryptString(key, value)
 	if err != nil {
@@ -220,13 +220,13 @@ func (m Manager) validateSaveKeys(settings map[string]string) error {
 			if m.Schema.AcceptsSecretPresenceMarker(key) {
 				continue
 			}
-			return common.NewError("invalid setting key: ", key)
+			return fmt.Errorf("invalid setting key:  %v", key)
 		}
 		if !m.Schema.Editable(key) {
 			if m.Hooks.CanSaveKey != nil && m.Hooks.CanSaveKey(key) {
 				continue
 			}
-			return common.NewError("invalid setting key: ", key)
+			return fmt.Errorf("invalid setting key:  %v", key)
 		}
 	}
 	return nil
@@ -246,7 +246,7 @@ func (m Manager) PrepareEncryptedSaveValue(key string, value string) (string, bo
 		return "", m.Hooks.CanClearEmptyEncrypted(key), nil
 	}
 	if m.Secret == nil {
-		return "", false, common.NewError("settings secret codec is not configured")
+		return "", false, errors.New("settings secret codec is not configured")
 	}
 	encrypted, err := m.Secret.EncryptString(key, value)
 	if err != nil {
@@ -257,11 +257,11 @@ func (m Manager) PrepareEncryptedSaveValue(key string, value string) (string, bo
 
 func (m Manager) db() (*gorm.DB, error) {
 	if m.DB == nil {
-		return nil, common.NewError("settings database provider is not configured")
+		return nil, errors.New("settings database provider is not configured")
 	}
 	db := m.DB()
 	if db == nil {
-		return nil, common.NewError("database is not initialized")
+		return nil, errors.New("database is not initialized")
 	}
 	return db, nil
 }
@@ -273,7 +273,7 @@ func (m Manager) validateDirectWrite(key string, value string) error {
 	if m.Hooks.CanSaveKey != nil && m.Hooks.CanSaveKey(key) {
 		return nil
 	}
-	return common.NewError("invalid setting key: ", key)
+	return fmt.Errorf("invalid setting key:  %v", key)
 }
 
 func (m Manager) defaultValue(key string) (string, bool) {

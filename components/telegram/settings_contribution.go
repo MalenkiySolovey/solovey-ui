@@ -4,8 +4,8 @@ package telegram
 
 import (
 	canonical "github.com/MalenkiySolovey/solovey-component-telegram/settings"
+	settingsschema "github.com/MalenkiySolovey/solovey-ui/backend/settings/schema"
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
-	settingsschema "github.com/MalenkiySolovey/solovey-ui/internal/settings/schema"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 

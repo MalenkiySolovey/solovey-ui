@@ -3,7 +3,7 @@ package validation
 import (
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
+	"github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
 )
 
 func TestClashUDPSettingDistinguishesAbsentTrueAndFalse(t *testing.T) {

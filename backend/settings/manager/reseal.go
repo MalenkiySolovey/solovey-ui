@@ -1,8 +1,8 @@
 package manager
 
 import (
-	settingscrypto "github.com/MalenkiySolovey/solovey-ui/internal/settings/crypto"
-	settingsstore "github.com/MalenkiySolovey/solovey-ui/internal/settings/store"
+	settingscrypto "github.com/MalenkiySolovey/solovey-ui/backend/settings/crypto"
+	settingsstore "github.com/MalenkiySolovey/solovey-ui/backend/settings/store"
 	"gorm.io/gorm"
 )
 

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	settingsschema "github.com/MalenkiySolovey/solovey-ui/backend/settings/schema"
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	settingsschema "github.com/MalenkiySolovey/solovey-ui/internal/settings/schema"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 )
 

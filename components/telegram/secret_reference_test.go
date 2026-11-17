@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	settingsschema "github.com/MalenkiySolovey/solovey-ui/backend/settings/schema"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	telegramapi "github.com/MalenkiySolovey/solovey-ui/components/telegram/api"
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
@@ -21,7 +22,6 @@ import (
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	settingscrypto "github.com/MalenkiySolovey/solovey-ui/internal/settings/crypto"
-	settingsschema "github.com/MalenkiySolovey/solovey-ui/internal/settings/schema"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
 	"github.com/gin-gonic/gin"

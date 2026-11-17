@@ -3,8 +3,8 @@ package store
 import (
 	"errors"
 
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	backendcrypto "github.com/MalenkiySolovey/solovey-ui/backend/security/crypto"
+	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
 	"gorm.io/gorm"
 )
 
@@ -17,7 +17,7 @@ func EnsureMasterSecret(db *gorm.DB) ([]byte, error) {
 	}
 	row, err := Find(db, settingcatalog.SecretKey)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		seed, err := common.SecureRandom(32)
+		seed, err := backendcrypto.SecureRandom(32)
 		if err != nil {
 			return nil, err
 		}

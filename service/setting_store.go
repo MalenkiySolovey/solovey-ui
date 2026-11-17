@@ -4,9 +4,9 @@ import (
 	"context"
 	"strconv"
 
+	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 	subformats "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/formats"
 	"gorm.io/gorm"
 )

@@ -2,7 +2,7 @@ package validation
 
 import (
 	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
+	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 

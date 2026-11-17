@@ -1,8 +1,8 @@
 package service
 
 import (
+	settingsmanager "github.com/MalenkiySolovey/solovey-ui/backend/settings/manager"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
-	settingsmanager "github.com/MalenkiySolovey/solovey-ui/internal/settings/manager"
 	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/internal/settings/validation"
 )
 

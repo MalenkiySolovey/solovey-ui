@@ -3,7 +3,7 @@ package validation
 import (
 	"testing"
 
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
+	settingcatalog "github.com/MalenkiySolovey/solovey-ui/backend/settings/catalog"
 )
 
 func TestValidateIssuableIP(t *testing.T) {

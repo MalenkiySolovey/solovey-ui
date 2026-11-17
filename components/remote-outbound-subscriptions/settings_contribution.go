@@ -4,8 +4,8 @@ package remoteoutboundsubscriptions
 
 import (
 	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
+	settingsschema "github.com/MalenkiySolovey/solovey-ui/backend/settings/schema"
 	remotesettings "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/internal/settings"
-	settingsschema "github.com/MalenkiySolovey/solovey-ui/internal/settings/schema"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
