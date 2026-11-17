@@ -17,7 +17,7 @@ func TestUserOwnerExcludesProductRuntimeAndProviderImplementation(t *testing.T) 
 	} {
 		allowed[modulePath+"/"+name] = true
 	}
-	for _, target := range []string{"gorm.io/gorm", "gorm.io/driver/sqlite", "github.com/mattn/go-sqlite3", "github.com/gofrs/uuid/v5", "filippo.io/edwards25519", "golang.org/x/crypto/hkdf", "github.com/MalenkiySolovey/solovey-host/secretref", "github.com/MalenkiySolovey/solovey-host/redact", "github.com/MalenkiySolovey/solovey-host/subscriptions/clientfacts", "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"} {
+	for _, target := range []string{"gorm.io/gorm", "gorm.io/driver/sqlite", "github.com/mattn/go-sqlite3", "github.com/gofrs/uuid/v5", "filippo.io/edwards25519", "golang.org/x/crypto/hkdf", "github.com/MalenkiySolovey/solovey-host/auditrecord", "github.com/MalenkiySolovey/solovey-host/secretref", "github.com/MalenkiySolovey/solovey-host/redact", "github.com/MalenkiySolovey/solovey-host/subscriptions/clientfacts", "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"} {
 		for name := range goListDependencies(t, root, target) {
 			allowed[name] = true
 		}
