@@ -7,10 +7,10 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-host/secretref"
+	"github.com/MalenkiySolovey/solovey-ui/backend/secrets/ownerdb"
+	"github.com/MalenkiySolovey/solovey-ui/backend/security/secretbox"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/secretref"
-	"github.com/MalenkiySolovey/solovey-ui/internal/secrets/ownerdb"
-	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

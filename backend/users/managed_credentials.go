@@ -1,25 +1,25 @@
-package entityclients
+package users
 
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"reflect"
 
+	clientfacts "github.com/MalenkiySolovey/solovey-host/subscriptions/clientfacts"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/jsonvalue"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
-	clientdevices "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients/devices"
-	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
-	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
-	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
-	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
+	"github.com/MalenkiySolovey/solovey-ui/backend/users/credentials"
+	clientdevices "github.com/MalenkiySolovey/solovey-ui/backend/users/devices"
+
+	"github.com/MalenkiySolovey/solovey-ui/backend/security/secretbox"
 	"gorm.io/gorm"
 )
 
 // prepareManagedCredentials is inside the existing Client save transaction.
 // New encrypted fields require an available serving protocol. Historical
 // unavailable credentials may be retained exactly; changing them is blocked.
-func prepareManagedCredentials(tx *gorm.DB, client *model.Client, editing bool) error {
+func (s CredentialManager) prepareManagedCredentials(tx *gorm.DB, client *model.Client, editing bool) error {
 	var proposed map[string]json.RawMessage
 	if len(client.Config) > 0 && json.Unmarshal(client.Config, &proposed) != nil {
 		return credentials.ErrInvalid
@@ -67,9 +67,9 @@ func prepareManagedCredentials(tx *gorm.DB, client *model.Client, editing bool) 
 		if !known || fact.SecretField == "" {
 			continue
 		}
-		available := entitycapabilities.Resolve("inbounds", fact.Type).Available
+		available := s.available(fact.Type)
 		if !available && !oldMembership[inbound.Id] {
-			return common.NewError("CLIENT_CREDENTIAL_CAPABILITY_UNAVAILABLE")
+			return errors.New("CLIENT_CREDENTIAL_CAPABILITY_UNAVAILABLE")
 		}
 		assigned[fact.Type] = available
 	}
@@ -96,7 +96,7 @@ func prepareManagedCredentials(tx *gorm.DB, client *model.Client, editing bool) 
 		}
 	}
 	if len(managed) == 0 {
-		return prepareSudokuDelivery(tx, client, editing)
+		return s.prepareSudokuDelivery(tx, client, editing)
 	}
 	if len(client.Config) > 0 && jsonvalue.StrictObject(client.Config) != nil || len(old.Config) > 0 && jsonvalue.StrictObject(old.Config) != nil {
 		return credentials.ErrInvalid
@@ -104,11 +104,11 @@ func prepareManagedCredentials(tx *gorm.DB, client *model.Client, editing bool) 
 	// Preflight every field before reserving identity, creating a key, or
 	// recording a mutation. Unknown critical capabilities are unavailable.
 	for _, fact := range managed {
-		if entitycapabilities.Resolve("inbounds", fact.Type).Available {
+		if s.available(fact.Type) {
 			continue
 		}
 		if !editing || len(stored[fact.UserField]) == 0 {
-			return common.NewError("CLIENT_CREDENTIAL_CAPABILITY_UNAVAILABLE")
+			return errors.New("CLIENT_CREDENTIAL_CAPABILITY_UNAVAILABLE")
 		}
 		var next, old map[string]json.RawMessage
 		if json.Unmarshal(proposed[fact.UserField], &next) != nil || next == nil || json.Unmarshal(stored[fact.UserField], &old) != nil || old == nil {
@@ -121,7 +121,7 @@ func prepareManagedCredentials(tx *gorm.DB, client *model.Client, editing bool) 
 				Intent string `json:"intent"`
 			}
 			if json.Unmarshal(raw, &intent) != nil || intent.Intent != "unchanged" {
-				return common.NewError("CLIENT_CREDENTIAL_CAPABILITY_UNAVAILABLE")
+				return errors.New("CLIENT_CREDENTIAL_CAPABILITY_UNAVAILABLE")
 			}
 		}
 		delete(next, fact.SecretField)
@@ -130,7 +130,7 @@ func prepareManagedCredentials(tx *gorm.DB, client *model.Client, editing bool) 
 		nextJSON, _ := json.Marshal(next)
 		oldJSON, _ := json.Marshal(old)
 		if json.Unmarshal(nextJSON, &nextFields) != nil || json.Unmarshal(oldJSON, &oldFields) != nil || !reflect.DeepEqual(nextFields, oldFields) {
-			return common.NewError("CLIENT_CREDENTIAL_CAPABILITY_UNAVAILABLE")
+			return errors.New("CLIENT_CREDENTIAL_CAPABILITY_UNAVAILABLE")
 		}
 	}
 	if !editing {
@@ -149,7 +149,7 @@ func prepareManagedCredentials(tx *gorm.DB, client *model.Client, editing bool) 
 		if json.Unmarshal(proposed[fact.UserField], &next) != nil || next == nil {
 			return credentials.ErrInvalid
 		}
-		if entitycapabilities.Resolve("inbounds", fact.Type).Available {
+		if s.available(fact.Type) {
 			// These protocol schemas authenticate the Users principal. The
 			// principal is derived by its owner, not a second identity editor.
 			for key := range next {
@@ -184,7 +184,7 @@ func prepareManagedCredentials(tx *gorm.DB, client *model.Client, editing bool) 
 			// Bulk owner paths can retain their own captured envelope. This is
 			// exact equality, never authority to submit a new opaque ciphertext.
 			if json.Unmarshal(mutation, &retained) != nil || len(old[fact.SecretField]) == 0 || retained != captured || retained != "" && !secretbox.IsEncrypted(retained) {
-				sealed, err := credentials.ApplyClientField(tx, client.Id, fact.Type, captured, mutation)
+				sealed, err := credentials.ApplyClientField(tx, client.Id, fact.Type, captured, mutation, s.Warning)
 				if err != nil {
 					return err
 				}
@@ -211,7 +211,7 @@ func prepareManagedCredentials(tx *gorm.DB, client *model.Client, editing bool) 
 					return credentials.ErrInvalid
 				}
 				replace, _ := json.Marshal(map[string]string{"intent": "replace", "value": generated})
-				sealed, err := credentials.ApplyClientField(tx, client.Id, fact.Type, "", replace)
+				sealed, err := credentials.ApplyClientField(tx, client.Id, fact.Type, "", replace, s.Warning)
 				if err != nil {
 					return err
 				}
@@ -225,11 +225,11 @@ func prepareManagedCredentials(tx *gorm.DB, client *model.Client, editing bool) 
 	if err != nil {
 		return err
 	}
-	return prepareSudokuDelivery(tx, client, editing)
+	return s.prepareSudokuDelivery(tx, client, editing)
 }
 
 // PrepareAssignedCredentials is used by the existing inbound assignment and
 // edit hooks. Its caller owns the enclosing inbound/client transaction.
-func PrepareAssignedCredentials(tx *gorm.DB, client *model.Client) error {
-	return prepareManagedCredentials(tx, client, true)
+func (s CredentialManager) PrepareAssignedCredentials(tx *gorm.DB, client *model.Client) error {
+	return s.prepareManagedCredentials(tx, client, true)
 }

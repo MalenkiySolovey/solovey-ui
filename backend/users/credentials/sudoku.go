@@ -9,11 +9,11 @@ import (
 	"strings"
 
 	"filippo.io/edwards25519"
+	"github.com/MalenkiySolovey/solovey-host/secretref"
+	"github.com/MalenkiySolovey/solovey-ui/backend/secrets/ownerdb"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/jsonvalue"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/secretref"
-	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
-	"github.com/MalenkiySolovey/solovey-ui/internal/secrets/ownerdb"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
+
 	"gorm.io/gorm"
 )
 
@@ -21,7 +21,7 @@ import (
 // one public key; distinct splits do not create independently revocable users.
 func sudokuMaster(value string) (*edwards25519.Scalar, error) {
 	encoded, err := hex.DecodeString(strings.TrimSpace(value))
-	defer common.WipeBytes(encoded)
+	defer clear(encoded)
 	if err != nil || len(encoded) != 32 {
 		return nil, ErrInvalid
 	}
@@ -42,7 +42,7 @@ func SudokuPublicKey(value string) (string, error) {
 
 func GenerateSudokuMaster() (string, error) {
 	var seed [64]byte
-	defer common.WipeBytes(seed[:])
+	defer clear(seed[:])
 	for {
 		if _, err := rand.Read(seed[:]); err != nil {
 			return "", ErrInvalid
@@ -59,7 +59,7 @@ func GenerateSudokuMaster() (string, error) {
 
 func NormalizeSudokuSplit(value string) (string, error) {
 	encoded, err := hex.DecodeString(strings.TrimSpace(value))
-	defer common.WipeBytes(encoded)
+	defer clear(encoded)
 	if err != nil || len(encoded) != 64 {
 		return "", ErrInvalid
 	}
@@ -84,7 +84,7 @@ func SudokuSplitMatches(value, masterValue string) bool {
 		return false
 	}
 	encoded, _ := hex.DecodeString(normalized)
-	defer common.WipeBytes(encoded)
+	defer clear(encoded)
 	left, _ := edwards25519.NewScalar().SetCanonicalBytes(encoded[:32])
 	right, _ := edwards25519.NewScalar().SetCanonicalBytes(encoded[32:])
 	return edwards25519.NewScalar().Add(left, right).Equal(master) == 1
@@ -98,7 +98,7 @@ func SudokuSplitPublicKey(value string) (string, error) {
 		return "", err
 	}
 	encoded, _ := hex.DecodeString(normalized)
-	defer common.WipeBytes(encoded)
+	defer clear(encoded)
 	left, _ := edwards25519.NewScalar().SetCanonicalBytes(encoded[:32])
 	right, _ := edwards25519.NewScalar().SetCanonicalBytes(encoded[32:])
 	master := edwards25519.NewScalar().Add(left, right)
@@ -111,7 +111,7 @@ func SplitSudokuMaster(value string) (string, error) {
 		return "", err
 	}
 	var seed [64]byte
-	defer common.WipeBytes(seed[:])
+	defer clear(seed[:])
 	if _, err := rand.Read(seed[:]); err != nil {
 		return "", ErrInvalid
 	}
@@ -121,13 +121,13 @@ func SplitSudokuMaster(value string) (string, error) {
 	}
 	right := edwards25519.NewScalar().Subtract(master, left)
 	encoded := append(left.Bytes(), right.Bytes()...)
-	defer common.WipeBytes(encoded)
+	defer clear(encoded)
 	return hex.EncodeToString(encoded), nil
 }
 
 // UseSudokuMaster borrows the Inbounds-owned master only to derive its public
 // key or prepare Users-owned delivery keys in the caller's admitted transaction.
-func UseSudokuMaster(ctx context.Context, db *gorm.DB, inbound model.Inbound, intentID string, use func([]byte) error) error {
+func UseSudokuMaster(ctx context.Context, db *gorm.DB, inbound model.Inbound, intentID string, use func([]byte) error, warnings ...func(...any)) error {
 	if inbound.Type != "sudoku" || use == nil || jsonvalue.StrictObject(inbound.Options) != nil {
 		return ErrInvalid
 	}
@@ -142,7 +142,7 @@ func UseSudokuMaster(ctx context.Context, db *gorm.DB, inbound model.Inbound, in
 		return err
 	}
 	request := secretref.Access{Reference: ref, Actor: secretref.Actor{Component: "inbounds"}, Operation: secretref.UseForOwner, IntentID: intentID}
-	_, err = ownerdb.Access(ctx, db, request, options.MasterKey, use)
+	_, err = ownerdb.Access(ctx, db, request, options.MasterKey, use, warnings...)
 	return err
 }
 

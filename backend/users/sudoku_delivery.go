@@ -1,22 +1,22 @@
-package entityclients
+package users
 
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strconv"
 
+	"github.com/MalenkiySolovey/solovey-host/secretref"
+	"github.com/MalenkiySolovey/solovey-ui/backend/secrets/ownerdb"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/jsonvalue"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/secretref"
-	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
-	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
-	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
-	"github.com/MalenkiySolovey/solovey-ui/internal/secrets/ownerdb"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/backend/users/credentials"
+
 	"gorm.io/gorm"
 )
 
-func prepareSudokuDelivery(tx *gorm.DB, client *model.Client, editing bool) error {
+func (s CredentialManager) prepareSudokuDelivery(tx *gorm.DB, client *model.Client, editing bool) error {
 	var root, stored map[string]json.RawMessage
 	if len(client.Config) != 0 && json.Unmarshal(client.Config, &root) != nil {
 		return credentials.ErrInvalid
@@ -59,14 +59,14 @@ func prepareSudokuDelivery(tx *gorm.DB, client *model.Client, editing bool) erro
 	if next == nil {
 		next = map[string]json.RawMessage{}
 	}
-	available := entitycapabilities.Resolve("inbounds", "sudoku").Available
+	available := s.available("sudoku")
 	oldMembership := map[uint]bool{}
 	for _, id := range oldIDs {
 		oldMembership[id] = true
 	}
 	if !available {
 		if !editing || len(stored["sudoku"]) == 0 {
-			return common.NewError("CLIENT_CREDENTIAL_CAPABILITY_UNAVAILABLE")
+			return errors.New("CLIENT_CREDENTIAL_CAPABILITY_UNAVAILABLE")
 		}
 		for _, inbound := range inbounds {
 			if !oldMembership[inbound.Id] {
@@ -127,7 +127,7 @@ func prepareSudokuDelivery(tx *gorm.DB, client *model.Client, editing bool) erro
 		}
 	} else {
 		if supplied && !exact {
-			sealed, err = ownerdb.Apply(tx, ref, captured, mutation)
+			sealed, err = ownerdb.Apply(tx, ref, captured, mutation, s.Warning)
 			if err != nil {
 				return err
 			}
@@ -138,7 +138,7 @@ func prepareSudokuDelivery(tx *gorm.DB, client *model.Client, editing bool) erro
 				var err error
 				keys, err = credentials.SudokuKeyBag(string(value))
 				return err
-			})
+			}, s.Warning)
 			if err != nil {
 				return err
 			}
@@ -172,7 +172,7 @@ func prepareSudokuDelivery(tx *gorm.DB, client *model.Client, editing bool) erro
 				var err error
 				keys[id], err = credentials.SplitSudokuMaster(string(master))
 				return err
-			})
+			}, s.Warning)
 			if err != nil {
 				return err
 			}
@@ -184,7 +184,7 @@ func prepareSudokuDelivery(tx *gorm.DB, client *model.Client, editing bool) erro
 			return credentials.ErrInvalid
 		}
 		replace, _ := json.Marshal(map[string]string{"intent": "replace", "value": string(value)})
-		sealed, err = ownerdb.Apply(tx, ref, sealed, replace)
+		sealed, err = ownerdb.Apply(tx, ref, sealed, replace, s.Warning)
 		if err != nil {
 			return err
 		}

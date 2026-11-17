@@ -1,12 +1,12 @@
-package entityclients
+package users
 
 import (
 	"encoding/json"
 	"errors"
+	"github.com/MalenkiySolovey/solovey-ui/backend/users/credentials"
 
+	backendcrypto "github.com/MalenkiySolovey/solovey-ui/backend/security/crypto"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	"github.com/MalenkiySolovey/solovey-ui/core/registry"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
 )
 
@@ -14,7 +14,7 @@ import (
 // lifecycle. Missing keys are initialized once on attachment; an existing key
 // is retained, including when an older client editor omits the protocol map.
 // Explicit invalid edits fail instead of rotating a credential silently.
-func PrepareSnellCredential(tx *gorm.DB, client *model.Client) error {
+func (s CredentialManager) PrepareSnellCredential(tx *gorm.DB, client *model.Client) error {
 	var config map[string]json.RawMessage
 	if len(client.Config) > 0 && json.Unmarshal(client.Config, &config) != nil {
 		return errors.New("client credential config is invalid")
@@ -66,7 +66,10 @@ func PrepareSnellCredential(tx *gorm.DB, client *model.Client) error {
 		if previousKey, exists := oldUser["userkey"]; exists {
 			key = previousKey
 		} else {
-			value, err := common.SecureRandom(32)
+			if s.snellKeyMaxBytes() <= 0 {
+				return credentials.ErrInvalid
+			}
+			value, err := backendcrypto.SecureRandom(32)
 			if err != nil {
 				return errors.New("snell credential generation failed")
 			}
@@ -74,7 +77,7 @@ func PrepareSnellCredential(tx *gorm.DB, client *model.Client) error {
 		}
 	}
 	value, ok := key.(string)
-	if !ok || len(value) == 0 || len(value) > registry.SnellContract("inbounds").UserKeyMaxBytes {
+	if !ok || len(value) == 0 || len(value) > s.snellKeyMaxBytes() {
 		return errors.New("snell user key must contain 1 to 255 bytes")
 	}
 	user["userkey"], user["name"] = value, client.Name
@@ -87,7 +90,7 @@ func PrepareSnellCredential(tx *gorm.DB, client *model.Client) error {
 // A user key identifies one client in an official multi-user inbound. Check the
 // complete candidate batch together with persisted memberships before saving.
 // Reusing a key on disjoint inbounds is safe; sharing it on one inbound is not.
-func validateSnellUserKeys(tx *gorm.DB, candidates []*model.Client) error {
+func (s CredentialManager) validateSnellUserKeys(tx *gorm.DB, candidates []*model.Client) error {
 	var inboundIDs []uint
 	if err := tx.Model(&model.Inbound{}).Where("type = ?", "snell").Pluck("id", &inboundIDs).Error; err != nil {
 		return err
@@ -133,7 +136,7 @@ func validateSnellUserKeys(tx *gorm.DB, candidates []*model.Client) error {
 				continue
 			}
 			memberships[id] = true
-			if decodeErr != nil || config.Snell.UserKey == "" || len(config.Snell.UserKey) > registry.SnellContract("inbounds").UserKeyMaxBytes {
+			if decodeErr != nil || config.Snell.UserKey == "" || len(config.Snell.UserKey) > s.snellKeyMaxBytes() {
 				return errors.New("attached Snell client requires a user key")
 			}
 			if seen[id] == nil {
