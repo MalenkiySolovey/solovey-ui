@@ -9,7 +9,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
-	"github.com/MalenkiySolovey/solovey-ui/util/ratelimit"
+	"github.com/MalenkiySolovey/solovey-ui/backend/http/ratelimit"
 
 	"github.com/gin-gonic/gin"
 )

@@ -12,7 +12,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/realtime"
+	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )

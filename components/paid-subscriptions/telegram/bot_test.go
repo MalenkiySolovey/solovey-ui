@@ -11,7 +11,7 @@ import (
 
 	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
 
-	"github.com/MalenkiySolovey/solovey-ui/util/ratelimit"
+	"github.com/MalenkiySolovey/solovey-ui/backend/http/ratelimit"
 )
 
 func TestParseCommand(t *testing.T) {

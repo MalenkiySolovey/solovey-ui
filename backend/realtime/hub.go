@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/util/redact"
+	"github.com/MalenkiySolovey/solovey-host/redact"
 )
 
 const MaxEventFrameBytes = 256 * 1024

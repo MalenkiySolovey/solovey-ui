@@ -30,7 +30,7 @@ import (
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/util/ratelimit"
+	"github.com/MalenkiySolovey/solovey-ui/backend/http/ratelimit"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )

@@ -15,7 +15,7 @@ import (
 	coretracker "github.com/MalenkiySolovey/solovey-ui/core/tracker"
 	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-ui/realtime"
+	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
 
 	"gorm.io/gorm"
 )

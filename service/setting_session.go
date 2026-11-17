@@ -9,7 +9,7 @@ import (
 	configsecurity "github.com/MalenkiySolovey/solovey-ui/config/security"
 	settingsstore "github.com/MalenkiySolovey/solovey-ui/internal/settings/store"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-ui/realtime"
+	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 

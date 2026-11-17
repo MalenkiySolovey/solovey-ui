@@ -412,3 +412,15 @@ and writes use the existing bounded sink. Stop failures retain pending events
 for the Product-managed successor. Retry, overflow priority, coverage markers,
 and late enqueue rejection remain at this one Backend implementation. No listener,
 process, database authority, or independent worker registration is added.
+
+
+## Backend request limiter owner relocation
+
+The existing request limiter janitor moves from `util/ratelimit/common.go` to
+`backend/http/ratelimit/common.go`. The two existing worker-lifetime entries
+retain their exact symbols and digests; the reviewed base and budget cardinality
+remain unchanged. The launch, interval validation, per-limiter stop channel,
+once-only Close and ticker Stop are byte-identical. Fixed key capacities,
+window pruning and failure/threshold decisions remain at one canonical owner.
+Existing concurrency, eviction, expiry and background-GC tests move with it.
+This change introduces no new worker, listener or policy.

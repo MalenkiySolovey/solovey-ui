@@ -14,7 +14,7 @@ import (
 	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
-	"github.com/MalenkiySolovey/solovey-ui/util/ratelimit"
+	"github.com/MalenkiySolovey/solovey-ui/backend/http/ratelimit"
 )
 
 // Bot is the long-poll receiver for the client-facing Telegram bot. One Bot

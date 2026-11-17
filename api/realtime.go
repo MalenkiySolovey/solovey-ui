@@ -2,7 +2,7 @@ package api
 
 import (
 	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
-	"github.com/MalenkiySolovey/solovey-ui/realtime"
+	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
 	"github.com/gin-gonic/gin"
 )
 

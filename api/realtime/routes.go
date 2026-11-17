@@ -1,7 +1,7 @@
 package realtimehttp
 
 import (
-	apprealtime "github.com/MalenkiySolovey/solovey-ui/realtime"
+	apprealtime "github.com/MalenkiySolovey/solovey-ui/backend/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"

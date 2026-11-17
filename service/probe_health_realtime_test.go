@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
-	"github.com/MalenkiySolovey/solovey-ui/realtime"
+	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
 )
 
 func TestManualProbeProjectsThroughLoadAndRealtimeWithoutSnapshotMutation(t *testing.T) {

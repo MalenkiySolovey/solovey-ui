@@ -12,7 +12,7 @@ import (
 
 	feature "github.com/MalenkiySolovey/solovey-component-fallback-html/service"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
-	"github.com/MalenkiySolovey/solovey-ui/util/ratelimit"
+	"github.com/MalenkiySolovey/solovey-ui/backend/http/ratelimit"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )

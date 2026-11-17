@@ -3,7 +3,7 @@ package server
 import (
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/util/ratelimit"
+	"github.com/MalenkiySolovey/solovey-ui/backend/http/ratelimit"
 )
 
 const (

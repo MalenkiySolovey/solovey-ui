@@ -5,7 +5,7 @@ import (
 
 	backendsecuritysessions "github.com/MalenkiySolovey/solovey-ui/backend/security/sessions"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	"github.com/MalenkiySolovey/solovey-ui/realtime"
+	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
 )
 
 const (

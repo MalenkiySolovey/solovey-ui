@@ -10,7 +10,7 @@ import (
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
-	"github.com/MalenkiySolovey/solovey-ui/realtime"
+	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 	"gorm.io/gorm"
 )
