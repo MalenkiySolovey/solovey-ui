@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 func TestCoreCandidateCapturesRenderedCredentialBindings(t *testing.T) {

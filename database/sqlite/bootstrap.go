@@ -2,11 +2,12 @@ package sqlite
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	storagesqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
 	entityvalidation "github.com/MalenkiySolovey/solovey-ui/internal/entities"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
@@ -26,36 +27,20 @@ func Init(dbPath string) (err error) {
 
 // InitContext keeps a restore owner's temporary authority on local sessions.
 // The published/cached base handle always has an ordinary background context.
-func InitContext(ctx context.Context, dbPath string) (err error) {
-	if ctx == nil {
-		return errors.New("sqlite initialization context is required")
-	}
-	initMu.Lock()
-	defer initMu.Unlock()
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := prepareForInit(ctx); err != nil {
-		return err
-	}
-	if err := migration.MigratePathIfExists(dbPath, migration.Options{}); err != nil {
-		return fmt.Errorf("migrate database before open: %w", err)
-	}
-	if err := preflightSupportedVersion(dbPath); err != nil {
-		return err
-	}
-	if err := openContext(ctx, dbPath); err != nil {
-		return err
-	}
-	database := DB().WithContext(ctx)
-	initialized := false
-	defer func() {
-		if !initialized {
-			if closeErr := CloseContext(ctx); closeErr != nil {
-				err = errors.Join(err, fmt.Errorf("close failed database initialization: %w", closeErr))
+func InitContext(ctx context.Context, dbPath string) error {
+	return storagesqlite.InitializeContext(ctx, dbPath, storagesqlite.Bootstrap{
+		Debug: configlogging.IsDebug(),
+		BeforeOpen: func() error {
+			if err := migration.MigratePathIfExists(dbPath, migration.Options{}); err != nil {
+				return fmt.Errorf("migrate database before open: %w", err)
 			}
-		}
-	}()
+			return preflightSupportedVersion(dbPath)
+		},
+		AfterOpen: func(database *gorm.DB) error { return initializeDatabase(database, dbPath) },
+	})
+}
+
+func initializeDatabase(database *gorm.DB, dbPath string) error {
 	if err := database.AutoMigrate(schemaModels()...); err != nil {
 		return err
 	}
@@ -86,7 +71,6 @@ func InitContext(ctx context.Context, dbPath string) (err error) {
 	if err := ensureSortOrders(database); err != nil {
 		return fmt.Errorf("sort-order backfill failed: %w", err)
 	}
-	initialized = true
 	return nil
 }
 

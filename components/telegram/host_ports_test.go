@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
 	telegramservice "github.com/MalenkiySolovey/solovey-ui/components/telegram/service"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 

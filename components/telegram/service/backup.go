@@ -10,8 +10,8 @@ import (
 	"sync"
 
 	canonical "github.com/MalenkiySolovey/solovey-component-telegram/service"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/database/backup"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	backupenvelope "github.com/MalenkiySolovey/solovey-ui/internal/backup/envelope"
 	"github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"

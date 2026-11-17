@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/api"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
 	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/httpconn"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/middleware/databaseoperation"

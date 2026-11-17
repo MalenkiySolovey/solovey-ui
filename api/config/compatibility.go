@@ -3,7 +3,7 @@ package config
 import (
 	"encoding/json"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/assembly"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"

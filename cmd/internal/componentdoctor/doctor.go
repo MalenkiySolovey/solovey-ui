@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	componentdoctor "github.com/MalenkiySolovey/solovey-ui/componenthost/doctor"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 func Run(args []string, out io.Writer) int {

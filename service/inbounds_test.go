@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	netentitysvc "github.com/MalenkiySolovey/solovey-ui/service/netentity"
 )
 

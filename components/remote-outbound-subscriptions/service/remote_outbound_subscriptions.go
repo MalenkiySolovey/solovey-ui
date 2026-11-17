@@ -6,11 +6,11 @@ import (
 	"context"
 	"errors"
 
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	remotedomain "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
 	remotesettings "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/internal/settings"
 	remotesubservice "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/service/internal"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 
 	"gorm.io/gorm"

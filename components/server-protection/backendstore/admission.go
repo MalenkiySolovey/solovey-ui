@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"github.com/MalenkiySolovey/solovey-component-server-protection/service/durable"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	sqlite3 "github.com/mattn/go-sqlite3"
 )
 

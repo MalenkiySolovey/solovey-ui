@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/restart"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	auditsvc "github.com/MalenkiySolovey/solovey-ui/service/audit"

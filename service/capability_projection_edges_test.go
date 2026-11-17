@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	entityendpoints "github.com/MalenkiySolovey/solovey-ui/internal/entities/endpoints"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"

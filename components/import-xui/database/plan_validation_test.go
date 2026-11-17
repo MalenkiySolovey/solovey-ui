@@ -7,7 +7,7 @@ import (
 	"errors"
 	"testing"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 )
 
 func TestApplyRejectsIncompleteDuplicateAndUnsafePlanChoices(t *testing.T) {
