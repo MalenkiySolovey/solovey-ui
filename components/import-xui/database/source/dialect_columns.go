@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/sqliteident"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/sqliteident"
 )
 
 // compatible panel forks diverge in their `inbounds` / `client_traffics` columns: vanilla

@@ -12,8 +12,8 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/sqliteident"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
-	"github.com/MalenkiySolovey/solovey-ui/database/sqliteident"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"

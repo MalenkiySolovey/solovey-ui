@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/restorestate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	managementregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/management"
@@ -23,7 +24,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/cronjob/scheduler"
 	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
-	"github.com/MalenkiySolovey/solovey-ui/database/restorestate"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	deploymentdomain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
 	subserver "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/server"

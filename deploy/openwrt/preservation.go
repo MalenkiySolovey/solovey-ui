@@ -15,10 +15,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/restorestate"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
-	"github.com/MalenkiySolovey/solovey-ui/database/restorestate"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	datalifecycle "github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"
 )

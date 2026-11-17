@@ -3,7 +3,7 @@ package sqlite
 import (
 	"fmt"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/sqliteident"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/sqliteident"
 
 	"gorm.io/gorm"
 )

@@ -17,9 +17,9 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/sqliteident"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
-	"github.com/MalenkiySolovey/solovey-ui/database/sqliteident"
 	componentmanifest "github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/durableowner"
 	"gorm.io/gorm"
