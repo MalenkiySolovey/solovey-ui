@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
+	dbhooks "github.com/MalenkiySolovey/solovey-backend/storage/hooks"
 )
 
 func init() {

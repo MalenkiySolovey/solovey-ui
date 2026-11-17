@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 

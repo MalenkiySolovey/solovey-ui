@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 

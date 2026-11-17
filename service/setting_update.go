@@ -1,8 +1,8 @@
 package service
 
 import (
+	settingcatalog "github.com/MalenkiySolovey/solovey-backend/settings/catalog"
 	configupdate "github.com/MalenkiySolovey/solovey-ui/config/update"
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 )
 
 func (s *SettingService) GetUpdateChannel() string {

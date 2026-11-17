@@ -3,7 +3,7 @@ package local
 import (
 	"fmt"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 )
 
 func ClientHeaders(client *model.Client, updateInterval int) []string {

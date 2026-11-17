@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.com/MalenkiySolovey/solovey-ui/realtime"
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"

@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	sublocal "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/local"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"gopkg.in/yaml.v3"

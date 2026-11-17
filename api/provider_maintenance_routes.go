@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
+	"github.com/MalenkiySolovey/solovey-backend/actions"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	updateservice "github.com/MalenkiySolovey/solovey-ui/service/update"

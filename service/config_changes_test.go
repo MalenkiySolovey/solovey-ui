@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
+	settingcatalog "github.com/MalenkiySolovey/solovey-backend/settings/catalog"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"gorm.io/gorm"
 )
 

@@ -2,7 +2,7 @@
 
 package importxui
 
-import "github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+import "github.com/MalenkiySolovey/solovey-backend/operations/coordination"
 
 type Report struct {
 	Change          *operationcoordination.Change `json:"change,omitempty"`

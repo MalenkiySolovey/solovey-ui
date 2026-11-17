@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-backend/security/ssrf"
 	feature "github.com/MalenkiySolovey/solovey-component-fallback-html/service"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
-	"github.com/MalenkiySolovey/solovey-ui/util/ssrf"
 	"gorm.io/gorm"
 )
 

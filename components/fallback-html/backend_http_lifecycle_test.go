@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	neutral "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"

@@ -3,7 +3,7 @@ package service
 import (
 	"testing"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 )
 
 func TestSelectedDNSSaveUsesCompletedDBReferencesAndPreservesPreimage(t *testing.T) {

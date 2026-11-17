@@ -8,9 +8,10 @@ import (
 	"sync"
 	"testing"
 
-	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	realtimehttp "github.com/MalenkiySolovey/solovey-backend/http/realtime"
+	"github.com/MalenkiySolovey/solovey-backend/http/securityroutes"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"
@@ -21,8 +22,7 @@ func resetRateLimitState() {
 	realtimehttp.ResetRateLimits()
 	auditEndpointRateLimiter.ResetAll()
 	componentManualActionRateLimiter.ResetAll()
-	securityVerificationAggregateRateLimit.ResetAll()
-	securityVerificationMethodRateLimit.ResetAll()
+	securityroutes.ResetRateLimits()
 	(&service.AuditService{}).ResetDenialAggregation()
 }
 

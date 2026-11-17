@@ -1,0 +1,34 @@
+package architecture
+
+import (
+	"sort"
+	"strings"
+	"testing"
+)
+
+func TestBackendTokenUseHasOnlyCanonicalStorageClosure(t *testing.T) {
+	root := moduleRoot(t)
+	allowed := map[string]bool{
+		backendModulePath + "/security/tokenuse": true,
+	}
+	for _, target := range []string{
+		backendModulePath + "/security",
+		backendModulePath + "/storage/model",
+		backendModulePath + "/storage/sqlite",
+		"gorm.io/gorm",
+	} {
+		for name := range goListDependencies(t, root, target) {
+			allowed[name] = true
+		}
+	}
+	var violations []string
+	for name, info := range goListDependencies(t, root, backendModulePath+"/security/tokenuse") {
+		if !info.Standard && !allowed[name] {
+			violations = append(violations, name)
+		}
+	}
+	if len(violations) > 0 {
+		sort.Strings(violations)
+		t.Fatalf("Backend token usage import Product runtime or unrelated owners: %s", strings.Join(violations, ", "))
+	}
+}

@@ -8,11 +8,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-backend/actions"
+	"github.com/MalenkiySolovey/solovey-backend/componentroutes"
+	"github.com/MalenkiySolovey/solovey-backend/componentview"
+	"github.com/MalenkiySolovey/solovey-backend/hostcontext"
 	"github.com/MalenkiySolovey/solovey-host/operationref"
-	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
-	"github.com/MalenkiySolovey/solovey-ui/backend/componentroutes"
-	"github.com/MalenkiySolovey/solovey-ui/backend/componentview"
-	"github.com/MalenkiySolovey/solovey-ui/backend/hostcontext"
 	"github.com/gin-gonic/gin"
 )
 

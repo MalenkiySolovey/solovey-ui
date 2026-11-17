@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	canonical "github.com/MalenkiySolovey/solovey-backend/storage/backup"
 	dbschema "github.com/MalenkiySolovey/solovey-ui/database/schema"
 	"io"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-backend/storage/durableowner"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
@@ -21,7 +23,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	componentmanifest "github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/durableowner"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/assembly"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
@@ -30,40 +31,6 @@ import (
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
-
-const MaxRestoreBytes = int64(512 << 20)
-
-type RestoreOwnerStatus struct {
-	ID               string `json:"id"`
-	Installed        bool   `json:"installed"`
-	Available        bool   `json:"available"`
-	Included         bool   `json:"included"`
-	Mode             string `json:"mode"`
-	SchemaVersion    string `json:"schemaVersion,omitempty"`
-	ManifestChecksum string `json:"manifestChecksum,omitempty"`
-	Compatibility    string `json:"compatibility"`
-	HookStatus       string `json:"hookStatus"`
-}
-
-type RestoreRehearsal struct {
-	Schema               string                `json:"schema"`
-	State                string                `json:"state"`
-	Possible             bool                  `json:"possible"`
-	BackupDigest         string                `json:"backupDigest"`
-	BackupBytes          int64                 `json:"backupBytes"`
-	ManifestStatus       string                `json:"manifestStatus"`
-	Manifest             *BackupManifest       `json:"manifest,omitempty"`
-	Integrity            string                `json:"integrity"`
-	SchemaCompatibility  string                `json:"schemaCompatibility"`
-	MigrationPlan        string                `json:"migrationPlan"`
-	ReleaseCompatibility string                `json:"releaseCompatibility"`
-	SpaceStatus          string                `json:"spaceStatus"`
-	Owners               []RestoreOwnerStatus  `json:"owners"`
-	ReasonCodes          []string              `json:"reasonCodes"`
-	MigrationFindings    []diagnostics.Finding `json:"migrationFindings,omitempty"`
-	Revision             string                `json:"revision"`
-	GeneratedAt          int64                 `json:"generatedAt"`
-}
 
 func Rehearse(ctx context.Context, source io.ReadSeeker) (RestoreRehearsal, error) {
 	result := RestoreRehearsal{Schema: "solovey.restore-rehearsal/v1", State: "REJECTED", ManifestStatus: "UNVERIFIED",
@@ -141,7 +108,9 @@ func Rehearse(ctx context.Context, source io.ReadSeeker) (RestoreRehearsal, erro
 		}
 		if len(result.ReasonCodes) == 0 {
 			statuses, migrationErr := rehearseMigrationsAndOwnersWithFindings(ctx, staged, result.Owners, func(findings []diagnostics.Finding) {
-				result.MigrationFindings = append(result.MigrationFindings, findings...)
+				for _, finding := range findings {
+					result.MigrationFindings = append(result.MigrationFindings, MigrationFinding(finding))
+				}
 			}, manifest.Files)
 			result.Owners = statuses
 			if migrationErr != nil {
@@ -150,10 +119,10 @@ func Rehearse(ctx context.Context, source io.ReadSeeker) (RestoreRehearsal, erro
 				var rejection *diagnostics.Rejection
 				var ruleRejection *singboxvalidation.RuleConditionError
 				if errors.As(migrationErr, &rejection) {
-					result.MigrationFindings = append(result.MigrationFindings, rejection.Finding)
+					result.MigrationFindings = append(result.MigrationFindings, MigrationFinding(rejection.Finding))
 					result.ReasonCodes = append(result.ReasonCodes, rejection.ReasonCode())
 				} else if errors.As(migrationErr, &ruleRejection) {
-					result.MigrationFindings = append(result.MigrationFindings, ruleRejection.Finding)
+					result.MigrationFindings = append(result.MigrationFindings, MigrationFinding(ruleRejection.Finding))
 					result.ReasonCodes = append(result.ReasonCodes, ruleRejection.Finding.Code)
 				}
 			} else if result.MigrationPlan == "REQUIRED" {
@@ -216,8 +185,8 @@ func synthesizeSupportedLegacyManifest(ctx context.Context, db *gorm.DB) (Backup
 		return BackupManifest{}, errors.New("legacy core schema is unsupported")
 	}
 	known := map[string]bool{}
-	for _, table := range backupTables() {
-		known[table.name] = !table.alwaysExclude
+	for _, table := range canonical.CoreTables() {
+		known[table.Name] = !table.AlwaysExclude
 	}
 	var names []string
 	if err := db.WithContext(ctx).Raw("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").Scan(&names).Error; err != nil {
@@ -270,7 +239,7 @@ func stageRehearsalFile(ctx context.Context, source io.ReadSeeker) (string, func
 		return "", nil, "", 0, err
 	}
 	path := file.Name()
-	cleanup := func() { cleanupRestoreFile(path) }
+	cleanup := func() { canonical.CleanupStagedFile(path) }
 	hash := sha256.New()
 	written, copyErr := copyContext(ctx, io.MultiWriter(file, hash), io.LimitReader(source, MaxRestoreBytes+1))
 	syncErr, closeErr := file.Sync(), file.Close()
@@ -283,32 +252,8 @@ func stageRehearsalFile(ctx context.Context, source io.ReadSeeker) (string, func
 }
 
 func copyContext(ctx context.Context, destination io.Writer, source io.Reader) (int64, error) {
-	buffer := make([]byte, 128<<10)
-	var total int64
-	for {
-		if err := ctx.Err(); err != nil {
-			return total, err
-		}
-		count, readErr := source.Read(buffer)
-		if count > 0 {
-			written, writeErr := destination.Write(buffer[:count])
-			total += int64(written)
-			if writeErr != nil {
-				return total, writeErr
-			}
-			if written != count {
-				return total, io.ErrShortWrite
-			}
-		}
-		if errors.Is(readErr, io.EOF) {
-			return total, nil
-		}
-		if readErr != nil {
-			return total, readErr
-		}
-	}
+	return canonical.CopyContext(ctx, destination, source)
 }
-
 func schemaCompatibility(value string) (string, string) {
 	comparison, ok := versionpolicy.CompareVersions(value, dbschema.CurrentCoreVersion)
 	if !ok || comparison > 0 {
@@ -399,7 +344,7 @@ func schemaSemver(value string) string {
 
 func rehearseMigrationsAndOwnersWithFindings(ctx context.Context, staged string, statuses []RestoreOwnerStatus, report func([]diagnostics.Finding), files ...*FileBackupManifest) ([]RestoreOwnerStatus, error) {
 	copyPath := staged + ".migration"
-	cleanup := func() { cleanupRestoreFile(copyPath) }
+	cleanup := func() { canonical.CleanupStagedFile(copyPath) }
 	defer cleanup()
 	if err := cloneRestoreFile(ctx, staged, copyPath); err != nil {
 		return statuses, err

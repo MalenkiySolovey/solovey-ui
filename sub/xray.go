@@ -1,43 +1,23 @@
 package sub
 
 import (
-	"strconv"
-	"time"
-
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	subformats "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/formats"
 	localsub "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/local"
-	subserver "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/server"
 	"github.com/MalenkiySolovey/solovey-ui/service"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
-type XrayService struct {
-	service.SettingService
-}
+type XrayService struct{ service.SettingService }
 
-func (s *XrayService) GetXray(subID string) (*string, []string, error) {
-	now := time.Now()
-	enabled, err := s.SettingService.GetSubXrayEnable()
-	if err != nil {
-		return nil, nil, err
-	}
-	if !enabled {
-		return nil, nil, common.NewError("xray subscription disabled")
-	}
-	cacheKey := "xray:" + subID + ":clientHooks=" + strconv.FormatUint(localsub.ClientOutboundContributorsVersion(), 10)
-	if body, headers, ok := subscriptionCacheGet(cacheKey, now); ok {
-		return &body, headers, nil
-	}
-	client, inbounds, err := loadClientData(subID)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer common.WipeBytes(client.Config)
+func (s *XrayService) GetXray(id string) (*string, []string, error) {
+	return publisherFor(&s.SettingService).GetXray(id)
+}
+func (s *XrayService) render(client *model.Client, inbounds []*model.Inbound) (string, error) {
 	outboundSet, err := localsub.BuildInboundOutbounds(client.Config, inbounds)
 	if err != nil {
-		return nil, nil, err
+		return "", err
 	}
 	links := resolveClientLinks(client.Links, localsub.LinkModeExternal, "")
 	localsub.AppendExternalLinkOutbounds(outboundSet, links)
@@ -46,17 +26,12 @@ func (s *XrayService) GetXray(subID string) (*string, []string, error) {
 		RawLinks: client.Links,
 		Target:   subconversion.TargetXray,
 	}, outboundSet); err != nil {
-		return nil, nil, err
+		return "", err
 	}
 	result, err := subformats.RenderXray(outboundSet.Outbounds)
 	if err != nil {
-		return nil, nil, err
+		return "", err
 	}
-	displaySettings, err := subserver.CachedDisplaySettings(&s.SettingService, now)
-	if err != nil {
-		return nil, nil, err
-	}
-	headers := safeSubscriptionHeaders(buildClientHeaders(client, displaySettings))
-	subscriptionCacheSet(cacheKey, result, headers, now)
-	return &result, headers, nil
+
+	return result, nil
 }

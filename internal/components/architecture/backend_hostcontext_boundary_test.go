@@ -20,7 +20,7 @@ type goListPackage struct {
 func TestBackendHostContextHasPortableTransitiveImportClosure(t *testing.T) {
 	root := moduleRoot(t)
 	allowed := map[string]bool{
-		modulePath + "/backend/hostcontext": true,
+		backendModulePath + "/hostcontext": true,
 	}
 	for _, pattern := range []string{
 		"github.com/gin-gonic/gin",
@@ -31,7 +31,7 @@ func TestBackendHostContextHasPortableTransitiveImportClosure(t *testing.T) {
 		}
 	}
 
-	targetDependencies := goListDependencies(t, root, "./backend/hostcontext")
+	targetDependencies := goListDependencies(t, root, backendModulePath+"/hostcontext")
 	var violations []string
 	for importPath, packageInfo := range targetDependencies {
 		if packageInfo.Standard || allowed[importPath] {
@@ -44,11 +44,11 @@ func TestBackendHostContextHasPortableTransitiveImportClosure(t *testing.T) {
 	}
 
 	var directViolations []string
-	walkGoFiles(t, filepath.Join(root, "backend", "hostcontext"), func(path string) {
+	walkGoFiles(t, backendSourcePath(t, "hostcontext"), func(path string) {
 		if strings.HasSuffix(path, "_test.go") {
 			return
 		}
-		relative := filepath.ToSlash(mustRel(t, root, path))
+		relative := filepath.Base(path)
 		for _, imported := range fileImports(t, path) {
 			packageInfo, known := targetDependencies[imported]
 			if (known && packageInfo.Standard) || imported == "github.com/gin-gonic/gin" || imported == "github.com/MalenkiySolovey/solovey-host/hostref" {
@@ -67,7 +67,7 @@ func TestBackendHostContextIsTheAPIIngressOwner(t *testing.T) {
 	for _, relative := range []string{"api/apiHandler.go", "api/apiV2Handler.go"} {
 		path := filepath.Join(root, filepath.FromSlash(relative))
 		imports := fileImports(t, path)
-		if !containsString(imports, modulePath+"/backend/hostcontext") {
+		if !containsString(imports, backendModulePath+"/hostcontext") {
 			t.Errorf("%s does not import backend/hostcontext", relative)
 		}
 		if containsString(imports, modulePath+"/middleware/hostcontext") {
@@ -79,9 +79,11 @@ func TestBackendHostContextIsTheAPIIngressOwner(t *testing.T) {
 	}
 }
 
-func goListDependencies(t *testing.T, root, pattern string) map[string]goListPackage {
+func goListDependencies(t *testing.T, root, pattern string, options ...string) map[string]goListPackage {
 	t.Helper()
-	command := exec.Command("go", "list", "-mod=readonly", "-deps", "-json", pattern)
+	args := append([]string{"list", "-mod=readonly", "-deps", "-json"}, options...)
+	args = append(args, pattern)
+	command := exec.Command("go", args...)
 	command.Dir = root
 	command.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
 	var stdout, stderr bytes.Buffer

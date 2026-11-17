@@ -11,7 +11,7 @@ func TestComponentRouteInputHasNoProductOwnerClosure(t *testing.T) {
 	root := moduleRoot(t)
 	allowed := map[string]bool{}
 	for _, name := range []string{"backend/componentroutes", "backend/componentview", "backend/actions", "backend/security/clientidentity"} {
-		allowed[modulePath+"/"+name] = true
+		allowed[backendModulePath+"/"+strings.TrimPrefix(name, "backend/")] = true
 	}
 	for _, target := range []string{"github.com/gin-gonic/gin", "github.com/MalenkiySolovey/solovey-host/componenthost", "github.com/MalenkiySolovey/solovey-host/operationref", "github.com/MalenkiySolovey/solovey-host/componenthost/manifest"} {
 		for name := range goListDependencies(t, root, target) {
@@ -19,7 +19,7 @@ func TestComponentRouteInputHasNoProductOwnerClosure(t *testing.T) {
 		}
 	}
 	var violations []string
-	for name, info := range goListDependencies(t, root, "./backend/componentroutes") {
+	for name, info := range goListDependencies(t, root, backendModulePath+"/componentroutes") {
 		if !info.Standard && !allowed[name] {
 			violations = append(violations, name)
 		}

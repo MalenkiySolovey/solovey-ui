@@ -1,32 +1,18 @@
-// Package jsonvalue owns JSON shape checks shared by persisted entity domains.
+// Package jsonvalue preserves persisted entity JSON validation through Backend.
 package jsonvalue
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
+	canonical "github.com/MalenkiySolovey/solovey-backend/storage/jsonvalue"
 )
 
-func OptionalObject(label string, raw json.RawMessage) error {
-	trimmed := bytes.TrimSpace(raw)
-	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
-		return nil
-	}
-	var value map[string]json.RawMessage
-	if err := json.Unmarshal(trimmed, &value); err != nil || value == nil {
-		return fmt.Errorf("%s must be a JSON object", label)
-	}
-	return nil
-}
+const MaxStrictDepth = canonical.MaxStrictDepth
+const MaxStrictMembers = canonical.MaxStrictMembers
 
+func StrictObject(raw json.RawMessage) error { return canonical.StrictObject(raw) }
+func OptionalObject(label string, raw json.RawMessage) error {
+	return canonical.OptionalObject(label, raw)
+}
 func OptionalArray(label string, raw json.RawMessage) error {
-	trimmed := bytes.TrimSpace(raw)
-	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
-		return nil
-	}
-	var value []json.RawMessage
-	if err := json.Unmarshal(trimmed, &value); err != nil || value == nil {
-		return fmt.Errorf("%s must be a JSON array", label)
-	}
-	return nil
+	return canonical.OptionalArray(label, raw)
 }

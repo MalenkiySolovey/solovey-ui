@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	realtimehttp "github.com/MalenkiySolovey/solovey-backend/http/realtime"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 
 	"github.com/gin-gonic/gin"
 )

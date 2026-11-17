@@ -3,12 +3,12 @@ package schema
 
 import (
 	"errors"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	storageschema "github.com/MalenkiySolovey/solovey-backend/storage/schema"
 	"github.com/MalenkiySolovey/solovey-ui/config/versionpolicy"
 	"gorm.io/gorm"
 )
 
-const CurrentCoreVersion = "1.13"
+const CurrentCoreVersion = storageschema.CurrentCoreVersion
 
 // LegacyProjection selects the pre-1.12 sing-box stored-state projection.
 // Later additive Client migrations do not turn accepted 1.12 runtime data
@@ -26,22 +26,5 @@ func LegacyProjection(db *gorm.DB) (bool, error) {
 	return projectionComparison < 0, nil
 }
 
-// StoredCoreVersion reports the source database's boundary. Absence denotes
-// the accepted pre-versioned schema, never the running binary's schema.
-func StoredCoreVersion(db *gorm.DB) (string, error) {
-	if db == nil {
-		return "", errors.New("core schema view is unavailable")
-	}
-	if !db.Migrator().HasTable(&model.Setting{}) {
-		return "1.7", nil
-	}
-	var setting model.Setting
-	if err := db.Where("key = ?", "coreSchemaVersion").Limit(1).Find(&setting).Error; err != nil {
-		return "", err
-	}
-	version := setting.Value
-	if version == "" {
-		version = "1.7"
-	}
-	return version, nil
-}
+// StoredCoreVersion uses the canonical durable schema reader.
+func StoredCoreVersion(db *gorm.DB) (string, error) { return storageschema.StoredCoreVersion(db) }

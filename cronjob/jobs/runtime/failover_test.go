@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
-	"github.com/MalenkiySolovey/solovey-ui/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/service/failover"
 )
 

@@ -3,9 +3,9 @@ package api
 import (
 	"net/http"
 
+	"github.com/MalenkiySolovey/solovey-backend/componentroutes"
+	"github.com/MalenkiySolovey/solovey-backend/componentview"
 	confighttp "github.com/MalenkiySolovey/solovey-ui/api/config"
-	"github.com/MalenkiySolovey/solovey-ui/backend/componentroutes"
-	"github.com/MalenkiySolovey/solovey-ui/backend/componentview"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 

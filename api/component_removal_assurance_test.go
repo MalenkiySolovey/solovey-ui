@@ -4,6 +4,7 @@ package api
 
 import (
 	"encoding/json"
+	"github.com/MalenkiySolovey/solovey-backend/http/securityroutes"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	totputil "github.com/MalenkiySolovey/solovey-backend/security/totp"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
-	totputil "github.com/MalenkiySolovey/solovey-ui/util/totp"
 	"github.com/gin-gonic/gin"
 )
 
@@ -108,7 +109,7 @@ func TestComponentRemovalMFARequiresCurrentAssurance(t *testing.T) {
 	jar := &integrationCookieJar{}
 	loginAdminFlowUser(t, router, jar, "admin", password)
 	csrf := adminFlowCSRFToken(t, router, jar)
-	payload, _ := json.Marshal(mfaCodeRequest{Code: code(time.Now())})
+	payload, _ := json.Marshal(securityroutes.MFACodeRequest{Code: code(time.Now())})
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/challenge", strings.NewReader(string(payload)))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-Requested-With", "XMLHttpRequest")

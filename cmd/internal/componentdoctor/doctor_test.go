@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"

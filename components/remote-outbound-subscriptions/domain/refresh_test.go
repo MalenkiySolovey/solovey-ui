@@ -9,8 +9,8 @@ import (
 	"gorm.io/gorm"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	subcanonical "github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 )
 
 func TestSourceDialOverridePreservesCaptureAndRestoresSourceValues(t *testing.T) {

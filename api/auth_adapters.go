@@ -3,9 +3,9 @@ package api
 import (
 	"context"
 
-	authhttp "github.com/MalenkiySolovey/solovey-ui/backend/http/auth"
-	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	authhttp "github.com/MalenkiySolovey/solovey-backend/http/auth"
+	panelsecurity "github.com/MalenkiySolovey/solovey-backend/security"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 

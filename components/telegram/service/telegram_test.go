@@ -20,8 +20,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
 	telegramservice "github.com/MalenkiySolovey/solovey-ui/components/telegram/service"
 	backupenvelope "github.com/MalenkiySolovey/solovey-ui/internal/backup/envelope"

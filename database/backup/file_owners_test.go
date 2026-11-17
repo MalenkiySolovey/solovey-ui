@@ -3,15 +3,13 @@ package backup
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
@@ -112,66 +110,6 @@ func TestLogicalFilesActualExportRehearsalRestoreAndRollback(t *testing.T) {
 	}
 	if err := AbortPendingRestore(); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestLogicalFileManifestRejectsCorruption(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "files.db")), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	sqlDB, _ := db.DB()
-	defer sqlDB.Close()
-	if err := db.AutoMigrate(&OwnerFile{}); err != nil {
-		t.Fatal(err)
-	}
-	data := []byte("durable file fixture")
-	sum := sha256.Sum256(data)
-	f := OwnerFile{Owner: "test-owner", Key: "asset:1", Data: data, Digest: hex.EncodeToString(sum[:])}
-	if err := db.Create(&f).Error; err != nil {
-		t.Fatal(err)
-	}
-	d, err := digestBackupTable(context.Background(), db, "core", BackupFileTable)
-	if err != nil {
-		t.Fatal(err)
-	}
-	m := &FileBackupManifest{Schema: "solovey.logical-owner-files/v1", Owners: []string{"test-owner"}, Rows: d.Rows, SchemaDigest: d.SchemaDigest, ContentDigest: d.ContentDigest}
-	if err := verifyOwnerFiles(context.Background(), db, m); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Model(&OwnerFile{}).Where("owner = ?", f.Owner).Update("data", []byte("corrupt")).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := verifyOwnerFiles(context.Background(), db, m); err == nil {
-		t.Fatal("tampered payload accepted")
-	}
-}
-
-func TestImmutableOwnerPublicationPreservesRollback(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "owner", "restored")
-	name, err := PublishOwnedFile(root, []byte("new"), false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(root); !os.IsNotExist(err) {
-		t.Fatal("rehearsal published files")
-	}
-	actual, err := PublishOwnedFile(root, []byte("new"), true)
-	if err != nil || name != actual {
-		t.Fatal(err)
-	}
-	if _, err := PublishOwnedFile(root, []byte("new"), true); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(name, []byte("conflict"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := PublishOwnedFile(root, []byte("new"), true); err == nil {
-		t.Fatal("conflicting immutable file overwritten")
-	}
-	data, _ := os.ReadFile(name)
-	if string(data) != "conflict" {
-		t.Fatal("pre-existing data changed")
 	}
 }
 

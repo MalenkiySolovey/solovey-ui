@@ -1,63 +1,20 @@
 package api
 
 import (
-	"net/http"
-
-	logger "github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-ui/util/redact"
+	"github.com/MalenkiySolovey/solovey-backend/http/response"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/gin-gonic/gin"
 )
 
-type Msg struct {
-	Success bool        `json:"success"`
-	Msg     string      `json:"msg"`
-	Obj     interface{} `json:"obj"`
-}
-
-const maxClientErrorBytes = 4 * 1024
+type Msg = response.Msg
 
 func jsonMsg(c *gin.Context, msg string, err error) {
-	jsonMsgObj(c, msg, nil, err)
+	response.Writer{Warning: logger.Warning}.JSONMsg(c, msg, err)
 }
-
 func jsonObj(c *gin.Context, obj interface{}, err error) {
-	jsonMsgObj(c, "", obj, err)
+	response.Writer{Warning: logger.Warning}.JSONObj(c, obj, err)
 }
-
-// jsonMsgObj writes the standard API envelope (Msg) at HTTP 200 with a success
-// flag. This SPA contract is intentional: business/validation errors are
-// conveyed as {success:false, msg} at HTTP 200 (the frontend reads the flag),
-// not via HTTP status codes; transport-level handlers that genuinely need real
-// status codes set them explicitly. The
-// client-facing error text is redacted to avoid leaking paths/SQL/internals;
-// the corresponding server log is independently redacted and bounded.
 func jsonMsgObj(c *gin.Context, msg string, obj interface{}, err error) {
-	m := Msg{
-		Obj: obj,
-	}
-	if err == nil {
-		m.Success = true
-		if msg != "" {
-			m.Msg = msg
-		}
-	} else {
-		m.Success = false
-		m.Msg = redact.StringLimit(msg+": "+err.Error(), maxClientErrorBytes)
-		logger.Warning("failed :", err)
-	}
-	c.JSON(http.StatusOK, m)
+	response.Writer{Warning: logger.Warning}.JSONMsgObj(c, msg, obj, err)
 }
-
-func pureJsonMsg(c *gin.Context, success bool, msg string) {
-	if success {
-		c.JSON(http.StatusOK, Msg{
-			Success: true,
-			Msg:     msg,
-		})
-	} else {
-		c.JSON(http.StatusOK, Msg{
-			Success: false,
-			Msg:     msg,
-		})
-	}
-}
+func pureJsonMsg(c *gin.Context, success bool, msg string) { response.PureJSONMsg(c, success, msg) }

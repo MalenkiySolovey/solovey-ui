@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
-	"github.com/MalenkiySolovey/solovey-ui/realtime"
 )
 
 func TestManualProbeProjectsThroughLoadAndRealtimeWithoutSnapshotMutation(t *testing.T) {

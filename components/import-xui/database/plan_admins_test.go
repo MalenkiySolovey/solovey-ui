@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	passwordutil "github.com/MalenkiySolovey/solovey-backend/security/password"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

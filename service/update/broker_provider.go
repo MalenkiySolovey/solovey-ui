@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	backupdb "github.com/MalenkiySolovey/solovey-ui/database/backup"

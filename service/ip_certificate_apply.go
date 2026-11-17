@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	ipcertops "github.com/MalenkiySolovey/solovey-ui/internal/ops/ipcert"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )

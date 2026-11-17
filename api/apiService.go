@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/MalenkiySolovey/solovey-ui/backend/componentroutes"
+	"github.com/MalenkiySolovey/solovey-backend/componentroutes"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	datalifecycleservice "github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"
 	deploymentservice "github.com/MalenkiySolovey/solovey-ui/service/deployment"

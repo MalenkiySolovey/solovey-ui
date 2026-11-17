@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
+	realtimehttp "github.com/MalenkiySolovey/solovey-backend/http/realtime"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )

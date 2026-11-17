@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/middleware/requestbudget"
+	"github.com/MalenkiySolovey/solovey-backend/http/requestbudget"
 	"github.com/gin-gonic/gin"
 )
 

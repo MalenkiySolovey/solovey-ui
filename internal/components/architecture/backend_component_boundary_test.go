@@ -12,14 +12,14 @@ func TestComponentHTTPAndActionOwnersHaveIndependentTransitiveClosure(t *testing
 	root := moduleRoot(t)
 	allowed := map[string]bool{}
 	for _, name := range []string{"backend/actions", "backend/audit", "backend/componentapi", "backend/componentview"} {
-		allowed[modulePath+"/"+name] = true
+		allowed[backendModulePath+"/"+strings.TrimPrefix(name, "backend/")] = true
 	}
 	for _, target := range []string{"github.com/gin-gonic/gin", "github.com/MalenkiySolovey/solovey-host/operationref", "github.com/MalenkiySolovey/solovey-host/componenthost/manifest", "github.com/MalenkiySolovey/solovey-host/auditrecord"} {
 		for name := range goListDependencies(t, root, target) {
 			allowed[name] = true
 		}
 	}
-	for _, target := range []string{"./backend/actions", "./backend/componentapi", "./backend/componentview"} {
+	for _, target := range []string{backendModulePath + "/actions", backendModulePath + "/componentapi", backendModulePath + "/componentview"} {
 		var violations []string
 		for name, info := range goListDependencies(t, root, target) {
 			if !info.Standard && !allowed[name] {

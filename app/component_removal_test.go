@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
@@ -42,7 +42,9 @@ func TestRemovalUsesActualProtectionAuthorityInspector(t *testing.T) {
 			if err := db.AutoMigrate(&model.Setting{}, &model.MigrationJournal{}); err != nil {
 				t.Fatal(err)
 			}
-			data := &datalifecycle.Manager{DB: func() *gorm.DB { return db }, Now: time.Now, Enabled: func(manifest.Manifest) (bool, error) { return false, nil }}
+			data := datalifecycle.NewManager()
+			data.DB, data.Now = func() *gorm.DB { return db }, time.Now
+			data.Enabled = func(manifest.Manifest) (bool, error) { return false, nil }
 			s := supervisor.New(componenthost.Deps{})
 			inventory := resources.NewRegistry(time.Second)
 			admission := &panelupdateservice.RemovalAdmission{Preview: data.PreviewRemoval, Resources: data.RemovalResources, Inventory: inventory.Refresh, Admit: s.TryAdmitRemoval}

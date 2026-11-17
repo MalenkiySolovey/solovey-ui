@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

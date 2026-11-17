@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
@@ -284,7 +284,4 @@ func UpdateLinksByInboundChange(tx *gorm.DB, inbounds *[]model.Inbound, hostname
 		}
 	}
 	return validateSnellUserKeys(tx, nil)
-}
-func UpdateResetFields(tx *gorm.DB, clientID uint, values map[string]interface{}) error {
-	return tx.Model(model.Client{}).Where("id = ?", clientID).Updates(values).Error
 }

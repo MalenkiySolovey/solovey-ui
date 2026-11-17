@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	tokenuse "github.com/MalenkiySolovey/solovey-backend/security/tokenuse"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
@@ -23,11 +25,10 @@ func TestRestoreResetCannotApplyQueuedOrStaleTokenIDsToCandidate(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = dbsqlite.Close(); resumeTokenUseFlush() })
 	runtime := NewRuntimeWithCoreProvider(nil)
+	writes := 0
+	runtime.tokenUse = tokenuse.New(time.Hour, func(updates map[uint]tokenuse.Update) error { writes++; return tokenuse.FlushUpdates(updates) })
 	old := runtime.tokenUseDebouncer()
 	old.Record(41, "198.51.100.10", 100)
-	staleEpoch := stopTokenUseDebouncerTimer(old)
-	writes := 0
-	old.flush = func(updates map[uint]tokenUseUpdate) error { writes++; return flushTokenUseUpdates(updates) }
 	owner, err := dbsqlite.BeginMaintenance(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -50,7 +51,6 @@ func TestRestoreResetCannotApplyQueuedOrStaleTokenIDsToCandidate(t *testing.T) {
 	owner.End()
 	resumeTokenUseFlush()
 	old.Record(41, "198.51.100.11", 200)
-	old.flushTimer(staleEpoch)
 	if err := old.Flush(context.Background()); err != nil {
 		t.Fatal(err)
 	}

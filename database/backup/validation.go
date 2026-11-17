@@ -1,15 +1,15 @@
 package backup
 
 import (
-	"bytes"
 	"fmt"
+	canonical "github.com/MalenkiySolovey/solovey-backend/storage/backup"
 	"io"
 	"net/url"
 	"path/filepath"
 	"runtime"
 	"strings"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
@@ -97,11 +97,4 @@ func sqliteReadOnlyDSN(path string) string {
 	return u.String()
 }
 
-func IsSQLite(file io.Reader) (bool, error) {
-	signature := []byte("SQLite format 3\x00")
-	buf := make([]byte, len(signature))
-	if _, err := file.Read(buf); err != nil {
-		return false, err
-	}
-	return bytes.Equal(buf, signature), nil
-}
+func IsSQLite(file io.Reader) (bool, error) { return canonical.IsSQLite(file) }

@@ -3,8 +3,8 @@ package backup
 import (
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 )
 
 func TestSSHManagementBackupIncludesSafeMetadataAndExcludesRecoverySecrets(t *testing.T) {

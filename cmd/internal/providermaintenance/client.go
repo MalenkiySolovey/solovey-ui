@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
+	"github.com/MalenkiySolovey/solovey-backend/actions"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 	updateservice "github.com/MalenkiySolovey/solovey-ui/service/update"
 )

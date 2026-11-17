@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
+	settingcatalog "github.com/MalenkiySolovey/solovey-backend/settings/catalog"
 )
 
 var ErrMaintenanceUnavailable = errors.New("maintenance state unavailable")

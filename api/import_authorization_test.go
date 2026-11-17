@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/gin-gonic/gin"
 )
 
@@ -40,11 +40,8 @@ func TestImportCompletionCapabilitiesRefreshOwnedTokenSnapshot(t *testing.T) {
 				t.Fatal(err)
 			}
 			completion()
-			v2.tokensMu.RLock()
-			count := len(v2.tokens)
-			v2.tokensMu.RUnlock()
-			if count != 0 {
-				t.Fatal("removed authority remained in snapshot")
+			if result := performAPIV2TokenRequest(router, "Authorization", "Bearer import-fixture-token"); result.Code != http.StatusUnauthorized {
+				t.Fatal("removed authority remained usable")
 			}
 		})
 	}

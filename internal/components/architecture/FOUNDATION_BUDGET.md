@@ -394,3 +394,42 @@ lives in the selected immutable Component module. The producer architecture
 and race suites qualify those same bounded workers and cancellation behavior.
 All Backend adapter sites, original base identity and unrelated entries remain
 fixed; no new Product worker or database authority is admitted.
+
+
+## Backend audit queue owner relocation
+
+The existing audit worker moves from `service/audit_writer.go:*auditWriter.Start`
+to `backend/audit/store/writer.go:*Writer.Start`. The parsed launch remains
+`go w.run()` with digest
+`795f4d19d661b1bf77a7da8f85679c6d12813f75cdca8b9eb97fa26d4710e678`.
+This is one relocated entry; the reviewed base and total budget are unchanged.
+
+Product Runtime constructs the same single writer and supplies warning logging
+and the canonical Panel audit sink. Start is mutex guarded and idempotent;
+Stop closes its existing stop channel once and waits on the existing done channel
+or caller cancellation. The queue remains bounded at 4096 entries, batches at 64,
+and writes use the existing bounded sink. Stop failures retain pending events
+for the Product-managed successor. Retry, overflow priority, coverage markers,
+and late enqueue rejection remain at this one Backend implementation. No listener,
+process, database authority, or independent worker registration is added.
+
+
+## Backend request limiter owner relocation
+
+The existing request limiter janitor moves from `util/ratelimit/common.go` to
+`backend/http/ratelimit/common.go`. The two existing worker-lifetime entries
+retain their exact symbols and digests; the reviewed base and budget cardinality
+remain unchanged. The launch, interval validation, per-limiter stop channel,
+once-only Close and ticker Stop are byte-identical. Fixed key capacities,
+window pruning and failure/threshold decisions remain at one canonical owner.
+Existing concurrency, eviction, expiry and background-GC tests move with it.
+This change introduces no new worker, listener or policy.
+
+
+Realtime transport source ownership relocates the two existing `startWSHeartbeat`
+worker/ticker entries from `api/realtime/handler.go` to
+`backend/http/realtime/handler.go`. Their exact digests remain
+`51fc4eac1f0de34d579a85df1efcb605ab2a2eb346a05c28ea37dadccec78546` and
+`5db1967d4d1b154855eb569b58bee8ecbee60560dfc7a20a5c776887725bad99`. The request-linked cancellation, deferred stop/join,
+bounded ping context and connection close behavior are unchanged. No worker is
+added; the base, cardinality and every unrelated budget entry remain unchanged.

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	deploymentservice "github.com/MalenkiySolovey/solovey-ui/service/deployment"

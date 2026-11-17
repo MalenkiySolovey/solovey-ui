@@ -2266,13 +2266,13 @@
     },
     {
       "rule": "worker-lifetime",
-      "path": "api/realtime/handler.go",
+      "path": "backend/http/realtime/handler.go",
       "symbol": "startWSHeartbeat",
       "digest": "51fc4eac1f0de34d579a85df1efcb605ab2a2eb346a05c28ea37dadccec78546"
     },
     {
       "rule": "worker-lifetime",
-      "path": "api/realtime/handler.go",
+      "path": "backend/http/realtime/handler.go",
       "symbol": "startWSHeartbeat",
       "digest": "5db1967d4d1b154855eb569b58bee8ecbee60560dfc7a20a5c776887725bad99"
     },
@@ -2584,14 +2584,14 @@
     },
     {
       "rule": "worker-lifetime",
-      "path": "internal/subscriptions/server/runtime.go",
+      "path": "backend/subscriptions/server/runtime.go",
       "symbol": "*RuntimeServer.Start",
       "digest": "53a190f4e357596973dcdfb1a8727a83177fb7759ac15b2d3989009afd3be69f"
     },
     {
       "rule": "worker-lifetime",
-      "path": "service/audit_writer.go",
-      "symbol": "*auditWriter.Start",
+      "path": "backend/audit/store/writer.go",
+      "symbol": "*Writer.Start",
       "digest": "795f4d19d661b1bf77a7da8f85679c6d12813f75cdca8b9eb97fa26d4710e678"
     },
     {
@@ -2644,13 +2644,13 @@
     },
     {
       "rule": "worker-lifetime",
-      "path": "util/ratelimit/common.go",
+      "path": "backend/http/ratelimit/common.go",
       "symbol": "startJanitor",
       "digest": "628b6518bf17b7f9081d4d793280384cb8a94b91d213bfd950a3e968f9d696df"
     },
     {
       "rule": "worker-lifetime",
-      "path": "util/ratelimit/common.go",
+      "path": "backend/http/ratelimit/common.go",
       "symbol": "startJanitor",
       "digest": "8da411917152c2e68e68b12215d357b31c3ba57f0907d07e4f89fe4ecaaf6a37"
     },

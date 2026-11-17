@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/realtime"
-	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
+	realtimehttp "github.com/MalenkiySolovey/solovey-backend/http/realtime"
+	"github.com/MalenkiySolovey/solovey-backend/realtime"
+	passwordutil "github.com/MalenkiySolovey/solovey-backend/security/password"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 
 	"github.com/coder/websocket"
 	"github.com/gin-contrib/sessions"

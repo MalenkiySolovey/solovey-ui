@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	validation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 
 	"gorm.io/driver/sqlite"

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 )
 
 func BuildPaidClientUpdates(client model.Client, tariff Tariff, now int64) (clientUpdates map[string]any, orderUpdates map[string]any, err error) {

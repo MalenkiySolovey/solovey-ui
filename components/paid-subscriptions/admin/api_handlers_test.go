@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	paidcore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
 	paidtest "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/testutil"
 

@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	remote "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
 	"github.com/MalenkiySolovey/solovey-ui/logger"
 )

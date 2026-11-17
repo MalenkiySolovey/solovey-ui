@@ -5,7 +5,7 @@ package panelupdateui
 import (
 	_ "embed"
 
-	panelupdatehttp "github.com/MalenkiySolovey/solovey-ui/backend/componentapi"
+	panelupdatehttp "github.com/MalenkiySolovey/solovey-backend/componentapi"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"

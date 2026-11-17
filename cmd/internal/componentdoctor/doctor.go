@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	componentdoctor "github.com/MalenkiySolovey/solovey-ui/componenthost/doctor"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 )

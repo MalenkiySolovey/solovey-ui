@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/componentroutes"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/componentroutes"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	inbounddrafts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/drafts"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"

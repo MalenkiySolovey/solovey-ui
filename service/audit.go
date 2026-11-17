@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	auditsvc "github.com/MalenkiySolovey/solovey-ui/service/audit"
 )
 
@@ -86,10 +86,6 @@ func (s *AuditService) Prune(retentionDays int) error {
 func (s *AuditService) PruneOlderThan(before int64) (int64, error) {
 	backend := s.backend()
 	return backend.PruneOlderThan(before)
-}
-
-func buildAuditRecord(event AuditEvent) (model.AuditEvent, error) {
-	return auditsvc.BuildRecord(auditsvc.Event(event))
 }
 
 func writeAuditEvents(events []model.AuditEvent) error {

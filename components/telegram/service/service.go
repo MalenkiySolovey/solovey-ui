@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"time"
 
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	canonical "github.com/MalenkiySolovey/solovey-component-telegram/service"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 )
 
 type Settings interface {

@@ -31,7 +31,7 @@ jobs:
       - run: npm ci
         working-directory: frontend
       - name: Native tooling regressions
-        run: node --test scripts/component-source-inputs.test.mjs scripts/protection-owner-inputs.test.mjs scripts/frontend-assets.test.mjs scripts/frontend-test-runner.test.mjs scripts/windows-build.test.mjs scripts/core-provider-build.test.mjs scripts/core-source-provenance.test.mjs scripts/release-providers.test.mjs scripts/release-metadata.test.mjs scripts/audit/source-hygiene.test.mjs scripts/audit/performance.test.mjs scripts/audit/provider-vuln.test.mjs
+        run: node --test scripts/backend-source-inputs.test.mjs scripts/component-source-inputs.test.mjs scripts/protection-owner-inputs.test.mjs scripts/frontend-assets.test.mjs scripts/frontend-test-runner.test.mjs scripts/windows-build.test.mjs scripts/core-provider-build.test.mjs scripts/core-source-provenance.test.mjs scripts/release-providers.test.mjs scripts/release-metadata.test.mjs scripts/audit/source-hygiene.test.mjs scripts/audit/performance.test.mjs scripts/audit/provider-vuln.test.mjs
       - name: Verify pinned core copies, pristine authority trees and linear Git series
         if: runner.os == 'Linux'
         run: node scripts/core-source-provenance.mjs verify-remote
@@ -90,7 +90,7 @@ jobs:
             findmnt -no TARGET,OPTIONS --target /tmp
           fi
           # Bound concurrent disk-backed SQLite fixtures while retaining race checks.
-          node scripts/go-test.mjs -race -p 1 -count=1 -timeout=10m -tags "$EXTENDED_TAGS" -- ./components/server-protection/... ./network/... ./componenthost/... ./internal/ops/privilegedbroker ./internal/ops/operationcoordination ./internal/components/architecture
+          node scripts/go-test.mjs -race -p 1 -count=1 -timeout=10m -tags "$EXTENDED_TAGS" -- ./components/server-protection/... ./network/... ./componenthost/... ./internal/ops/privilegedbroker github.com/MalenkiySolovey/solovey-backend/operations/coordination ./internal/components/architecture
 
       - name: External protection source with actual Product owner fixtures
         shell: bash

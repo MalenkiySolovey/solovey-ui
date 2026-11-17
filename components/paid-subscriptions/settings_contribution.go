@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
+	settingsschema "github.com/MalenkiySolovey/solovey-backend/settings/schema"
+	settingsvalidation "github.com/MalenkiySolovey/solovey-backend/settings/validation"
 	paidsettings "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/settings"
-	settingsschema "github.com/MalenkiySolovey/solovey-ui/internal/settings/schema"
-	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/internal/settings/validation"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )

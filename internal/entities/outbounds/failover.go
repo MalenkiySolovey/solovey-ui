@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	entitytypes "github.com/MalenkiySolovey/solovey-backend/entityidentity"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
 )

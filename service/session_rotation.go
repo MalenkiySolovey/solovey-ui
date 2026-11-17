@@ -1,13 +1,11 @@
 package service
 
-import "sync"
+import (
+	panelsecurity "github.com/MalenkiySolovey/solovey-backend/security"
+	"sync"
+)
 
-// SessionRegenerateKey is a session value the login flow sets to ask the session
-// store to mint a fresh session ID on the next Save, preventing session fixation
-// (the pre-auth CSRF session would otherwise keep its ID after authentication).
-// It lives here so both the api login handler and the web session store share a
-// single source of truth without an import cycle (web imports api).
-const SessionRegenerateKey = "__sui_session_regenerate__"
+const SessionRegenerateKey = panelsecurity.SessionRegenerateKey
 
 const maxWSTokenInvalidationHooks = 128
 

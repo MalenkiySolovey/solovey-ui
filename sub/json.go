@@ -1,43 +1,23 @@
 package sub
 
 import (
-	"strconv"
-	"time"
-
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	subformats "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/formats"
 	localsub "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/local"
-	subserver "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/server"
 	"github.com/MalenkiySolovey/solovey-ui/service"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
-type JSONService struct {
-	service.SettingService
-}
+type JSONService struct{ service.SettingService }
 
-func (s *JSONService) GetJSON(subID string) (*string, []string, error) {
-	now := time.Now()
-	enabled, err := s.SettingService.GetSubJsonEnable()
-	if err != nil {
-		return nil, nil, err
-	}
-	if !enabled {
-		return nil, nil, common.NewError("json subscription disabled")
-	}
-	cacheKey := "json:" + subID + ":clientHooks=" + strconv.FormatUint(localsub.ClientOutboundContributorsVersion(), 10)
-	if body, headers, ok := subscriptionCacheGet(cacheKey, now); ok {
-		return &body, headers, nil
-	}
-	client, inbounds, err := loadClientData(subID)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer common.WipeBytes(client.Config)
+func (s *JSONService) GetJSON(id string) (*string, []string, error) {
+	return publisherFor(&s.SettingService).GetJSON(id)
+}
+func (s *JSONService) render(client *model.Client, inbounds []*model.Inbound) (string, error) {
 	outboundSet, err := localsub.BuildInboundOutbounds(client.Config, inbounds)
 	if err != nil {
-		return nil, nil, err
+		return "", err
 	}
 	links := resolveClientLinks(client.Links, localsub.LinkModeExternal, "")
 	localsub.AppendExternalLinkOutbounds(outboundSet, links)
@@ -46,27 +26,21 @@ func (s *JSONService) GetJSON(subID string) (*string, []string, error) {
 		RawLinks: client.Links,
 		Target:   subconversion.TargetSingBox,
 	}, outboundSet); err != nil {
-		return nil, nil, err
+		return "", err
 	}
 	localsub.PrependDefaultJSONOutbounds(outboundSet)
 
 	options, err := s.jsonOptions()
 	if err != nil {
-		return nil, nil, err
+		return "", err
 	}
 	result, err := subformats.RenderJSON(outboundSet.Outbounds, options)
 	if err != nil {
-		return nil, nil, err
+		return "", err
 	}
-	displaySettings, err := subserver.CachedDisplaySettings(&s.SettingService, now)
-	if err != nil {
-		return nil, nil, err
-	}
-	headers := safeSubscriptionHeaders(buildClientHeaders(client, displaySettings))
-	subscriptionCacheSet(cacheKey, result, headers, now)
-	return &result, headers, nil
-}
 
+	return result, nil
+}
 func (s *JSONService) jsonOptions() (subformats.JSONOptions, error) {
 	var options subformats.JSONOptions
 	var err error

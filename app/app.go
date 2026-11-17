@@ -9,6 +9,9 @@ import (
 	"sync"
 	"time"
 
+	ipmonitor "github.com/MalenkiySolovey/solovey-backend/accounting/ipmonitor"
+	dbhooks "github.com/MalenkiySolovey/solovey-backend/storage/hooks"
+	"github.com/MalenkiySolovey/solovey-backend/storage/restorestate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	managementregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/management"
@@ -21,13 +24,10 @@ import (
 	versionpolicy "github.com/MalenkiySolovey/solovey-ui/config/versionpolicy"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/cronjob/scheduler"
-	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
-	"github.com/MalenkiySolovey/solovey-ui/database/restorestate"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	deploymentdomain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
 	subserver "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/server"
-	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	datalifecycleservice "github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"
@@ -431,7 +431,7 @@ func (a *APP) registerCoreHooks() error {
 	if a.stopCoreHooks != nil {
 		return nil
 	}
-	stopIPMonitor, err := ipmonitor.RegisterSecurityEventAuditHook(func(_ string, _ string, payload map[string]any) {
+	stopIPMonitor, err := ipmonitor.RegisterHooks(ipmonitor.Hooks{Warning: logger.Warning, SecurityEventAudit: func(_ string, _ string, payload map[string]any) {
 		_ = (&service.AuditService{}).Record(service.AuditEvent{
 			Actor:    "system",
 			Event:    "ip_limit_enforced",
@@ -439,7 +439,7 @@ func (a *APP) registerCoreHooks() error {
 			Severity: service.AuditSeverityWarn,
 			Details:  payload,
 		})
-	})
+	}})
 	if err != nil {
 		return err
 	}

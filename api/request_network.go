@@ -3,23 +3,13 @@ package api
 import (
 	"net/http"
 
-	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
+	"github.com/MalenkiySolovey/solovey-backend/http/requestidentity"
+	clientidentity "github.com/MalenkiySolovey/solovey-backend/security/clientidentity"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 )
 
-const clientIdentityContextKey = "sui.client_identity.v1"
-
-func RequestClientIdentity(c *gin.Context) clientidentity.V1 {
-	if cached, ok := c.Get(clientIdentityContextKey); ok {
-		if identity, typeOK := cached.(clientidentity.V1); typeOK {
-			return identity
-		}
-	}
-	identity := clientidentity.ResolveRequest(c.Request)
-	c.Set(clientIdentityContextKey, identity)
-	return identity
-}
+func RequestClientIdentity(c *gin.Context) clientidentity.V1 { return requestidentity.FromContext(c) }
 
 // requestAuthorityMiddleware rejects ambiguous Host and trusted-forwarding
 // authority before authentication, CSRF, or route handlers consume it.

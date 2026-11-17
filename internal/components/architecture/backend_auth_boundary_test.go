@@ -8,11 +8,11 @@ import (
 
 func TestBackendSecurityValuesHaveNoStorageOrRuntimeDependency(t *testing.T) {
 	root := moduleRoot(t)
-	allowed := map[string]bool{modulePath + "/backend/security": true, modulePath + "/backend/audit": true}
+	allowed := map[string]bool{backendModulePath + "/security": true, backendModulePath + "/audit": true}
 	for name := range goListDependencies(t, root, "github.com/MalenkiySolovey/solovey-host/auditrecord") {
 		allowed[name] = true
 	}
-	for _, target := range []string{"./backend/security", "./backend/audit"} {
+	for _, target := range []string{backendModulePath + "/security", backendModulePath + "/audit"} {
 		var violations []string
 		for name, info := range goListDependencies(t, root, target) {
 			if !info.Standard && !allowed[name] {
@@ -30,7 +30,7 @@ func TestAuthenticationRoutesHaveNarrowTransitiveOwnerClosure(t *testing.T) {
 	root := moduleRoot(t)
 	allowed := map[string]bool{}
 	for _, name := range []string{"backend/http/auth", "backend/security", "backend/audit", "backend/security/clientidentity"} {
-		allowed[modulePath+"/"+name] = true
+		allowed[backendModulePath+"/"+strings.TrimPrefix(name, "backend/")] = true
 	}
 	for _, target := range []string{"github.com/gin-gonic/gin", "github.com/MalenkiySolovey/solovey-host/auditrecord", "github.com/MalenkiySolovey/solovey-host/redact"} {
 		for name := range goListDependencies(t, root, target) {
@@ -38,7 +38,7 @@ func TestAuthenticationRoutesHaveNarrowTransitiveOwnerClosure(t *testing.T) {
 		}
 	}
 	var violations []string
-	for name, info := range goListDependencies(t, root, "./backend/http/auth") {
+	for name, info := range goListDependencies(t, root, backendModulePath+"/http/auth") {
 		if !info.Standard && !allowed[name] {
 			violations = append(violations, name)
 		}
@@ -51,8 +51,8 @@ func TestAuthenticationRoutesHaveNarrowTransitiveOwnerClosure(t *testing.T) {
 
 func TestRequestClientIdentityHasOnlyStandardLibraryClosure(t *testing.T) {
 	root := moduleRoot(t)
-	for name, info := range goListDependencies(t, root, "./backend/security/clientidentity") {
-		if !info.Standard && name != modulePath+"/backend/security/clientidentity" {
+	for name, info := range goListDependencies(t, root, backendModulePath+"/security/clientidentity") {
+		if !info.Standard && name != backendModulePath+"/security/clientidentity" {
 			t.Errorf("request client identity imports an external implementation %s", name)
 		}
 	}

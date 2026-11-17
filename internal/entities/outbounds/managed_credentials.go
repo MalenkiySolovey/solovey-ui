@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/secretref"
 	calloptions "github.com/MalenkiySolovey/solovey-ui/internal/entities/calloptions"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"

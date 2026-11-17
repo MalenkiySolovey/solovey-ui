@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	neutral "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"

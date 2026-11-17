@@ -4,7 +4,7 @@ package observability
 
 import (
 	"context"
-	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
+	dbhooks "github.com/MalenkiySolovey/solovey-backend/storage/hooks"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"path/filepath"
 	"testing"

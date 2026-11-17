@@ -2,8 +2,8 @@ package coreinboundcontrol
 
 import (
 	"context"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	canonical "github.com/MalenkiySolovey/solovey-host/coreruntime/inboundcontrol"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"gorm.io/gorm"
 	"time"
 )

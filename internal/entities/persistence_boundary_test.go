@@ -36,10 +36,10 @@ func TestR4DomainPackagesDoNotImportConcreteDatabaseLifecycle(t *testing.T) {
 					return err
 				}
 				for _, forbidden := range []string{
-					"github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite",
+					"github.com/MalenkiySolovey/solovey-backend/storage/sqlite",
 					"github.com/MalenkiySolovey/solovey-ui/database/migration",
 					"github.com/MalenkiySolovey/solovey-ui/database/backup",
-					"github.com/MalenkiySolovey/solovey-ui/database/restorestate",
+					"github.com/MalenkiySolovey/solovey-backend/storage/restorestate",
 				} {
 					if name == forbidden || strings.HasPrefix(name, forbidden+"/") {
 						t.Errorf("%s imports concrete database lifecycle package %s", filepath.ToSlash(path), name)

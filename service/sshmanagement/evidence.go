@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
+	clientidentity "github.com/MalenkiySolovey/solovey-backend/security/clientidentity"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/sshmanagement"
 )

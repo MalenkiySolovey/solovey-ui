@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
+	entitytypes "github.com/MalenkiySolovey/solovey-backend/entityidentity"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/composition"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"

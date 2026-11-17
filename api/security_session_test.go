@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-contrib/sessions"
@@ -201,8 +201,8 @@ func TestSecurityTransitionRotationInvalidatesPreMetadataLegacySession(t *testin
 		c.Status(http.StatusNoContent)
 	})
 	router.GET("/rotate", func(c *gin.Context) {
-		handler := securityHTTP{api: &APIHandler{ApiService: newComposedApiService()}}
-		if err := handler.rotateSessionGenerationAndReissue(c, admin.Id, service.AuthStateAuthenticated, service.AssurancePassword); err != nil {
+		handler := newSecurityHTTP(&APIHandler{ApiService: newComposedApiService()})
+		if err := handler.RotateSessionGenerationAndReissue(c, admin.Id, service.AuthStateAuthenticated, service.AssurancePassword); err != nil {
 			c.Status(http.StatusInternalServerError)
 			return
 		}

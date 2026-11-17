@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/hostcontext"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/hostcontext"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 )
 
 func TestHostContextAllAPICompositionsRejectForeignHost(t *testing.T) {

@@ -1,8 +1,8 @@
 package service
 
 import (
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
-	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/internal/settings/validation"
+	settingcatalog "github.com/MalenkiySolovey/solovey-backend/settings/catalog"
+	settingsvalidation "github.com/MalenkiySolovey/solovey-backend/settings/validation"
 )
 
 func (s *SettingService) GetListen() (string, error) {

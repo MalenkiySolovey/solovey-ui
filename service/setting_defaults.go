@@ -1,9 +1,9 @@
 package service
 
 import (
+	settingcatalog "github.com/MalenkiySolovey/solovey-backend/settings/catalog"
+	settingsschema "github.com/MalenkiySolovey/solovey-backend/settings/schema"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
-	settingsschema "github.com/MalenkiySolovey/solovey-ui/internal/settings/schema"
 )
 
 var defaultValueMap = settingcatalog.MergeDefaultMaps(

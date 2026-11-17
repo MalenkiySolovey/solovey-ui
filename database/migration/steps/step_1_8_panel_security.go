@@ -1,8 +1,8 @@
 package steps
 
 import (
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
+	settingcatalog "github.com/MalenkiySolovey/solovey-backend/settings/catalog"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"gorm.io/gorm"
 )
 

@@ -1,3 +1,5 @@
 package service
 
-func AuditDroppedTotal() uint64 { return auditDroppedTotal.Load() }
+import canonical "github.com/MalenkiySolovey/solovey-backend/audit/store"
+
+func AuditDroppedTotal() uint64 { return canonical.DroppedTotal() }

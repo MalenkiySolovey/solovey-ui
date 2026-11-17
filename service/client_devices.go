@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"time"
 
-	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/accounting"
+	entitytypes "github.com/MalenkiySolovey/solovey-backend/entityidentity"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	clientdevices "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients/devices"
@@ -213,11 +214,11 @@ func accountDeviceSnapshot(tx *gorm.DB, endpointID uint, snapshot coreruntime.Wi
 	if err != nil {
 		return err
 	}
-	users := map[entitytypes.VPNUserID]clientTrafficDelta{}
+	users := map[entitytypes.VPNUserID]accounting.UserTrafficDelta{}
 	for _, delta := range deltas {
-		users[delta.UserID] = clientTrafficDelta{up: delta.Up, down: delta.Down}
+		users[delta.UserID] = accounting.UserTrafficDelta{Up: delta.Up, Down: delta.Down}
 	}
-	return updateClientTrafficDeltas(tx, users)
+	return accounting.ApplyUserTrafficDeltas(tx, users)
 }
 
 func (s *ClientService) WireGuardDeviceConfig(ctx context.Context, clientID uint, deviceID, host string) (string, error) {

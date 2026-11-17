@@ -2,9 +2,9 @@
 package componenthttp
 
 import (
-	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
-	"github.com/MalenkiySolovey/solovey-ui/backend/componentroutes"
-	"github.com/MalenkiySolovey/solovey-ui/backend/componentview"
+	"github.com/MalenkiySolovey/solovey-backend/actions"
+	"github.com/MalenkiySolovey/solovey-backend/componentroutes"
+	"github.com/MalenkiySolovey/solovey-backend/componentview"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"

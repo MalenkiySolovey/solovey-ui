@@ -3,7 +3,7 @@ package dbtransfer
 import (
 	"context"
 	"errors"
-	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
+	"github.com/MalenkiySolovey/solovey-backend/actions"
 	"net/http"
 	"strings"
 

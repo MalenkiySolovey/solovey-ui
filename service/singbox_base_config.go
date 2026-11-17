@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"

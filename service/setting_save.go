@@ -3,8 +3,8 @@ package service
 import (
 	"encoding/json"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	settingsmanager "github.com/MalenkiySolovey/solovey-ui/internal/settings/manager"
+	settingsmanager "github.com/MalenkiySolovey/solovey-backend/settings/manager"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	subformats "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/formats"
 
 	"gorm.io/gorm"
