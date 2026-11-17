@@ -2584,7 +2584,7 @@
     },
     {
       "rule": "worker-lifetime",
-      "path": "internal/subscriptions/server/runtime.go",
+      "path": "backend/subscriptions/server/runtime.go",
       "symbol": "*RuntimeServer.Start",
       "digest": "53a190f4e357596973dcdfb1a8727a83177fb7759ac15b2d3989009afd3be69f"
     },
