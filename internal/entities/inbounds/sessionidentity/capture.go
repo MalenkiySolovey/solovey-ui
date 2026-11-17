@@ -10,8 +10,8 @@ import (
 	"reflect"
 	"sort"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	"github.com/MalenkiySolovey/solovey-ui/core/inboundidentity"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
@@ -28,7 +28,7 @@ type candidate struct {
 
 // Capture accepts a complete rendered config or one owner-rendered inbound.
 // It never associates a client using its display name, IP or a caller's ID.
-func Capture(db *gorm.DB, config []byte) ([]inboundidentity.Binding, error) {
+func Capture(db *gorm.DB, config []byte) ([]entityidentity.InboundBinding, error) {
 	var root candidate
 	if err := json.Unmarshal(config, &root); err != nil {
 		return nil, errors.New("runtime identity config is invalid")
@@ -67,7 +67,7 @@ func Capture(db *gorm.DB, config []byte) ([]inboundidentity.Binding, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := []inboundidentity.Binding{}
+	result := []entityidentity.InboundBinding{}
 	for _, row := range rows {
 		stored, ok := byTag[row.Tag]
 		if !ok || stored.Type != row.Type {
@@ -134,7 +134,7 @@ func Capture(db *gorm.DB, config []byte) ([]inboundidentity.Binding, error) {
 		for _, name := range names {
 			id := byPrincipal[name]
 			if id != 0 && !ambiguous[name] {
-				result = append(result, inboundidentity.Binding{Inbound: row.Tag, Principal: name, ClientID: id})
+				result = append(result, entityidentity.InboundBinding{Inbound: row.Tag, Principal: name, ClientID: id})
 			}
 		}
 	}

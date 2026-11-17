@@ -14,14 +14,9 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 )
 
-type Binding struct {
-	Inbound   string
-	Principal string
-	ClientID  uint
-}
-
-// VPNUserID is the typed projection of the already proven local principal.
-func (b Binding) VPNUserID() entitytypes.VPNUserID { return entitytypes.VPNUserID(b.ClientID) }
+// Binding retains the runtime source API while the Panel association value has
+// one canonical owner. Admission epochs and credential verification stay here.
+type Binding = entitytypes.InboundBinding
 
 type principal struct {
 	binding Binding
