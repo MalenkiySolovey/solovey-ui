@@ -38,8 +38,6 @@ func (b *Service) SetLoginUser(c *gin.Context, userName string, maxAge int, sess
 		SessionGeneration:    sessionGeneration,
 		CredentialGeneration: NonzeroSessionGeneration(user.CredentialGeneration),
 		MFAGeneration:        NonzeroSessionGeneration(user.MFAGeneration),
-		ClientProvenance:     "direct",
-		ClientPrefix:         requestidentity.FromContext(c).ClientIP,
 		UserAgentHash:        panelsecurity.UserAgentDigest(c.Request.UserAgent()),
 		DeviceLabel:          BoundedDeviceLabel(c.Request.UserAgent()),
 		LegacyMaxAge:         time.Duration(maxAge) * time.Minute,
