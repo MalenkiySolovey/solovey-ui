@@ -89,7 +89,11 @@ func TestEmbeddedFrontendMatchesDeclaredDistribution(t *testing.T) {
 	httpServer := httptest.NewServer(router)
 	t.Cleanup(httpServer.Close)
 	loginRuntimeTransportFixtureAtBase(t, httpServer.Client(), httpServer.URL, password, base)
-	authenticated, err := httpServer.Client().Get(httpServer.URL + base + "hosts/local/clients")
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, httpServer.URL+base+"hosts/local/clients", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authenticated, err := httpServer.Client().Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
