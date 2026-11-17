@@ -136,6 +136,11 @@ func TestRuntimeLogsProductionMiddlewarePreservesTransportDeadlines(t *testing.T
 // owner; never enable API-token authentication merely to satisfy this fixture.
 func loginRuntimeTransportFixture(t *testing.T, client *http.Client, endpoint, password string) {
 	t.Helper()
+	loginRuntimeTransportFixtureAtBase(t, client, endpoint, password, "/qualification+v1/")
+}
+
+func loginRuntimeTransportFixtureAtBase(t *testing.T, client *http.Client, endpoint, password, base string) {
+	t.Helper()
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -143,7 +148,7 @@ func loginRuntimeTransportFixture(t *testing.T, client *http.Client, endpoint, p
 	client.Jar = jar
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
-	csrfRequest, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"/qualification+v1/api/csrf", nil)
+	csrfRequest, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+base+"api/csrf", nil)
 	csrfResponse, err := client.Do(csrfRequest)
 	if err != nil {
 		t.Fatal("browser CSRF request failed")
@@ -159,7 +164,7 @@ func loginRuntimeTransportFixture(t *testing.T, client *http.Client, endpoint, p
 		t.Fatal("browser CSRF owner rejected fixture")
 	}
 	form := url.Values{"user": {"admin"}, "pass": {password}}
-	login, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint+"/qualification+v1/api/login", strings.NewReader(form.Encode()))
+	login, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint+base+"api/login", strings.NewReader(form.Encode()))
 	login.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	login.Header.Set("Origin", endpoint)
 	login.Header.Set("X-CSRF-Token", csrf.Obj.Token)

@@ -313,23 +313,28 @@ const main = async () => {
   await waitForURL(`${backendBaseURL}login`, readyTimeoutMs, backendWatch)
   const password = await initializeAdminCredential(backendBaseURL, initialPassword)
 
-  const viteCLI = path.join(frontendDir, 'node_modules', 'vite', 'bin', 'vite.js')
-  const frontend = spawnLogged('frontend', process.execPath, [viteCLI, '--host', '127.0.0.1', '--port', '3000', '--strictPort'], {
-    cwd: frontendDir,
-    env: {
-      ...process.env,
-      SOLOVEY_UI_INPUTS_SHA256: frontendInputs.manifestSHA256,
-      SUI_E2E: '1',
-      SUI_E2E_WEB_PATH: e2eWebPath,
-      SUI_E2E_BACKEND_ORIGIN: backendOrigin,
-    },
-  })
-  const watchedChildren = [...backendWatch, { name: 'frontend', child: frontend }]
-  await waitForURL(`http://127.0.0.1:3000${e2eWebPath}login`, readyTimeoutMs, watchedChildren)
+  let baseURL = backendBaseURL, watchedChildren = backendWatch
+  if (process.env.SUI_E2E_FRONTEND_MODE !== 'embedded') {
+    const viteCLI = path.join(frontendDir, 'node_modules', 'vite', 'bin', 'vite.js')
+    const frontend = spawnLogged('frontend', process.execPath, [viteCLI, '--host', '127.0.0.1', '--port', '3000', '--strictPort'], {
+      cwd: frontendDir,
+      env: {
+        ...process.env,
+        SOLOVEY_UI_INPUTS_SHA256: frontendInputs.manifestSHA256,
+        SUI_E2E: '1',
+        SUI_E2E_WEB_PATH: e2eWebPath,
+        SUI_E2E_BACKEND_ORIGIN: backendOrigin,
+      },
+    })
+    watchedChildren = [...backendWatch, { name: 'frontend', child: frontend }]
+    await waitForURL(`http://127.0.0.1:3000${e2eWebPath}login`, readyTimeoutMs, watchedChildren)
+
+    baseURL = 'http://127.0.0.1:3000' + e2eWebPath
+  }
 
   fs.writeFileSync(stateTempPath, JSON.stringify({
     serverPid: process.pid,
-    baseURL: `http://127.0.0.1:3000${e2eWebPath}`,
+    baseURL,
     backendURL: backendBaseURL,
     username: 'admin',
     password,

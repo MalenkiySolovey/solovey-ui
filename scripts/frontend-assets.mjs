@@ -66,7 +66,16 @@ function componentProviders(dist, componentsDirectory) {
 function references(name, source) {
   const result = []
   const collect = pattern => { for (const match of source.matchAll(pattern)) result.push(match[1]) }
-  if (name.endsWith('.html')) collect(/\b(?:src|href)\s*=\s*["']([^"']+)["']/gi)
+  if (name.endsWith('.html')) {
+    // The Product template supplies the admin base; it is not an asset file.
+    // Previous compiled generations without a base tag remain verifiable.
+    source = source.replace(/<base\b[^>]*>/gi, tag => {
+      const href = tag.match(/\bhref\s*=\s*["']([^"']+)["']/i)?.[1]
+      if (href !== '{{ .BASE_URL }}') throw Error('Unsupported frontend base URL')
+      return ''
+    })
+    collect(/\b(?:src|href)\s*=\s*["']([^"']+)["']/gi)
+  }
   if (/\.m?js$/.test(name)) {
     collect(/\b(?:import|export)\s+(?:[^;"']*?\s+from\s*)?["']([^"']+)["']/g)
     collect(/\bimport\s*\(\s*["']([^"']+)["']\s*\)/g)

@@ -32,6 +32,17 @@ jobs:
         working-directory: frontend
       - name: Native tooling regressions
         run: node --test scripts/backend-source-inputs.test.mjs scripts/component-source-inputs.test.mjs scripts/frontend-build-inputs.test.mjs scripts/protection-owner-inputs.test.mjs scripts/frontend-assets.test.mjs scripts/frontend-runtime-closure.test.mjs scripts/frontend-test-runner.test.mjs scripts/windows-build.test.mjs scripts/core-provider-build.test.mjs scripts/core-source-provenance.test.mjs scripts/release-providers.test.mjs scripts/release-metadata.test.mjs scripts/audit/source-hygiene.test.mjs scripts/audit/performance.test.mjs scripts/audit/provider-vuln.test.mjs
+      - name: Independent frontend build without Product parents or Go
+        run: node scripts/frontend-standalone.mjs --out "${{ runner.temp }}/frontend-standalone"
+      - name: Upload independent frontend evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: frontend-independent-${{ runner.os }}
+          path: ${{ runner.temp }}/frontend-standalone
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
       - name: Verify pinned core copies, pristine authority trees and linear Git series
         if: runner.os == 'Linux'
         run: node scripts/core-source-provenance.mjs verify-remote
@@ -659,3 +670,58 @@ jobs:
         run: |
           node scripts/check-frontend-profile.mjs --profile full --selected-ids remote-outbound-subscriptions --dist frontend/dist
           node scripts/frontend-assets.mjs verify --dist frontend/dist
+
+  frontend-embedded-browser:
+    name: Frontend embedded browser
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: frontend/.node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --prefix frontend
+      - name: Build and publish the actual embedded Full frontend
+        run: |
+          node scripts/frontend.mjs build
+          node scripts/frontend-assets.mjs publish --dist frontend/dist --destination web/html
+      - name: Verify actual embedded bytes, nested URL and every dynamic asset
+        env:
+          SOLOVEY_FRONTEND_TEST_DIST: ${{ github.workspace }}/frontend/dist
+          CGO_ENABLED: "1"
+        run: go test -count=1 -v ./web -run 'TestEmbeddedFrontendMatchesDeclaredDistribution|TestFrontendInput|TestAssetsFS|TestComponentFrontendAssetDirs'
+      - name: Restore Playwright browsers
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Qualify Classic Nexus Host sessions and component UI against embedded assets
+        env:
+          SUI_E2E_FRONTEND_MODE: embedded
+          SUI_E2E_READY_TIMEOUT_MS: "900000"
+          SUI_E2E_RESULT_DIR: ${{ runner.temp }}/frontend-embedded-browser
+        run: >-
+          node scripts/frontend.mjs test:e2e
+          tests/e2e/login.spec.ts tests/e2e/host-context.spec.ts
+          tests/e2e/component-ui.spec.ts tests/e2e/panel-operability.spec.ts
+          tests/e2e/panel-operability-ownership.spec.ts tests/e2e/nexus-layout.spec.ts
+          tests/e2e/security-headers.spec.ts tests/e2e/embedded-assets.spec.ts --retries=0
+      - name: Upload embedded browser evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: frontend-embedded-browser
+          path: ${{ runner.temp }}/frontend-embedded-browser
+          if-no-files-found: warn
+          retention-days: 7
