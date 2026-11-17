@@ -11,7 +11,7 @@ import (
 func TestMigratedOwnerTransitionsUseAtomicCoordination(t *testing.T) {
 	for _, target := range []struct{ path, function string }{
 		{"service/update/lifecycle.go", "update"},
-		{"service/datalifecycle/drop.go", "advance"},
+		{"backend/datalifecycle/drop.go", "advance"},
 	} {
 		file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(moduleRoot(t), filepath.FromSlash(target.path)), nil, 0)
 		if err != nil {
@@ -79,7 +79,7 @@ func TestCommonPreflightRemainsAReadOnlySemanticFactEvaluator(t *testing.T) {
 }
 
 func TestMigratedLongOperationViewsKeepCommonJobIdentity(t *testing.T) {
-	for _, relative := range []string{"service/update/change.go", "service/datalifecycle/change.go"} {
+	for _, relative := range []string{"service/update/change.go", "backend/datalifecycle/change.go"} {
 		file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(moduleRoot(t), filepath.FromSlash(relative)), nil, 0)
 		if err != nil {
 			t.Fatal(err)

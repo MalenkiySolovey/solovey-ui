@@ -2,9 +2,9 @@ package datalifecycle
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,11 +18,11 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+//go:embed testdata/management-v1-vectors.json
+var restoreReplayVectors []byte
+
 func TestManagementContractReplayAgreesWithActualRestoreOwner(t *testing.T) {
-	data, err := os.ReadFile("../../contracts/management/v1/vectors.json")
-	if err != nil {
-		t.Fatal(err)
-	}
+	data := restoreReplayVectors
 	var set struct {
 		Cases []struct {
 			ID    string
