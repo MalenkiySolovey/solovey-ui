@@ -16,9 +16,9 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	remote "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 func TestScheduledRefreshDrainsBeforeRestoreAndCanceledFetchKeepsAcceptedState(t *testing.T) {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/durable"
 	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
@@ -23,7 +24,6 @@ import (
 	fallbackservice "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/service"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
 	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"gorm.io/gorm"
 )
 

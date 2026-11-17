@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	"github.com/MalenkiySolovey/solovey-ui/database/schema"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 type updatePanelProof struct{ at time.Time }

@@ -15,9 +15,9 @@ import (
 	"github.com/MalenkiySolovey/solovey-component-server-protection/service/events"
 	"github.com/MalenkiySolovey/solovey-component-server-protection/service/observationio"
 	"github.com/MalenkiySolovey/solovey-component-server-protection/service/scoring"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 type Source struct{}

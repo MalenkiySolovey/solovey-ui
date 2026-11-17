@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/mountevidence"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/ops/resourcepressure"
 	"github.com/shirou/gopsutil/v4/disk"

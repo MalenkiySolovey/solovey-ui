@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	paidcore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
 	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	sublocal "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/local"
 )
 

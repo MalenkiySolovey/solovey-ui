@@ -8,6 +8,7 @@ import (
 
 	hostlifecycle "github.com/MalenkiySolovey/solovey-host/componenthost"
 
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
@@ -15,7 +16,6 @@ import (
 	componentmigrations "github.com/MalenkiySolovey/solovey-ui/componenthost/migrations"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 )
 

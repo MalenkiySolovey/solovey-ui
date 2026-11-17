@@ -3,7 +3,7 @@ package sub
 import (
 	"time"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	subserver "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/server"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"

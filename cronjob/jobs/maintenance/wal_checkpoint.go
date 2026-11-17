@@ -1,7 +1,7 @@
 package maintenance
 
 import (
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 )
 

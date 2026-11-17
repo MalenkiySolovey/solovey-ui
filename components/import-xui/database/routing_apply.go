@@ -8,9 +8,9 @@ import (
 
 	"encoding/json"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/mapping"
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityendpoints "github.com/MalenkiySolovey/solovey-ui/internal/entities/endpoints"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"

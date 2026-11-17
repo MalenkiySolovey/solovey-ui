@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/ratelimit"

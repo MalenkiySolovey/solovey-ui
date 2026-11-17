@@ -14,7 +14,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	backupenvelope "github.com/MalenkiySolovey/solovey-ui/internal/backup/envelope"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	datalifecycle "github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"

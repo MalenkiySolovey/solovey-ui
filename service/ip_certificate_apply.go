@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	ipcertops "github.com/MalenkiySolovey/solovey-ui/internal/ops/ipcert"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )

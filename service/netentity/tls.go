@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 
 	"gorm.io/gorm"

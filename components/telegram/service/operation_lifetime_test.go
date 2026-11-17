@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	telegramservice "github.com/MalenkiySolovey/solovey-ui/components/telegram/service"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 type lifetimeTelegramSettings struct{ testTelegramSettings }

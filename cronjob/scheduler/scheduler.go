@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/cronjob/jobs/maintenance"
 	runtimejobs "github.com/MalenkiySolovey/solovey-ui/cronjob/jobs/runtime"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/robfig/cron/v3"
 )
 

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
@@ -20,7 +21,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/config/versionpolicy"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/database/schema"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	componentprofile "github.com/MalenkiySolovey/solovey-ui/internal/components/profile"
 	deploymentdomain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
 	operationcoordination "github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
