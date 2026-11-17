@@ -3,7 +3,7 @@ package backup
 import (
 	"context"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/hooks"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/hooks"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )

@@ -8,11 +8,11 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
 	"testing"
 
+	dbhooks "github.com/MalenkiySolovey/solovey-ui/backend/storage/hooks"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
-	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	datalifecycle "github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"
 	"gorm.io/gorm"
 )

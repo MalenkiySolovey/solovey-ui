@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	dbhooks "github.com/MalenkiySolovey/solovey-ui/backend/storage/hooks"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/restorestate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
@@ -22,7 +23,6 @@ import (
 	versionpolicy "github.com/MalenkiySolovey/solovey-ui/config/versionpolicy"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/cronjob/scheduler"
-	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	deploymentdomain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"

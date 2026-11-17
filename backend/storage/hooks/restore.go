@@ -5,7 +5,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	"fmt"
 )
 
 type importPostOpenHook func(context.Context) error
@@ -63,7 +63,7 @@ func RunPostOpen(ctx context.Context) error {
 			return err
 		}
 		if err := hook.run(ctx); err != nil {
-			return common.NewErrorf("Error running import post-open hook %s: %v", hook.name, err)
+			return fmt.Errorf("Error running import post-open hook %s: %v", hook.name, err)
 		}
 	}
 	return ctx.Err()

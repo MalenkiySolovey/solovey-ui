@@ -3,7 +3,7 @@ package deployment
 import (
 	"context"
 
-	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
+	dbhooks "github.com/MalenkiySolovey/solovey-ui/backend/storage/hooks"
 )
 
 func init() {

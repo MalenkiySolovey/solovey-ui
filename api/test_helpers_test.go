@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	dbhooks "github.com/MalenkiySolovey/solovey-ui/backend/storage/hooks"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"

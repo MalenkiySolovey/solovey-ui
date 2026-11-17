@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/MalenkiySolovey/solovey-ui/database/hooks"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/hooks"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"io"
 	"os"

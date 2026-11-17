@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/hooks"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

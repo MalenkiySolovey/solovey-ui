@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	dbhooks "github.com/MalenkiySolovey/solovey-ui/backend/storage/hooks"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
@@ -23,7 +24,6 @@ import (
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
 	fallbackservice "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/service"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
-	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	"gorm.io/gorm"
 )
 

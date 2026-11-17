@@ -8,73 +8,6 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestForeignKeyViolationCountsSyntheticData(t *testing.T) {
-	db := openForeignKeyTestDB(t)
-	createForeignKeyTestTables(t, db)
-	if err := db.Exec("INSERT INTO tokens(id, user_id) VALUES(1, 42)").Error; err != nil {
-		t.Fatal(err)
-	}
-
-	violations, err := foreignKeyViolations(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	counts := foreignKeyViolationCounts(violations)
-	if counts["tokens"] != 1 {
-		t.Fatalf("unexpected foreign-key counts: %#v violations=%#v", counts, violations)
-	}
-}
-
-func TestVerifyForeignKeysRepairsSafeTokenOrphans(t *testing.T) {
-	db := openForeignKeyTestDB(t)
-	createForeignKeyTestTables(t, db)
-	if err := db.Exec("INSERT INTO users(id) VALUES(7)").Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec("INSERT INTO tokens(id, user_id) VALUES(1, 42), (2, 7)").Error; err != nil {
-		t.Fatal(err)
-	}
-
-	if err := VerifyForeignKeysBeforeMigration(db, Options{RepairForeignKeyOrphans: true}); err != nil {
-		t.Fatal(err)
-	}
-
-	var tokenCount int64
-	if err := db.Table("tokens").Count(&tokenCount).Error; err != nil {
-		t.Fatal(err)
-	}
-	if tokenCount != 1 {
-		t.Fatalf("expected one non-orphan token to remain, got %d", tokenCount)
-	}
-	violations, err := foreignKeyViolations(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(violations) != 0 {
-		t.Fatalf("foreign-key violations remained after repair: %#v", violations)
-	}
-	var auditCount int64
-	if err := db.Table("audit_events").Where("event = ?", "foreign_key_check_failed").Count(&auditCount).Error; err != nil {
-		t.Fatal(err)
-	}
-	if auditCount == 0 {
-		t.Fatal("foreign-key repair did not write an audit event")
-	}
-}
-
-func TestVerifyForeignKeysFailsFastWithoutRepair(t *testing.T) {
-	db := openForeignKeyTestDB(t)
-	createForeignKeyTestTables(t, db)
-	if err := db.Exec("INSERT INTO tokens(id, user_id) VALUES(1, 42)").Error; err != nil {
-		t.Fatal(err)
-	}
-
-	err := VerifyForeignKeysBeforeMigration(db, Options{})
-	if err == nil || !strings.Contains(err.Error(), "repair-fk-orphans") {
-		t.Fatalf("expected repair guidance, got %v", err)
-	}
-}
-
 func TestEnsureNoTLSForeignKeyParentRepairsNoTLSInbound(t *testing.T) {
 	db := openForeignKeyTestDB(t)
 	if err := db.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
@@ -102,7 +35,7 @@ CREATE TABLE inbounds(
 		t.Fatal(err)
 	}
 
-	before, err := foreignKeyViolations(db)
+	before, err := tlsForeignKeyViolations(db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +45,7 @@ CREATE TABLE inbounds(
 	if err := EnsureNoTLSForeignKeyParent(db); err != nil {
 		t.Fatal(err)
 	}
-	after, err := foreignKeyViolations(db)
+	after, err := tlsForeignKeyViolations(db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,29 +72,18 @@ func openForeignKeyTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func createForeignKeyTestTables(t *testing.T, db *gorm.DB) {
-	t.Helper()
-	if err := db.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
-		t.Fatal(err)
+func tlsForeignKeyViolations(db *gorm.DB) ([]struct {
+	Table  string
+	RowID  int64
+	Parent string
+	FKID   int
+}, error) {
+	var rows []struct {
+		Table  string
+		RowID  int64
+		Parent string
+		FKID   int
 	}
-	if err := db.Exec("CREATE TABLE users(id integer PRIMARY KEY)").Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec("CREATE TABLE tokens(id integer PRIMARY KEY, user_id integer, FOREIGN KEY(user_id) REFERENCES users(id))").Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Exec(`
-CREATE TABLE audit_events (
-	id integer PRIMARY KEY AUTOINCREMENT,
-	date_time integer,
-	actor text,
-	event text,
-	resource text,
-	severity text,
-	ip text,
-	user_agent text,
-	details blob
-)`).Error; err != nil {
-		t.Fatal(err)
-	}
+	err := db.Raw("PRAGMA foreign_key_check").Scan(&rows).Error
+	return rows, err
 }

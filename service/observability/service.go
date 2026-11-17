@@ -8,8 +8,8 @@ import (
 	"sync"
 
 	canonical "github.com/MalenkiySolovey/solovey-component-observability-extra/history"
+	dbhooks "github.com/MalenkiySolovey/solovey-ui/backend/storage/hooks"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
-	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	"gorm.io/gorm"
 )
 
