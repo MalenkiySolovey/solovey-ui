@@ -13,7 +13,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/backend/hostcontext"
 	authhttp "github.com/MalenkiySolovey/solovey-ui/backend/http/auth"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-ui/middleware/databaseoperation"
+	"github.com/MalenkiySolovey/solovey-ui/backend/http/databaseoperation"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/gin-gonic/gin"

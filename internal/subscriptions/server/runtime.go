@@ -13,9 +13,9 @@ import (
 
 	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-ui/middleware/databaseoperation"
-	domainmiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/domain"
-	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/security"
+	"github.com/MalenkiySolovey/solovey-ui/backend/http/databaseoperation"
+	domainmiddleware "github.com/MalenkiySolovey/solovey-ui/backend/http/domain"
+	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/backend/http/security"
 	"github.com/MalenkiySolovey/solovey-ui/network/autohttps"
 	"github.com/MalenkiySolovey/solovey-ui/network/bind"
 	"github.com/gin-contrib/gzip"

@@ -10,7 +10,7 @@ import (
 	telemetryhttp "github.com/MalenkiySolovey/solovey-ui/api/telemetry"
 	"github.com/MalenkiySolovey/solovey-ui/backend/hostcontext"
 	authhttp "github.com/MalenkiySolovey/solovey-ui/backend/http/auth"
-	"github.com/MalenkiySolovey/solovey-ui/middleware/databaseoperation"
+	"github.com/MalenkiySolovey/solovey-ui/backend/http/databaseoperation"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"

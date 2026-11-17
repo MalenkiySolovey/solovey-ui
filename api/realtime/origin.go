@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
-	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/security"
+	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/backend/http/security"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"
