@@ -1,14 +1,11 @@
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { frontendRoot } from './helpers'
 
-export const repositoryRoot = path.resolve(process.cwd(), '..')
-export const managedE2EResultDir = process.env.SUI_E2E_RESULT_DIR ? path.resolve(process.env.SUI_E2E_RESULT_DIR) : path.join(
-  repositoryRoot,
-  'tests',
-  'baseline',
-  'e2e',
-)
+export const managedE2EResultDir = process.env.SUI_E2E_RESULT_DIR
+  ? path.resolve(process.env.SUI_E2E_RESULT_DIR)
+  : path.join(frontendRoot, '.test-results/e2e')
 export const managedServerDir = path.join(
   managedE2EResultDir,
   'e2e-server',
@@ -18,7 +15,9 @@ export const managedServerStatePath = path.join(
   'state.json',
 )
 
-const managedServerEntryPoint = path.join(repositoryRoot, 'tests', 'e2e', 'run-server.js')
+export const managedServerEntryPoint = process.env.SUI_E2E_SERVER_SCRIPT
+  ? path.resolve(process.env.SUI_E2E_SERVER_SCRIPT)
+  : undefined
 const managedRuntimePaths = [
   path.join(managedE2EResultDir, 'e2e-db'),
   path.join(managedE2EResultDir, '.runtime'),
@@ -42,7 +41,7 @@ export const readManagedServerPid = (): number | undefined => {
 }
 
 export const stopManagedServer = (pid: number | undefined): void => {
-  if (!pid) return
+  if (!pid || !managedServerEntryPoint) return
 
   const commandLine = readProcessCommandLine(pid)
   if (!commandLine || !normalizeCommandLine(commandLine).includes(normalizeCommandLine(managedServerEntryPoint))) {

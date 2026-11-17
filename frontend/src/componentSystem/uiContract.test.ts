@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { register as registerObservability } from '../../../.component-sources/observability-extra/frontend/index'
 import {
   componentRoutes, contributionFor, navItems, registerBundledComponent, registerComponent,
   registeredComponents, setComponentUIReadPermissions, unregisterComponent,
 } from './registry'
 import type { ComponentContribution, RouteContribution } from './types'
+
+const observabilityInputs = import.meta.glob<{register: () => void}>('../../.component-inputs/components/observability-extra/frontend/index.ts', {eager: true})
+const registerObservability = Object.values(observabilityInputs)[0]?.register
 
 afterEach(() => {
   registeredComponents.value.forEach(component => unregisterComponent(component.id))
@@ -68,8 +70,8 @@ describe('controlled Component UI metadata', () => {
     expect(contributionFor('fixture')).toBeUndefined()
   })
 
-  it('projects the real Observability routes and nav from current read permissions', () => {
-    registerBundledComponent('observability-extra', registerObservability)
+  it.skipIf(!registerObservability)('projects the real Observability routes and nav from current read permissions', () => {
+    registerBundledComponent('observability-extra', registerObservability!)
     expect(componentRoutes.value).toHaveLength(0)
     expect(navItems.value).toHaveLength(0)
     setComponentUIReadPermissions(['diagnostics.read', 'unknown.permission'])

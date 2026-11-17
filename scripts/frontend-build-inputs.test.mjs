@@ -5,9 +5,10 @@ import os from 'node:os'
 import path from 'node:path'
 import {execFileSync} from 'node:child_process'
 import {fileURLToPath} from 'node:url'
+import {runFrontendTask} from './frontend.mjs'
 import {digest, frontendDigest, regularSourceTree} from './component-source-inputs.mjs'
 import {projectFrontendBuildInputs} from './frontend-build-inputs.mjs'
-import {frontendAPIFiles, readFrontendBuildInputs, validateFrontendBuildInputs} from '../frontend/scripts/component-build-inputs.mjs'
+import {frontendAPIFiles, readFrontendBuildInputs, validateFrontendBuildInputs, selectFrontendEntries} from '../frontend/scripts/component-build-inputs.mjs'
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'frontend inputs '))
@@ -182,4 +183,34 @@ test('failed publication restores the accepted projection before releasing the l
   assert.equal(f.read(accepted).manifestSHA256, accepted.manifestSHA256)
   assert.ok(!fs.existsSync(path.join(f.frontend, '.component-inputs.lock')))
   assert.deepEqual(fs.readdirSync(f.frontend).filter(name => name.startsWith('.component-inputs-stage-')), [])
+})
+
+test('profile selection is drawn only from declared entries; Core/minimal admit no optional UI', t => {
+  const f = fixture(t), input = f.read(f.prepare())
+  assert.deepEqual(selectFrontendEntries(input, {}).map(entry => entry.id), ['panel-update-ui', 'telegram'])
+  assert.deepEqual(selectFrontendEntries(input, {SOLOVEY_UI_COMPONENT_IDS: 'telegram, telegram'}).map(entry => entry.id), ['telegram'])
+  for (const profile of ['core', 'minimal']) assert.deepEqual(selectFrontendEntries(input, {SOLOVEY_UI_PROFILE: profile}), [])
+  assert.deepEqual(selectFrontendEntries(input, {SOLOVEY_UI_COMPONENT_IDS: ''}), [])
+  assert.throws(() => selectFrontendEntries(input, {SOLOVEY_UI_COMPONENT_IDS: 'absent'}), /unavailable/)
+  assert.throws(() => selectFrontendEntries(input, {SOLOVEY_UI_COMPONENT_IDS: 'https://example.invalid/ui.js'}), /invalid/)
+  assert.throws(() => selectFrontendEntries(input, {SOLOVEY_UI_PROFILE: 'unknown'}), /unsupported/)
+})
+
+test('Product adapter supplies freshly verified inputs and explicit E2E integration without shell argument loss', t => {
+  const f = fixture(t)
+  fs.writeFileSync(path.join(f.root, 'components/sources.lock.json'), JSON.stringify({schema: 'solovey.component-source-inputs/v1', sources: []}))
+  fs.rmSync(path.join(f.root, 'components/telegram'), {recursive: true})
+  const npm = path.join(f.root, 'npm-cli.mjs'), output = path.join(f.root, 'observation.json')
+  fs.writeFileSync(npm, `import fs from 'node:fs'; fs.writeFileSync(process.env.SOLOVEY_FRONTEND_TEST_RESULT, JSON.stringify({args: process.argv.slice(2), cwd: process.cwd(), hash: process.env.SOLOVEY_UI_INPUTS_SHA256, server: process.env.SUI_E2E_SERVER_SCRIPT})); process.exitCode = 17`)
+  const values = {npm_execpath: npm, SOLOVEY_FRONTEND_TEST_RESULT: output, SOLOVEY_UI_INPUTS_SHA256: 'untrusted'}
+  const previous = Object.fromEntries(Object.keys(values).map(name => [name, process.env[name]]))
+  Object.assign(process.env, values)
+  try { assert.equal(runFrontendTask('test:e2e', ['--grep', 'two words'], f.root), 17) }
+  finally { for (const [name, value] of Object.entries(previous)) { if (value === undefined) delete process.env[name]; else process.env[name] = value } }
+  const observation = JSON.parse(fs.readFileSync(output))
+  assert.deepEqual(observation.args, ['run', 'test:e2e', '--', '--grep', 'two words'])
+  assert.equal(observation.cwd, fs.realpathSync.native(f.frontend))
+  assert.equal(observation.hash, digest(fs.readFileSync(f.manifestPath)))
+  assert.equal(observation.server, path.join(fs.realpathSync.native(f.root), 'tests/e2e/run-server.js'))
+  assert.throws(() => runFrontendTask('unknown', [], f.root), /unsupported/)
 })

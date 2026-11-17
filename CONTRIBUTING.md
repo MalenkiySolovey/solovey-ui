@@ -45,8 +45,8 @@ Frontend setup:
 ```sh
 cd frontend
 npm ci
-npm run test:unit
-npm run build
+node ../scripts/frontend.mjs test:unit
+node ../scripts/frontend.mjs build
 ```
 
 Playwright setup:
@@ -54,7 +54,7 @@ Playwright setup:
 ```sh
 cd frontend
 npx playwright install chromium
-npx playwright test
+node ../scripts/frontend.mjs test:e2e
 ```
 
 ## Component Rules

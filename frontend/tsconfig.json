@@ -29,7 +29,7 @@
       "vitest": ["./node_modules/vitest"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue", "../components/*/frontend/**/*.ts", "../components/*/frontend/**/*.vue", "../.component-sources/*/frontend/**/*.ts", "../.component-sources/*/frontend/**/*.vue"],
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue", ".component-inputs/components/*/frontend/**/*.ts", ".component-inputs/components/*/frontend/**/*.vue"],
   "references": [{ "path": "./tsconfig.node.json" }],
   "exclude": ["node_modules"],
 }

@@ -31,7 +31,7 @@ jobs:
       - run: npm ci
         working-directory: frontend
       - name: Native tooling regressions
-        run: node --test scripts/backend-source-inputs.test.mjs scripts/component-source-inputs.test.mjs scripts/frontend-build-inputs.test.mjs scripts/protection-owner-inputs.test.mjs scripts/frontend-assets.test.mjs scripts/frontend-test-runner.test.mjs scripts/windows-build.test.mjs scripts/core-provider-build.test.mjs scripts/core-source-provenance.test.mjs scripts/release-providers.test.mjs scripts/release-metadata.test.mjs scripts/audit/source-hygiene.test.mjs scripts/audit/performance.test.mjs scripts/audit/provider-vuln.test.mjs
+        run: node --test scripts/backend-source-inputs.test.mjs scripts/component-source-inputs.test.mjs scripts/frontend-build-inputs.test.mjs scripts/protection-owner-inputs.test.mjs scripts/frontend-assets.test.mjs scripts/frontend-runtime-closure.test.mjs scripts/frontend-test-runner.test.mjs scripts/windows-build.test.mjs scripts/core-provider-build.test.mjs scripts/core-source-provenance.test.mjs scripts/release-providers.test.mjs scripts/release-metadata.test.mjs scripts/audit/source-hygiene.test.mjs scripts/audit/performance.test.mjs scripts/audit/provider-vuln.test.mjs
       - name: Verify pinned core copies, pristine authority trees and linear Git series
         if: runner.os == 'Linux'
         run: node scripts/core-source-provenance.mjs verify-remote
@@ -606,11 +606,11 @@ jobs:
 
       - name: Frontend unit tests
         working-directory: frontend
-        run: npm run test
+        run: node ../scripts/frontend.mjs test
 
       - name: Frontend full build
         working-directory: frontend
-        run: SOLOVEY_UI_PROFILE=full npm run build
+        run: SOLOVEY_UI_PROFILE=full node ../scripts/frontend.mjs build
 
       - name: Frontend full profile scan
         run: node scripts/check-frontend-profile.mjs --profile full --dist frontend/dist
@@ -628,14 +628,14 @@ jobs:
 
       - name: Frontend core build
         working-directory: frontend
-        run: SOLOVEY_UI_PROFILE=core npm run build
+        run: SOLOVEY_UI_PROFILE=core node ../scripts/frontend.mjs build
 
       - name: Frontend core profile scan
         run: node scripts/check-frontend-profile.mjs --profile core --dist frontend/dist
 
       - name: Frontend custom Fallback build
         working-directory: frontend
-        run: SOLOVEY_UI_PROFILE=full SOLOVEY_UI_COMPONENT_IDS=fallback-html npm run build
+        run: SOLOVEY_UI_PROFILE=full SOLOVEY_UI_COMPONENT_IDS=fallback-html node ../scripts/frontend.mjs build
 
       - name: Frontend custom Fallback profile and asset closure
         run: |
@@ -644,7 +644,7 @@ jobs:
 
       - name: Frontend custom protection build
         working-directory: frontend
-        run: SOLOVEY_UI_PROFILE=full SOLOVEY_UI_COMPONENT_IDS=server-protection npm run build
+        run: SOLOVEY_UI_PROFILE=full SOLOVEY_UI_COMPONENT_IDS=server-protection node ../scripts/frontend.mjs build
 
       - name: Frontend custom protection profile and asset closure
         run: |
@@ -653,7 +653,7 @@ jobs:
 
       - name: Frontend custom subscriptions build
         working-directory: frontend
-        run: SOLOVEY_UI_PROFILE=full SOLOVEY_UI_COMPONENT_IDS=remote-outbound-subscriptions npm run build
+        run: SOLOVEY_UI_PROFILE=full SOLOVEY_UI_COMPONENT_IDS=remote-outbound-subscriptions node ../scripts/frontend.mjs build
 
       - name: Frontend custom subscriptions profile and asset closure
         run: |

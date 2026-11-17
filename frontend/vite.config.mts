@@ -3,17 +3,16 @@ import vue from '@vitejs/plugin-vue'
 import vuetify, { transformAssetUrls } from 'vite-plugin-vuetify'
 
 // Utilities
-import fs from 'node:fs'
 import path from 'node:path'
 import { defineConfig, normalizePath, type Plugin } from 'vite'
 import { fileURLToPath, URL } from 'node:url'
-import { componentSourceRoot } from '../scripts/component-source-inputs.mjs'
+import { readFrontendBuildInputs, selectFrontendEntries } from './scripts/component-build-inputs.mjs'
 
 const isE2E = process.env.SUI_E2E === '1'
 const componentProfile = ['core', 'minimal'].includes(process.env.SOLOVEY_UI_PROFILE || '') ? 'core' : 'full'
 const frontendRoot = fileURLToPath(new URL('.', import.meta.url))
-const repoRoot = path.resolve(frontendRoot, '..')
-const bundledComponentIDs = resolveBundledComponentIDs()
+const inputs = readFrontendBuildInputs(frontendRoot)
+const bundledEntries = selectFrontendEntries(inputs, process.env)
 const e2eWebPath = normalizeWebPath(process.env.SUI_E2E_WEB_PATH || '/e2e-panel/')
 const apiProxyTarget = isE2E ? process.env.SUI_E2E_BACKEND_ORIGIN || 'http://localhost:2095' : 'http://localhost:2095'
 const apiProxyPath = isE2E ? `${e2eWebPath}api` : '/app/api'
@@ -22,7 +21,7 @@ export default defineConfig({
   base: '',
   plugins: [
     e2eBaseURLPlugin(),
-    componentEntriesPlugin(bundledComponentIDs),
+    componentEntriesPlugin(bundledEntries),
     vue({
       template: { transformAssetUrls },
     }),
@@ -106,7 +105,7 @@ export default defineConfig({
   server: {
     fs: {
       allow: [
-        fileURLToPath(new URL('..', import.meta.url)),
+        frontendRoot,
       ],
     },
     hmr: isE2E ? false : undefined,
@@ -120,7 +119,7 @@ export default defineConfig({
   }
 })
 
-export function componentEntriesPlugin(componentIDs: string[]): Plugin {
+export function componentEntriesPlugin(componentEntries: Array<{id: string; entry: string}>): Plugin {
   const moduleID = 'virtual:solovey-component-entries'
   const resolvedModuleID = '\0' + moduleID
 
@@ -131,14 +130,10 @@ export function componentEntriesPlugin(componentIDs: string[]): Plugin {
     },
     load(id) {
       if (id !== resolvedModuleID) return undefined
-      const entries = componentIDs
-        .map(componentID => {
-          const entry = componentFrontendEntry(componentID)
-          if (!fs.existsSync(entry)) return undefined
-          const specifier = `/@fs/${normalizePath(entry)}`
-          return `  ${JSON.stringify(componentID)}: () => import(${JSON.stringify(specifier)})`
-        })
-        .filter((entry): entry is string => Boolean(entry))
+      const entries = componentEntries.map(({id, entry}) => {
+        const specifier = '/' + normalizePath(path.relative(frontendRoot, entry))
+        return '  ' + JSON.stringify(id) + ': () => import(' + JSON.stringify(specifier) + ')'
+      })
       return `export const componentEntries = {\n${entries.join(',\n')}\n}\n`
     },
   }
@@ -151,56 +146,6 @@ function e2eBaseURLPlugin(): Plugin {
       if (!isE2E) return html
       return html.replace('{{ .BASE_URL }}', e2eWebPath)
     },
-  }
-}
-
-function resolveBundledComponentIDs() {
-  if (componentProfile === 'core') return []
-
-  const raw = process.env.SOLOVEY_UI_COMPONENT_IDS
-  if (raw !== undefined) {
-    return parseComponentIDList(raw)
-  }
-  return discoverFrontendComponentIDs()
-}
-
-function parseComponentIDList(raw: string) {
-  const ids = raw
-    .split(',')
-    .map(id => id.trim())
-    .filter(Boolean)
-  const unique = [...new Set(ids)]
-  for (const id of unique) {
-    assertComponentID(id)
-    const manifest = path.join(repoRoot, 'components', id, 'component.json')
-    if (!fs.existsSync(manifest)) {
-      throw new Error(`Unknown Solovey UI component id: ${id}`)
-    }
-  }
-  return unique.sort((a, b) => a.localeCompare(b))
-}
-
-function discoverFrontendComponentIDs() {
-  const componentsRoot = path.join(repoRoot, 'components')
-  if (!fs.existsSync(componentsRoot)) return []
-  return fs.readdirSync(componentsRoot, { withFileTypes: true })
-    .filter(entry => entry.isDirectory())
-    .map(entry => entry.name)
-    .filter(id => {
-      assertComponentID(id)
-      return fs.existsSync(path.join(componentsRoot, id, 'component.json')) &&
-        fs.existsSync(componentFrontendEntry(id))
-    })
-    .sort((a, b) => a.localeCompare(b))
-}
-
-function componentFrontendEntry(componentID: string) {
-  return path.join(componentSourceRoot(componentID, repoRoot), 'frontend', 'index.ts')
-}
-
-function assertComponentID(id: string) {
-  if (!/^[a-z0-9-]+$/.test(id)) {
-    throw new Error(`Invalid Solovey UI component id: ${id}`)
   }
 }
 

@@ -28,7 +28,7 @@ mapfile -t provider_go_args <<< "$PROVIDER_GO_ARGS"
 (
     cd frontend
     npm ci
-    SOLOVEY_UI_PROFILE=full npm run build
+    SOLOVEY_UI_PROFILE=full node ../scripts/frontend.mjs build
 )
 node scripts/check-frontend-profile.mjs --profile full --dist frontend/dist
 node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go

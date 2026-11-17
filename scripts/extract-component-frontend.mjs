@@ -3,8 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
-import { componentManifestKey } from './component-source-inputs.mjs'
-import { flattenComponentFrontendEntries, readComponentFrontendEntries } from './component-frontend-manifest.mjs'
+import { flattenComponentFrontendEntries, readComponentFrontendEntries, resolveComponentManifestKey } from './component-frontend-manifest.mjs'
 
 const args = parseArgs()
 const dist = path.resolve(args.get('dist') ?? 'frontend/dist')
@@ -120,7 +119,7 @@ function manifestEntriesByComponent(entriesByComponent) {
 
 function manifestEntryKey(componentId, entry) {
   if (entry.startsWith('frontend/')) {
-    return componentManifestKey(componentId, entry, path.dirname(componentsDir))
+    return resolveComponentManifestKey(manifest, componentId, entry, path.dirname(componentsDir))
   }
   return entry
 }

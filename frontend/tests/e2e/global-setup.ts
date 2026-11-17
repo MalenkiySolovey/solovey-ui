@@ -7,7 +7,7 @@ import {
   managedServerDir,
   managedServerStatePath,
   readManagedServerPid,
-  repositoryRoot,
+  managedServerEntryPoint,
   stopManagedServer,
 } from './server-lifecycle'
 
@@ -48,11 +48,12 @@ const waitForManagedServer = async (timeoutMs: number, startupFailure: () => Err
 }
 
 export default async function globalSetup() {
+  if (!managedServerEntryPoint) throw new Error('Managed E2E requires SUI_E2E_SERVER_SCRIPT from the Product adapter; use SUI_E2E_SKIP_WEB_SERVER=1 with an explicitly supplied external server otherwise.')
   stopManagedServer(readManagedServerPid())
   cleanupManagedServerRuntime(false)
 
-  const server = spawn(process.execPath, [path.join(repositoryRoot, 'tests', 'e2e', 'run-server.js')], {
-    cwd: repositoryRoot,
+  const server = spawn(process.execPath, [managedServerEntryPoint], {
+    cwd: process.env.SUI_E2E_SERVER_CWD || path.dirname(managedServerEntryPoint),
     detached: true,
     env: process.env,
     stdio: ['ignore', 'inherit', 'inherit'],

@@ -76,6 +76,21 @@ export function readFrontendBuildInputs(frontendRoot = fileURLToPath(new URL('..
   return {manifest, directory, manifestSHA256: expectedSHA256, entries}
 }
 
+export function selectFrontendEntries(input, env = process.env) {
+  const profile = env.SOLOVEY_UI_PROFILE || 'full'
+  assert.ok(['full', 'core', 'minimal'].includes(profile), 'unsupported frontend profile')
+  if (profile !== 'full') return []
+  const raw = env.SOLOVEY_UI_COMPONENT_IDS
+  if (raw === undefined) return input.entries
+  const ids = [...new Set(raw.split(',').map(id => id.trim()).filter(Boolean))].sort()
+  return ids.map(id => {
+    assert.match(id, /^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'invalid frontend component selection')
+    const entry = input.entries.find(entry => entry.id === id)
+    assert.ok(entry, 'component UI input unavailable: ' + id)
+    return entry
+  })
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   assert.deepEqual(process.argv.slice(2), ['verify'], 'expected verify')
   const input = readFrontendBuildInputs()

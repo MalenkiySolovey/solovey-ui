@@ -268,6 +268,8 @@ process.on('SIGTERM', () => {
 process.on('exit', stopAll)
 
 const main = async () => {
+  const { prepareFrontendBuildInputs } = await import('../../scripts/frontend-build-inputs.mjs')
+  const frontendInputs = prepareFrontendBuildInputs(repoRoot)
   generateComponentOverlay()
 
   const backendEnv = {
@@ -316,6 +318,7 @@ const main = async () => {
     cwd: frontendDir,
     env: {
       ...process.env,
+      SOLOVEY_UI_INPUTS_SHA256: frontendInputs.manifestSHA256,
       SUI_E2E: '1',
       SUI_E2E_WEB_PATH: e2eWebPath,
       SUI_E2E_BACKEND_ORIGIN: backendOrigin,

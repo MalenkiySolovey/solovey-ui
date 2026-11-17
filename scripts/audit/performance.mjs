@@ -108,7 +108,9 @@ async function main() {
       const group=path.join(out,'perf-'+label)
       fs.mkdirSync(group,{recursive:true})
       run('npm',['ci'],{cwd:path.join(directory,'frontend'),env,file:path.join(group,'install.txt')})
-      run('npm',['run','build'],{cwd:path.join(directory,'frontend'),env,file:path.join(group,'frontend.txt')})
+      const adapter=path.join(directory,'scripts/frontend.mjs')
+      if(fs.existsSync(adapter))run(process.execPath,[adapter,'build'],{cwd:directory,env,file:path.join(group,'frontend.txt')})
+      else run('npm',['run','build'],{cwd:path.join(directory,'frontend'),env,file:path.join(group,'frontend.txt')})
       run(process.execPath,[path.join(directory,'scripts/generate-component-imports.mjs'),'--profile','full'],{cwd:directory,env,file:path.join(group,'composition.txt')})
       // The current publication owner validates both revisions, including an
       // older baseline that predates this helper. No checkout is reused.

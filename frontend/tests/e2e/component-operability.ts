@@ -3,16 +3,13 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { enableComponent, repoRoot } from './helpers'
+import { enableComponent, frontendRoot } from './helpers'
+import { readFrontendBuildInputs } from '../../scripts/component-build-inputs.mjs'
 
 export type CatalogComponent = {
   id: string
   installed: boolean
   active: boolean
-}
-
-type ComponentManifest = {
-  id?: unknown
 }
 
 type ComponentOperabilityContext = {
@@ -24,7 +21,6 @@ type ComponentOperabilityContext = {
 
 type ComponentOperabilityScenario = (context: ComponentOperabilityContext) => Promise<void>
 
-const componentIDPattern = /^[a-z0-9-]+$/
 const scenarioRelativePath = path.join('frontend', 'tests', 'e2e', 'panel-operability.mjs')
 
 export const successfulObject = async <T>(response: APIResponse) => {
@@ -61,34 +57,16 @@ export const runRegisteredComponentOperability = async (
 }
 
 const discoverComponentOperabilityScenarios = async () => {
-  const { componentSourceRoot } = await import(pathToFileURL(path.join(repoRoot, 'scripts', 'component-source-inputs.mjs')).href)
-  const componentsRoot = path.join(repoRoot, 'components')
+  const inputs = readFrontendBuildInputs(frontendRoot)
   const scenarios = new Map<string, ComponentOperabilityScenario>()
-  const componentDirectories = fs.readdirSync(componentsRoot, { withFileTypes: true })
-    .filter(entry => entry.isDirectory())
-    .sort((left, right) => left.name.localeCompare(right.name))
-
-  for (const directory of componentDirectories) {
-    const manifestPath = path.join(componentsRoot, directory.name, 'component.json')
-    const scenarioPath = path.join(componentSourceRoot(directory.name, repoRoot), scenarioRelativePath)
-    if (!fs.existsSync(manifestPath) || !fs.existsSync(scenarioPath)) continue
-
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as ComponentManifest
-    if (typeof manifest.id !== 'string' || !componentIDPattern.test(manifest.id)) {
-      throw new Error(`component manifest has invalid id: ${manifestPath}`)
-    }
-    if (manifest.id !== directory.name) {
-      throw new Error(`component manifest id ${manifest.id} does not match directory ${directory.name}`)
-    }
-    if (scenarios.has(manifest.id)) {
-      throw new Error(`duplicate component operability scenario: ${manifest.id}`)
-    }
-
+  for (const component of inputs.entries) {
+    const scenarioPath = path.join(component.root, scenarioRelativePath)
+    if (!fs.existsSync(scenarioPath)) continue
     const contribution = await import(pathToFileURL(scenarioPath).href) as { run?: unknown }
     if (typeof contribution.run !== 'function') {
       throw new Error(`component operability scenario must export run(): ${scenarioPath}`)
     }
-    scenarios.set(manifest.id, contribution.run as ComponentOperabilityScenario)
+    scenarios.set(component.id, contribution.run as ComponentOperabilityScenario)
   }
 
   return scenarios

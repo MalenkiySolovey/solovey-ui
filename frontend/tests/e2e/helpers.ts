@@ -11,10 +11,11 @@ export type E2EServerState = {
   dbDir: string
 }
 
-export const repoRoot = path.resolve(process.cwd(), '..')
+export const frontendRoot = fs.realpathSync.native(process.cwd())
+const importFixturesDirectory = process.env.SUI_E2E_IMPORT_FIXTURES_DIR
 export const e2eResultDir = process.env.SUI_E2E_RESULT_DIR
   ? path.resolve(process.env.SUI_E2E_RESULT_DIR)
-  : path.join(repoRoot, 'tests', 'baseline', 'e2e')
+  : path.join(frontendRoot, '.test-results/e2e')
 export const serverStatePath = path.join(e2eResultDir, 'e2e-server', 'state.json')
 const fallbackE2EWebPath = normalizeWebPath(process.env.SUI_E2E_WEB_PATH ?? '/e2e-panel/')
 
@@ -128,9 +129,9 @@ export const writeJSONArtifact = (relativePath: string, value: unknown) => {
   fs.writeFileSync(target, JSON.stringify(value, null, 2))
 }
 
-export const hasImportFixtures = () => (
-  fs.existsSync(path.join(repoRoot, 'test-db', 'x-ui.db')) &&
-  fs.existsSync(path.join(repoRoot, 'test-db', 's-ui.db'))
+export const hasImportFixtures = () => Boolean(importFixturesDirectory &&
+  fs.existsSync(path.join(importFixturesDirectory, 'x-ui.db')) &&
+  fs.existsSync(path.join(importFixturesDirectory, 's-ui.db'))
 )
 
 const testPasswordAvailable = (state: E2EServerState) => {

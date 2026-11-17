@@ -11,9 +11,9 @@
     "test:unit": "node scripts/run-vitest.mjs run",
     "typecheck": "vue-tsc --noEmit",
     "lint": "eslint .",
-    "prebuild": "node ../scripts/component-source-inputs.mjs prepare",
-    "predev": "node ../scripts/component-source-inputs.mjs prepare",
-    "pretypecheck": "node ../scripts/component-source-inputs.mjs prepare"
+    "prebuild": "node scripts/component-build-inputs.mjs verify",
+    "predev": "node scripts/component-build-inputs.mjs verify",
+    "pretypecheck": "node scripts/component-build-inputs.mjs verify"
   },
   "dependencies": {
     "@mdi/js": "7.4.47",

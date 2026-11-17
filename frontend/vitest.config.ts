@@ -3,7 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
 import { componentEntriesPlugin } from './vite.config.mts'
 
-const componentProfile = process.env.SOLOVEY_UI_PROFILE === 'core' ? 'core' : 'full'
+const componentProfile = ['core', 'minimal'].includes(process.env.SOLOVEY_UI_PROFILE || '') ? 'core' : 'full'
 
 export default defineConfig({
   // Loader tests provide a synthetic virtual catalog. Product composition is
@@ -24,7 +24,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts', 'src/**/*.spec.ts', '../components/*/frontend/**/*.test.ts', '../components/*/frontend/**/*.spec.ts', '../.component-sources/*/frontend/**/*.test.ts', '../.component-sources/*/frontend/**/*.spec.ts'],
+    include: ['src/**/*.test.ts', 'src/**/*.spec.ts', '.component-inputs/components/*/frontend/**/*.test.ts', '.component-inputs/components/*/frontend/**/*.spec.ts'],
     css: false,
     testTimeout: 30000,
     // Transform Vuetify through Vite (not Node's ESM loader) so its side-effect
