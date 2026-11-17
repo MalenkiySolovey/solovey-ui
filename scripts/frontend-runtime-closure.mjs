@@ -4,8 +4,8 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
-import { componentManifestKey, verifyComponentManifest } from './component-source-inputs.mjs'
-import { readComponentFrontendEntries } from './component-frontend-manifest.mjs'
+import { verifyComponentManifest } from './component-source-inputs.mjs'
+import { readComponentFrontendEntries, resolveComponentManifestKey } from './component-frontend-manifest.mjs'
 
 const schema = 'solovey-ui/frontend-runtime-closure/v1'
 const args = parseArgs()
@@ -23,7 +23,7 @@ try {
   const rootKeysByComponent = new Map(
     Object.entries(entriesByComponent).map(([componentID, entries]) => [
       componentID,
-      entries.map(entry => manifestEntryKey(componentID, entry)),
+      entries.map(entry => manifestEntryKey(componentID, entry, manifest)),
     ]),
   )
   const optionalRoots = new Set([...rootKeysByComponent.values()].flat())
@@ -195,8 +195,8 @@ function readInstalledMetadata(file) {
   return installed
 }
 
-function manifestEntryKey(componentID, entry) {
-  return entry.startsWith('frontend/') ? componentManifestKey(componentID, entry) : entry
+function manifestEntryKey(componentID, entry, manifest) {
+  return entry.startsWith('frontend/') ? resolveComponentManifestKey(manifest, componentID, entry) : entry
 }
 
 function assertSameList(label, actual, expected) {

@@ -292,11 +292,11 @@ jobs:
 
       - name: Frontend unit tests
         working-directory: frontend
-        run: npm run test
+        run: node ../scripts/frontend.mjs test
 
       - name: Build full frontend
         working-directory: frontend
-        run: SOLOVEY_UI_PROFILE=full npm run build
+        run: SOLOVEY_UI_PROFILE=full node ../scripts/frontend.mjs build
 
       - name: Check full frontend profile
         run: node scripts/check-frontend-profile.mjs --profile full --dist frontend/dist
@@ -326,7 +326,7 @@ jobs:
 
       - name: Build core frontend
         working-directory: frontend
-        run: SOLOVEY_UI_PROFILE=core npm run build
+        run: SOLOVEY_UI_PROFILE=core node ../scripts/frontend.mjs build
 
       - name: Check core frontend profile
         run: node scripts/check-frontend-profile.mjs --profile core --dist frontend/dist

@@ -407,7 +407,7 @@ if ($Build -or !(Test-Path $webIndex)) {
             }
             & npm ci
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            & npm run build
+            & node ../scripts/frontend.mjs build
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         } finally {
             if ($null -eq $previousFrontendProfile) {

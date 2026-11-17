@@ -5,7 +5,7 @@ const manageTestServer = process.env.SUI_E2E_SKIP_WEB_SERVER !== '1'
 const e2eWebPath = normalizeWebPath(process.env.SUI_E2E_WEB_PATH ?? '/e2e-panel/')
 const resultDir = process.env.SUI_E2E_RESULT_DIR
   ? path.resolve(process.env.SUI_E2E_RESULT_DIR)
-  : path.resolve('../tests/baseline/e2e')
+  : path.resolve('.test-results/e2e')
 
 export default defineConfig({
   testDir: './tests/e2e',

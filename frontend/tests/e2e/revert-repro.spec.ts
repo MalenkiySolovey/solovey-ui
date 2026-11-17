@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import fs from 'node:fs'
 import path from 'node:path'
-import { login, mutationHeaders, readServerState } from './helpers'
+import { e2eResultDir, login, mutationHeaders, readServerState } from './helpers'
 
 // REGRESSION GUARD for the "unsaved edits revert before save" fix.
 //
@@ -11,7 +11,7 @@ import { login, mutationHeaders, readServerState } from './helpers'
 // now SURVIVES a real server-side config change, while that change still reaches the store, and
 // that Save still works afterwards.
 
-const OUT = path.join(process.cwd(), '..', 'tests', 'baseline', 'e2e', 'revert-repro')
+const OUT = path.join(e2eResultDir, 'revert-repro')
 const xrw = { 'X-Requested-With': 'XMLHttpRequest' }
 
 test('unsaved Basics edit SURVIVES a background server-side config change (fix regression)', async ({ page, browser }) => {

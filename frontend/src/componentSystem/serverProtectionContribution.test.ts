@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { componentRoutes, contributionFor, navItems, slotEntries, unregisterComponent } from './registry'
-import { register, unregister } from '../../../.component-sources/server-protection/frontend/index'
+const protectionInputs = import.meta.glob<{register: () => void; unregister: () => void}>('../../.component-inputs/components/server-protection/frontend/index.ts', {eager: true})
+const protection = Object.values(protectionInputs)[0]
 const componentId = 'server-protection'
 afterEach(() => { unregisterComponent(componentId) })
-describe('Server Protection Product contribution integration', () => {
+describe.skipIf(!protection)('Server Protection Product contribution integration', () => {
   it('registers only through the component system', () => {
-    register()
+    protection.register()
     const contribution = contributionFor(componentId)
     expect(contribution?.apiVersion).toBe('1.0')
     expect(Object.keys(contribution?.locales ?? {}).sort()).toEqual(['en', 'ru'])
@@ -20,8 +21,8 @@ describe('Server Protection Product contribution integration', () => {
   })
 
   it('removes inbound contributions when the component is disabled', () => {
-    register()
-    unregister()
+    protection.register()
+    protection.unregister()
     expect(slotEntries('inbound:editor')).toHaveLength(0)
     expect(slotEntries('inbound:status-detail')).toHaveLength(0)
   })

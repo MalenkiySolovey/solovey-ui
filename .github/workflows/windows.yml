@@ -84,9 +84,9 @@ jobs:
         run: |
           cd frontend
           npm ci
-          SOLOVEY_UI_PROFILE=full npm run build
+          SOLOVEY_UI_PROFILE=full node ../scripts/frontend.mjs build
           cp -a dist ../.release-frontend-full
-          SOLOVEY_UI_PROFILE=core npm run build
+          SOLOVEY_UI_PROFILE=core node ../scripts/frontend.mjs build
           cp -a dist ../.release-frontend-core
 
       - name: Check full frontend profile

@@ -267,7 +267,7 @@ run_node -e 'console.log(JSON.stringify(require(process.argv[1]).source))' "$pro
 	run_node scripts/generate-component-imports.mjs --profile full
 	cd frontend
 	run_npm ci
-	run_npm run build
+	run_node "$snapshot/scripts/frontend.mjs" build
 )
 run_node "$snapshot/scripts/check-frontend-profile.mjs" --dist "$snapshot/frontend/dist" \
 	--components-dir "$snapshot/components" --profile full
@@ -472,7 +472,7 @@ const facts = {
     npm: e.BF_NPM_VERSION,
     npmExecutableSha256: e.BF_NPM_SHA256,
     install: 'npm ci',
-    command: 'SOLOVEY_UI_PROFILE=full npm run build',
+    command: 'SOLOVEY_UI_PROFILE=full node scripts/frontend.mjs build',
     profile: 'full',
     environment: {
       ci: true,

@@ -38,16 +38,16 @@ audit\:fe-install:
 	$(RUN) -Group core -Name npm-ci -WorkingDirectory frontend -CommandLine "npm ci"
 
 audit\:fe-typecheck:
-	$(RUN) -Group core -Name npm-run-typecheck -WorkingDirectory frontend -CommandLine "npm run typecheck"
+	$(RUN) -Group core -Name npm-run-typecheck -WorkingDirectory frontend -CommandLine "node ../scripts/frontend.mjs typecheck"
 
 audit\:fe-lint:
 	$(RUN) -Group core -Name npm-run-lint -WorkingDirectory frontend -CommandLine "npm run lint"
 
 audit\:fe-build:
-	$(RUN) -Group core -Name npm-run-build -WorkingDirectory frontend -CommandLine "npm run build"
+	$(RUN) -Group core -Name npm-run-build -WorkingDirectory frontend -CommandLine "node ../scripts/frontend.mjs build"
 
 audit\:test-fe:
-	$(RUN) -Group core -Name npm-run-test -WorkingDirectory frontend -CommandLine "npm run test"
+	$(RUN) -Group core -Name npm-run-test -WorkingDirectory frontend -CommandLine "node ../scripts/frontend.mjs test"
 
 audit\:e2e:
 	$(RUN) -Group core -Name e2e -SkipReason "The end-to-end suite runs in its dedicated workflow."

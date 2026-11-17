@@ -16,13 +16,13 @@ COPY scripts/core-source-provenance.mjs ./scripts/
 COPY scripts/quic-integration-provenance.mjs ./scripts/
 COPY scripts/ssm-integration-provenance.mjs ./scripts/
 COPY scripts/anytls-integration-provenance.mjs ./scripts/
-COPY scripts/backend-source-inputs.mjs scripts/component-source-inputs.mjs scripts/component-frontend-manifest.mjs scripts/extract-component-frontend.mjs scripts/generate-component-imports.mjs scripts/write-component-installed-metadata.mjs scripts/frontend-assets.mjs scripts/frontend-runtime-closure.mjs ./scripts/
+COPY scripts/backend-source-inputs.mjs scripts/component-source-inputs.mjs scripts/frontend-build-inputs.mjs scripts/frontend.mjs scripts/component-frontend-manifest.mjs scripts/extract-component-frontend.mjs scripts/generate-component-imports.mjs scripts/write-component-installed-metadata.mjs scripts/frontend-assets.mjs scripts/frontend-runtime-closure.mjs ./scripts/
 RUN node scripts/quic-integration-provenance.mjs manifest > QUIC_INTEGRATION.json \
     && node scripts/ssm-integration-provenance.mjs manifest > SSM_INTEGRATION.json \
     && node scripts/anytls-integration-provenance.mjs manifest > ANYTLS_INTEGRATION.json \
     && cd frontend \
     && npm ci \
-    && SOLOVEY_UI_PROFILE=full npm run build \
+    && SOLOVEY_UI_PROFILE=full node ../scripts/frontend.mjs build \
     && cd .. \
     && node scripts/extract-component-frontend.mjs --dist frontend/dist --components-dir components --out-dir component-packs --prune-dist \
     && node scripts/write-component-installed-metadata.mjs --components-dir component-packs --out component-packs/installed.json --profile full --binary full \

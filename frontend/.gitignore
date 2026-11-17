@@ -20,3 +20,9 @@ pnpm-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Generated verified build inputs and standalone test output
+.component-inputs/
+.component-inputs.lock/
+.component-inputs-stage-*/
+.test-results/

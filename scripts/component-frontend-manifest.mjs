@@ -1,5 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import assert from 'node:assert/strict'
+import { componentManifestKey, safeSourcePath } from './component-source-inputs.mjs'
 
 const componentIdPattern = /^[a-z0-9-]+$/
 const frontendEntryPattern = /^(src|frontend)\/[A-Za-z0-9_./-]+\.(ts|vue)$/
@@ -59,4 +61,16 @@ function containsFrontendSource(directory) {
     if (entry.isFile() && /\.(ts|vue)$/.test(entry.name) && !/\.(spec|test)\.ts$/.test(entry.name)) return true
   }
   return false
+}
+
+// Compiled-asset compatibility only: never a source-input fallback. Previously
+// qualified assets keep their historical manifest keys during rollback.
+export function resolveComponentManifestKey(manifest, id, entry, root) {
+  if (!entry.startsWith('frontend/')) return entry
+  assert.match(id, /^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+  const projected = '.component-inputs/components/' + id + '/' + safeSourcePath(entry)
+  const previous = componentManifestKey(id, entry, root)
+  const present = [projected, previous].filter(key => Object.hasOwn(manifest, key))
+  assert.ok(present.length <= 1, 'ambiguous frontend component asset generation: ' + id)
+  return present[0] || projected
 }

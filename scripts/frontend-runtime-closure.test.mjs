@@ -33,7 +33,7 @@ test('frontend runtime closure rejects stale assets from another generation', t 
   assert.match(result.stderr, /core frontend assets mismatch/)
 })
 
-function createFixture(t) {
+function createFixture(t, generation = 'previous') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'solovey-frontend-closure-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const dist = path.join(root, 'dist')
@@ -42,16 +42,17 @@ function createFixture(t) {
   fs.mkdirSync(path.join(dist, 'assets'), { recursive: true })
   fs.mkdirSync(path.join(components, 'example', 'frontend', 'assets'), { recursive: true })
 
+  const entry = generation === 'projected' ? '.component-inputs/components/example/frontend/index.ts' : '../components/example/frontend/index.ts'
   writeJSON(path.join(dist, '.vite', 'manifest.json'), {
     'index.html': {
       file: 'assets/app.js',
       isEntry: true,
-      dynamicImports: ['../components/example/frontend/index.ts'],
+      dynamicImports: [entry],
     },
-    '../components/example/frontend/index.ts': {
+    [entry]: {
       file: 'assets/component.js',
       isDynamicEntry: true,
-      src: '../components/example/frontend/index.ts',
+      src: entry,
     },
   })
   fs.writeFileSync(path.join(dist, 'index.html'), '<script type="module" src="./assets/app.js"></script>')
@@ -89,3 +90,21 @@ function verify(fixture) {
 function writeJSON(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`)
 }
+
+test('frontend runtime closure accepts the declared UI projection asset keys', t => {
+  const fixture = createFixture(t, 'projected')
+  const result = verify(fixture)
+  assert.equal(result.status, 0, result.stderr)
+  const proof = JSON.parse(fs.readFileSync(path.join(fixture.components, 'runtime-closure.json')))
+  assert.deepEqual(proof.components[0].manifestEntries, ['.component-inputs/components/example/frontend/index.ts'])
+})
+
+test('frontend runtime closure rejects ambiguous previous and projected asset generations', t => {
+  const fixture = createFixture(t, 'projected'), filename = path.join(fixture.dist, '.vite/manifest.json')
+  const manifest = JSON.parse(fs.readFileSync(filename))
+  manifest['../components/example/frontend/index.ts'] = {...manifest['.component-inputs/components/example/frontend/index.ts']}
+  writeJSON(filename, manifest)
+  const result = verify(fixture)
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /ambiguous frontend component asset generation/)
+})

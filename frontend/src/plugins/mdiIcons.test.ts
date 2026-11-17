@@ -10,7 +10,7 @@ import { auditDisplayIcons } from '@/components/nexus/overview/selectors/auditMa
 
 // Read every source module as raw text via Vite's glob import (works in vitest
 // and avoids node: builtins, which the browser tsconfig deliberately excludes).
-const rawSources = import.meta.glob(['../**/*.{vue,ts}', '../../../components/**/*.{vue,ts}'], {
+const rawSources = import.meta.glob(['../**/*.{vue,ts}', '../../.component-inputs/components/*/frontend/**/*.{vue,ts}'], {
   query: '?raw',
   import: 'default',
   eager: true,

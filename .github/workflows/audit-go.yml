@@ -52,7 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           npm ci --prefix frontend
-          SOLOVEY_UI_PROFILE=full npm run build --prefix frontend
+          SOLOVEY_UI_PROFILE=full node scripts/frontend.mjs build
           node scripts/frontend-assets.mjs publish --dist frontend/dist --destination web/html
           make audit:build PS="${MAKE_PS}"
       - name: Upload build artifacts
