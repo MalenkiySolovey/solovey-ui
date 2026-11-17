@@ -52,11 +52,23 @@ func TestProductRetiresEditableBackendAndUsesIndependentModule(t *testing.T) {
 		t.Fatalf("editable Backend source remains: %v", err)
 	}
 	backendSourcePath(t, "go.mod")
-	walkProductGoFiles(t, root, func(path string) {
+	checkImports := func(path string) {
 		for _, imported := range fileImports(t, path) {
 			if imported == modulePath+"/backend" || strings.HasPrefix(imported, modulePath+"/backend/") {
 				t.Errorf("retired Backend import in %s: %s", path, imported)
 			}
 		}
-	})
+	}
+	walkProductGoFiles(t, root, checkImports)
+	if err := filepath.WalkDir(filepath.Join(root, "tests", "owner-integration"), func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".go.txt") {
+			checkImports(path)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 }
