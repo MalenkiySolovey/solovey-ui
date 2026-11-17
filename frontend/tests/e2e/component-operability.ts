@@ -4,7 +4,6 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { enableComponent, frontendRoot } from './helpers'
-import { readFrontendBuildInputs } from '../../scripts/component-build-inputs.mjs'
 
 export type CatalogComponent = {
   id: string
@@ -57,6 +56,7 @@ export const runRegisteredComponentOperability = async (
 }
 
 const discoverComponentOperabilityScenarios = async () => {
+  const { readFrontendBuildInputs } = await import(pathToFileURL(path.join(frontendRoot, 'scripts/component-build-inputs.mjs')).href)
   const inputs = readFrontendBuildInputs(frontendRoot)
   const scenarios = new Map<string, ComponentOperabilityScenario>()
   for (const component of inputs.entries) {
