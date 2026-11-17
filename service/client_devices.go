@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/accounting"
 	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
@@ -213,11 +214,11 @@ func accountDeviceSnapshot(tx *gorm.DB, endpointID uint, snapshot coreruntime.Wi
 	if err != nil {
 		return err
 	}
-	users := map[entitytypes.VPNUserID]clientTrafficDelta{}
+	users := map[entitytypes.VPNUserID]accounting.UserTrafficDelta{}
 	for _, delta := range deltas {
-		users[delta.UserID] = clientTrafficDelta{up: delta.Up, down: delta.Down}
+		users[delta.UserID] = accounting.UserTrafficDelta{Up: delta.Up, Down: delta.Down}
 	}
-	return updateClientTrafficDeltas(tx, users)
+	return accounting.ApplyUserTrafficDeltas(tx, users)
 }
 
 func (s *ClientService) WireGuardDeviceConfig(ctx context.Context, clientID uint, deviceID, host string) (string, error) {

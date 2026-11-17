@@ -1,6 +1,7 @@
 package accounting
 
 import (
+	"fmt"
 	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
@@ -20,14 +21,14 @@ func BenchmarkUpdateClientTrafficDeltas(b *testing.B) {
 			if err := dbsqlite.CreateInBatches(dbsqlite.DB(), &rows); err != nil {
 				b.Fatal(err)
 			}
-			deltas := make(map[entitytypes.VPNUserID]clientTrafficDelta, clients)
+			deltas := make(map[entitytypes.VPNUserID]UserTrafficDelta, clients)
 			for i := 0; i < clients; i++ {
 				name := entitytypes.VPNUserID(i + 1)
 				if i%100 < emptyPercent {
-					deltas[name] = clientTrafficDelta{}
+					deltas[name] = UserTrafficDelta{}
 					continue
 				}
-				deltas[name] = clientTrafficDelta{up: int64(i + 1), down: int64(i + 2)}
+				deltas[name] = UserTrafficDelta{Up: int64(i + 1), Down: int64(i + 2)}
 			}
 			b.ReportMetric(float64(emptyPercent), "empty_pct")
 			b.ResetTimer()
@@ -36,7 +37,7 @@ func BenchmarkUpdateClientTrafficDeltas(b *testing.B) {
 				if tx.Error != nil {
 					b.Fatal(tx.Error)
 				}
-				if err := updateClientTrafficDeltas(tx, deltas); err != nil {
+				if err := ApplyUserTrafficDeltas(tx, deltas); err != nil {
 					_ = tx.Rollback().Error
 					b.Fatal(err)
 				}

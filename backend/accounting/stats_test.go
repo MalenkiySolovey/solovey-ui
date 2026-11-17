@@ -35,7 +35,7 @@ func TestUpdateClientTrafficDeltasBatchesTwoHundredClients(t *testing.T) {
 	initSettingTestDB(t)
 
 	clients := make([]model.Client, 0, 200)
-	deltas := make(map[entitytypes.VPNUserID]clientTrafficDelta, 200)
+	deltas := make(map[entitytypes.VPNUserID]UserTrafficDelta, 200)
 	expectedUp := make(map[string]int64, 200)
 	expectedDown := make(map[string]int64, 200)
 	for i := 0; i < 200; i++ {
@@ -50,9 +50,9 @@ func TestUpdateClientTrafficDeltasBatchesTwoHundredClients(t *testing.T) {
 			Up:   initialUp,
 			Down: initialDown,
 		})
-		deltas[entitytypes.VPNUserID(i+1)] = clientTrafficDelta{
-			up:   upDelta,
-			down: downDelta,
+		deltas[entitytypes.VPNUserID(i+1)] = UserTrafficDelta{
+			Up:   upDelta,
+			Down: downDelta,
 		}
 		expectedUp[name] = initialUp + upDelta
 		expectedDown[name] = initialDown + downDelta
@@ -62,7 +62,7 @@ func TestUpdateClientTrafficDeltasBatchesTwoHundredClients(t *testing.T) {
 	}
 
 	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
-		return updateClientTrafficDeltas(tx, deltas)
+		return ApplyUserTrafficDeltas(tx, deltas)
 	}); err != nil {
 		t.Fatal(err)
 	}

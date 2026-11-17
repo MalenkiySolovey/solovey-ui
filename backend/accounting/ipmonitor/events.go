@@ -88,3 +88,8 @@ func currentWarningHook() func(...any) {
 	defer securityEventAudit.RUnlock()
 	return securityEventAudit.warning
 }
+
+// RegisterSecurityEventAuditHook installs an audit sink with the same single lifecycle owner.
+func RegisterSecurityEventAuditHook(hook func(string, string, map[string]any)) (func(), error) {
+	return RegisterHooks(Hooks{SecurityEventAudit: hook})
+}

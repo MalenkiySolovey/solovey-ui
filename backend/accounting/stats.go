@@ -57,9 +57,10 @@ type TrafficDelta struct {
 	Down     int64  `json:"down,omitempty"`
 }
 
-type clientTrafficDelta struct {
-	up   int64
-	down int64
+// UserTrafficDelta carries a signed durable counter change for one accepted VPN user.
+type UserTrafficDelta struct {
+	Up   int64
+	Down int64
 }
 
 type TrafficBucket struct {
@@ -139,7 +140,7 @@ func (s Recorder) PersistSamples(enableTraffic bool, samples []Sample) (err erro
 	publishOnCommit := false
 	publishOnlines := OnlineResources{}
 	var publishStats []model.Stats
-	clientDeltas := map[entitytypes.VPNUserID]clientTrafficDelta{}
+	clientDeltas := map[entitytypes.VPNUserID]UserTrafficDelta{}
 	defer func() {
 		if err == nil {
 			if commitErr := tx.Commit().Error; commitErr != nil {
@@ -170,9 +171,9 @@ func (s Recorder) PersistSamples(enableTraffic bool, samples []Sample) (err erro
 		}
 		delta := clientDeltas[sample.VPNUserID]
 		if sample.Direction {
-			delta.up += sample.Traffic
+			delta.Up += sample.Traffic
 		} else {
-			delta.down += sample.Traffic
+			delta.Down += sample.Traffic
 		}
 		clientDeltas[sample.VPNUserID] = delta
 	}
@@ -188,7 +189,7 @@ func (s Recorder) PersistSamples(enableTraffic bool, samples []Sample) (err erro
 			}
 		}
 	}
-	if err := updateClientTrafficDeltas(tx, clientDeltas); err != nil {
+	if err := ApplyUserTrafficDeltas(tx, clientDeltas); err != nil {
 		return err
 	}
 	publishOnCommit = true
@@ -218,13 +219,15 @@ func statsModels(samples []Sample) []model.Stats {
 	return stats
 }
 
-func updateClientTrafficDeltas(tx *gorm.DB, deltas map[entitytypes.VPNUserID]clientTrafficDelta) error {
+// ApplyUserTrafficDeltas joins the caller's existing device or traffic transaction.
+// It never resolves display labels or commits independently.
+func ApplyUserTrafficDeltas(tx *gorm.DB, deltas map[entitytypes.VPNUserID]UserTrafficDelta) error {
 	if len(deltas) == 0 {
 		return nil
 	}
 	names := make([]entitytypes.VPNUserID, 0, len(deltas))
 	for name, delta := range deltas {
-		if delta.up == 0 && delta.down == 0 {
+		if delta.Up == 0 && delta.Down == 0 {
 			continue
 		}
 		names = append(names, name)
@@ -242,7 +245,7 @@ func updateClientTrafficDeltas(tx *gorm.DB, deltas map[entitytypes.VPNUserID]cli
 	return nil
 }
 
-func updateClientTrafficDeltaBatch(tx *gorm.DB, names []entitytypes.VPNUserID, deltas map[entitytypes.VPNUserID]clientTrafficDelta) error {
+func updateClientTrafficDeltaBatch(tx *gorm.DB, names []entitytypes.VPNUserID, deltas map[entitytypes.VPNUserID]UserTrafficDelta) error {
 	if len(names) == 0 {
 		return nil
 	}
@@ -251,12 +254,12 @@ func updateClientTrafficDeltaBatch(tx *gorm.DB, names []entitytypes.VPNUserID, d
 	query.WriteString("UPDATE clients SET up = up + CASE id")
 	for _, name := range names {
 		query.WriteString(" WHEN ? THEN ?")
-		args = append(args, name, deltas[name].up)
+		args = append(args, name, deltas[name].Up)
 	}
 	query.WriteString(" ELSE 0 END, down = down + CASE id")
 	for _, name := range names {
 		query.WriteString(" WHEN ? THEN ?")
-		args = append(args, name, deltas[name].down)
+		args = append(args, name, deltas[name].Down)
 	}
 	query.WriteString(" ELSE 0 END WHERE id IN (")
 	for i, name := range names {
