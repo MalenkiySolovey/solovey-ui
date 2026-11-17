@@ -10,7 +10,7 @@ import (
 	protectionrepository "github.com/MalenkiySolovey/solovey-component-server-protection/service/durable"
 	protectionfirewall "github.com/MalenkiySolovey/solovey-component-server-protection/service/firewall"
 	protectionoperations "github.com/MalenkiySolovey/solovey-component-server-protection/service/operations"
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	"github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
 	"github.com/gin-gonic/gin"
 )
 

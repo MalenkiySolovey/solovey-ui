@@ -9,7 +9,7 @@ import (
 )
 
 func TestCommonJournalCannotAcquireOwnerStorageOrUnboundedPayloads(t *testing.T) {
-	path := filepath.Join(moduleRoot(t), "internal", "ops", "operationcoordination", "journal.go")
+	path := filepath.Join(moduleRoot(t), "backend", "operations", "coordination", "journal.go")
 	allowed := map[string]bool{"context": true, "errors": true, "strconv": true,
 		"github.com/MalenkiySolovey/solovey-host/operationref": true}
 	for _, imported := range fileImports(t, path) {

@@ -3,7 +3,7 @@ package openwrt
 import (
 	"errors"
 	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	"github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
 	"strings"
 	"testing"
 )

@@ -8,7 +8,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	"github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 	"gorm.io/gorm"
 )

@@ -8,7 +8,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
-	operationcoordination "github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	operationcoordination "github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

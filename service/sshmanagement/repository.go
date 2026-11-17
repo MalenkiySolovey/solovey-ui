@@ -11,7 +11,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	operationcoordination "github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	operationcoordination "github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/sshmanagement"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

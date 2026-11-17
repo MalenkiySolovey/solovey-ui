@@ -12,7 +12,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	"github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 )
 

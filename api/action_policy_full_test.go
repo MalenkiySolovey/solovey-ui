@@ -4,7 +4,7 @@ package api
 
 import (
 	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	"github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"

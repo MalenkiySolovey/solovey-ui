@@ -5,7 +5,7 @@ package importxui
 import (
 	"context"
 	"fmt"
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	"github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
 	"path/filepath"
 	"time"
 

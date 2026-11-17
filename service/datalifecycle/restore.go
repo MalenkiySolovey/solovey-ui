@@ -9,7 +9,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
-	operationcoordination "github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	operationcoordination "github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
 	"gorm.io/gorm"
 )
 

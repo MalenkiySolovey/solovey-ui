@@ -14,7 +14,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	"github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )

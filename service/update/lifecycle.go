@@ -23,7 +23,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/schema"
 	componentprofile "github.com/MalenkiySolovey/solovey-ui/internal/components/profile"
 	deploymentdomain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
-	operationcoordination "github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	operationcoordination "github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/preflight"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/updatebroker"

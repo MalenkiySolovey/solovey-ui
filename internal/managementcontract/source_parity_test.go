@@ -16,7 +16,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
-	ops "github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	ops "github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
 )
 
 func TestEveryCurrentComponentManifestHasTheSamePublicIdentity(t *testing.T) {

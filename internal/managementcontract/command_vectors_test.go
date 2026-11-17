@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	"github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

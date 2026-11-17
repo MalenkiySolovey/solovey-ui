@@ -25,7 +25,7 @@ import (
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
 	componentmanifest "github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/durableowner"
-	operationcoordination "github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	operationcoordination "github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 	pressureService "github.com/MalenkiySolovey/solovey-ui/service/resourcepressure"
 	"gorm.io/gorm"

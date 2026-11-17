@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	"github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 )
 
