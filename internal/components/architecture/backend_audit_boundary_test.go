@@ -8,13 +8,13 @@ import (
 
 func TestBackendAuditUsesCanonicalHostRedactionAndPanelStorage(t *testing.T) {
 	root := moduleRoot(t)
-	allowed := map[string]bool{modulePath + "/backend/audit": true, modulePath + "/backend/audit/store": true}
+	allowed := map[string]bool{modulePath + "/backend/audit": true, modulePath + "/backend/audit/record": true, modulePath + "/backend/audit/store": true}
 	for _, target := range []string{"./backend/storage/model", "./backend/storage/sqlite", "github.com/MalenkiySolovey/solovey-host/auditrecord", "github.com/MalenkiySolovey/solovey-host/redact", "gorm.io/gorm"} {
 		for name := range goListDependencies(t, root, target) {
 			allowed[name] = true
 		}
 	}
-	for _, target := range []string{"./backend/audit", "./backend/audit/store"} {
+	for _, target := range []string{"./backend/audit", "./backend/audit/record", "./backend/audit/store"} {
 		var violations []string
 		for name, info := range goListDependencies(t, root, target) {
 			if !info.Standard && !allowed[name] {

@@ -2,7 +2,7 @@
 package auditrecord
 
 import (
-	backendaudit "github.com/MalenkiySolovey/solovey-ui/backend/audit"
+	backendaudit "github.com/MalenkiySolovey/solovey-ui/backend/audit/record"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"gorm.io/gorm"
 )

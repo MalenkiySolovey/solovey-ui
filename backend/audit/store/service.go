@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	auditrecord "github.com/MalenkiySolovey/solovey-ui/backend/audit"
+	auditrecord "github.com/MalenkiySolovey/solovey-ui/backend/audit/record"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 )

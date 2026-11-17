@@ -1,10 +1,12 @@
 // Package auditrecord is the common bounded, redacted audit record builder.
 // It has no process-global database, queue, history or retention authority.
-package audit
+package record
 
 import (
 	"encoding/json"
 	"errors"
+
+	backendaudit "github.com/MalenkiySolovey/solovey-ui/backend/audit"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -13,6 +15,20 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"gorm.io/gorm"
 )
+
+const (
+	SeverityInfo      = backendaudit.SeverityInfo
+	SeverityWarn      = backendaudit.SeverityWarn
+	ActorMaxBytes     = backendaudit.ActorMaxBytes
+	EventMaxBytes     = backendaudit.EventMaxBytes
+	ResourceMaxBytes  = backendaudit.ResourceMaxBytes
+	SeverityMaxBytes  = backendaudit.SeverityMaxBytes
+	IPMaxBytes        = backendaudit.IPMaxBytes
+	UserAgentMaxBytes = backendaudit.UserAgentMaxBytes
+	DetailsMaxBytes   = backendaudit.DetailsMaxBytes
+)
+
+type Event = backendaudit.Event
 
 func Build(event Event) (model.AuditEvent, error) {
 	if event.Severity == "" {
