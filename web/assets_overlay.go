@@ -9,48 +9,18 @@ import (
 	"sync"
 	"time"
 
+	frontend "github.com/MalenkiySolovey/solovey-backend/http/frontend"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 )
 
-type assetsFS struct {
-	embedded fs.FS
-}
+type assetsFS struct{ embedded fs.FS }
 
 func (assets assetsFS) Open(name string) (fs.File, error) {
-	if !fs.ValidPath(name) {
-		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrInvalid}
-	}
-	file, err := assets.embedded.Open(name)
-	if err == nil {
-		return file, nil
-	}
-	if !errors.Is(err, fs.ErrNotExist) {
-		return nil, err
-	}
-
-	componentAssets, err := componentFrontendAssetDirs()
-	if err != nil {
-		return nil, err
-	}
-	for _, dir := range componentAssets {
-		file, err := os.DirFS(dir).Open(name)
-		if err == nil {
-			return file, nil
-		}
-		if !errors.Is(err, fs.ErrNotExist) {
-			return nil, err
-		}
-	}
-	return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
+	return frontend.Overlay(assets.embedded, componentFrontendAssetDirs).Open(name)
 }
-
-func newAssetsFS(frontend fs.FS) (fs.FS, error) {
-	embeddedAssets, err := fs.Sub(frontend, "assets")
-	if err != nil {
-		return nil, err
-	}
-	return assetsFS{embedded: embeddedAssets}, nil
+func newAssetsFS(bundle fs.FS) (fs.FS, error) {
+	return frontend.NewAssetsFS(bundle, componentFrontendAssetDirs)
 }
 
 // assetDirsCache memoizes the resolved component asset directories keyed by

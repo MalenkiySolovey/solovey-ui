@@ -2,11 +2,9 @@ package api
 
 import (
 	"github.com/MalenkiySolovey/solovey-backend/http/browser"
-	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"strings"
-	"time"
 )
 
 const (
@@ -27,17 +25,7 @@ func (a *ApiService) IssueCSRFToken(c *gin.Context) {
 func (a *ApiService) GetCSRF(c *gin.Context)        { a.IssueCSRFToken(c) }
 func ResetSessionCSRF(s sessions.Session)           { browser.ResetSessionCSRF(s) }
 func (a *APIHandler) csrfMiddleware(c *gin.Context) { browser.CSRFMiddleware(c) }
-func sessionCookieOptions(c *gin.Context, settings *service.SettingService, s sessions.Session, now time.Time) sessions.Options {
-	return browserSecurity(settings).SessionCookieOptions(c, s, now)
-}
-func sessionBoundCSRFToken(s sessions.Session) (string, bool) {
-	return browser.SessionBoundCSRFToken(s)
-}
-func currentSessionCookieMaxAge(s sessions.Session, now time.Time) int {
-	return browser.CurrentSessionCookieMaxAge(s, now)
-}
-func csrfProtectedMethod(method string) bool          { return browser.CSRFProtectedMethod(method) }
-func sameOriginRequest(c *gin.Context) (bool, string) { return browser.SameOriginRequest(c) }
+func csrfProtectedMethod(method string) bool        { return browser.CSRFProtectedMethod(method) }
 func (a *APIHandler) cachedCSRFLoginPath() string {
 	webPath, err := a.SettingService.GetWebPath()
 	if err != nil {

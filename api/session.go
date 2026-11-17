@@ -34,4 +34,3 @@ func GetSessionSecurityContext(c *gin.Context) (SessionSecurityContext, bool) {
 }
 func sessionUint64(value any) (uint64, bool)       { return browser.SessionUint64(value) }
 func nonzeroSessionGeneration(value uint64) uint64 { return browser.NonzeroSessionGeneration(value) }
-func boundedDeviceLabel(value string) string       { return browser.BoundedDeviceLabel(value) }

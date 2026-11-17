@@ -78,7 +78,3 @@ func (s *MFAService) VerifyPassword(ctx context.Context, userID uint, plaintext 
 func activeMFAStates() []string {
 	return backendmfa.ActiveMFAStates()
 }
-
-func isActiveMFAState(state string) bool {
-	return backendmfa.IsActiveMFAState(state)
-}

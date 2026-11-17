@@ -26,20 +26,35 @@ test('Docker frontend provenance runs using its declared metadata and script inp
   const root=new URL('../',import.meta.url)
   const stage=fs.readFileSync(new URL('Dockerfile',root),'utf8').split(/^FROM /m).find(stage=>stage.split(/\r?\n/)[0].endsWith(' AS front-builder'))
   assert.ok(stage, 'Docker frontend builder must remain explicitly named')
+  const tracked=execFileSync('git',['ls-files','-z'],{cwd:root,encoding:'utf8',windowsHide:true}).split('\0').filter(Boolean)
   for(const line of stage.split(/\r?\n/)) {
-    if(!line.startsWith('COPY ') || !/\.\/(?:scripts\/|deploy\/dependencies\/)?$/.test(line))continue
-    const inputs=line.slice(5).split(/\s+/)
-    inputs.pop()
+    if(!line.startsWith('COPY ') || line.startsWith('COPY --from='))continue
+    const inputs=line.slice(5).split(/\s+/),destination=inputs.pop()
+    assert.ok(destination.startsWith('./'), 'frontend input must use the build context')
     for(const input of inputs) {
-      const target=path.join(directory,input)
-      fs.mkdirSync(path.dirname(target),{recursive:true})
-      fs.copyFileSync(new URL(input,root),target)
+      const source=new URL(input,root)
+      const directoryInput=fs.statSync(source).isDirectory()
+      const prefix=input.replace(/\/$/,'')+'/'
+      const files=directoryInput ? tracked.filter(name=>name.startsWith(prefix)) : [input]
+      assert.ok(files.length, 'declared Docker input must contain tracked files: '+input)
+      for(const file of files) {
+        const target=path.join(directory,destination,directoryInput ? file.slice(prefix.length) : path.basename(file))
+        fs.mkdirSync(path.dirname(target),{recursive:true})
+        fs.copyFileSync(new URL(file,root),target)
+      }
     }
   }
   for(const name of ['ssm','quic','anytls']) {
     const output=execFileSync(process.execPath,[path.join(directory,`scripts/${name}-integration-provenance.mjs`),'manifest'],{encoding:'utf8',windowsHide:true})
     verifySeriesMetadata(JSON.parse(output))
   }
+  const generator=path.join(directory,'scripts/generate-component-imports.mjs')
+  const generate=()=>execFileSync(process.execPath,[generator,'--profile','full','--dry-run'],{
+    cwd:directory,encoding:'utf8',windowsHide:true,env:{...process.env,GOWORK:'off',GOFLAGS:'-mod=readonly'},stdio:['ignore','pipe','pipe'],
+  })
+  assert.match(generate(), /in-process component import\(s\)/)
+  fs.unlinkSync(path.join(directory,'deploy/dependencies/solovey-backend-source.json'))
+  assert.throws(generate, error=>error.status!==0 && /solovey-backend-source[.]json/.test(error.stderr.toString()))
 })
 
 test('Git verification rejects forged trees, omitted commits and changed authority even with a recomputed series identity', t => {

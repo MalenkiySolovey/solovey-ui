@@ -33,8 +33,6 @@ func (p handlerPublisher) LookupClient(id string) (*model.Client, error) {
 	return p.handler.SubService.getClientBySubId(id)
 }
 
-const maxSubscriptionHeaderBytes = 512
-
 func (s *SubHandler) backend() *canonical.Handler {
 	return &canonical.Handler{Settings: &s.SettingService, Publisher: handlerPublisher{s}, Error: logger.Error}
 }
@@ -42,13 +40,9 @@ func newSubHandler(g *gin.RouterGroup, rate gin.HandlerFunc) { (&SubHandler{}).i
 func (s *SubHandler) initRouter(g *gin.RouterGroup, rate gin.HandlerFunc) {
 	s.backend().InitRouter(g, rate)
 }
-func (s *SubHandler) subs(c *gin.Context)       { s.backend().Subs(c) }
-func (s *SubHandler) json(c *gin.Context)       { s.backend().Json(c) }
-func (s *SubHandler) clash(c *gin.Context)      { s.backend().Clash(c) }
-func (s *SubHandler) xray(c *gin.Context)       { s.backend().Xray(c) }
-func (s *SubHandler) subHeaders(c *gin.Context) { s.backend().SubHeaders(c) }
-func (s *SubHandler) formatHeaders(format string) gin.HandlerFunc {
-	return s.backend().FormatHeaders(format)
-}
+func (s *SubHandler) json(c *gin.Context)                   { s.backend().Json(c) }
+func (s *SubHandler) clash(c *gin.Context)                  { s.backend().Clash(c) }
+func (s *SubHandler) xray(c *gin.Context)                   { s.backend().Xray(c) }
+func (s *SubHandler) subHeaders(c *gin.Context)             { s.backend().SubHeaders(c) }
 func (s *SubHandler) addHeaders(c *gin.Context, h []string) { s.backend().AddHeaders(c, h) }
 func safeSubscriptionHeaders(h []string) []string           { return canonical.SafeSubscriptionHeaders(h) }

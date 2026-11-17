@@ -9,4 +9,3 @@ func PublishOwnedFile(root string, data []byte, publish bool) (string, error) {
 func PublishOwnedTree(root string, files map[string][]byte, publish bool) (string, error) {
 	return canonical.PublishOwnedTree(root, files, publish)
 }
-func syncRestoreRecoveryDirectory(path string) error { return canonical.SyncRecoveryDirectory(path) }

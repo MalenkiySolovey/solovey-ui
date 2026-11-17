@@ -11,11 +11,12 @@ COPY go.mod go.sum go.extended.mod go.extended.sum ./
 COPY deploy/dependencies/sing-quic-integration.json ./deploy/dependencies/
 COPY deploy/dependencies/sing-box-ssm-integration.json ./deploy/dependencies/
 COPY deploy/dependencies/sing-anytls-integration.json ./deploy/dependencies/
+COPY deploy/dependencies/solovey-backend-source.json ./deploy/dependencies/
 COPY scripts/core-source-provenance.mjs ./scripts/
 COPY scripts/quic-integration-provenance.mjs ./scripts/
 COPY scripts/ssm-integration-provenance.mjs ./scripts/
 COPY scripts/anytls-integration-provenance.mjs ./scripts/
-COPY scripts/component-source-inputs.mjs scripts/component-frontend-manifest.mjs scripts/extract-component-frontend.mjs scripts/generate-component-imports.mjs scripts/write-component-installed-metadata.mjs scripts/frontend-assets.mjs scripts/frontend-runtime-closure.mjs ./scripts/
+COPY scripts/backend-source-inputs.mjs scripts/component-source-inputs.mjs scripts/component-frontend-manifest.mjs scripts/extract-component-frontend.mjs scripts/generate-component-imports.mjs scripts/write-component-installed-metadata.mjs scripts/frontend-assets.mjs scripts/frontend-runtime-closure.mjs ./scripts/
 RUN node scripts/quic-integration-provenance.mjs manifest > QUIC_INTEGRATION.json \
     && node scripts/ssm-integration-provenance.mjs manifest > SSM_INTEGRATION.json \
     && node scripts/anytls-integration-provenance.mjs manifest > ANYTLS_INTEGRATION.json \

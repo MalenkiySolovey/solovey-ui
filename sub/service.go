@@ -29,9 +29,6 @@ func (s *SubService) getClientBySubId(id string) (*model.Client, error) {
 func resolveClientLinks(raw json.RawMessage, mode sublocal.LinkMode, info string) []string {
 	return sublocal.ResolveClientLinks(raw, mode, info)
 }
-func loadClientData(id string) (*model.Client, []*model.Inbound, error) {
-	return publisherFor(&service.SettingService{}).LoadClientData(id)
-}
 func buildClientHeaders(c *model.Client, cfg subserver.DisplaySettings) []string {
 	return canonical.BuildClientHeaders(c, cfg)
 }

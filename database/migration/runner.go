@@ -98,9 +98,9 @@ type coreJournalContract = backendmigration.JournalContract
 
 func coreJournalContracts() []coreJournalContract {
 	return []coreJournalContract{
-		{steps.OperationsLifecycleStepID, steps.OperationsLifecycleChecksum, "1.11"},
-		{steps.SingBoxStateStepID, steps.SingBoxStateChecksum, "1.12"},
-		{steps.ClientDisableReasonStepID, steps.ClientDisableReasonChecksum, "1.13"},
+		{ID: steps.OperationsLifecycleStepID, Checksum: steps.OperationsLifecycleChecksum, Target: "1.11"},
+		{ID: steps.SingBoxStateStepID, Checksum: steps.SingBoxStateChecksum, Target: "1.12"},
+		{ID: steps.ClientDisableReasonStepID, Checksum: steps.ClientDisableReasonChecksum, Target: "1.13"},
 	}
 }
 

@@ -88,10 +88,6 @@ func (s *AuditService) PruneOlderThan(before int64) (int64, error) {
 	return backend.PruneOlderThan(before)
 }
 
-func buildAuditRecord(event AuditEvent) (model.AuditEvent, error) {
-	return auditsvc.BuildRecord(auditsvc.Event(event))
-}
-
 func writeAuditEvents(events []model.AuditEvent) error {
 	return auditsvc.WriteEvents(events)
 }

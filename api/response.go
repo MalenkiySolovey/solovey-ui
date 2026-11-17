@@ -8,8 +8,6 @@ import (
 
 type Msg = response.Msg
 
-const maxClientErrorBytes = response.MaxClientErrorBytes
-
 func jsonMsg(c *gin.Context, msg string, err error) {
 	response.Writer{Warning: logger.Warning}.JSONMsg(c, msg, err)
 }
