@@ -140,7 +140,7 @@ func (a *APP) Init() (err error) {
 	service.RegisterComponentMigrator(a.components.Migrate)
 	service.RegisterComponentDataDropper(a.components.DropData)
 	service.RegisterComponentRemovalAdmitter(a.components.TryAdmitRemoval)
-	a.webServer, err = web.NewServer(web.WithRuntime(a.runtime))
+	a.webServer, err = web.NewServer(web.WithRuntime(a.runtime), web.WithFrontend(web.EmbeddedFrontend()))
 	if err != nil {
 		return err
 	}
