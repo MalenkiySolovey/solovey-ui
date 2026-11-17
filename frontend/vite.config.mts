@@ -142,9 +142,9 @@ export function componentEntriesPlugin(componentEntries: Array<{id: string; entr
 function e2eBaseURLPlugin(): Plugin {
   return {
     name: 'solovey-e2e-base-url',
-    transformIndexHtml(html) {
-      if (!isE2E) return html
-      return html.replaceAll('{{ .BASE_URL }}', e2eWebPath)
+    transformIndexHtml(html, context) {
+      if (!isE2E && !context.server) return html
+      return html.replaceAll('{{ .BASE_URL }}', isE2E ? e2eWebPath : '/app/')
     },
   }
 }
