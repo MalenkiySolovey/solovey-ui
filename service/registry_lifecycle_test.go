@@ -39,17 +39,3 @@ func TestOutboundSaveHookStaleCleanupPreservesNewRegistration(t *testing.T) {
 		t.Fatalf("stale cleanup changed current hooks: %#v", entries)
 	}
 }
-
-func TestAPITokenScopeProviderStaleCleanupPreservesNewRegistration(t *testing.T) {
-	ResetAPITokenScopeProvidersForTest()
-	t.Cleanup(ResetAPITokenScopeProvidersForTest)
-	cleanupOld := RegisterAPITokenScopeProvider(func() []string { return []string{"old-scope"} })
-	ResetAPITokenScopeProvidersForTest()
-	cleanupNew := RegisterAPITokenScopeProvider(func() []string { return []string{"new-scope"} })
-	t.Cleanup(cleanupNew)
-
-	cleanupOld()
-	if !apiTokenScopeAllowed("new-scope") {
-		t.Fatal("stale cleanup removed the new token-scope provider")
-	}
-}

@@ -11,9 +11,3 @@ func ResetOutboundSaveHooksForTest() {
 	outboundSaveHooks.entries = map[string]registeredOutboundSaveHook{}
 	outboundSaveHooks.Unlock()
 }
-
-func ResetAPITokenScopeProvidersForTest() {
-	apiTokenScopeProviders.Lock()
-	apiTokenScopeProviders.list = nil
-	apiTokenScopeProviders.Unlock()
-}

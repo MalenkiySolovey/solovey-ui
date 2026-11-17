@@ -60,8 +60,6 @@ func TestLoadTokensMigratesLegacyPlaintextToken(t *testing.T) {
 
 func TestAddTokenValidatesScopeAllowlist(t *testing.T) {
 	initSettingTestDB(t)
-	ResetAPITokenScopeProvidersForTest()
-	t.Cleanup(ResetAPITokenScopeProvidersForTest)
 	userService := &UserService{}
 
 	for _, scope := range []string{"", "admin", "read", "write", "update", "database", "observability"} {

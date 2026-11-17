@@ -2,12 +2,12 @@ package common
 
 import (
 	crand "crypto/rand"
-	"errors"
 	"math/big"
 	mrand "math/rand"
 	"sync"
 	"time"
 
+	backendcrypto "github.com/MalenkiySolovey/solovey-ui/backend/security/crypto"
 	"github.com/gofrs/uuid/v5"
 )
 
@@ -46,25 +46,8 @@ func RandomSuffix(n int) string {
 	return string(result)
 }
 
-// SecureRandom returns exactly n alphanumeric characters from crypto/rand.
-// Authentication credentials, tokens, salts, and session identifiers must use
-// this function so entropy failure is returned instead of falling back to a
-// predictable pseudo-random generator.
-func SecureRandom(n int) (string, error) {
-	if n <= 0 || len(allSeq) == 0 {
-		return "", errors.New("secure random length is invalid")
-	}
-	result := make([]rune, n)
-	maximum := big.NewInt(int64(len(allSeq)))
-	for index := range result {
-		value, err := crand.Int(crand.Reader, maximum)
-		if err != nil {
-			return "", err
-		}
-		result[index] = allSeq[int(value.Int64())]
-	}
-	return string(result), nil
-}
+// SecureRandom delegates credential generation to the Backend security owner.
+func SecureRandom(n int) (string, error) { return backendcrypto.SecureRandom(n) }
 
 func RandomInt(n int) int {
 	if n <= 0 {
