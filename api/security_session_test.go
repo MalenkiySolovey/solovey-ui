@@ -201,8 +201,8 @@ func TestSecurityTransitionRotationInvalidatesPreMetadataLegacySession(t *testin
 		c.Status(http.StatusNoContent)
 	})
 	router.GET("/rotate", func(c *gin.Context) {
-		handler := securityHTTP{api: &APIHandler{ApiService: newComposedApiService()}}
-		if err := handler.rotateSessionGenerationAndReissue(c, admin.Id, service.AuthStateAuthenticated, service.AssurancePassword); err != nil {
+		handler := newSecurityHTTP(&APIHandler{ApiService: newComposedApiService()})
+		if err := handler.RotateSessionGenerationAndReissue(c, admin.Id, service.AuthStateAuthenticated, service.AssurancePassword); err != nil {
 			c.Status(http.StatusInternalServerError)
 			return
 		}

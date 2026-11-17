@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	realtimehttp "github.com/MalenkiySolovey/solovey-ui/backend/http/realtime"
+	"github.com/MalenkiySolovey/solovey-ui/backend/http/securityroutes"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -21,8 +22,7 @@ func resetRateLimitState() {
 	realtimehttp.ResetRateLimits()
 	auditEndpointRateLimiter.ResetAll()
 	componentManualActionRateLimiter.ResetAll()
-	securityVerificationAggregateRateLimit.ResetAll()
-	securityVerificationMethodRateLimit.ResetAll()
+	securityroutes.ResetRateLimits()
 	(&service.AuditService{}).ResetDenialAggregation()
 }
 
