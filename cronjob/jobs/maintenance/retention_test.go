@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/cronjob/internal/testutil"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
 )
 

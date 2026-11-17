@@ -14,7 +14,7 @@ import (
 
 	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
 	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 

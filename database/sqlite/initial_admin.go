@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	storagesqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 )
@@ -79,7 +80,7 @@ func warnIfInitialAdminPasswordFileExists(path string) {
 // transition transaction has committed. Missing files are intentionally
 // treated as already acknowledged.
 func RemoveInitialAdminPasswordFile() error {
-	dbPath := currentDatabasePath()
+	dbPath := storagesqlite.CurrentPath()
 	if dbPath == "" {
 		dbPath = configstorage.GetDBPath()
 	}

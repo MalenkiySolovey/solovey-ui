@@ -5,7 +5,7 @@ import (
 	"time"
 
 	subconversion "github.com/MalenkiySolovey/solovey-host/subscriptions/conversion"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	subformats "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/formats"
 	localsub "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/local"
 	subserver "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/server"

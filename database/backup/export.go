@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/database/sqliteident"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"

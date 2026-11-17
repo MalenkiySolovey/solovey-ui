@@ -3,10 +3,11 @@ package netentity
 import (
 	"encoding/json"
 	"errors"
+	"github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
+	"reflect"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/sessionidentity"
@@ -15,9 +16,18 @@ import (
 	"gorm.io/gorm"
 )
 
+// InboundRuntime is the live operation set actually consumed by Panel inbound
+// persistence. The supplied owner retains its mutation leases and admission.
+type InboundRuntime interface {
+	IsRunning() bool
+	RemoveInbound(string) error
+	AddInboundWithBindings([]byte, []entityidentity.InboundBinding) error
+	CloseInboundConnections(string)
+}
+
 type InboundService struct {
 	ClientHooks entityinbounds.ClientHooks
-	Core        *coreruntime.Core
+	Core        InboundRuntime
 }
 
 func (s *InboundService) Get(ids string) (*[]map[string]interface{}, error) {
@@ -104,7 +114,7 @@ func (s *InboundService) inboundCoreFromDB(db *gorm.DB) entityinbounds.Core {
 		return nil
 	}
 	coreInstance := s.Core
-	if coreInstance == nil {
+	if coreInstance == nil || (reflect.ValueOf(coreInstance).Kind() == reflect.Pointer && reflect.ValueOf(coreInstance).IsNil()) {
 		return nil
 	}
 	return inboundCoreAdapter{core: coreInstance, db: db}
@@ -127,7 +137,7 @@ func (h inboundUserHooks) ClientNamesByInboundIDs(db *gorm.DB, inboundIDs []uint
 }
 
 type inboundCoreAdapter struct {
-	core *coreruntime.Core
+	core InboundRuntime
 	db   *gorm.DB
 }
 

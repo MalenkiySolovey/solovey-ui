@@ -27,3 +27,23 @@ func TestPanelStorageRecordsHaveIndependentTransitiveClosure(t *testing.T) {
 		}
 	}
 }
+
+func TestPanelSQLiteRuntimeExcludesProductBootstrapAndProviders(t *testing.T) {
+	root := moduleRoot(t)
+	allowed := map[string]bool{modulePath + "/backend/storage/sqlite": true}
+	for _, target := range []string{"gorm.io/gorm", "gorm.io/driver/sqlite", "github.com/mattn/go-sqlite3"} {
+		for name := range goListDependencies(t, root, target) {
+			allowed[name] = true
+		}
+	}
+	var violations []string
+	for name, info := range goListDependencies(t, root, "./backend/storage/sqlite") {
+		if !info.Standard && !allowed[name] {
+			violations = append(violations, name)
+		}
+	}
+	if len(violations) > 0 {
+		sort.Strings(violations)
+		t.Fatalf("Panel SQLite runtime imports bootstrap, migration or provider implementation: %s", strings.Join(violations, ", "))
+	}
+}

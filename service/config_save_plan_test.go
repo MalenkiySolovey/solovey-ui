@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 )
 

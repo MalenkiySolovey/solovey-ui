@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
 	"github.com/MalenkiySolovey/solovey-ui/database/backup"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

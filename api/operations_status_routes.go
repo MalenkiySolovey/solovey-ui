@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/database/schema"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	pressuredomain "github.com/MalenkiySolovey/solovey-ui/internal/ops/resourcepressure"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 	deploymentservice "github.com/MalenkiySolovey/solovey-ui/service/deployment"

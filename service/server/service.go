@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 
 	"github.com/shirou/gopsutil/v4/cpu"
