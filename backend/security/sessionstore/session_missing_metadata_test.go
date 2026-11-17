@@ -1,11 +1,11 @@
-package web
+package sessionstore
 
 import (
 	"net/http"
 	"testing"
 
+	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	"github.com/MalenkiySolovey/solovey-ui/service"
 	ginsessions "github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
@@ -26,14 +26,14 @@ func TestSQLiteSessionStoreRejectsMissingModernMetadataAfterRestart(t *testing.T
 	loginRouter.Use(ginsessions.Sessions("s-ui", store))
 	loginRouter.GET("/login", func(c *gin.Context) {
 		session := ginsessions.Default(c)
-		session.Set(service.SessionLoginUserKey, admin.Username)
-		session.Set(service.SessionUserIDKey, uint64(admin.Id))
-		session.Set(service.SessionRefKey, "missing-metadata-reference")
-		session.Set(service.SessionAuthStateKey, service.AuthStateAuthenticated)
-		session.Set(service.SessionAssuranceKey, service.AssurancePassword)
-		session.Set(service.SessionLifetimePostureKey, service.LifetimePostureBoundedV1)
-		session.Set(service.SessionCredentialGenerationKey, nonzeroSessionGeneration(admin.CredentialGeneration))
-		session.Set(service.SessionMFAGenerationKey, nonzeroSessionGeneration(admin.MFAGeneration))
+		session.Set(panelsecurity.SessionLoginUserKey, admin.Username)
+		session.Set(panelsecurity.SessionUserIDKey, uint64(admin.Id))
+		session.Set(panelsecurity.SessionRefKey, "missing-metadata-reference")
+		session.Set(panelsecurity.SessionAuthStateKey, panelsecurity.AuthStateAuthenticated)
+		session.Set(panelsecurity.SessionAssuranceKey, panelsecurity.AssurancePassword)
+		session.Set(panelsecurity.SessionLifetimePostureKey, panelsecurity.LifetimePostureBoundedV1)
+		session.Set(panelsecurity.SessionCredentialGenerationKey, nonzeroSessionGeneration(admin.CredentialGeneration))
+		session.Set(panelsecurity.SessionMFAGenerationKey, nonzeroSessionGeneration(admin.MFAGeneration))
 		session.Options(ginsessions.Options{Path: "/", HttpOnly: true})
 		if err := session.Save(); err != nil {
 			c.String(http.StatusInternalServerError, err.Error())
@@ -56,7 +56,7 @@ func TestSQLiteSessionStoreRejectsMissingModernMetadataAfterRestart(t *testing.T
 	readRouter := gin.New()
 	readRouter.Use(ginsessions.Sessions("s-ui", restarted))
 	readRouter.GET("/read", func(c *gin.Context) {
-		if ginsessions.Default(c).Get(service.SessionLoginUserKey) != nil {
+		if ginsessions.Default(c).Get(panelsecurity.SessionLoginUserKey) != nil {
 			c.Status(http.StatusNoContent)
 			return
 		}

@@ -1,12 +1,12 @@
-package web
+package sessionstore
 
 import (
 	"net/http"
 	"testing"
 	"time"
 
+	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	"github.com/MalenkiySolovey/solovey-ui/service"
 	ginsessions "github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
@@ -29,26 +29,26 @@ func TestSQLiteSessionStorePersistsValidatesAndDebouncesSecurityMetadata(t *test
 	router.Use(ginsessions.Sessions("s-ui", store))
 	router.GET("/login", func(c *gin.Context) {
 		session := ginsessions.Default(c)
-		session.Set(service.SessionLoginUserKey, admin.Username)
-		session.Set(service.SessionUserIDKey, uint64(admin.Id))
-		session.Set(service.SessionRefKey, "opaque-session-reference")
-		session.Set(service.SessionAuthStateKey, service.AuthStateAuthenticated)
-		session.Set(service.SessionAssuranceKey, service.AssurancePassword)
-		session.Set(service.SessionLastMFAAtKey, now.Add(-time.Minute).Unix())
-		session.Set(service.SessionLifetimePostureKey, service.LifetimePostureBoundedV1)
-		session.Set(service.SessionCredentialGenerationKey, uint64(1))
-		session.Set(service.SessionMFAGenerationKey, uint64(1))
-		session.Set(service.SessionCreatedAtKey, now.Unix())
-		session.Set(service.SessionAuthenticatedAtKey, now.Unix())
-		session.Set(service.SessionLastSeenAtKey, now.Unix())
-		session.Set(service.SessionIdleExpiresAtKey, now.Add(service.DefaultSessionIdle).Unix())
-		session.Set(service.SessionAbsoluteExpiresAtKey, now.Add(service.DefaultSessionAbsolute).Unix())
-		session.Set(service.SessionRememberedExpiresAtKey, int64(0))
-		session.Set(service.SessionClientProvenanceKey, "direct")
-		session.Set(service.SessionClientPrefixKey, "198.51.100.0/24")
-		session.Set(service.SessionUserAgentHashKey, service.UserAgentDigest("test-agent"))
-		session.Set(service.SessionDeviceLabelKey, "test-agent")
-		session.Set(service.SessionGenerationRevisionKey, "generation-revision")
+		session.Set(panelsecurity.SessionLoginUserKey, admin.Username)
+		session.Set(panelsecurity.SessionUserIDKey, uint64(admin.Id))
+		session.Set(panelsecurity.SessionRefKey, "opaque-session-reference")
+		session.Set(panelsecurity.SessionAuthStateKey, panelsecurity.AuthStateAuthenticated)
+		session.Set(panelsecurity.SessionAssuranceKey, panelsecurity.AssurancePassword)
+		session.Set(panelsecurity.SessionLastMFAAtKey, now.Add(-time.Minute).Unix())
+		session.Set(panelsecurity.SessionLifetimePostureKey, panelsecurity.LifetimePostureBoundedV1)
+		session.Set(panelsecurity.SessionCredentialGenerationKey, uint64(1))
+		session.Set(panelsecurity.SessionMFAGenerationKey, uint64(1))
+		session.Set(panelsecurity.SessionCreatedAtKey, now.Unix())
+		session.Set(panelsecurity.SessionAuthenticatedAtKey, now.Unix())
+		session.Set(panelsecurity.SessionLastSeenAtKey, now.Unix())
+		session.Set(panelsecurity.SessionIdleExpiresAtKey, now.Add(panelsecurity.DefaultSessionIdle).Unix())
+		session.Set(panelsecurity.SessionAbsoluteExpiresAtKey, now.Add(panelsecurity.DefaultSessionAbsolute).Unix())
+		session.Set(panelsecurity.SessionRememberedExpiresAtKey, int64(0))
+		session.Set(panelsecurity.SessionClientProvenanceKey, "direct")
+		session.Set(panelsecurity.SessionClientPrefixKey, "198.51.100.0/24")
+		session.Set(panelsecurity.SessionUserAgentHashKey, panelsecurity.UserAgentDigest("test-agent"))
+		session.Set(panelsecurity.SessionDeviceLabelKey, "test-agent")
+		session.Set(panelsecurity.SessionGenerationRevisionKey, "generation-revision")
 		session.Options(ginsessions.Options{Path: "/", HttpOnly: true})
 		if err := session.Save(); err != nil {
 			c.String(http.StatusInternalServerError, err.Error())
@@ -57,7 +57,7 @@ func TestSQLiteSessionStorePersistsValidatesAndDebouncesSecurityMetadata(t *test
 		c.Status(http.StatusNoContent)
 	})
 	router.GET("/read", func(c *gin.Context) {
-		if ginsessions.Default(c).Get(service.SessionLoginUserKey) == nil {
+		if ginsessions.Default(c).Get(panelsecurity.SessionLoginUserKey) == nil {
 			c.Status(http.StatusUnauthorized)
 			return
 		}
@@ -105,7 +105,7 @@ func TestSQLiteSessionStorePersistsValidatesAndDebouncesSecurityMetadata(t *test
 
 	if err := db.Model(&model.SecuritySession{}).Where("ref = ?", metadata.Ref).
 		Updates(map[string]any{
-			"state":          service.SessionStateRevoked,
+			"state":          panelsecurity.SessionStateRevoked,
 			"revoked_at":     now.Unix(),
 			"revoked_reason": "test",
 		}).Error; err != nil {
@@ -130,20 +130,20 @@ func TestSQLiteSessionStoreRotationAtomicallyLinksReplacement(t *testing.T) {
 	store.now = func() time.Time { return now }
 
 	setValues := func(session ginsessions.Session, ref string) {
-		session.Set(service.SessionLoginUserKey, admin.Username)
-		session.Set(service.SessionUserIDKey, uint64(admin.Id))
-		session.Set(service.SessionRefKey, ref)
-		session.Set(service.SessionAuthStateKey, service.AuthStateAuthenticated)
-		session.Set(service.SessionAssuranceKey, service.AssurancePassword)
-		session.Set(service.SessionLifetimePostureKey, service.LifetimePostureBoundedV1)
-		session.Set(service.SessionCredentialGenerationKey, nonzeroSessionGeneration(admin.CredentialGeneration))
-		session.Set(service.SessionMFAGenerationKey, nonzeroSessionGeneration(admin.MFAGeneration))
-		session.Set(service.SessionCreatedAtKey, now.Unix())
-		session.Set(service.SessionAuthenticatedAtKey, now.Unix())
-		session.Set(service.SessionLastSeenAtKey, now.Unix())
-		session.Set(service.SessionIdleExpiresAtKey, now.Add(service.DefaultSessionIdle).Unix())
-		session.Set(service.SessionAbsoluteExpiresAtKey, now.Add(service.DefaultSessionAbsolute).Unix())
-		session.Set(service.SessionGenerationRevisionKey, "generation-revision")
+		session.Set(panelsecurity.SessionLoginUserKey, admin.Username)
+		session.Set(panelsecurity.SessionUserIDKey, uint64(admin.Id))
+		session.Set(panelsecurity.SessionRefKey, ref)
+		session.Set(panelsecurity.SessionAuthStateKey, panelsecurity.AuthStateAuthenticated)
+		session.Set(panelsecurity.SessionAssuranceKey, panelsecurity.AssurancePassword)
+		session.Set(panelsecurity.SessionLifetimePostureKey, panelsecurity.LifetimePostureBoundedV1)
+		session.Set(panelsecurity.SessionCredentialGenerationKey, nonzeroSessionGeneration(admin.CredentialGeneration))
+		session.Set(panelsecurity.SessionMFAGenerationKey, nonzeroSessionGeneration(admin.MFAGeneration))
+		session.Set(panelsecurity.SessionCreatedAtKey, now.Unix())
+		session.Set(panelsecurity.SessionAuthenticatedAtKey, now.Unix())
+		session.Set(panelsecurity.SessionLastSeenAtKey, now.Unix())
+		session.Set(panelsecurity.SessionIdleExpiresAtKey, now.Add(panelsecurity.DefaultSessionIdle).Unix())
+		session.Set(panelsecurity.SessionAbsoluteExpiresAtKey, now.Add(panelsecurity.DefaultSessionAbsolute).Unix())
+		session.Set(panelsecurity.SessionGenerationRevisionKey, "generation-revision")
 		session.Options(ginsessions.Options{Path: "/", HttpOnly: true})
 	}
 
@@ -161,7 +161,7 @@ func TestSQLiteSessionStoreRotationAtomicallyLinksReplacement(t *testing.T) {
 	router.GET("/rotate", func(c *gin.Context) {
 		session := ginsessions.Default(c)
 		setValues(session, "new-session-ref")
-		session.Set(service.SessionRegenerateKey, true)
+		session.Set(panelsecurity.SessionRegenerateKey, true)
 		if err := session.Save(); err != nil {
 			c.String(http.StatusInternalServerError, err.Error())
 			return
@@ -169,7 +169,7 @@ func TestSQLiteSessionStoreRotationAtomicallyLinksReplacement(t *testing.T) {
 		c.Status(http.StatusNoContent)
 	})
 	router.GET("/read", func(c *gin.Context) {
-		if ginsessions.Default(c).Get(service.SessionLoginUserKey) == nil {
+		if ginsessions.Default(c).Get(panelsecurity.SessionLoginUserKey) == nil {
 			c.Status(http.StatusUnauthorized)
 			return
 		}
@@ -191,7 +191,7 @@ func TestSQLiteSessionStoreRotationAtomicallyLinksReplacement(t *testing.T) {
 	if err := db.Where("ref = ?", "old-session-ref").First(&oldMetadata).Error; err != nil {
 		t.Fatal(err)
 	}
-	if oldMetadata.State != service.SessionStateRevoked || oldMetadata.RevokedReason != "session_replaced" ||
+	if oldMetadata.State != panelsecurity.SessionStateRevoked || oldMetadata.RevokedReason != "session_replaced" ||
 		oldMetadata.ReplacementRef != "new-session-ref" || oldMetadata.RevokedAt == 0 {
 		t.Fatalf("old session lacks replacement relation: %#v", oldMetadata)
 	}
@@ -199,7 +199,7 @@ func TestSQLiteSessionStoreRotationAtomicallyLinksReplacement(t *testing.T) {
 	if err := db.Where("ref = ?", "new-session-ref").First(&newMetadata).Error; err != nil {
 		t.Fatal(err)
 	}
-	if newMetadata.State != service.SessionStateActive || newMetadata.RevokedAt != 0 || newMetadata.SessionID == oldMetadata.SessionID {
+	if newMetadata.State != panelsecurity.SessionStateActive || newMetadata.RevokedAt != 0 || newMetadata.SessionID == oldMetadata.SessionID {
 		t.Fatalf("new session metadata is invalid: old=%#v new=%#v", oldMetadata, newMetadata)
 	}
 	if response := performSQLiteSessionRequest(router, "/read", oldCookies...); response.Code != http.StatusUnauthorized {
@@ -274,17 +274,17 @@ func TestSQLiteSessionStoreEnforcesIdleAbsoluteAndRememberedExpiryAfterRestart(t
 			loginRouter.Use(ginsessions.Sessions("s-ui", store))
 			loginRouter.GET("/login", func(c *gin.Context) {
 				session := ginsessions.Default(c)
-				session.Set(service.SessionLoginUserKey, admin.Username)
-				session.Set(service.SessionUserIDKey, uint64(admin.Id))
-				session.Set(service.SessionRefKey, "restart-expiry-reference")
-				session.Set(service.SessionAuthStateKey, service.AuthStateAuthenticated)
-				session.Set(service.SessionAssuranceKey, service.AssurancePassword)
-				session.Set(service.SessionLifetimePostureKey, service.LifetimePostureBoundedV1)
-				session.Set(service.SessionCredentialGenerationKey, uint64(1))
-				session.Set(service.SessionMFAGenerationKey, uint64(1))
-				session.Set(service.SessionCreatedAtKey, now.Unix())
-				session.Set(service.SessionAuthenticatedAtKey, now.Unix())
-				session.Set(service.SessionLastSeenAtKey, now.Unix())
+				session.Set(panelsecurity.SessionLoginUserKey, admin.Username)
+				session.Set(panelsecurity.SessionUserIDKey, uint64(admin.Id))
+				session.Set(panelsecurity.SessionRefKey, "restart-expiry-reference")
+				session.Set(panelsecurity.SessionAuthStateKey, panelsecurity.AuthStateAuthenticated)
+				session.Set(panelsecurity.SessionAssuranceKey, panelsecurity.AssurancePassword)
+				session.Set(panelsecurity.SessionLifetimePostureKey, panelsecurity.LifetimePostureBoundedV1)
+				session.Set(panelsecurity.SessionCredentialGenerationKey, uint64(1))
+				session.Set(panelsecurity.SessionMFAGenerationKey, uint64(1))
+				session.Set(panelsecurity.SessionCreatedAtKey, now.Unix())
+				session.Set(panelsecurity.SessionAuthenticatedAtKey, now.Unix())
+				session.Set(panelsecurity.SessionLastSeenAtKey, now.Unix())
 				idleExpiresAt := int64(0)
 				if test.idleOffset > 0 {
 					idleExpiresAt = now.Add(test.idleOffset).Unix()
@@ -293,14 +293,14 @@ func TestSQLiteSessionStoreEnforcesIdleAbsoluteAndRememberedExpiryAfterRestart(t
 				if test.absoluteOffset > 0 {
 					absoluteExpiresAt = now.Add(test.absoluteOffset).Unix()
 				}
-				session.Set(service.SessionIdleExpiresAtKey, idleExpiresAt)
-				session.Set(service.SessionAbsoluteExpiresAtKey, absoluteExpiresAt)
+				session.Set(panelsecurity.SessionIdleExpiresAtKey, idleExpiresAt)
+				session.Set(panelsecurity.SessionAbsoluteExpiresAtKey, absoluteExpiresAt)
 				remembered := int64(0)
 				if test.rememberedOffset > 0 {
 					remembered = now.Add(test.rememberedOffset).Unix()
 				}
-				session.Set(service.SessionRememberedExpiresAtKey, remembered)
-				session.Set(service.SessionGenerationRevisionKey, "generation-revision")
+				session.Set(panelsecurity.SessionRememberedExpiresAtKey, remembered)
+				session.Set(panelsecurity.SessionGenerationRevisionKey, "generation-revision")
 				session.Options(ginsessions.Options{Path: "/", HttpOnly: true})
 				if err := session.Save(); err != nil {
 					c.String(http.StatusInternalServerError, err.Error())
@@ -322,7 +322,7 @@ func TestSQLiteSessionStoreEnforcesIdleAbsoluteAndRememberedExpiryAfterRestart(t
 			readRouter := gin.New()
 			readRouter.Use(ginsessions.Sessions("s-ui", restarted))
 			readRouter.GET("/read", func(c *gin.Context) {
-				if ginsessions.Default(c).Get(service.SessionLoginUserKey) == nil {
+				if ginsessions.Default(c).Get(panelsecurity.SessionLoginUserKey) == nil {
 					c.Status(http.StatusUnauthorized)
 					return
 				}

@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
-	"github.com/MalenkiySolovey/solovey-ui/middleware/requestbudget"
+	"github.com/MalenkiySolovey/solovey-ui/backend/http/requestbudget"
 	"github.com/gin-gonic/gin"
 )
 
