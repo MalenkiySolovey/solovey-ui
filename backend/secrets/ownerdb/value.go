@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-host/secretref"
-	"github.com/MalenkiySolovey/solovey-ui/backend/audit/record"
+	auditrecord "github.com/MalenkiySolovey/solovey-ui/backend/audit/record"
 	"github.com/MalenkiySolovey/solovey-ui/backend/secrets/ownedvalue"
 	"github.com/MalenkiySolovey/solovey-ui/backend/security/secretbox"
 	settingscrypto "github.com/MalenkiySolovey/solovey-ui/backend/settings/crypto"
