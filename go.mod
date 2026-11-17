@@ -3,7 +3,7 @@ module github.com/MalenkiySolovey/solovey-ui
 go 1.26.11
 
 require (
-	github.com/MalenkiySolovey/solovey-backend v0.0.0-20261117075553-5e04349eb540
+	github.com/MalenkiySolovey/solovey-backend v0.0.0-20261117083740-6d7b1cad1111
 	github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0
 	github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0
 	github.com/MalenkiySolovey/solovey-component-telegram v0.1.0

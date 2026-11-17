@@ -1,15 +1,11 @@
 package api
 
 import (
-	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
@@ -75,55 +71,6 @@ func TestAPIV2CachedTokenUsesCurrentAccountAndPermission(t *testing.T) {
 		t.Fatal(err)
 	}
 	request(http.StatusUnauthorized, "")
-}
-
-func TestAPIV2OverlappingReloadCannotRepublishOldAuthorization(t *testing.T) {
-	for _, latestFails := range []bool{false, true} {
-		t.Run(strconv.FormatBool(latestFails), func(t *testing.T) {
-			started, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
-			var calls atomic.Int32
-			h := &APIv2Handler{tokens: map[string]TokenInMemory{"earlier": {ID: 1}}}
-			h.loadTokens = func() ([]byte, error) {
-				if calls.Add(1) == 1 {
-					close(started)
-					<-release
-					return json.Marshal([]TokenInMemory{{ID: 1, TokenHash: "earlier"}})
-				}
-				if latestFails {
-					return nil, errors.New("fixture load failed")
-				}
-				return json.Marshal([]TokenInMemory{{ID: 2, TokenHash: "current"}})
-			}
-			go func() { h.ReloadTokens(); close(done) }()
-			select {
-			case <-started:
-			case <-time.After(3 * time.Second):
-				close(release)
-				t.Fatal("reload did not reach barrier")
-			}
-			h.tokensMu.RLock()
-			during := len(h.tokens)
-			h.tokensMu.RUnlock()
-			h.ReloadTokens()
-			close(release)
-			select {
-			case <-done:
-			case <-time.After(3 * time.Second):
-				t.Fatal("older reload did not finish")
-			}
-			if during != 0 {
-				t.Fatal("old snapshot remained authorized during reload")
-			}
-			h.tokensMu.RLock()
-			defer h.tokensMu.RUnlock()
-			if _, stale := h.tokens["earlier"]; stale {
-				t.Fatal("older loader republished an invalidated snapshot")
-			}
-			if _, current := h.tokens["current"]; current == latestFails {
-				t.Fatal("snapshot does not reflect the latest reload outcome")
-			}
-		})
-	}
 }
 
 func TestTokenHTTPMutationsBindOwnerAndReloadOnlyAfterSuccess(t *testing.T) {
@@ -211,7 +158,8 @@ func TestCredentialHTTPMutationReloadsTokenIdentityOnlyAfterCommit(t *testing.T)
 	if err := s.UpdateFirstUser("admin", "current-password"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.AddToken("admin", 0, "credential flow", "read"); err != nil {
+	plainToken, err := s.AddToken("admin", 0, "credential flow", "read")
+	if err != nil {
 		t.Fatal(err)
 	}
 	router, h := newAdminFlowRouter(t)
@@ -237,11 +185,12 @@ func TestCredentialHTTPMutationReloadsTokenIdentityOnlyAfterCommit(t *testing.T)
 	if reloads != 1 {
 		t.Fatalf("credential commit reload count=%d, want 1", reloads)
 	}
-	h.tokensMu.RLock()
-	defer h.tokensMu.RUnlock()
-	for _, token := range h.tokens {
-		if token.Username != "renamed-account" {
-			t.Fatal("credential commit retained cached old principal")
-		}
+	router.GET("/committed-principal", h.checkToken, func(c *gin.Context) { c.String(http.StatusOK, c.GetString(apiUsernameKey)) })
+	req := httptest.NewRequest(http.MethodGet, "/committed-principal", nil)
+	req.Header.Set("Authorization", "Bearer "+plainToken)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+	if res.Code != http.StatusOK || res.Body.String() != "renamed-account" {
+		t.Fatalf("committed principal status=%d body=%q", res.Code, res.Body.String())
 	}
 }

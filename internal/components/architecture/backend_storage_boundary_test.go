@@ -67,3 +67,33 @@ func TestPanelMigrationAuthorityExcludesProductPolicyAndHostState(t *testing.T) 
 		t.Fatalf("Panel migration authority imports Product policy, Host state or unrelated owner: %s", strings.Join(violations, ", "))
 	}
 }
+
+func TestPanelStorageBootstrapExcludesProductCompositionAndProviders(t *testing.T) {
+	root := moduleRoot(t)
+	allowed := map[string]bool{}
+	for _, name := range []string{
+		"backend/storage/bootstrap", "backend/storage/model", "backend/storage/sqlite",
+		"backend/storage/sqliteident", "backend/entityidentity", "backend/security",
+		"backend/security/password", "backend/security/crypto", "backend/settings/catalog",
+	} {
+		allowed[backendModulePath+"/"+strings.TrimPrefix(name, "backend/")] = true
+	}
+	for _, target := range []string{
+		"gorm.io/gorm", "gorm.io/driver/sqlite", "github.com/mattn/go-sqlite3",
+		"golang.org/x/crypto/argon2", "golang.org/x/crypto/bcrypt", "golang.org/x/crypto/hkdf",
+	} {
+		for name := range goListDependencies(t, root, target) {
+			allowed[name] = true
+		}
+	}
+	var violations []string
+	for name, info := range goListDependencies(t, root, backendModulePath+"/storage/bootstrap") {
+		if !info.Standard && !allowed[name] {
+			violations = append(violations, name)
+		}
+	}
+	if len(violations) > 0 {
+		sort.Strings(violations)
+		t.Fatalf("Panel storage bootstrap imports Product composition, provider or unrelated owner: %s", strings.Join(violations, ", "))
+	}
+}

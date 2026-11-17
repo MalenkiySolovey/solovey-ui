@@ -1,10 +1,6 @@
 package api
 
 import (
-	"encoding/json"
-	"net/http"
-	"strings"
-	"sync"
 	"time"
 
 	confighttp "github.com/MalenkiySolovey/solovey-ui/api/config"
@@ -12,52 +8,34 @@ import (
 	telemetryhttp "github.com/MalenkiySolovey/solovey-ui/api/telemetry"
 	"github.com/MalenkiySolovey/solovey-backend/hostcontext"
 	authhttp "github.com/MalenkiySolovey/solovey-backend/http/auth"
-	logger "github.com/MalenkiySolovey/solovey-ui/logger"
+	bearerhttp "github.com/MalenkiySolovey/solovey-backend/http/bearer"
 	"github.com/MalenkiySolovey/solovey-backend/http/databaseoperation"
-	"github.com/MalenkiySolovey/solovey-ui/service"
+	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/gin-gonic/gin"
 )
 
-type TokenInMemory struct {
-	ID          uint   `json:"id"`
-	TokenHash   string `json:"tokenHash"`
-	TokenPrefix string `json:"tokenPrefix"`
-	Scope       string `json:"scope"`
-	Enabled     bool   `json:"enabled"`
-	Expiry      int64  `json:"expiry"`
-	Username    string `json:"username"`
-}
-
 type APIv2Handler struct {
 	ApiService
-	auth          *authhttp.Handler
-	config        *confighttp.Handler
-	db            *dbtransferhttp.Handler
-	telemetry     *telemetryhttp.Handler
-	loadTokens    func() ([]byte, error)
-	tokensMu      sync.RWMutex
-	tokens        map[string]TokenInMemory
-	tokenRevision uint64
+	auth       *authhttp.Handler
+	config     *confighttp.Handler
+	db         *dbtransferhttp.Handler
+	telemetry  *telemetryhttp.Handler
+	loadTokens func() ([]byte, error)
+	bearer     *bearerhttp.Handler
 }
 
 const (
-	apiUsernameKey              = "apiUsername"
-	apiTokenScopeKey            = "apiTokenScope"
-	legacyTokenHeaderExpiredKey = "legacyTokenHeaderExpired"
-	// #nosec G101 -- a sunset date string, not a credential.
-	legacyTokenHeaderSunset = "Sat, 15 Aug 2026 00:00:00 GMT"
+	apiUsernameKey          = bearerhttp.UsernameKey
+	apiTokenScopeKey        = bearerhttp.ScopeKey
+	legacyTokenHeaderSunset = bearerhttp.LegacyHeaderSunset
 )
 
-var (
-	apiTokenNow               = time.Now
-	legacyTokenHeaderSunsetAt = time.Date(2026, time.August, 15, 0, 0, 0, 0, time.UTC)
-)
+var apiTokenNow = time.Now
 
 func NewAPIv2Handler(g *gin.RouterGroup, options ...Option) *APIv2Handler {
 	a := &APIv2Handler{
 		ApiService: NewApiService(options...),
-		tokens:     map[string]TokenInMemory{},
 	}
 	a.auth = a.authHandler()
 	a.config = a.configHandler()
@@ -65,6 +43,16 @@ func NewAPIv2Handler(g *gin.RouterGroup, options ...Option) *APIv2Handler {
 	a.db.AuthorizationChanged = a.ReloadTokens
 	a.telemetry = a.coreTelemetryHandler()
 	a.loadTokens = a.auth.LoadTokens
+	a.bearer = bearerhttp.New(bearerhttp.Deps{
+		Users:        &a.UserService,
+		LoadTokens:   func() ([]byte, error) { return a.loadTokens() },
+		Now:          func() time.Time { return apiTokenNow() },
+		ClientIP:     getRemoteIp,
+		Audit:        a.recordAudit,
+		RequireScope: a.ApiService.requireTokenScopeAny,
+		Warning:      logger.Warning,
+		Error:        logger.Error,
+	})
 	a.ReloadTokens()
 	a.initRouter(g)
 	return a
@@ -89,59 +77,8 @@ func (a *APIv2Handler) initRouter(g *gin.RouterGroup) {
 	g.GET("/:getAction", a.getHandler)
 }
 
-// apiV2ActionScopes maps each apiv2 dispatcher action to the API-token scopes
-// permitted to invoke it. "admin" is always allowed (added in enforceActionScope)
-// and is also the default token scope, so this only constrains tokens an admin
-// deliberately narrowed. Every dispatcher action is listed even when the
-// destination handler repeats the same check; an accidentally added action
-// must fail closed until its scope policy is explicit. Separately registered
-// component, security, and audit routes retain their own scope gates.
-var apiV2ActionScopes = map[string][]string{
-	// State mutations and active probes require write.
-	"save":            {"write"},
-	"reorder":         {"write"},
-	"restartApp":      {"write"},
-	"restartSb":       {"write"},
-	"checkOutbound":   {"write"},
-	"getCertPing":     {"write"},
-	"resetTraffic":    {"write"},
-	"importdb":        {"database"},
-	"rotateSubSecret": {"write"},
-	"linkConvert":     {"read", "write"},
-	"subConvert":      {"read", "write"},
-	// Config / identity / secret reads — component scopes are excluded.
-	"load":          {"read", "write"},
-	"capabilities":  {"read", "write"},
-	"inbounds":      {"read", "write"},
-	"inboundDrafts": {"read", "write"},
-	"outbounds":     {"read", "write"},
-	"endpoints":     {"read", "write"},
-	"services":      {"read", "write"},
-	"tls":           {"read", "write"},
-	"clients":       {"read", "write"},
-	"config":        {"read", "write"},
-	"users":         {"read", "write"},
-	"settings":      {"read", "write"},
-	"changes":       {"read", "write"},
-	"keypairs":      {"read", "write"},
-	// Operational metrics — observability tokens may read these.
-	"stats":   {"read", "write", "observability"},
-	"status":  {"read", "write", "observability"},
-	"onlines": {"read", "write", "observability"},
-	"logs":    {"read", "write", "observability"},
-	"getdb":   {"database"},
-}
-
-// enforceActionScope applies the per-action scope policy for the apiv2 action
-// dispatchers. Actions absent from the policy map fail closed for bearer-token
-// requests. On denial it writes a 403 and returns false.
 func (a *APIv2Handler) enforceActionScope(c *gin.Context, action string) bool {
-	allowed, ok := apiV2ActionScopes[action]
-	if !ok {
-		c.AbortWithStatusJSON(http.StatusForbidden, Msg{Success: false, Msg: "API token scope policy is not declared"})
-		return false
-	}
-	return a.ApiService.requireTokenScopeAny(c, action, append([]string{"admin"}, allowed...)...)
+	return a.bearer.EnforceActionScope(c, action)
 }
 
 func (a *APIv2Handler) postHandler(c *gin.Context) {
@@ -219,130 +156,9 @@ func (a *APIv2Handler) getHandler(c *gin.Context) {
 	}
 }
 
-func (a *APIv2Handler) findUsername(c *gin.Context) string {
-	token, legacyHeader := apiTokenFromRequest(c)
-	if token == "" {
-		return ""
-	}
-	tokenHash, err := a.UserService.HashAPIToken(token)
-	if err != nil {
-		logger.Warning("unable to hash API token:", err)
-		return ""
-	}
-	now := apiTokenNow().Unix()
-	a.tokensMu.RLock()
-	t, ok := a.tokens[tokenHash]
-	revision := a.tokenRevision
-	a.tokensMu.RUnlock()
-	if !ok {
-		return ""
-	}
-	if !t.Enabled {
-		return ""
-	}
-	if t.Expiry > 0 && t.Expiry <= now {
-		return ""
-	}
-	principal, err := a.UserService.AuthorizeAPIToken(c.Request.Context(), t.ID, tokenHash, now)
-	if err != nil {
-		return ""
-	}
-	// A reload clears authorization immediately. A decision that began before
-	// that boundary cannot authorize from the earlier snapshot after it.
-	a.tokensMu.RLock()
-	current, exists := a.tokens[tokenHash]
-	currentRevision := a.tokenRevision
-	a.tokensMu.RUnlock()
-	if revision != currentRevision || !exists || current.ID != t.ID {
-		return ""
-	}
-	if legacyHeader {
-		c.Header("Deprecation", "true")
-		c.Header("Sunset", legacyTokenHeaderSunset)
-		a.recordAudit(c, principal.Username, "legacy_token_header_used", "api_token", service.AuditSeverityWarn, map[string]any{
-			"tokenPrefix": principal.TokenPrefix,
-			"sunset":      legacyTokenHeaderSunset,
-		})
-	}
-	_ = a.UserService.RecordTokenUse(t.ID, getRemoteIp(c))
-	c.Set(apiTokenScopeKey, principal.Scope)
-	return principal.Username
-}
-
-func (a *APIv2Handler) checkToken(c *gin.Context) {
-	username := a.findUsername(c)
-	if username != "" {
-		c.Set(apiUsernameKey, username)
-		c.Next()
-		return
-	}
-	if c.GetBool(legacyTokenHeaderExpiredKey) {
-		c.Header("Deprecation", "true")
-		c.Header("Sunset", legacyTokenHeaderSunset)
-		c.JSON(http.StatusUnauthorized, Msg{
-			Success: false,
-			Msg:     "legacy token header expired",
-		})
-		c.Abort()
-		return
-	}
-	c.JSON(http.StatusUnauthorized, Msg{
-		Success: false,
-		Msg:     "invalid token",
-	})
-	c.Abort()
-}
-
+func (a *APIv2Handler) checkToken(c *gin.Context) { a.bearer.CheckToken(c) }
 func (a *APIv2Handler) ReloadTokens() {
-	a.tokensMu.Lock()
-	a.tokenRevision++
-	revision := a.tokenRevision
-	a.tokens = map[string]TokenInMemory{}
-	a.tokensMu.Unlock()
-	loader := a.loadTokens
-	if loader == nil {
-		logger.Error("unable to load tokens: token loader is unavailable")
-		return
+	if a.bearer != nil {
+		a.bearer.ReloadTokens()
 	}
-	tokens, err := loader()
-	if err != nil {
-		logger.Error("unable to load tokens: ", err)
-		return
-	}
-	var loaded []TokenInMemory
-	if len(tokens) > 0 {
-		if err := json.Unmarshal(tokens, &loaded); err != nil {
-			logger.Error("unable to load tokens: ", err)
-			return
-		}
-	}
-	newMap := make(map[string]TokenInMemory, len(loaded))
-	for _, t := range loaded {
-		newMap[t.TokenHash] = t
-	}
-	a.tokensMu.Lock()
-	if a.tokenRevision == revision {
-		a.tokens = newMap
-	}
-	a.tokensMu.Unlock()
-}
-
-func apiTokenFromRequest(c *gin.Context) (string, bool) {
-	auth := strings.TrimSpace(c.GetHeader("Authorization"))
-	if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
-		return strings.TrimSpace(auth[len("bearer "):]), false
-	}
-	token := strings.TrimSpace(c.GetHeader("Token"))
-	if token == "" {
-		return "", false
-	}
-	if legacyTokenHeaderExpired(apiTokenNow()) {
-		c.Set(legacyTokenHeaderExpiredKey, true)
-		return "", true
-	}
-	return token, true
-}
-
-func legacyTokenHeaderExpired(now time.Time) bool {
-	return !now.Before(legacyTokenHeaderSunsetAt)
 }
