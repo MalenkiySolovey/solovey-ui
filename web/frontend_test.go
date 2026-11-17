@@ -20,7 +20,7 @@ func TestFrontendInputServesTemplatesAndAssetsFromOneBundle(t *testing.T) {
 		"index.html":         {Data: []byte("<!doctype html><title>product-frontend</title><script src=\"{{.BASE_URL}}assets/selected.js\"></script>")},
 		"assets/selected.js": {Data: []byte("selected-product-bundle")},
 	}
-	server, err := NewServer(WithFrontend(bundle), WithComponents(productComponentFixture(service.DefaultRuntime())))
+	server, err := NewServer(WithFrontend(bundle), WithComponents(productComponentFixture(nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,11 +104,11 @@ func TestFrontendInputRejectsInvalidTemplateBeforeServing(t *testing.T) {
 	server, err := NewServer(WithFrontend(fstest.MapFS{
 		"index.html":     {Data: []byte("{{untrustedFunction}}")},
 		"assets/main.js": {Data: []byte("asset")},
-	}))
+	}), WithComponents(productComponentFixture(nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if router, err := server.initRouter(); err == nil || router != nil {
+	if router, err := server.initRouter(); err == nil || router != nil || !strings.Contains(err.Error(), "untrustedFunction") {
 		t.Fatalf("invalid template accepted: router=%v err=%v", router, err)
 	}
 }
