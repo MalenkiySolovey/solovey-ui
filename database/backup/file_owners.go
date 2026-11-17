@@ -179,14 +179,6 @@ func configuredCoreFileState(ctx context.Context, db *gorm.DB) (bool, error) {
 	return false, nil
 }
 
-type FileBackupManifest struct {
-	Schema        string   `json:"schema"`
-	Owners        []string `json:"owners"`
-	Rows          int64    `json:"rows"`
-	SchemaDigest  string   `json:"schemaDigest"`
-	ContentDigest string   `json:"contentDigest"`
-}
-
 func exportOwnerFiles(ctx context.Context, source, destination *gorm.DB) (*FileBackupManifest, error) {
 	required, err := logicalFileBackupRequired()
 	if err != nil {

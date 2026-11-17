@@ -25,23 +25,6 @@ func Restore(file multipart.File) error {
 	return RestoreContext(context.Background(), file)
 }
 
-type RestoreExecutionResult struct {
-	Rehearsal              RestoreRehearsal `json:"rehearsal"`
-	RecoveryBackupRef      string           `json:"recoveryBackupRef"`
-	RecoveryCleanupPending bool             `json:"recoveryCleanupPending"`
-	RestartPending         bool             `json:"restartPending"`
-	maintenance            *dbsqlite.Maintenance
-}
-
-// DatabaseContext lets the restore caller persist its operation authority
-// against the private candidate. It is temporary and is never a cached DB.
-func (r RestoreExecutionResult) DatabaseContext(ctx context.Context) context.Context {
-	if r.maintenance != nil && r.maintenance.Active() {
-		return r.maintenance.Context(ctx)
-	}
-	return ctx
-}
-
 var pendingRestoreMaintenance = struct {
 	sync.Mutex
 	owner *dbsqlite.Maintenance
@@ -119,7 +102,7 @@ func RestoreContextDetailedWithRecoveryRoot(ctx context.Context, file io.ReadSee
 	if err != nil {
 		return result, err
 	}
-	result.maintenance = owner
+	result = result.WithMaintenance(owner)
 	pendingRestoreMaintenance.Lock()
 	pendingRestoreMaintenance.owner = owner
 	pendingRestoreMaintenance.Unlock()

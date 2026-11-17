@@ -40,45 +40,6 @@ type backupManifestRecord struct {
 
 func (backupManifestRecord) TableName() string { return BackupManifestTable }
 
-type BackupTableManifest struct {
-	Owner         string `json:"owner"`
-	Name          string `json:"name"`
-	Rows          int64  `json:"rows"`
-	SchemaDigest  string `json:"schemaDigest"`
-	ContentDigest string `json:"contentDigest"`
-	Excluded      bool   `json:"excluded"`
-	ExclusionCode string `json:"exclusionCode,omitempty"`
-}
-
-type BackupOwnerManifest struct {
-	ID               string                                       `json:"id"`
-	Installed        bool                                         `json:"installed"`
-	Available        bool                                         `json:"available"`
-	Mode             string                                       `json:"mode"`
-	ResourceManifest *componentmanifest.DurableResourceManifestV1 `json:"resourceManifest,omitempty"`
-}
-
-type BackupManifest struct {
-	Schema             string                `json:"schema"`
-	BackupID           string                `json:"backupId"`
-	CreatedAt          int64                 `json:"createdAt"`
-	AppVersion         string                `json:"appVersion"`
-	CoreSchema         string                `json:"coreSchema"`
-	SQLiteModule       string                `json:"sqliteModule"`
-	SQLiteRuntime      string                `json:"sqliteRuntime"`
-	SQLiteSourceID     string                `json:"sqliteSourceId"`
-	ReleaseSequence    uint64                `json:"releaseSequence"`
-	ReleaseVersion     string                `json:"releaseVersion"`
-	DeploymentProfile  string                `json:"deploymentProfile"`
-	DeploymentRevision string                `json:"deploymentRevision"`
-	Encryption         string                `json:"encryption"`
-	MaxBytes           int64                 `json:"maxBytes"`
-	Owners             []BackupOwnerManifest `json:"owners"`
-	Tables             []BackupTableManifest `json:"tables"`
-	Compatibility      string                `json:"compatibility"`
-	Files              *FileBackupManifest   `json:"files,omitempty"`
-}
-
 func writeBackupManifest(ctx context.Context, db *gorm.DB, tables []backupTable, excluded map[string]bool, files ...*FileBackupManifest) error {
 	if ctx == nil || db == nil || len(tables) == 0 || len(tables) > MaxBackupTables {
 		return errors.New("backup manifest input is invalid")

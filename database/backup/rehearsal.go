@@ -31,40 +31,6 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 )
 
-const MaxRestoreBytes = int64(512 << 20)
-
-type RestoreOwnerStatus struct {
-	ID               string `json:"id"`
-	Installed        bool   `json:"installed"`
-	Available        bool   `json:"available"`
-	Included         bool   `json:"included"`
-	Mode             string `json:"mode"`
-	SchemaVersion    string `json:"schemaVersion,omitempty"`
-	ManifestChecksum string `json:"manifestChecksum,omitempty"`
-	Compatibility    string `json:"compatibility"`
-	HookStatus       string `json:"hookStatus"`
-}
-
-type RestoreRehearsal struct {
-	Schema               string                `json:"schema"`
-	State                string                `json:"state"`
-	Possible             bool                  `json:"possible"`
-	BackupDigest         string                `json:"backupDigest"`
-	BackupBytes          int64                 `json:"backupBytes"`
-	ManifestStatus       string                `json:"manifestStatus"`
-	Manifest             *BackupManifest       `json:"manifest,omitempty"`
-	Integrity            string                `json:"integrity"`
-	SchemaCompatibility  string                `json:"schemaCompatibility"`
-	MigrationPlan        string                `json:"migrationPlan"`
-	ReleaseCompatibility string                `json:"releaseCompatibility"`
-	SpaceStatus          string                `json:"spaceStatus"`
-	Owners               []RestoreOwnerStatus  `json:"owners"`
-	ReasonCodes          []string              `json:"reasonCodes"`
-	MigrationFindings    []diagnostics.Finding `json:"migrationFindings,omitempty"`
-	Revision             string                `json:"revision"`
-	GeneratedAt          int64                 `json:"generatedAt"`
-}
-
 func Rehearse(ctx context.Context, source io.ReadSeeker) (RestoreRehearsal, error) {
 	result := RestoreRehearsal{Schema: "solovey.restore-rehearsal/v1", State: "REJECTED", ManifestStatus: "UNVERIFIED",
 		Integrity: "NOT_CHECKED", SchemaCompatibility: "UNKNOWN", MigrationPlan: "UNKNOWN",
@@ -141,7 +107,9 @@ func Rehearse(ctx context.Context, source io.ReadSeeker) (RestoreRehearsal, erro
 		}
 		if len(result.ReasonCodes) == 0 {
 			statuses, migrationErr := rehearseMigrationsAndOwnersWithFindings(ctx, staged, result.Owners, func(findings []diagnostics.Finding) {
-				result.MigrationFindings = append(result.MigrationFindings, findings...)
+				for _, finding := range findings {
+					result.MigrationFindings = append(result.MigrationFindings, MigrationFinding(finding))
+				}
 			}, manifest.Files)
 			result.Owners = statuses
 			if migrationErr != nil {
@@ -150,10 +118,10 @@ func Rehearse(ctx context.Context, source io.ReadSeeker) (RestoreRehearsal, erro
 				var rejection *diagnostics.Rejection
 				var ruleRejection *singboxvalidation.RuleConditionError
 				if errors.As(migrationErr, &rejection) {
-					result.MigrationFindings = append(result.MigrationFindings, rejection.Finding)
+					result.MigrationFindings = append(result.MigrationFindings, MigrationFinding(rejection.Finding))
 					result.ReasonCodes = append(result.ReasonCodes, rejection.ReasonCode())
 				} else if errors.As(migrationErr, &ruleRejection) {
-					result.MigrationFindings = append(result.MigrationFindings, ruleRejection.Finding)
+					result.MigrationFindings = append(result.MigrationFindings, MigrationFinding(ruleRejection.Finding))
 					result.ReasonCodes = append(result.ReasonCodes, ruleRejection.Finding.Code)
 				}
 			} else if result.MigrationPlan == "REQUIRED" {
