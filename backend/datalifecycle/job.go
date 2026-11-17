@@ -1,8 +1,8 @@
 package datalifecycle
 
 import (
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 )
 
 func ProjectJob(operation model.DataLifecycleOperation) operationcoordination.Job {

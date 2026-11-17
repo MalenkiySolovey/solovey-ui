@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 )
 
 func (m *Manager) ReadJournal(ctx context.Context, after uint64, limit int) ([]operationcoordination.JournalEvent, error) {

@@ -12,7 +12,7 @@ import (
 func TestRestoreOwnerDeniesBeforeMaintenanceRehearsalOrDatabaseMutation(t *testing.T) {
 	for _, variant := range []string{"missing", "denied", "unknown_permission", "different_plan"} {
 		t.Run(variant, func(t *testing.T) {
-			manager := NewManager()
+			manager := NewManager(Dependencies{})
 			manager.DB = func() *gorm.DB { t.Fatal("authorization rejection reached database"); return nil }
 			request := RestoreRequest{ExpectedRehearsalRevision: strings.Repeat("a", 64),
 				IdempotencyKey: "restore-action-policy-test", Acknowledged: true, Source: strings.NewReader("not reached")}

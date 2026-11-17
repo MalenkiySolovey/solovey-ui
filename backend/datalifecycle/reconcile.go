@@ -5,8 +5,8 @@ import (
 	"errors"
 	"path/filepath"
 
+	dbbackup "github.com/MalenkiySolovey/solovey-ui/backend/storage/backup"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
 )
 
 const maxStartupReconciliations = 32

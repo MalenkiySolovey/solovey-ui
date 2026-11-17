@@ -14,20 +14,11 @@ import (
 	"sync"
 	"time"
 
+	componentmanifest "github.com/MalenkiySolovey/solovey-host/componenthost/manifest"
 	operationcoordination "github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
+	dbbackup "github.com/MalenkiySolovey/solovey-ui/backend/storage/backup"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/durableowner"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
-	componentmigrations "github.com/MalenkiySolovey/solovey-ui/componenthost/migrations"
-	componentregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
-	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
-	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
-	componentmanifest "github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
-	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
-	pressureService "github.com/MalenkiySolovey/solovey-ui/service/resourcepressure"
 	"gorm.io/gorm"
 )
 
@@ -82,22 +73,25 @@ type Manager struct {
 	// RestoreRoot is the owner-local persistent directory containing logical
 	// pre-restore recovery snapshots. It is injected in filesystem tests and
 	// otherwise follows the configured database root.
-	RestoreRoot string
-	Enabled     func(componentmanifest.Manifest) (bool, error)
-	Admit       func(string) bool
-	Backup      func(context.Context, model.DataLifecycleOperation) (string, error)
-	recoveryOps *recoveryFileOps
+	RestoreRoot  string
+	Enabled      func(componentmanifest.Manifest) (bool, error)
+	Admit        func(string) bool
+	Backup       func(context.Context, model.DataLifecycleOperation) (string, error)
+	Owners       OwnerCatalog
+	Restore      BackupRestore
+	DatabaseRoot func() string
+	recoveryOps  *recoveryFileOps
 }
 
-var shared = NewManager()
-
-func Shared() *Manager { return shared }
-
-func NewManager() *Manager {
-	return &Manager{DB: dbsqlite.DB, Now: time.Now, Drop: coreservice.DropComponentData,
-		Root:        filepath.Join(configstorage.GetDBFolderPath(), "recovery", "drop-data"),
-		RestoreRoot: filepath.Join(configstorage.GetDBFolderPath(), "recovery", "restore"),
-		Enabled:     enabledstate.Enabled, Admit: func(class string) bool { return pressureService.Shared().Admission(class).Allowed }}
+func NewManager(dependencies Dependencies) *Manager {
+	manager := &Manager{DB: dependencies.DB, Now: time.Now, Drop: dependencies.Drop,
+		Enabled: dependencies.Enabled, Admit: dependencies.Admit, Owners: dependencies.Owners,
+		Restore: dependencies.BackupRestore, DatabaseRoot: dependencies.DatabaseRoot}
+	if dependencies.DatabaseRoot != nil {
+		manager.Root = filepath.Join(dependencies.DatabaseRoot(), "recovery", "drop-data")
+		manager.RestoreRoot = filepath.Join(dependencies.DatabaseRoot(), "recovery", "restore")
+	}
+	return manager
 }
 
 func (m *Manager) Preview(ctx context.Context, ownerID string) (Preview, error) {
@@ -130,14 +124,14 @@ func (m *Manager) preview(ctx context.Context, ownerID string, presenceOnly, ins
 	if presenceOnly {
 		preview.Schema = "solovey.component-removal-impact/v1"
 	}
-	installed, err := installstate.InstalledComponents()
+	installed, err := m.installedOwners()
 	if err != nil {
 		preview.Blockers = append(preview.Blockers, "installed_owner_manifest_unavailable")
 		preview.Revision = previewRevision(preview)
 		return preview, nil
 	}
 	for _, owner := range installed {
-		if owner.ID == ownerID {
+		if owner == ownerID {
 			preview.Installed = true
 			break
 		}
@@ -145,7 +139,7 @@ func (m *Manager) preview(ctx context.Context, ownerID string, presenceOnly, ins
 	if !preview.Installed {
 		preview.Blockers = append(preview.Blockers, "owner_not_installed")
 	}
-	component, available := componentregistry.ComponentByID(ownerID)
+	component, available := m.Owners.Lookup(ownerID)
 	preview.Available = available
 	if !available {
 		preview.Blockers = append(preview.Blockers, "installed_owner_unavailable")
@@ -159,7 +153,7 @@ func (m *Manager) preview(ctx context.Context, ownerID string, presenceOnly, ins
 	} else if preview.Enabled {
 		preview.Blockers = append(preview.Blockers, "owner_is_enabled")
 	}
-	if _, ok := component.Lifecycle.(lifecycle.DataDropper); !ok && component.Durable == nil {
+	if !component.CanDrop {
 		preview.Blockers = append(preview.Blockers, "owner_drop_contract_unavailable")
 	}
 	ownerManifest, manifestAvailable := durableowner.Lookup(ownerID)
@@ -219,7 +213,7 @@ func (m *Manager) preview(ctx context.Context, ownerID string, presenceOnly, ins
 			}
 		}
 		if presenceOnly {
-			if blocker := componentmigrations.RemovalBlocker(ctx, db, ownerID); blocker != "" {
+			if blocker := m.Owners.RemovalBlocker(ctx, db, ownerID); blocker != "" {
 				preview.Blockers = append(preview.Blockers, blocker)
 			}
 		} else {
@@ -306,13 +300,13 @@ func (m *Manager) Execute(ctx context.Context, request ExecuteRequest) (model.Da
 	if err := operationcoordination.SerializeAdmission(func() error {
 		// A preview obtained before safe removal must not admit a later DropData
 		// operation after installed ownership has already been removed.
-		owners, err := installstate.InstalledComponents()
+		owners, err := m.installedOwners()
 		if err != nil {
 			return ErrBlocked
 		}
 		found := false
 		for _, owner := range owners {
-			found = found || owner.ID == request.OwnerID
+			found = found || owner == request.OwnerID
 		}
 		if !found {
 			return ErrBlocked
@@ -411,7 +405,10 @@ func (m *Manager) Recovery(ctx context.Context) (model.DataLifecycleOperation, e
 }
 
 func (m *Manager) preDropBackup(ctx context.Context, operation model.DataLifecycleOperation) (string, error) {
-	path, cleanup, err := dbbackup.PrepareExportContext(ctx, "")
+	if m.Restore == nil {
+		return "", errors.New("backup owner unavailable")
+	}
+	path, cleanup, err := m.Restore.PrepareExport(ctx, "")
 	if err != nil {
 		return "", err
 	}
@@ -434,14 +431,14 @@ func (m *Manager) database() *gorm.DB {
 
 func (m *Manager) enabled(item componentmanifest.Manifest) (bool, error) {
 	if m.Enabled == nil {
-		return enabledstate.Enabled(item)
+		return false, errors.New("owner enabled state unavailable")
 	}
 	return m.Enabled(item)
 }
 
 func (m *Manager) admitted(class string) bool {
 	if m.Admit == nil {
-		return pressureService.Shared().Admission(class).Allowed
+		return false
 	}
 	return m.Admit(class)
 }
@@ -543,23 +540,11 @@ func activeOwnerLeases(db *gorm.DB, ownerID string, now time.Time) (int64, error
 	return count, err
 }
 
-func externalAuthority(ctx context.Context, component componentregistry.Component, db *gorm.DB, now time.Time) (string, []string) {
-	if component.Durable != nil {
-		status, err := component.Durable.Inspect(ctx, db, now)
-		if err != nil {
-			return "UNAVAILABLE", []string{"external_authority_unavailable"}
-		}
-		return status.State, append([]string(nil), status.ReasonCodes...)
-	}
-	inspector, ok := component.Lifecycle.(lifecycle.DropAuthorityInspector)
-	if !ok {
+func externalAuthority(ctx context.Context, component Owner, db *gorm.DB, now time.Time) (string, []string) {
+	if component.Inspect == nil {
 		return "NOT_REQUIRED", []string{}
 	}
-	status := inspector.InspectDropAuthority(ctx, db, now)
-	if status.State == "" {
-		return "UNAVAILABLE", []string{"external_authority_contract_invalid"}
-	}
-	return status.State, append([]string(nil), status.ReasonCodes...)
+	return component.Inspect(ctx, db, now)
 }
 
 func dropPostcondition(preview Preview) bool {
@@ -612,7 +597,11 @@ func observeMigrationRows(ctx context.Context, db *gorm.DB, ownerID string) ([]R
 
 func (m *Manager) observeFileMode(relativePath, ownerID, class string, presenceOnly bool) (Resource, error) {
 	resource := Resource{ID: "file:" + relativePath, Kind: "file_tree", Owner: ownerID, Class: class, Terminal: "ABSENT"}
-	base, err := filepath.Abs(filepath.Dir(configstorage.GetDBFolderPath()))
+	root := m.databaseRoot()
+	if root == "" {
+		return resource, errors.New("owner data root unavailable")
+	}
+	base, err := filepath.Abs(filepath.Dir(root))
 	if err != nil {
 		return resource, err
 	}

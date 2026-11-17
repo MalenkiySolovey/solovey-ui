@@ -12,9 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	dbbackup "github.com/MalenkiySolovey/solovey-ui/backend/storage/backup"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
-	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
 	"gorm.io/gorm"
 )
 
@@ -93,14 +92,20 @@ func (m *Manager) dropRecoveryRoot() string {
 	if m != nil && strings.TrimSpace(m.Root) != "" {
 		return filepath.Clean(m.Root)
 	}
-	return filepath.Join(configstorage.GetDBFolderPath(), "recovery", "drop-data")
+	if root := m.databaseRoot(); root != "" {
+		return filepath.Join(root, "recovery", "drop-data")
+	}
+	return ""
 }
 
 func (m *Manager) restoreRecoveryRoot() string {
 	if m != nil && strings.TrimSpace(m.RestoreRoot) != "" {
 		return filepath.Clean(m.RestoreRoot)
 	}
-	return filepath.Join(configstorage.GetDBFolderPath(), "recovery", "restore")
+	if root := m.databaseRoot(); root != "" {
+		return filepath.Join(root, "recovery", "restore")
+	}
+	return ""
 }
 
 func portableDropRecoveryFilename(operationID string) string {

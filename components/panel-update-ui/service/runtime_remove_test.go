@@ -175,9 +175,10 @@ func runtimeRemovalFixture(t *testing.T) (*RemovalAdmission, *gorm.DB) {
 	if err := db.AutoMigrate(&model.Setting{}, &model.MigrationJournal{}, &model.DataLifecycleOperation{}); err != nil {
 		t.Fatal(err)
 	}
-	data := &datalifecycle.Manager{DB: func() *gorm.DB { return db }, Now: time.Now,
-		Enabled: func(item manifest.Manifest) (bool, error) { return item.DefaultEnabled, nil },
-		Drop:    func(context.Context, string) error { t.Error("Remove invoked DropData"); return nil }}
+	data := datalifecycle.NewManager()
+	data.DB, data.Now = func() *gorm.DB { return db }, time.Now
+	data.Enabled = func(item manifest.Manifest) (bool, error) { return item.DefaultEnabled, nil }
+	data.Drop = func(context.Context, string) error { t.Error("Remove invoked DropData"); return nil }
 	s := supervisor.New(componenthost.Deps{})
 	inventory := resources.NewRegistry(time.Second)
 	return &RemovalAdmission{Preview: data.PreviewRemoval, Resources: data.RemovalResources,

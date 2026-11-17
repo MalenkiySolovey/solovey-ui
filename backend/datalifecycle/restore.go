@@ -7,9 +7,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
 	operationcoordination "github.com/MalenkiySolovey/solovey-ui/backend/operations/coordination"
+	dbbackup "github.com/MalenkiySolovey/solovey-ui/backend/storage/backup"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"gorm.io/gorm"
 )
 
@@ -63,7 +63,10 @@ func (m *Manager) ExecuteRestore(ctx context.Context, request RestoreRequest) (m
 	if blocker := m.globalOperationBlocker(ctx); blocker != "" {
 		return model.DataLifecycleOperation{}, result, ErrOperationConflict
 	}
-	rehearsal, err := dbbackup.Rehearse(ctx, request.Source)
+	if m.Restore == nil {
+		return model.DataLifecycleOperation{}, result, errors.New("backup owner unavailable")
+	}
+	rehearsal, err := m.Restore.Rehearse(ctx, request.Source)
 	if err != nil || !rehearsal.Possible || rehearsal.Revision != request.ExpectedRehearsalRevision {
 		return model.DataLifecycleOperation{}, result, ErrPreviewChanged
 	}
@@ -92,7 +95,7 @@ func (m *Manager) ExecuteRestore(ctx context.Context, request RestoreRequest) (m
 	if err != nil {
 		return operation, result, err
 	}
-	result, err = dbbackup.RestoreContextDetailedWithRecoveryRoot(ctx, request.Source, m.restoreRecoveryRoot())
+	result, err = m.Restore.RestoreWithRecoveryRoot(ctx, request.Source, m.restoreRecoveryRoot())
 	if err != nil {
 		failed, recordErr := m.fail(result.DatabaseContext(ctx), operation, "restore_failed", err)
 		if recordErr != nil {
@@ -107,7 +110,7 @@ func (m *Manager) ExecuteRestore(ctx context.Context, request RestoreRequest) (m
 		cleanupErr := m.removeUnreferencedRecoveryArtifact(ctx, "RESTORE", operation.OperationID, operation.BackupRef)
 		return rolledBack, execution, errors.Join(rollbackErr, cleanupErr)
 	}
-	cleanupPending, restartPending, err := dbbackup.CompletePendingRestore(ctx)
+	cleanupPending, restartPending, err := m.Restore.CompletePendingRestore(ctx)
 	result.RecoveryCleanupPending, result.RestartPending = cleanupPending, restartPending
 	if err != nil {
 		rolledBack, execution, rollbackErr := m.rollbackUnacceptedRestore(ctx, operation, result, "restore_acceptance_unavailable", err)
@@ -128,7 +131,7 @@ func (m *Manager) rollbackUnacceptedRestore(
 	reason string,
 	cause error,
 ) (model.DataLifecycleOperation, dbbackup.RestoreExecutionResult, error) {
-	if rollbackErr := dbbackup.AbortPendingRestore(); rollbackErr != nil {
+	if rollbackErr := m.Restore.AbortPendingRestore(); rollbackErr != nil {
 		operation.State, operation.ReasonCode = "RECOVERY_REQUIRED", reason
 		return operation, result, errors.Join(ErrRecoveryRequired, cause, rollbackErr)
 	}

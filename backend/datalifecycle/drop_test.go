@@ -12,25 +12,15 @@ import (
 	"testing"
 	"time"
 
+	componentmanifest "github.com/MalenkiySolovey/solovey-host/componenthost/manifest"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/durableowner"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
-	componentregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
-	componentmanifest "github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
 func TestDropDataPreviewIsReadOnlyAndExecutionIsManifestExact(t *testing.T) {
 	owner := registerDropDataFixtureOwner()
-	installedPath := filepath.Join(t.TempDir(), "installed.json")
-	t.Setenv(installstate.InstalledFileEnv, installedPath)
-	if err := installstate.Store(installedPath, installstate.Metadata{Version: 1, Components: []installstate.InstalledComponent{{
-		ID: owner.ID, Delivery: componentmanifest.DeliveryInProcess, Installed: true,
-	}}}); err != nil {
-		t.Fatal(err)
-	}
 	db, err := gorm.Open(sqlite.Open("file:drop-data-exact?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
@@ -67,7 +57,7 @@ func TestDropDataPreviewIsReadOnlyAndExecutionIsManifestExact(t *testing.T) {
 		t.Fatal(err)
 	}
 	recoveryRoot := t.TempDir()
-	manager := &Manager{DB: func() *gorm.DB { return db }, Now: func() time.Time { return time.Unix(1000, 0).UTC() },
+	manager := &Manager{Owners: &fixtureOwnerCatalog{manifest: owner, installed: true}, DB: func() *gorm.DB { return db }, Now: func() time.Time { return time.Unix(1000, 0).UTC() },
 		Root: recoveryRoot, Enabled: func(componentmanifest.Manifest) (bool, error) { return false, nil },
 		Admit: func(string) bool { return true }, Backup: func(_ context.Context, operation model.DataLifecycleOperation) (string, error) {
 			content := []byte("drop-backup")
@@ -135,10 +125,6 @@ func TestDropDataPreviewIsReadOnlyAndExecutionIsManifestExact(t *testing.T) {
 	}
 }
 
-type dropDataFixtureLifecycle struct{ lifecycle.Noop }
-
-func (dropDataFixtureLifecycle) DropData(context.Context, lifecycle.Context) error { return nil }
-
 func registerDropDataFixtureOwner() componentmanifest.Manifest {
 	const id = "drop-owner-fixture"
 	if item, available := durableowner.Lookup(id); available {
@@ -151,7 +137,7 @@ func registerDropDataFixtureOwner() componentmanifest.Manifest {
 			Settings: []string{"dropOwnerFixtureEnabled"}, Secrets: []string{"dropOwnerFixtureSecret"},
 		},
 	}.Normalized()
-	componentregistry.Register(componentregistry.Component{Manifest: item, Lifecycle: dropDataFixtureLifecycle{}})
+	durableowner.Register(item)
 	return item
 }
 

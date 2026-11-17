@@ -26,7 +26,7 @@ func TestStartupReconciliationClosesSafeInterruptionsAndFencesAmbiguousOnes(t *t
 		t.Fatal(err)
 	}
 	now := time.Unix(1_900_000_000, 0)
-	manager := NewManager()
+	manager := NewManager(Dependencies{})
 	manager.DB, manager.Now = func() *gorm.DB { return db }, func() time.Time { return now }
 	manager.Root, manager.RestoreRoot = filepath.Join(t.TempDir(), "drop"), filepath.Join(t.TempDir(), "restore")
 	if err := os.MkdirAll(manager.Root, 0o700); err != nil {
