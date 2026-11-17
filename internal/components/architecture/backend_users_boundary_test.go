@@ -11,7 +11,7 @@ func TestUserAccessLifecycleExcludesProductRuntimeAndDelivery(t *testing.T) {
 	allowed := map[string]bool{}
 	for _, name := range []string{
 		"backend/users", "backend/storage/model", "backend/storage/sqlite", "backend/entityidentity", "backend/security",
-		"backend/security/crypto", "backend/storage/entityidentity", "backend/storage/entityorder", "backend/storage/saveidentity", "backend/storage/jsonvalue",
+		"backend/security/uuid", "backend/storage/entityidentity", "backend/storage/entityorder", "backend/storage/saveidentity", "backend/storage/jsonvalue",
 	} {
 		allowed[modulePath+"/"+name] = true
 	}
