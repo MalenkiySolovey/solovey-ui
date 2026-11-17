@@ -13,7 +13,7 @@ import (
 
 func TestActionAdapterUsesActualComponentDeclarationAndKnownPermissionScope(t *testing.T) {
 	initSessionTestDB(t)
-	api := NewApiService()
+	api := newComposedApiService()
 	actual := actions.RemoveComponent(operationcoordination.NewReference("component-lifecycle", "component:telegram", "component-remove:policy-proof"), actions.ComponentRemoveInput{ComponentID: "telegram"})
 	for _, variant := range []string{"allowed", "missing_component", "foreign_component", "unknown_action", "wrong_scope"} {
 		t.Run(variant, func(t *testing.T) {

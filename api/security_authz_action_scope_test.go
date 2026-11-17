@@ -17,7 +17,7 @@ func TestSecurityAuthZAPIV2ActionScopeGate(t *testing.T) {
 	initSessionTestDB(t)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	h := NewAPIv2Handler(router.Group("/apiv2"))
+	h := newComposedAPIv2Handler(router.Group("/apiv2"))
 
 	// allowed lists exclude "admin", which must always be permitted.
 	cases := []struct {
@@ -78,7 +78,7 @@ func TestSecurityAuthZAPIV2BrowserSessionBypassesActionScope(t *testing.T) {
 	initSessionTestDB(t)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	h := NewAPIv2Handler(router.Group("/apiv2"))
+	h := newComposedAPIv2Handler(router.Group("/apiv2"))
 
 	for _, action := range []string{"save", "restartApp", "settings", "users", "stats"} {
 		rec := httptest.NewRecorder()

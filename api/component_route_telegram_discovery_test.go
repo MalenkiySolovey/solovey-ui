@@ -48,7 +48,7 @@ func TestTelegramDiscoveryHostScopeAndAudit(t *testing.T) {
 	}
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	NewAPIv2Handler(router.Group("/apiv2"))
+	newComposedAPIv2Handler(router.Group("/apiv2"))
 	if r := performDiscoveryRequest(router, "/apiv2/telegram/detect-chat", `{"token":"request-only-invalid-secret"}`, read, ""); r.Code != http.StatusForbidden {
 		t.Fatalf("read scope status %d", r.Code)
 	}

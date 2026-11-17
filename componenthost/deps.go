@@ -3,10 +3,8 @@ package componenthost
 import (
 	"context"
 	hostports "github.com/MalenkiySolovey/solovey-host/componenthost"
-	"github.com/MalenkiySolovey/solovey-ui/backend/actions"
-	"time"
+	"github.com/MalenkiySolovey/solovey-ui/backend/componentroutes"
 
-	clientidentity "github.com/MalenkiySolovey/solovey-ui/internal/httpsecurity/clientidentity"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"
@@ -41,50 +39,12 @@ type APIDeps struct {
 	Update            UpdateDeps
 }
 
-type AuthDeps struct {
-	// AuthorizationChanged refreshes the host's authorization snapshot after
-	// a feature has committed a change to account or token authority.
-	ActionPolicy           func(*gin.Context) actions.Authorizer
-	AuthorizationChanged   func()
-	RequireScope           func(*gin.Context, string, ...string) bool
-	RequireAuditAdminScope func(*gin.Context) bool
-	RequireStepUp          func(*gin.Context, string, string) bool
-	LoginUser              func(*gin.Context) string
-	CheckPassword          func(string, string, string) bool
-}
-
-type RequestDeps struct {
-	Actor          func(*gin.Context) string
-	RemoteIP       func(*gin.Context) string
-	ClientIdentity func(*gin.Context) clientidentity.V1
-	Hostname       func(*gin.Context) string
-	ValidateTarget func(context.Context, string) error
-}
-
-type RateLimitDeps struct {
-	CheckRateLimit        func(string) (time.Duration, error)
-	CheckLoginRateLimit   func(string) error
-	RecordLoginFailure    func(string)
-	ResetLoginFailures    func(string)
-	LoginRateLimitUserKey func(string) string
-	CheckAuditRateLimit   func(string) error
-	AuditRateLimitKey     func(string, string) string
-	AuditRateLimitWindow  time.Duration
-}
-
-type AuditDeps struct {
-	Audit    func(*gin.Context, string, string, string, string, map[string]any)
-	Recorder AuditRecorder
-}
-
-type HTTPDeps struct {
-	JSONObj func(*gin.Context, interface{}, error)
-	JSONMsg func(*gin.Context, string, error)
-}
-
-type UpdateDeps struct {
-	AllowForcedUpdateCheck func() bool
-}
+type AuthDeps = componentroutes.AuthDeps
+type RequestDeps = componentroutes.RequestDeps
+type RateLimitDeps = componentroutes.RateLimitDeps
+type AuditDeps = componentroutes.AuditDeps
+type HTTPDeps = componentroutes.HTTPDeps
+type UpdateDeps = componentroutes.UpdateDeps
 
 type HTTPRegisterFunc[T any] func(*gin.RouterGroup, T)
 
@@ -100,6 +60,4 @@ func (a RouteAdapter[T]) RegisterRoutes(g *gin.RouterGroup, host APIDeps) error 
 
 // ComponentSettings is the existing Panel command used by lifecycle enable and
 // compensation. It retains the ConfigService transaction and post-commit effects.
-type ComponentSettings interface {
-	SetComponentEnabled(id string, enabled bool, actor, hostname string) error
-}
+type ComponentSettings = componentroutes.ComponentSettings

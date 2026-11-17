@@ -33,7 +33,7 @@ func TestTelegramComponentRoutesPresentInFullProfile(t *testing.T) {
 	}
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	handler := &APIHandler{}
+	handler := &APIHandler{ApiService: newComposedApiService()}
 	handler.initRouter(router.Group("/api"))
 
 	if !routeExists(router, http.MethodGet, "/api/components/fallback-html/health") {

@@ -2,28 +2,21 @@ package api
 
 import (
 	"net/http"
-	"time"
 
 	confighttp "github.com/MalenkiySolovey/solovey-ui/api/config"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
-	componentprofile "github.com/MalenkiySolovey/solovey-ui/internal/components/profile"
+	"github.com/MalenkiySolovey/solovey-ui/backend/componentroutes"
+	"github.com/MalenkiySolovey/solovey-ui/backend/componentview"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"
 )
 
-func (a *ApiService) componentAPI(requireStepUp func(*gin.Context, string, string) bool, authorizationChanged func()) componenthost.APIDeps {
+func (a *ApiService) componentAPI(requireStepUp func(*gin.Context, string, string) bool, authorizationChanged func()) componentroutes.Ports {
 	runtime := a.Runtime
-	return componenthost.APIDeps{
-		Runtime:           a.Runtime,
+	return componentroutes.Ports{
 		ComponentSettings: a.ConfigService,
-		OutboundHTTP: componenthost.OutboundHTTPClientFunc(func(tag string, timeout time.Duration) (*http.Client, error) {
-			return service.NewOutboundHTTPClientForRuntime(runtime, tag, timeout)
-		}),
-		Auth: componenthost.AuthDeps{
+		Auth: componentroutes.AuthDeps{
 			ActionPolicy:           a.actionPolicy(requireStepUp),
 			AuthorizationChanged:   authorizationChanged,
 			RequireScope:           a.requireTokenScopeAny,
@@ -35,14 +28,14 @@ func (a *ApiService) componentAPI(requireStepUp func(*gin.Context, string, strin
 				return found != nil
 			},
 		},
-		Request: componenthost.RequestDeps{
+		Request: componentroutes.RequestDeps{
 			Actor:          requestActor,
 			RemoteIP:       getRemoteIp,
 			ClientIdentity: RequestClientIdentity,
 			Hostname:       getHostname,
 			ValidateTarget: confighttp.ValidateOutboundCheckTarget,
 		},
-		Rate: componenthost.RateLimitDeps{
+		Rate: componentroutes.RateLimitDeps{
 			CheckRateLimit:        checkComponentManualActionRateLimit,
 			CheckLoginRateLimit:   checkLoginRateLimit,
 			RecordLoginFailure:    recordLoginFailure,
@@ -52,40 +45,46 @@ func (a *ApiService) componentAPI(requireStepUp func(*gin.Context, string, strin
 			AuditRateLimitKey:     auditEndpointRateLimitKey,
 			AuditRateLimitWindow:  auditEndpointRateLimitWindow,
 		},
-		Audit: componenthost.AuditDeps{
+		Audit: componentroutes.AuditDeps{
 			Audit:    a.recordAudit,
 			Recorder: &service.AuditService{Runtime: runtime},
 		},
-		HTTP: componenthost.HTTPDeps{
+		HTTP: componentroutes.HTTPDeps{
 			JSONObj: jsonObj,
 			JSONMsg: jsonMsg,
 		},
-		Update: componenthost.UpdateDeps{
+		Update: componentroutes.UpdateDeps{
 			AllowForcedUpdateCheck: allowForcedUpdateCheck,
 		},
-	}.WithObservationOwners()
+	}
 }
 
-func registerComponentAPIRoutes(g *gin.RouterGroup, api componenthost.APIDeps) {
-	state.InvalidateActiveCache()
-	installed, err := state.InstalledIDs()
+func (a *ApiService) registerComponentAPIRoutes(g *gin.RouterGroup, ports componentroutes.Ports) {
+	if a.Components == nil {
+		logger.Warning("register component API routes err: ", componentroutes.ErrUnavailable)
+		return
+	}
+	routes, err := a.Components.Routes(ports)
 	if err != nil {
 		logger.Warning("load installed component metadata err: ", err)
 		return
 	}
-	for _, routes := range registry.APIRouteRegistrarsByComponentIDs(installed) {
-		componentGroup := g.Group("", componentActiveMiddleware(routes.ComponentID))
-		if err := routes.Register(componentGroup, api); err != nil {
-			logger.Warning("register component API routes err: ", routes.ComponentID, ": ", err)
+	for _, route := range routes {
+		componentGroup := g.Group("", a.componentActiveMiddleware(route.ComponentID))
+		if err := route.Register(componentGroup); err != nil {
+			logger.Warning("register component API routes err: ", route.ComponentID, ": ", err)
 		}
 	}
 }
 
 const componentAuthorityKey = "componenthost.authority.id"
 
-func componentActiveMiddleware(componentID string) gin.HandlerFunc {
+func (a *ApiService) componentActiveMiddleware(componentID string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		active, err := state.IsActiveCached(componentID)
+		active, err := false, componentroutes.ErrUnavailable
+		if a.Components != nil {
+			active, err = a.Components.IsActive(componentID)
+		}
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, Msg{
 				Success: false,
@@ -107,16 +106,9 @@ func componentActiveMiddleware(componentID string) gin.HandlerFunc {
 
 func (a *APIHandler) registerComponentStatusRoutes(g *gin.RouterGroup) {
 	g.GET("/components", func(c *gin.Context) {
-		components, err := state.Components()
-		inventory := componentRuntimeInventory{
-			BinaryProfile: componentprofile.Binary,
-			Components:    components,
-		}
+		inventory, err := componentroutes.Inventory(a.Components)
 		jsonObj(c, inventory, err)
 	})
 }
 
-type componentRuntimeInventory struct {
-	BinaryProfile string            `json:"binaryProfile"`
-	Components    []state.Component `json:"components"`
-}
+type componentRuntimeInventory = componentview.RuntimeInventory

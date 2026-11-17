@@ -102,7 +102,7 @@ func newAPIPerfRouter(tb testing.TB) *gin.Engine {
 	tb.Helper()
 	initAPIPerfDB(tb)
 	runtime := service.NewRuntime(nil)
-	apiService := NewApiService(WithRuntime(runtime))
+	apiService := newComposedApiService(WithRuntime(runtime))
 	configHandler := apiService.configHandler()
 	telemetryHandler := apiService.coreTelemetryHandler()
 	seedAPIPerfData(tb)

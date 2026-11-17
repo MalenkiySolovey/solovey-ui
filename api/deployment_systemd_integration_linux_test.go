@@ -133,7 +133,7 @@ func TestDeploymentSystemdPersistenceClient(t *testing.T) {
 	}
 	manager := deploymentservice.NewManager(deploymentservice.Repository{DB: dbsqlite.DB}, provider)
 	router, cookies := newAuthenticatedTestRouter(t, &service.SettingService{}, func(router *gin.Engine) {
-		apiService := NewApiService()
+		apiService := newComposedApiService()
 		apiService.Deployment = manager
 		(&APIHandler{ApiService: apiService}).registerDeploymentRoutes(router.Group("/api"))
 	})

@@ -13,7 +13,7 @@ import (
 func TestHostContextAllAPICompositionsRejectForeignHost(t *testing.T) {
 	settings := initSessionTestDB(t)
 	router := newSecurityCSRFTestRouter(t, settings)
-	NewAPIv2Handler(router.Group("/apiv2"))
+	newComposedAPIv2Handler(router.Group("/apiv2"))
 	for _, path := range []string{"/api/csrf", "/api/importdb", "/api/save", "/apiv2/importdb", "/apiv2/save", "/apiv2/clients"} {
 		for _, values := range [][]string{{"unavailable-example"}, {""}, {"local", "local"}, {"local", "other"}, {"local,other"}, {"LOCAL"}, {" local"}, {"local;other"}} {
 			request := httptest.NewRequest(http.MethodPost, path, nil)
@@ -49,7 +49,7 @@ func TestHostContextAllAPICompositionsRejectForeignHost(t *testing.T) {
 func TestHostContextRejectionPrecedesDatabaseAdmission(t *testing.T) {
 	settings := initSessionTestDB(t)
 	router := newSecurityCSRFTestRouter(t, settings)
-	NewAPIv2Handler(router.Group("/apiv2"))
+	newComposedAPIv2Handler(router.Group("/apiv2"))
 
 	owner, err := dbsqlite.BeginMaintenance(context.Background())
 	if err != nil {

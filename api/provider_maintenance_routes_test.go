@@ -92,7 +92,7 @@ func TestProviderMaintenanceRealOwnerConsumesOnlyMatchingSessionCSRFAndOneUseGra
 	store := newAPITestSessionStore(t)
 	store.Options(sessions.Options{Path: "/", HttpOnly: true})
 	router.Use(sessions.Sessions("s-ui", store))
-	api := &APIHandler{ApiService: NewApiService(), apiv2: NewAPIv2Handler(router.Group("/apiv2"))}
+	api := &APIHandler{ApiService: newComposedApiService(), apiv2: newComposedAPIv2Handler(router.Group("/apiv2"))}
 	api.Update = updateservice.NewLifecycleManager(updateservice.Repository{DB: dbsqlite.DB}, nil, nil, release.Source{}, release.TrustStore{})
 	api.initRouter(router.Group("/api"))
 	jar := &integrationCookieJar{}
@@ -139,7 +139,7 @@ func TestProviderMaintenanceRealOwnerConsumesOnlyMatchingSessionCSRFAndOneUseGra
 
 func TestProviderMaintenanceActionDoesNotTreatBearerScopeAsSessionAssurance(t *testing.T) {
 	initSessionTestDB(t)
-	api := &APIHandler{ApiService: NewApiService()}
+	api := &APIHandler{ApiService: newComposedApiService()}
 	for _, scope := range []string{"read", "update", "admin"} {
 		recorder := httptest.NewRecorder()
 		ctx, _ := gin.CreateTestContext(recorder)

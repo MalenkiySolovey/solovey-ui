@@ -16,8 +16,8 @@ func TestImportXUIRoutesUseSharedRegistry(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(t)))
-	apiv2 := NewAPIv2Handler(router.Group("/apiv2"))
-	NewAPIHandler(router.Group("/api"), apiv2)
+	apiv2 := newComposedAPIv2Handler(router.Group("/apiv2"))
+	newComposedAPIHandler(router.Group("/api"), apiv2)
 
 	routes := map[string]gin.RouteInfo{}
 	for _, route := range router.Routes() {

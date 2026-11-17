@@ -43,7 +43,7 @@ func TestNativeInventoryServiceUIDMigrationAndRoutes(t *testing.T) {
 		t.Cleanup(func() { _ = host.Stop(context.Background()) })
 		gin.SetMode(gin.TestMode)
 		router := gin.New()
-		(&APIHandler{}).initRouter(router.Group("/api"))
+		(&APIHandler{ApiService: newComposedApiService()}).initRouter(router.Group("/api"))
 		for _, route := range expectedOptionalAPIGetRoutes() {
 			if !routeExists(router, http.MethodGet, route) {
 				t.Fatalf("missing installed route %s", route)

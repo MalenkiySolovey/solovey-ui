@@ -37,7 +37,7 @@ func TestSecurityLoginLockoutBlocksAuditsAndRecovers(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(t)))
-	NewAPIHandler(router.Group("/api"), nil)
+	newComposedAPIHandler(router.Group("/api"), nil)
 
 	const ip = securityLockoutTestIP
 	for i := 0; i < 10; i++ {
@@ -97,7 +97,7 @@ func TestSecurityLoginPerUsernameTarpitNeverLocksOut(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(t)))
-	NewAPIHandler(router.Group("/api"), nil)
+	newComposedAPIHandler(router.Group("/api"), nil)
 
 	// Each failed attempt comes from a DIFFERENT source IP, so no single IP is
 	// rate-limited, yet the per-username counter accumulates (these attempts stay

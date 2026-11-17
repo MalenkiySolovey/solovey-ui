@@ -28,6 +28,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
 	componentsupervisor "github.com/MalenkiySolovey/solovey-ui/componenthost/supervisor"
+	"github.com/MalenkiySolovey/solovey-ui/composition/componenthttp"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	cronscheduler "github.com/MalenkiySolovey/solovey-ui/cronjob/scheduler"
@@ -100,14 +101,15 @@ func main() {
 		fatal("session store setup", err)
 	}
 	gin.SetMode(gin.ReleaseMode)
+	componentOwners := componenthost.APIDeps{
+		Runtime: runtime,
+		OutboundHTTP: componenthost.OutboundHTTPClientFunc(func(tag string, timeout time.Duration) (*http.Client, error) {
+			return service.NewOutboundHTTPClientForRuntime(runtime, tag, timeout)
+		}),
+		Audit: componenthost.AuditDeps{Recorder: &service.AuditService{Runtime: runtime}},
+	}.WithObservationOwners()
 	components := componentsupervisor.New(componenthost.Deps{
-		API: componenthost.APIDeps{
-			Runtime: runtime,
-			OutboundHTTP: componenthost.OutboundHTTPClientFunc(func(tag string, timeout time.Duration) (*http.Client, error) {
-				return service.NewOutboundHTTPClientForRuntime(runtime, tag, timeout)
-			}),
-			Audit: componenthost.AuditDeps{Recorder: &service.AuditService{Runtime: runtime}},
-		}.WithObservationOwners(),
+		API:               componentOwners,
 		Scheduler:         cronScheduler,
 		DropOwnedSettings: settingService.DropOwnedComponentSettings,
 	})
@@ -129,9 +131,10 @@ func main() {
 	engine.Use(securitymiddleware.Admin(api.RequestIsHTTPS))
 	engine.Use(sessions.Sessions("s-ui", store))
 	groupAPIV2 := engine.Group(baseURL + "apiv2")
-	apiv2 := api.NewAPIv2Handler(groupAPIV2, api.WithRuntime(runtime))
+	componentInput := componenthttp.New(componentOwners)
+	apiv2 := api.NewAPIv2Handler(groupAPIV2, api.WithRuntime(runtime), api.WithComponents(componentInput))
 	groupAPI := engine.Group(baseURL + "api")
-	api.NewAPIHandler(groupAPI, apiv2, api.WithRuntime(runtime))
+	api.NewAPIHandler(groupAPI, apiv2, api.WithRuntime(runtime), api.WithComponents(componentInput))
 	engine.GET(baseURL, func(c *gin.Context) {
 		c.String(http.StatusOK, "e2e panel")
 	})
