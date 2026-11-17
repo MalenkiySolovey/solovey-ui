@@ -21,7 +21,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/sqliteident"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
-	componentmanifest "github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"gorm.io/gorm"
 )
 
