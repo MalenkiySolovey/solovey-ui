@@ -79,9 +79,11 @@ func TestBackendHostContextIsTheAPIIngressOwner(t *testing.T) {
 	}
 }
 
-func goListDependencies(t *testing.T, root, pattern string) map[string]goListPackage {
+func goListDependencies(t *testing.T, root, pattern string, options ...string) map[string]goListPackage {
 	t.Helper()
-	command := exec.Command("go", "list", "-mod=readonly", "-deps", "-json", pattern)
+	args := append([]string{"list", "-mod=readonly", "-deps", "-json"}, options...)
+	args = append(args, pattern)
+	command := exec.Command("go", args...)
 	command.Dir = root
 	command.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
 	var stdout, stderr bytes.Buffer
