@@ -2590,8 +2590,8 @@
     },
     {
       "rule": "worker-lifetime",
-      "path": "service/audit_writer.go",
-      "symbol": "*auditWriter.Start",
+      "path": "backend/audit/store/writer.go",
+      "symbol": "*Writer.Start",
       "digest": "795f4d19d661b1bf77a7da8f85679c6d12813f75cdca8b9eb97fa26d4710e678"
     },
     {

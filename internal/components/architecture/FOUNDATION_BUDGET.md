@@ -394,3 +394,21 @@ lives in the selected immutable Component module. The producer architecture
 and race suites qualify those same bounded workers and cancellation behavior.
 All Backend adapter sites, original base identity and unrelated entries remain
 fixed; no new Product worker or database authority is admitted.
+
+
+## Backend audit queue owner relocation
+
+The existing audit worker moves from `service/audit_writer.go:*auditWriter.Start`
+to `backend/audit/store/writer.go:*Writer.Start`. The parsed launch remains
+`go w.run()` with digest
+`795f4d19d661b1bf77a7da8f85679c6d12813f75cdca8b9eb97fa26d4710e678`.
+This is one relocated entry; the reviewed base and total budget are unchanged.
+
+Product Runtime constructs the same single writer and supplies warning logging
+and the canonical Panel audit sink. Start is mutex guarded and idempotent;
+Stop closes its existing stop channel once and waits on the existing done channel
+or caller cancellation. The queue remains bounded at 4096 entries, batches at 64,
+and writes use the existing bounded sink. Stop failures retain pending events
+for the Product-managed successor. Retry, overflow priority, coverage markers,
+and late enqueue rejection remain at this one Backend implementation. No listener,
+process, database authority, or independent worker registration is added.
