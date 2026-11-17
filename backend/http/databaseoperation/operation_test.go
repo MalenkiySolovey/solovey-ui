@@ -13,9 +13,17 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
+
+func initializeOperationDatabase(ctx context.Context, path string) error {
+	return dbsqlite.InitializeContext(ctx, path, dbsqlite.Bootstrap{
+		BeforeOpen: func() error { return nil },
+		AfterOpen: func(db *gorm.DB) error { return db.AutoMigrate(&model.Setting{}) },
+	})
+}
 
 func operationDatabase(t *testing.T) string {
 	t.Helper()
@@ -23,7 +31,7 @@ func operationDatabase(t *testing.T) string {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "operations.db")
-	if err := dbsqlite.Init(path); err != nil {
+	if err := initializeOperationDatabase(context.Background(), path); err != nil {
 		if strings.Contains(err.Error(), "requires cgo") {
 			t.Skip(err)
 		}
@@ -165,7 +173,7 @@ func TestRestoreRequestUpgradeAndResponseUsePublishedGeneration(t *testing.T) {
 			c.Status(500)
 			return
 		}
-		if err := dbsqlite.InitContext(private, path); err != nil {
+		if err := initializeOperationDatabase(private, path); err != nil {
 			c.Status(500)
 			return
 		}
