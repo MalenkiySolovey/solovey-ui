@@ -105,7 +105,7 @@ func seedAccountSecurity(t *testing.T, db *gorm.DB, user model.User) {
 	for _, row := range []any{
 		&model.AdminMFAFactor{UserID: user.Id, State: "active", ActiveSecretCiphertext: "opaque-factor"},
 		&model.AdminRecoveryCode{UserID: user.Id, Generation: 1, Verifier: "fixture-recovery-verifier"},
-		&model.StepUpGrant{UserID: user.Id, TokenHash: "fixture-grant-verifier", SessionRef: "fixture-session"},
+		&model.StepUpGrant{UserID: user.Id, Digest: "fixture-grant-verifier", SessionRef: "fixture-session"},
 	} {
 		if err := db.Create(row).Error; err != nil {
 			t.Fatal(err)
