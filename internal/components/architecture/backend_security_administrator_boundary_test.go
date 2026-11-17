@@ -15,7 +15,7 @@ func TestBackendAdministratorAndTokenOwnersExcludeProductRuntime(t *testing.T) {
 		}
 	}
 	for _, target := range []string{backendModulePath + "/security/accounts", backendModulePath + "/security/tokens"} {
-		allowed[modulePath+strings.TrimPrefix(target, ".")] = true
+		allowed[target] = true
 		var violations []string
 		for name, info := range goListDependencies(t, root, target) {
 			if !info.Standard && !allowed[name] {

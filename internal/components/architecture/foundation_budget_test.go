@@ -103,7 +103,7 @@ func inspectFoundationFile(path string, file *ast.File) ([]foundationSite, []str
 		}
 		imports[alias] = imported
 		if typedComponentComposition(path) &&
-			((imported == modulePath+"/database/sqlite" || imported == backendModulePath+"/storage/sqlite") || imported == "gorm.io/gorm") {
+			((imported == modulePath+"/database/sqlite" || imported == backendModulePath+"/storage/sqlite" || imported == modulePath+"/backend/storage/sqlite") || imported == "gorm.io/gorm") {
 			forbidden = append(forbidden, path+": typed Component composition must use its declared owner ports, not raw database access")
 		}
 		if imported == modulePath+"/service" && alias == "." {
@@ -166,8 +166,8 @@ func inspectFoundationDeclaration(path, symbol string, declaration ast.Node, imp
 	coreModel := false
 	databaseAdapter := false
 	for _, imported := range imports {
-		coreModel = coreModel || imported == backendModulePath+"/storage/model" || imported == modulePath+"/database/model"
-		databaseAdapter = databaseAdapter || imported == "gorm.io/gorm" || (imported == modulePath+"/database/sqlite" || imported == backendModulePath+"/storage/sqlite")
+		coreModel = coreModel || imported == backendModulePath+"/storage/model" || imported == modulePath+"/backend/storage/model" || imported == modulePath+"/database/model"
+		databaseAdapter = databaseAdapter || imported == "gorm.io/gorm" || (imported == modulePath+"/database/sqlite" || imported == backendModulePath+"/storage/sqlite" || imported == modulePath+"/backend/storage/sqlite")
 	}
 	ast.Inspect(declaration, func(node ast.Node) bool {
 		switch value := node.(type) {
@@ -330,6 +330,7 @@ func TestFoundationProhibitedChanges(t *testing.T) {
 		{"runtime", "components/demo/adapter.go", `package demo; import owner "` + modulePath + `/service"; type Adapter struct { Runtime *owner.Runtime }`, "broad-runtime"},
 		{"worker", "components/demo/worker.go", `package demo; func Start() { go func() { for {} }() }`, "worker-lifetime"},
 		{"mutation", "components/demo/write.go", `package demo; import "` + modulePath + `/backend/storage/model"; func Write() { tx.Save(&model.Client{}) }`, "component-model-mutation"},
+		{"module-mutation", "components/demo/write.go", `package demo; import "` + backendModulePath + `/storage/model"; func Write() { tx.Save(&model.Client{}) }`, "component-model-mutation"},
 		{"table-mutation", "components/demo/write.go", `package demo; func Write() { tx.Table("clients").Delete(nil) }`, "component-model-mutation"},
 		{"sql-mutation", "components/demo/write.go", `package demo; import "gorm.io/gorm"; func Write(tx *gorm.DB) { tx.Exec("UPDATE clients SET enable = true") }`, "component-model-mutation"},
 		{"direct", "internal/entities/outbounds/new.go", `package outbounds; func final() string { return "direct" }`, "direct-policy"},
