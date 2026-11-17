@@ -57,3 +57,19 @@ test('Backend BOM properties bind the same source authority, tree and provenance
  assert.equal(properties['solovey:sourceTree'],source.sourceTree)
  assert.equal(properties['solovey:sourceProvenanceSHA256'],source.provenanceSHA256)
 })
+
+test('declared native protection suite resolves Product and independent Backend owner packages', async () => {
+ const {execFileSync}=await import('node:child_process')
+ const {fileURLToPath}=await import('node:url')
+ const root=fileURLToPath(new URL('../',import.meta.url))
+ const workflow=fs.readFileSync(path.join(root,'.github/workflows/ci.yml'),'utf8')
+ const command=workflow.split(/\r?\n/).find(line=>line.includes('node scripts/go-test.mjs')&&line.includes('./components/server-protection/...'))
+ assert.ok(command,'native protection boundary suite command missing')
+ const patterns=command.match(/\s--\s+(.+)$/)?.[1].trim().split(/\s+/)
+ assert.ok(patterns?.length>=5,'native protection package selection missing')
+ const tags=workflow.match(/^\s+EXTENDED_TAGS:\s*([^\s]+)\s*$/m)?.[1]
+ assert.ok(tags,'native provider build tags missing')
+ const selected=execFileSync('go',['list','-tags',tags,...patterns],{cwd:root,encoding:'utf8',env:{...process.env,GOWORK:'off',GOFLAGS:'-mod=readonly -modfile=go.extended.mod'},maxBuffer:4*1024*1024}).trim().split(/\r?\n/)
+ assert.ok(selected.includes(backendModule+'/operations/coordination'),'canonical durable operation owner is not exercised')
+ assert.ok(selected.includes('github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker'),'Product privilege boundary is not exercised')
+})
