@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
+	"github.com/MalenkiySolovey/solovey-host/componenthost/manifest"
 )
 
 var catalog = struct {

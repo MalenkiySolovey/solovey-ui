@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/durable"
-	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
+	"github.com/MalenkiySolovey/solovey-host/componenthost/durable"
+	"github.com/MalenkiySolovey/solovey-host/componenthost/manifest"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

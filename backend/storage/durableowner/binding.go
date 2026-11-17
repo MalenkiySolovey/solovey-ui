@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-host/componenthost/durable"
+	"github.com/MalenkiySolovey/solovey-host/componenthost/manifest"
 	"github.com/MalenkiySolovey/solovey-host/hostref"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/durable"
-	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"gorm.io/gorm"
 )
 

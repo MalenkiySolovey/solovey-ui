@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/durableowner"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
@@ -21,7 +22,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	componentmanifest "github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/durableowner"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/assembly"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"

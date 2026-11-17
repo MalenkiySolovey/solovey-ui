@@ -11,6 +11,7 @@ import (
 	"time"
 
 	_ "github.com/MalenkiySolovey/solovey-ui/app"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/durableowner"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
@@ -21,7 +22,6 @@ import (
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	openwrt "github.com/MalenkiySolovey/solovey-ui/deploy/openwrt"
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/durableowner"
 	settingscrypto "github.com/MalenkiySolovey/solovey-ui/internal/settings/crypto"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	sptest "github.com/MalenkiySolovey/solovey-ui/testsupport/serverprotection"

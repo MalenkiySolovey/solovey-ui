@@ -3,7 +3,7 @@ package durableowner
 import (
 	"testing"
 
-	componentmanifest "github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
+	componentmanifest "github.com/MalenkiySolovey/solovey-host/componenthost/manifest"
 )
 
 func TestCatalogReturnsImmutableCopiesAndRejectsContractDrift(t *testing.T) {

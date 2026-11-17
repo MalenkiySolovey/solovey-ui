@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/durableowner"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/durableowner"
 	"gorm.io/gorm"
 )
 

@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/durableowner"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	componentmanifest "github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/durableowner"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

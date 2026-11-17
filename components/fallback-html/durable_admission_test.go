@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/durableowner"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/durable"
@@ -21,7 +22,6 @@ import (
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/durableowner"
 	"github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

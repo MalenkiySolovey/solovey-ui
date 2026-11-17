@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	componentmanifest "github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
+	componentmanifest "github.com/MalenkiySolovey/solovey-host/componenthost/manifest"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

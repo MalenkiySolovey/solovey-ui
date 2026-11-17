@@ -7,13 +7,13 @@ import (
 
 	canonical "github.com/MalenkiySolovey/solovey-component-fallback-html"
 
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/durableowner"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	fallbackapi "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/api"
 	fallbacklifecycle "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
-	"github.com/MalenkiySolovey/solovey-ui/internal/ops/durableowner"
 )
 
 var componentJSON = canonical.ManifestJSON()

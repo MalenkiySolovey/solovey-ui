@@ -7,7 +7,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
+	"github.com/MalenkiySolovey/solovey-host/componenthost/manifest"
 	"gorm.io/gorm"
 )
 
