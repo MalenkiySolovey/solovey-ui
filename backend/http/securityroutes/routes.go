@@ -20,7 +20,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/backend/http/response"
 	panelsecurity "github.com/MalenkiySolovey/solovey-ui/backend/security"
 	clientidentity "github.com/MalenkiySolovey/solovey-ui/backend/security/clientidentity"
-	"github.com/MalenkiySolovey/solovey-ui/backend/security/mfa"
 	passwordutil "github.com/MalenkiySolovey/solovey-ui/backend/security/password"
 	securitysessions "github.com/MalenkiySolovey/solovey-ui/backend/security/sessions"
 	"github.com/MalenkiySolovey/solovey-ui/backend/security/stepup"
@@ -63,7 +62,7 @@ func (h *Handler) RegisterRoutes(g *gin.RouterGroup) {
 }
 
 func (h *Handler) posture(c *gin.Context) {
-	securityContext, ok := h.Browser.Getbrowser.SessionSecurityContext(c)
+	securityContext, ok := h.Browser.GetSessionSecurityContext(c)
 	if !ok {
 		h.Response.JSONMsg(c, "", errors.New("invalid session"))
 		return
@@ -261,7 +260,7 @@ type passwordTransitionRequest struct {
 }
 
 func (h *Handler) passwordTransition(c *gin.Context) {
-	securityContext, ok := h.Browser.Getbrowser.SessionSecurityContext(c)
+	securityContext, ok := h.Browser.GetSessionSecurityContext(c)
 	if !ok || securityContext.AuthState != panelsecurity.AuthStatePasswordReset {
 		c.AbortWithStatusJSON(http.StatusForbidden, response.Msg{Success: false, Msg: "Password transition is not active"})
 		return
@@ -617,7 +616,7 @@ func (h *Handler) completeRecoveryChallenge(c *gin.Context) {
 }
 
 func (h *Handler) completePreauthChallenge(c *gin.Context, recovery bool) {
-	securityContext, ok := h.Browser.Getbrowser.SessionSecurityContext(c)
+	securityContext, ok := h.Browser.GetSessionSecurityContext(c)
 	if !ok || securityContext.AuthState != panelsecurity.AuthStateMFAPending {
 		c.AbortWithStatusJSON(http.StatusForbidden, response.Msg{Success: false, Msg: "MFA challenge is not active"})
 		return
@@ -671,7 +670,7 @@ type completeRecoveryTransitionRequest struct {
 }
 
 func (h *Handler) completeRecoveryTransition(c *gin.Context) {
-	securityContext, ok := h.Browser.Getbrowser.SessionSecurityContext(c)
+	securityContext, ok := h.Browser.GetSessionSecurityContext(c)
 	if !ok || securityContext.AuthState != panelsecurity.AuthStateMFARecovery {
 		c.AbortWithStatusJSON(http.StatusForbidden, response.Msg{Success: false, Msg: "MFA recovery is not active"})
 		return
@@ -815,7 +814,7 @@ func (h *Handler) reissueSession(c *gin.Context, userID uint, authState, assuran
 		return err
 	}
 	lastMFAAt := int64(0)
-	if current, ok := h.Browser.Getbrowser.SessionSecurityContext(c); ok {
+	if current, ok := h.Browser.GetSessionSecurityContext(c); ok {
 		lastMFAAt = current.LastMFAAt
 	}
 	_, err = h.Browser.SetLoginSecurity(c, panelsecurity.LoginSessionSpec{
@@ -885,7 +884,7 @@ func (h *Handler) consumeStepUp(c *gin.Context, token string, securityContext br
 }
 
 func (h *Handler) RequireAuthenticatedContext(c *gin.Context) (browser.SessionSecurityContext, bool) {
-	securityContext, ok := h.Browser.Getbrowser.SessionSecurityContext(c)
+	securityContext, ok := h.Browser.GetSessionSecurityContext(c)
 	if !ok || securityContext.AuthState != panelsecurity.AuthStateAuthenticated {
 		c.AbortWithStatusJSON(http.StatusForbidden, response.Msg{Success: false, Msg: "Full authentication required"})
 		return browser.SessionSecurityContext{}, false
@@ -999,7 +998,7 @@ func CurrentSessionRemembered(c *gin.Context) bool {
 }
 
 func (h *Handler) RealtimeSessionBinding(c *gin.Context) (panelsecurity.RealtimeSessionBinding, bool) {
-	securityContext, ok := h.Browser.Getbrowser.SessionSecurityContext(c)
+	securityContext, ok := h.Browser.GetSessionSecurityContext(c)
 	if !ok || securityContext.AuthState != panelsecurity.AuthStateAuthenticated {
 		return panelsecurity.RealtimeSessionBinding{}, false
 	}
