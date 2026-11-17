@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-host/subscriptions/canonical"
-	backendcrypto "github.com/MalenkiySolovey/solovey-ui/backend/security/crypto"
+	backenduuid "github.com/MalenkiySolovey/solovey-ui/backend/security/uuid"
 	entityidentity "github.com/MalenkiySolovey/solovey-ui/backend/storage/entityidentity"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/backend/storage/entityorder"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/jsonvalue"
@@ -539,7 +539,7 @@ func PrepareSubSecret(tx *gorm.DB, client *model.Client, preserveExisting bool) 
 	// The generic save payload is not an authority for subscription secrets.
 	// New clients always receive a server-generated secret; edits preserve the
 	// persisted secret and rotation uses the dedicated operation.
-	secret, err := backendcrypto.RandomUUID()
+	secret, err := backenduuid.RandomUUID()
 	if err != nil {
 		return err
 	}
@@ -557,7 +557,7 @@ func EnsureSubSecret(tx *gorm.DB, client *model.Client) error {
 	if client.SubSecret != "" {
 		return nil
 	}
-	secret, err := backendcrypto.RandomUUID()
+	secret, err := backenduuid.RandomUUID()
 	if err != nil {
 		return err
 	}
@@ -584,7 +584,7 @@ func RotateSubSecret(tx *gorm.DB, clientID uint) (string, error) {
 	if err := tx.Model(model.Client{}).Select("id, name").Where("id = ?", clientID).First(&client).Error; err != nil {
 		return "", err
 	}
-	newSecret, err := backendcrypto.RandomUUID()
+	newSecret, err := backenduuid.RandomUUID()
 	if err != nil {
 		return "", err
 	}

@@ -1,10 +1,11 @@
-package crypto
+// Package uuid owns cryptographically random UUID identifiers.
+package uuid
 
-import "github.com/gofrs/uuid/v5"
+import canonical "github.com/gofrs/uuid/v5"
 
 // RandomUUID returns a cryptographically random UUIDv4 string.
 func RandomUUID() (string, error) {
-	id, err := uuid.NewV4()
+	id, err := canonical.NewV4()
 	if err != nil {
 		return "", err
 	}
