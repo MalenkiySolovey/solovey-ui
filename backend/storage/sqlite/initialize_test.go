@@ -53,12 +53,14 @@ func TestFailedBootstrapRetiresSameConnectionBeforeRetry(t *testing.T) {
 	if err := Close(); err != nil {
 		t.Fatal(err)
 	}
+	path := filepath.Join(t.TempDir(), "candidate.db")
+	secondPath := filepath.Join(t.TempDir(), "second.db")
+	// Register the connection cleanup after both directory cleanups so it runs first.
 	t.Cleanup(func() {
 		if err := Close(); err != nil {
 			t.Error(err)
 		}
 	})
-	path := filepath.Join(t.TempDir(), "candidate.db")
 	cause := errors.New("schema validation rejected")
 	var rejected *gorm.DB
 	err := InitializeContext(context.Background(), path, Bootstrap{BeforeOpen: func() error { return nil }, AfterOpen: func(db *gorm.DB) error {
@@ -82,8 +84,17 @@ func TestFailedBootstrapRetiresSameConnectionBeforeRetry(t *testing.T) {
 	}
 	accepted := DB()
 	callbacks := 0
-	err = InitializeContext(context.Background(), filepath.Join(t.TempDir(), "second.db"), Bootstrap{BeforeOpen: func() error { callbacks++; return nil }, AfterOpen: func(*gorm.DB) error { callbacks++; return nil }})
+	err = InitializeContext(context.Background(), secondPath, Bootstrap{BeforeOpen: func() error { callbacks++; return nil }, AfterOpen: func(*gorm.DB) error { callbacks++; return nil }})
 	if err == nil || callbacks != 0 || DB() != accepted {
 		t.Fatalf("second initializer replaced live authority: callbacks=%d err=%v", callbacks, err)
+	}
+	if err := Close(); err != nil {
+		t.Fatal(err)
+	}
+	if DB() != nil || IsOpen() {
+		t.Fatal("closed retry still exposes a connection owner")
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("closed retry retained the database file: %v", err)
 	}
 }
