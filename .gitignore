@@ -88,3 +88,8 @@ test-db/
 
 # Verified generated inputs from immutable Component modules.
 .component-sources/
+
+# Verified, generated Frontend build-input projection.
+frontend/.component-inputs/
+frontend/.component-inputs.lock/
+frontend/.component-inputs-stage-*/
