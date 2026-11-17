@@ -341,9 +341,9 @@ func walkProductGoFiles(t *testing.T, root string, visit func(string)) {
 	t.Helper()
 	for _, relativeRoot := range append(coreSourceRoots(), "componentkit", "components") {
 		sourceRoot := filepath.Join(root, relativeRoot)
-		// Retired ingress and realtime roots may be absent in a clean checkout.
+		// Retired ingress, realtime and IP policy roots may be absent in a clean checkout.
 		// If reintroduced, their source remains subject to every import guard.
-		if relativeRoot == "middleware" || relativeRoot == "realtime" {
+		if relativeRoot == "middleware" || relativeRoot == "realtime" || relativeRoot == "ipmonitor" {
 			if _, err := os.Stat(sourceRoot); os.IsNotExist(err) {
 				continue
 			} else if err != nil {

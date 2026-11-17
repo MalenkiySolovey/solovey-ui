@@ -8,7 +8,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/cronjob/internal/testutil"
-	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
+	ipmonitor "github.com/MalenkiySolovey/solovey-ui/backend/accounting/ipmonitor"
 )
 
 func TestCronJobTestDBIsIsolatedBetweenInitializations(t *testing.T) {

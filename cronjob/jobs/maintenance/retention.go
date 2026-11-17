@@ -3,7 +3,7 @@ package maintenance
 import (
 	"time"
 
-	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
+	ipmonitor "github.com/MalenkiySolovey/solovey-ui/backend/accounting/ipmonitor"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )

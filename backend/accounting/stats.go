@@ -1,0 +1,503 @@
+// Package accounting owns durable traffic attribution, history and committed online observations.
+package accounting
+
+import (
+	"errors"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	ipmonitor "github.com/MalenkiySolovey/solovey-ui/backend/accounting/ipmonitor"
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/backend/entityidentity"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
+
+	"gorm.io/gorm"
+)
+
+type OnlineResources struct {
+	Inbound  []string `json:"inbound,omitempty"`
+	User     []string `json:"user,omitempty"`
+	Outbound []string `json:"outbound,omitempty"`
+}
+
+var (
+	onlineResources   = &OnlineResources{}
+	onlineResourcesMu sync.RWMutex
+)
+
+// Recorder receives Product projections after durable commit. It never owns a Core runtime.
+type Recorder struct {
+	Publish      func(OnlineResources, []model.Stats)
+	CommitFailed func()
+}
+
+// Sample retains the authenticated stable VPN user binding captured by the runtime.
+// A zero identity remains an observation and cannot change durable quota counters.
+type Sample struct {
+	VPNUserID entitytypes.VPNUserID
+	DateTime  int64
+	Resource  string
+	Tag       string
+	Direction bool
+	Traffic   int64
+}
+
+func (s Recorder) publish(current OnlineResources, stats []model.Stats) {
+	if s.Publish != nil {
+		s.Publish(current, stats)
+	}
+}
+
+type TrafficDelta struct {
+	Resource string `json:"resource"`
+	Tag      string `json:"tag"`
+	Up       int64  `json:"up,omitempty"`
+	Down     int64  `json:"down,omitempty"`
+}
+
+type clientTrafficDelta struct {
+	up   int64
+	down int64
+}
+
+type TrafficBucket struct {
+	StartTime int64 `json:"startTime"`
+	EndTime   int64 `json:"endTime"`
+	Download  int64 `json:"download"`
+	Upload    int64 `json:"upload"`
+}
+
+type TrafficSummary struct {
+	StartTime int64           `json:"startTime"`
+	EndTime   int64           `json:"endTime"`
+	Range     int             `json:"range"`
+	Buckets   []TrafficBucket `json:"buckets"`
+	Download  int64           `json:"download"`
+	Upload    int64           `json:"upload"`
+}
+
+type trafficSummaryWindow struct {
+	LimitHours  int
+	BucketCount int
+	StartTime   int64
+	EndTime     int64
+	BucketSpan  int64
+}
+
+type trafficAggregateRow struct {
+	Bucket    int
+	Direction bool
+	Traffic   int64
+}
+
+const (
+	defaultTrafficSummaryHours = 24
+	maxTrafficSummaryHours     = 24 * 366
+	defaultTrafficBucketCount  = 48
+	maxTrafficBucketCount      = 720
+
+	inboundTrafficBucketSelect = "CASE WHEN CAST((date_time - ?) / ? AS INTEGER) >= ? " +
+		"THEN ? ELSE CAST((date_time - ?) / ? AS INTEGER) END AS bucket, " +
+		"direction, SUM(traffic) AS traffic"
+)
+
+func (s Recorder) PersistSamples(enableTraffic bool, samples []Sample) (err error) {
+	stats := statsModels(samples)
+
+	currentOnlines := OnlineResources{}
+
+	if len(stats) == 0 {
+		onlineResourcesMu.Lock()
+		onlineResources = &currentOnlines
+		onlineResourcesMu.Unlock()
+		if err := ipmonitor.Flush(); err != nil {
+			return err
+		}
+		s.publish(currentOnlines, nil)
+		return nil
+	}
+
+	db := dbsqlite.DB()
+	if db == nil {
+		return errors.New("database is not initialized")
+	}
+	tx := db.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	ipBatch := ipmonitor.BeginFlush()
+	transactionCommitted := false
+	// Complete the IP observation batch even when commit failure returns early
+	// from the transaction defer. A failed batch must remain flushable.
+	defer func() {
+		if !transactionCommitted {
+			ipBatch.Requeue()
+		}
+	}()
+	publishOnCommit := false
+	publishOnlines := OnlineResources{}
+	var publishStats []model.Stats
+	clientDeltas := map[entitytypes.VPNUserID]clientTrafficDelta{}
+	defer func() {
+		if err == nil {
+			if commitErr := tx.Commit().Error; commitErr != nil {
+				err = commitErr
+				if s.CommitFailed != nil {
+					s.CommitFailed()
+				}
+				return
+			}
+			transactionCommitted = true
+			ipBatch.Commit()
+			if publishOnCommit {
+				onlineResourcesMu.Lock()
+				onlineResources = &publishOnlines
+				onlineResourcesMu.Unlock()
+				s.publish(publishOnlines, publishStats)
+			}
+		} else {
+			tx.Rollback()
+		}
+	}()
+
+	// Runtime labels remain observations; only authenticated stable IDs can
+	// change durable VPN user counters. Unknown observations are not guessed.
+	for _, sample := range samples {
+		if sample.Resource != "user" || sample.VPNUserID == 0 {
+			continue
+		}
+		delta := clientDeltas[sample.VPNUserID]
+		if sample.Direction {
+			delta.up += sample.Traffic
+		} else {
+			delta.down += sample.Traffic
+		}
+		clientDeltas[sample.VPNUserID] = delta
+	}
+	for _, stat := range stats {
+		if stat.Direction {
+			switch stat.Resource {
+			case "inbound":
+				currentOnlines.Inbound = append(currentOnlines.Inbound, stat.Tag)
+			case "outbound":
+				currentOnlines.Outbound = append(currentOnlines.Outbound, stat.Tag)
+			case "user":
+				currentOnlines.User = append(currentOnlines.User, stat.Tag)
+			}
+		}
+	}
+	if err := updateClientTrafficDeltas(tx, clientDeltas); err != nil {
+		return err
+	}
+	publishOnCommit = true
+	publishOnlines = currentOnlines
+	publishStats = append([]model.Stats(nil), stats...)
+
+	if !enableTraffic {
+		return ipBatch.WriteTo(tx)
+	}
+	if err := dbsqlite.CreateInBatches(tx, &stats); err != nil {
+		return err
+	}
+	return ipBatch.WriteTo(tx)
+}
+
+func statsModels(samples []Sample) []model.Stats {
+	stats := make([]model.Stats, len(samples))
+	for i, sample := range samples {
+		stats[i] = model.Stats{
+			DateTime:  sample.DateTime,
+			Resource:  sample.Resource,
+			Tag:       sample.Tag,
+			Direction: sample.Direction,
+			Traffic:   sample.Traffic,
+		}
+	}
+	return stats
+}
+
+func updateClientTrafficDeltas(tx *gorm.DB, deltas map[entitytypes.VPNUserID]clientTrafficDelta) error {
+	if len(deltas) == 0 {
+		return nil
+	}
+	names := make([]entitytypes.VPNUserID, 0, len(deltas))
+	for name, delta := range deltas {
+		if delta.up == 0 && delta.down == 0 {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Slice(names, func(i, j int) bool { return names[i] < names[j] })
+	for start := 0; start < len(names); start += 100 {
+		end := start + 100
+		if end > len(names) {
+			end = len(names)
+		}
+		if err := updateClientTrafficDeltaBatch(tx, names[start:end], deltas); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func updateClientTrafficDeltaBatch(tx *gorm.DB, names []entitytypes.VPNUserID, deltas map[entitytypes.VPNUserID]clientTrafficDelta) error {
+	if len(names) == 0 {
+		return nil
+	}
+	var query strings.Builder
+	args := make([]any, 0, len(names)*5)
+	query.WriteString("UPDATE clients SET up = up + CASE id")
+	for _, name := range names {
+		query.WriteString(" WHEN ? THEN ?")
+		args = append(args, name, deltas[name].up)
+	}
+	query.WriteString(" ELSE 0 END, down = down + CASE id")
+	for _, name := range names {
+		query.WriteString(" WHEN ? THEN ?")
+		args = append(args, name, deltas[name].down)
+	}
+	query.WriteString(" ELSE 0 END WHERE id IN (")
+	for i, name := range names {
+		if i > 0 {
+			query.WriteByte(',')
+		}
+		query.WriteByte('?')
+		args = append(args, name)
+	}
+	query.WriteByte(')')
+	return tx.Exec(query.String(), args...).Error
+}
+
+func TrafficDeltas(stats []model.Stats) []TrafficDelta {
+	type key struct {
+		resource string
+		tag      string
+	}
+	byKey := map[key]*TrafficDelta{}
+	order := make([]key, 0)
+	for _, stat := range stats {
+		k := key{resource: stat.Resource, tag: stat.Tag}
+		delta := byKey[k]
+		if delta == nil {
+			delta = &TrafficDelta{Resource: stat.Resource, Tag: stat.Tag}
+			byKey[k] = delta
+			order = append(order, k)
+		}
+		if stat.Direction {
+			delta.Up += stat.Traffic
+		} else {
+			delta.Down += stat.Traffic
+		}
+	}
+	result := make([]TrafficDelta, 0, len(order))
+	for _, k := range order {
+		result = append(result, *byKey[k])
+	}
+	return result
+}
+
+func (s Recorder) GetStats(resource string, tag string, limit int) ([]model.Stats, error) {
+	var err error
+	var result []model.Stats
+
+	currentTime := time.Now().Unix()
+	timeDiff := currentTime - (int64(limit) * 3600)
+
+	db := dbsqlite.DB()
+	resources := []string{resource}
+	if resource == "endpoint" {
+		resources = []string{"inbound", "outbound"}
+	}
+	err = db.Model(model.Stats{}).Where("resource in ? AND tag = ? AND date_time > ?", resources, tag, timeDiff).Scan(&result).Error
+	if err != nil {
+		return nil, err
+	}
+
+	result = downsampleStats(result, 60) // 60 rows for 30 buckets
+	return result, nil
+}
+
+func (s Recorder) GetInboundTrafficSummary(limitHours int, bucketCount int, endTime int64) (TrafficSummary, error) {
+	window := newTrafficSummaryWindow(limitHours, bucketCount, endTime)
+	buckets := newTrafficBuckets(window)
+	rows, err := queryInboundTrafficBuckets(window)
+	if err != nil {
+		return TrafficSummary{}, err
+	}
+	download, upload := applyTrafficAggregateRows(buckets, rows)
+
+	return TrafficSummary{
+		StartTime: window.StartTime,
+		EndTime:   window.EndTime,
+		Range:     window.LimitHours,
+		Buckets:   buckets,
+		Download:  download,
+		Upload:    upload,
+	}, nil
+}
+
+func newTrafficSummaryWindow(limitHours int, bucketCount int, endTime int64) trafficSummaryWindow {
+	if limitHours <= 0 {
+		limitHours = defaultTrafficSummaryHours
+	}
+	if limitHours > maxTrafficSummaryHours {
+		limitHours = maxTrafficSummaryHours
+	}
+	if bucketCount <= 0 {
+		bucketCount = defaultTrafficBucketCount
+	}
+	if bucketCount > maxTrafficBucketCount {
+		bucketCount = maxTrafficBucketCount
+	}
+	if endTime <= 0 {
+		endTime = time.Now().Unix()
+	}
+
+	startTime := endTime - int64(limitHours)*3600
+	if startTime < 0 {
+		startTime = 0
+	}
+	span := endTime - startTime
+	if span <= 0 {
+		span = 1
+	}
+	bucketSpan := (span + int64(bucketCount) - 1) / int64(bucketCount)
+	if bucketSpan <= 0 {
+		bucketSpan = 1
+	}
+
+	return trafficSummaryWindow{
+		LimitHours:  limitHours,
+		BucketCount: bucketCount,
+		StartTime:   startTime,
+		EndTime:     endTime,
+		BucketSpan:  bucketSpan,
+	}
+}
+
+func newTrafficBuckets(window trafficSummaryWindow) []TrafficBucket {
+	buckets := make([]TrafficBucket, window.BucketCount)
+	for i := range buckets {
+		bucketStart := window.StartTime + int64(i)*window.BucketSpan
+		if bucketStart > window.EndTime {
+			bucketStart = window.EndTime
+		}
+		bucketEnd := bucketStart + window.BucketSpan
+		if bucketEnd > window.EndTime {
+			bucketEnd = window.EndTime
+		}
+		buckets[i] = TrafficBucket{StartTime: bucketStart, EndTime: bucketEnd}
+	}
+	return buckets
+}
+
+func queryInboundTrafficBuckets(window trafficSummaryWindow) ([]trafficAggregateRow, error) {
+	var rows []trafficAggregateRow
+	err := dbsqlite.DB().Model(model.Stats{}).
+		Select(
+			inboundTrafficBucketSelect,
+			window.StartTime, window.BucketSpan, window.BucketCount, window.BucketCount-1, window.StartTime, window.BucketSpan,
+		).
+		Where("resource = ? AND date_time >= ? AND date_time <= ?", "inbound", window.StartTime, window.EndTime).
+		Group("bucket, direction").
+		Scan(&rows).Error
+	return rows, err
+}
+
+func applyTrafficAggregateRows(buckets []TrafficBucket, rows []trafficAggregateRow) (int64, int64) {
+	var download int64
+	var upload int64
+	for _, row := range rows {
+		if row.Bucket < 0 || row.Bucket >= len(buckets) {
+			continue
+		}
+		if row.Direction {
+			buckets[row.Bucket].Upload += row.Traffic
+			upload += row.Traffic
+		} else {
+			buckets[row.Bucket].Download += row.Traffic
+			download += row.Traffic
+		}
+	}
+	return download, upload
+}
+
+// downsampleStats reduces stats to maxRows rows.
+// Each bucket outputs two rows (direction false and true) with average Traffic.
+func downsampleStats(stats []model.Stats, maxRows int) []model.Stats {
+	if len(stats) <= maxRows {
+		return stats
+	}
+	numBuckets := int(maxRows / 2)
+	sort.Slice(stats, func(i, j int) bool { return stats[i].DateTime < stats[j].DateTime })
+	timeMin, timeMax := stats[0].DateTime, stats[len(stats)-1].DateTime
+	bucketSpan := (timeMax - timeMin) / int64(numBuckets)
+	if bucketSpan == 0 {
+		bucketSpan = 1
+	}
+	type bucketTotals struct {
+		sum   [2]int64
+		count [2]int
+	}
+	buckets := make([]bucketTotals, numBuckets)
+	for _, r := range stats {
+		idx := int((r.DateTime - timeMin) / bucketSpan)
+		if idx < 0 {
+			idx = 0
+		} else if idx >= numBuckets {
+			idx = numBuckets - 1
+		}
+		dirIdx := 0
+		if r.Direction {
+			dirIdx = 1
+		}
+		buckets[idx].sum[dirIdx] += r.Traffic
+		buckets[idx].count[dirIdx]++
+	}
+
+	downsampled := make([]model.Stats, 0, maxRows)
+	for i := 0; i < numBuckets; i++ {
+		bucketStart := timeMin + int64(i)*bucketSpan
+		for dirIdx, dir := range []bool{false, true} {
+			avg := int64(0)
+			if buckets[i].count[dirIdx] > 0 {
+				avg = buckets[i].sum[dirIdx] / int64(buckets[i].count[dirIdx])
+			}
+			downsampled = append(downsampled, model.Stats{
+				DateTime:  bucketStart,
+				Resource:  stats[0].Resource,
+				Tag:       stats[0].Tag,
+				Direction: dir,
+				Traffic:   avg,
+			})
+		}
+	}
+	return downsampled
+}
+
+func Snapshot() OnlineResources {
+	onlineResourcesMu.RLock()
+	defer onlineResourcesMu.RUnlock()
+	return OnlineResources{
+		Inbound:  append([]string(nil), onlineResources.Inbound...),
+		User:     append([]string(nil), onlineResources.User...),
+		Outbound: append([]string(nil), onlineResources.Outbound...),
+	}
+}
+
+func (s Recorder) DelOldStats(days int) error {
+	oldTime := time.Now().AddDate(0, 0, -(days)).Unix()
+	_, err := s.PruneOlderThan(oldTime)
+	return err
+}
+
+func (s Recorder) PruneOlderThan(before int64) (int64, error) {
+	db := dbsqlite.DB()
+	if db == nil {
+		return 0, nil
+	}
+	result := db.Where("date_time < ?", before).Delete(model.Stats{})
+	return result.RowsAffected, result.Error
+}

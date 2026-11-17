@@ -6,8 +6,6 @@ import (
 	"net/netip"
 	"sync"
 	"time"
-
-	logruntime "github.com/MalenkiySolovey/solovey-ui/logger"
 )
 
 var loadErrLog = struct {
@@ -176,7 +174,9 @@ func logLoadCacheError(context string, err error) {
 		return
 	}
 	loadErrLog.last = time.Now()
-	logruntime.Warning("ipmonitor: ip-limit ", context, " lookup failed; failing closed: ", err)
+	if warning := currentWarningHook(); warning != nil {
+		warning("ipmonitor: ip-limit ", context, " lookup failed; failing closed: ", err)
+	}
 }
 
 func cloneCacheEntry(entry allowCacheEntry) allowCacheEntry {

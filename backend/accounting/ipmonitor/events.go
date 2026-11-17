@@ -8,17 +8,23 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
 )
 
+type Hooks struct {
+	SecurityEventAudit func(clientName, kind string, payload map[string]any)
+	Warning            func(...any)
+}
+
 var securityEventAudit = struct {
 	sync.RWMutex
-	next uint64
-	id   uint64
-	hook func(clientName, kind string, payload map[string]any)
+	next    uint64
+	id      uint64
+	hook    func(clientName, kind string, payload map[string]any)
+	warning func(...any)
 }{}
 
-// RegisterSecurityEventAuditHook installs the single composition-owned durable
-// audit sink and returns an idempotent lifecycle cleanup.
-func RegisterSecurityEventAuditHook(hook func(clientName, kind string, payload map[string]any)) (func(), error) {
-	if hook == nil {
+// RegisterHooks installs the single composition-owned durable
+// audit sink and warning logger, returning an idempotent lifecycle cleanup.
+func RegisterHooks(hooks Hooks) (func(), error) {
+	if hooks.SecurityEventAudit == nil {
 		return nil, errors.New("security event audit hook is nil")
 	}
 	securityEventAudit.Lock()
@@ -29,7 +35,8 @@ func RegisterSecurityEventAuditHook(hook func(clientName, kind string, payload m
 	securityEventAudit.next++
 	id := securityEventAudit.next
 	securityEventAudit.id = id
-	securityEventAudit.hook = hook
+	securityEventAudit.hook = hooks.SecurityEventAudit
+	securityEventAudit.warning = hooks.Warning
 	var once sync.Once
 	return func() {
 		once.Do(func() {
@@ -37,6 +44,7 @@ func RegisterSecurityEventAuditHook(hook func(clientName, kind string, payload m
 			if securityEventAudit.id == id {
 				securityEventAudit.id = 0
 				securityEventAudit.hook = nil
+				securityEventAudit.warning = nil
 			}
 			securityEventAudit.Unlock()
 		})
@@ -73,4 +81,10 @@ func shouldPublishSecurityEvent(clientName, kind string, now time.Time) bool {
 		}
 	}
 	return true
+}
+
+func currentWarningHook() func(...any) {
+	securityEventAudit.RLock()
+	defer securityEventAudit.RUnlock()
+	return securityEventAudit.warning
 }

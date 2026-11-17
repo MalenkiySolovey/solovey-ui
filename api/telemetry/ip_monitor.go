@@ -3,7 +3,7 @@ package telemetry
 import (
 	"strconv"
 
-	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
+	ipmonitor "github.com/MalenkiySolovey/solovey-ui/backend/accounting/ipmonitor"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"

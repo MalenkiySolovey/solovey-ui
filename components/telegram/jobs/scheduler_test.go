@@ -13,7 +13,7 @@ import (
 
 	telegramschedule "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/schedule"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
+	ipmonitor "github.com/MalenkiySolovey/solovey-ui/backend/accounting/ipmonitor"
 	"github.com/robfig/cron/v3"
 )
 

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	ipmonitor "github.com/MalenkiySolovey/solovey-ui/backend/accounting/ipmonitor"
 	dbhooks "github.com/MalenkiySolovey/solovey-ui/backend/storage/hooks"
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/restorestate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
@@ -27,7 +28,6 @@ import (
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	deploymentdomain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
 	subserver "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/server"
-	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	datalifecycleservice "github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"
@@ -427,7 +427,7 @@ func (a *APP) registerCoreHooks() error {
 	if a.stopCoreHooks != nil {
 		return nil
 	}
-	stopIPMonitor, err := ipmonitor.RegisterSecurityEventAuditHook(func(_ string, _ string, payload map[string]any) {
+	stopIPMonitor, err := ipmonitor.RegisterHooks(ipmonitor.Hooks{Warning: logger.Warning, SecurityEventAudit: func(_ string, _ string, payload map[string]any) {
 		_ = (&service.AuditService{}).Record(service.AuditEvent{
 			Actor:    "system",
 			Event:    "ip_limit_enforced",
@@ -435,7 +435,7 @@ func (a *APP) registerCoreHooks() error {
 			Severity: service.AuditSeverityWarn,
 			Details:  payload,
 		})
-	})
+	}})
 	if err != nil {
 		return err
 	}

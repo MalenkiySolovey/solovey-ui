@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/backend/realtime"
+	"github.com/MalenkiySolovey/solovey-ui/backend/storage/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -24,7 +24,7 @@ func initIPMonitorTestDB(t *testing.T) {
 	tempDir := makeIPMonitorTempDir(t, "s-ui-ipmonitor-test-")
 	t.Setenv("SUI_DB_FOLDER", tempDir)
 	closeIPMonitorTestDB(dbsqlite.DB())
-	if err := dbsqlite.Init(filepath.Join(tempDir, "s-ui.db")); err != nil {
+	if err := initializeIPDatabase(filepath.Join(tempDir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
