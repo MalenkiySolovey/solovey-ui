@@ -70,6 +70,10 @@ export default async function globalSetup() {
 
   try {
     await waitForManagedServer(managedServerTimeoutMs, () => startupError)
+    // Workers reload Playwright configuration after setup. The embedded
+    // backend may use an ephemeral port instead of the fixed Vite dev port.
+    const state = JSON.parse(fs.readFileSync(managedServerStatePath, 'utf8')) as { baseURL: string }
+    process.env.SUI_E2E_BASE_URL = state.baseURL
   } catch (error) {
     stopManagedServer(server.pid)
     cleanupManagedServerRuntime(true)

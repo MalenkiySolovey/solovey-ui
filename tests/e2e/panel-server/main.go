@@ -9,6 +9,8 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"html/template"
+	"io/fs"
 	"math/big"
 	"net"
 	"net/http"
@@ -20,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	frontendowner "github.com/MalenkiySolovey/solovey-backend/http/frontend"
 	securitymiddleware "github.com/MalenkiySolovey/solovey-backend/http/security"
 	"github.com/MalenkiySolovey/solovey-ui/api"
 	_ "github.com/MalenkiySolovey/solovey-ui/app"
@@ -135,26 +138,48 @@ func main() {
 	apiv2 := api.NewAPIv2Handler(groupAPIV2, api.WithRuntime(runtime), api.WithComponents(componentInput))
 	groupAPI := engine.Group(baseURL + "api")
 	api.NewAPIHandler(groupAPI, apiv2, api.WithRuntime(runtime), api.WithComponents(componentInput))
-	engine.GET(baseURL, func(c *gin.Context) {
-		c.String(http.StatusOK, "e2e panel")
-	})
-	engine.GET(baseURL+"login", func(c *gin.Context) {
-		c.String(http.StatusOK, "e2e panel")
-	})
-	engine.NoRoute(func(c *gin.Context) {
-		if c.Request.URL.Path == strings.TrimSuffix(baseURL, "/") {
-			c.Redirect(http.StatusTemporaryRedirect, baseURL)
-			return
+	if os.Getenv("SUI_E2E_FRONTEND_MODE") == "embedded" {
+		bundle := web.EmbeddedFrontend()
+		entry, err := template.New("").ParseFS(bundle, "index.html")
+		if err != nil {
+			fatal("embedded frontend template", err)
 		}
-		if !strings.HasPrefix(c.Request.URL.Path, baseURL) {
-			if publicsurface.Serve(c, publicsurface.Context{AdminBasePath: baseURL}) {
+		assets, err := fs.Sub(bundle, "assets")
+		if err != nil {
+			fatal("embedded frontend assets", err)
+		}
+		engine.SetHTMLTemplate(entry)
+		engine.GET(baseURL+"assets/*filepath", frontendowner.ServeAssets(assets))
+		engine.NoRoute(func(c *gin.Context) {
+			if strings.HasPrefix(c.Request.URL.Path, baseURL) {
+				c.HTML(http.StatusOK, "index.html", gin.H{"BASE_URL": baseURL})
 				return
 			}
 			publicsurface.Handled404(c)
-			return
-		}
-		c.String(http.StatusNotFound, "e2e not found")
-	})
+		})
+	} else {
+		engine.GET(baseURL, func(c *gin.Context) {
+			c.String(http.StatusOK, "e2e panel")
+		})
+		engine.GET(baseURL+"login", func(c *gin.Context) {
+			c.String(http.StatusOK, "e2e panel")
+		})
+		engine.NoRoute(func(c *gin.Context) {
+			if c.Request.URL.Path == strings.TrimSuffix(baseURL, "/") {
+				c.Redirect(http.StatusTemporaryRedirect, baseURL)
+				return
+			}
+			if !strings.HasPrefix(c.Request.URL.Path, baseURL) {
+				if publicsurface.Serve(c, publicsurface.Context{AdminBasePath: baseURL}) {
+					return
+				}
+				publicsurface.Handled404(c)
+				return
+			}
+			c.String(http.StatusNotFound, "e2e not found")
+		})
+
+	}
 
 	listenAddress := strings.TrimSpace(os.Getenv("SUI_E2E_BACKEND_LISTEN"))
 	if listenAddress == "" {

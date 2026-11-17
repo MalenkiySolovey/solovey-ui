@@ -144,7 +144,7 @@ function e2eBaseURLPlugin(): Plugin {
     name: 'solovey-e2e-base-url',
     transformIndexHtml(html) {
       if (!isE2E) return html
-      return html.replace('{{ .BASE_URL }}', e2eWebPath)
+      return html.replaceAll('{{ .BASE_URL }}', e2eWebPath)
     },
   }
 }

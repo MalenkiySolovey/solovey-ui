@@ -150,3 +150,18 @@ test('the real embed contract includes underscore assets and Vite metadata',t =>
   assert.equal(result.status,0,result.stderr)
   assert.match(result.stdout,/PASS/)
 })
+
+
+test('the declared Product base is not an asset and cannot become a foreign base',t => {
+  const {dist,target}=fixture(t),entry=path.join(dist,'index.html')
+  const original=fs.readFileSync(entry,'utf8')
+  fs.writeFileSync(entry,'<base href="{{ .BASE_URL }}">'+original)
+  assert.equal(verifyDist(dist).size,7)
+  for(const value of ['../outside/','https://untrusted.invalid/','/other-panel/']) {
+    fs.writeFileSync(entry,'<base href="'+value+'">'+original)
+    assert.throws(()=>publishAssets(dist,target),/Unsupported frontend base URL/)
+    previousIntact(target)
+  }
+  fs.writeFileSync(entry,original+'<script src="{{ .BASE_URL }}"></script>')
+  assert.throws(()=>verifyDist(dist),/Missing generated asset/)
+})
