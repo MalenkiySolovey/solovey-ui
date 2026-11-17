@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import test from 'node:test'
-import { coreSourceProperties, componentSourceProperties, mergeProviderModuleGraphs, verifyProviderInventory, verifyComponentInventory } from './release-metadata.mjs'
+import { coreSourceProperties, componentSourceProperties, mergeProviderModuleGraphs, verifyProviderInventory, verifyComponentInventory, verifyBackendInventory } from './release-metadata.mjs'
 import { resolveProviderSource } from './core-provider-build.mjs'
 
 const sum = label => 'h1:' + crypto.createHash('sha256').update(label).digest('base64')
@@ -129,5 +129,39 @@ test('component provenance rejects a substituted pin, missing source or altered 
     const fixture = structuredClone(original)
     corrupt(fixture)
     assert.throws(() => verifyComponentInventory(fixture.provenance, fixture.bom, fixture.inventory, expected))
+  }
+})
+
+
+test('Backend disclosure rejects omitted source, substituted module and ambiguous authority', () => {
+  const input = JSON.parse(fs.readFileSync(new URL('../deploy/dependencies/solovey-backend-source.json', import.meta.url), 'utf8'))
+  const expected = { source: input, inputDigest: crypto.createHash('sha256').update(JSON.stringify(input)).digest('hex') }
+  const properties = Object.entries({ sourceAuthority: 'https://' + input.module, sourceCommit: input.sourceCommit,
+    sourceTree: input.sourceTree, sourceProvenanceSHA256: input.provenanceSHA256 }).map(([name, value]) => ({ name: 'solovey:' + name, value }))
+  const original = { provenance: { backendInput: expected }, bom: { metadata: { component: { properties: [
+    { name: 'solovey:backendInputDigest', value: expected.inputDigest }] } }, components: [
+    { name: input.module, version: input.version, properties, licenses: [{ license: { id: 'GPL-3.0-only' } }] }] }, inventory: { modules: [
+    { name: input.module, version: input.version, moduleSum: input.moduleChecksum, goModSum: input.goModChecksum }] } }
+  verifyBackendInventory(original.provenance, original.bom, original.inventory, input)
+  for (const corrupt of [
+    value => { delete value.provenance.backendInput },
+    value => { value.provenance.backendInput.source.sourceCommit = '0'.repeat(40) },
+    value => { value.provenance.backendInput.inputDigest = '0'.repeat(64) },
+    value => { value.bom.metadata.component.properties = [] },
+    value => { value.bom.components = [] },
+    value => { value.bom.components.push(value.bom.components[0]) },
+    value => { value.bom.components[0].version = 'v0.0.0' },
+    value => { value.bom.components[0].licenses = [] },
+    value => { value.bom.components[0].properties[0].value = 'https://example.invalid/backend' },
+    value => { value.bom.components[0].properties.push(value.bom.components[0].properties[0]) },
+    value => { value.inventory.modules = [] },
+    value => { value.inventory.modules.push(value.inventory.modules[0]) },
+    value => { value.inventory.modules[0].version = 'v0.0.0' },
+    value => { value.inventory.modules[0].moduleSum = sum('substituted source') },
+    value => { value.inventory.modules[0].goModSum = sum('substituted metadata') },
+  ]) {
+    const fixture = structuredClone(original)
+    corrupt(fixture)
+    assert.throws(() => verifyBackendInventory(fixture.provenance, fixture.bom, fixture.inventory, input))
   }
 })
