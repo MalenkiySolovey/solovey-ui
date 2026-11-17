@@ -1,6 +1,6 @@
 package server
 
-import "github.com/MalenkiySolovey/solovey-ui/internal/httpheader"
+import "github.com/MalenkiySolovey/solovey-host/httpheader"
 
 func SafeHeaders(headers []string, maxBytes int) []string {
 	safe := make([]string, len(headers))

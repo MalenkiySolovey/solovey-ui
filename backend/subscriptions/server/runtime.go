@@ -11,16 +11,29 @@ import (
 	"sync/atomic"
 	"time"
 
-	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
-	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/backend/http/databaseoperation"
 	domainmiddleware "github.com/MalenkiySolovey/solovey-ui/backend/http/domain"
 	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/backend/http/security"
-	"github.com/MalenkiySolovey/solovey-ui/network/autohttps"
-	"github.com/MalenkiySolovey/solovey-ui/network/bind"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 )
+
+// ListenerResult preserves Product bind diagnostics without exporting its implementation.
+type ListenerResult struct {
+	Listener                    net.Listener
+	RequestedAddr, FallbackAddr string
+	Fallback                    bool
+	BindError                   error
+}
+
+// RuntimePorts are the existing Product socket, redirect and diagnostic owners.
+type RuntimePorts struct {
+	Debug         func() bool
+	Info          func(...any)
+	Warning       func(...any)
+	Listen        func(address, host, port string) (ListenerResult, error)
+	WrapAutoHTTPS func(net.Listener, string) net.Listener
+}
 
 type Settings interface {
 	GetSubPath() (string, error)
@@ -42,14 +55,26 @@ type RuntimeServer struct {
 	listener   net.Listener
 	running    atomic.Bool
 
+	ports         RuntimePorts
 	settings      Settings
 	baseRoutes    BaseRoutes
 	formatFactory FormatHandlersFactory
 	rateLimiter   *RateLimiter
 }
 
-func NewRuntimeServer(settings Settings, baseRoutes BaseRoutes, formatFactory FormatHandlersFactory) *RuntimeServer {
+func NewRuntimeServer(settings Settings, baseRoutes BaseRoutes, formatFactory FormatHandlersFactory, options ...RuntimePorts) *RuntimeServer {
+	var ports RuntimePorts
+	if len(options) > 0 {
+		ports = options[0]
+	}
+	if ports.Info == nil {
+		ports.Info = func(...any) {}
+	}
+	if ports.Warning == nil {
+		ports.Warning = func(...any) {}
+	}
 	return &RuntimeServer{
+		ports:         ports,
 		settings:      settings,
 		baseRoutes:    baseRoutes,
 		formatFactory: formatFactory,
@@ -58,7 +83,7 @@ func NewRuntimeServer(settings Settings, baseRoutes BaseRoutes, formatFactory Fo
 }
 
 func (s *RuntimeServer) InitRouter() (*gin.Engine, error) {
-	if configlogging.IsDebug() {
+	if s.ports.Debug != nil && s.ports.Debug() {
 		gin.SetMode(gin.DebugMode)
 	} else {
 		gin.DefaultWriter = io.Discard
@@ -150,6 +175,10 @@ func (s *RuntimeServer) registerFormatRoute(engine *gin.Engine, registered map[s
 }
 
 func (s *RuntimeServer) Start() (err error) {
+	if s.ports.Listen == nil {
+		return errors.New("subscription listener owner is unavailable")
+	}
+	logger := s.ports
 	defer func() {
 		if err != nil {
 			err = errors.Join(err, s.Stop())
@@ -182,8 +211,11 @@ func (s *RuntimeServer) Start() (err error) {
 		return err
 	}
 
+	if (certFile != "" || keyFile != "") && s.ports.WrapAutoHTTPS == nil {
+		return errors.New("subscription HTTPS redirect owner is unavailable")
+	}
 	listenAddr := net.JoinHostPort(listen, strconv.Itoa(port))
-	listenResult, err := bind.ListenWithFallbackResult(listenAddr, listen, strconv.Itoa(port))
+	listenResult, err := s.ports.Listen(listenAddr, listen, strconv.Itoa(port))
 	if err != nil {
 		return err
 	}
@@ -204,7 +236,7 @@ func (s *RuntimeServer) Start() (err error) {
 			Certificates: []tls.Certificate{cert},
 			MinVersion:   tls.VersionTLS12,
 		}
-		listener = autohttps.NewAutoHttpsListener(listener, subDomain)
+		listener = s.ports.WrapAutoHTTPS(listener, subDomain)
 		listener = tls.NewListener(listener, tlsConfig)
 	}
 
