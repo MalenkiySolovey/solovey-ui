@@ -40,7 +40,7 @@ var productionRestoreRecoveryFileOps = restoreRecoveryFileOps{
 	createTemp: func(directory, pattern string) (restoreRecoveryTempFile, error) {
 		return os.CreateTemp(directory, pattern)
 	},
-	remove: os.Remove, rename: os.Rename, syncDirectory: syncRestoreRecoveryDirectory,
+	remove: os.Remove, rename: os.Rename, syncDirectory: SyncRecoveryDirectory,
 }
 
 func ensureRestoreRecoveryDirectory(directory string, ops restoreRecoveryFileOps) error {
@@ -85,10 +85,15 @@ func verifyRestoreRecoveryFile(ctx context.Context, path, digest string, ops res
 		return 0, err
 	}
 	hash := sha256.New()
-	written, copyErr := copyContext(ctx, hash, io.LimitReader(file, MaxRestoreBytes+1))
+	written, copyErr := CopyContext(ctx, hash, io.LimitReader(file, MaxRestoreBytes+1))
 	closeErr := file.Close()
 	if copyErr != nil || closeErr != nil || written <= 0 || written > MaxRestoreBytes || hex.EncodeToString(hash.Sum(nil)) != digest {
 		return 0, errors.Join(copyErr, closeErr, errors.New("pre-restore recovery backup failed strict reopen/hash validation"))
 	}
 	return written, nil
+}
+
+// VerifyRecovery checks a published archive by bounded reopen and exact digest.
+func VerifyRecovery(ctx context.Context, path, digest string) (int64, error) {
+	return verifyRestoreRecoveryFile(ctx, path, digest, productionRestoreRecoveryFileOps)
 }

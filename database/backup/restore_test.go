@@ -516,8 +516,8 @@ func TestRestoreRollsBackProtectedPostSwapFailureAndReopensExactLiveDB(t *testin
 	if err := dbsqlite.DB().Model(&model.Setting{}).Where("key = ?", "restore_marker").Update("value", "live-after-candidate").Error; err != nil {
 		t.Fatal(err)
 	}
-	restoreProtectedPostActionHook = func(context.Context) error { return errors.New("forced protected failure") }
-	t.Cleanup(func() { restoreProtectedPostActionHook = nil })
+	hooks.RegisterImportPostOpenHook("protected-rollback-fixture", func(context.Context) error { return errors.New("forced protected failure") })
+	t.Cleanup(func() { hooks.RegisterImportPostOpenHook("protected-rollback-fixture", nil) })
 
 	err = Restore(memMultipartFile{Reader: bytes.NewReader(candidate)})
 	if err == nil || !strings.Contains(err.Error(), "forced protected failure") {

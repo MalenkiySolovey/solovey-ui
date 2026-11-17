@@ -2,10 +2,10 @@ package backup
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/MalenkiySolovey/solovey-ui/backend/storage/hooks"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/backend/storage/sqlite"
 )
 
 type importPostAction struct {
@@ -16,21 +16,17 @@ type importPostAction struct {
 
 type importRollbackFunc func(stage string, cause error) error
 
-// restoreProtectedPostActionHook is package-private fault injection used to
-// prove exact rollback after the imported database has been installed/opened.
-var restoreProtectedPostActionHook func(context.Context) error
-
-func importRollbackProtectedPostActions(dbPath string, owners []RestoreOwnerStatus, files ...*FileBackupManifest) []importPostAction {
+func (r Restorer) importRollbackProtectedPostActions(dbPath string, owners []RestoreOwnerStatus, files ...*FileBackupManifest) []importPostAction {
 	return []importPostAction{
 		{stage: "migrating staged owner state", rollbackOnError: true, run: func(ctx context.Context) error {
-			_, err := migrateAndNormalizeRestoreOwners(ctx, dbPath, nil, files...)
+			_, err := r.MigrateOwners(ctx, dbPath, nil, files...)
 			return err
 		}},
 		{
 			stage:           "opening imported db",
 			rollbackOnError: true,
 			run: func(ctx context.Context) error {
-				return dbsqlite.InitContext(ctx, dbPath)
+				return r.OpenDatabase(ctx, dbPath)
 			},
 		},
 		{stage: "restoring logical owner files", rollbackOnError: true, run: func(ctx context.Context) error {
@@ -38,24 +34,14 @@ func importRollbackProtectedPostActions(dbPath string, owners []RestoreOwnerStat
 			if len(files) == 1 {
 				m = files[0]
 			}
-			return restoreOwnerFiles(ctx, dbsqlite.DB(), m, true)
+			return r.RestoreOwnerFiles(ctx, dbsqlite.DB(), m, true)
 		}},
 		{
 			stage:           "normalizing installed restore owners",
 			rollbackOnError: true,
 			run: func(ctx context.Context) error {
-				_, err := normalizeRestoredOwners(ctx, dbsqlite.DB(), owners)
+				_, err := r.NormalizeOwners(ctx, dbsqlite.DB(), owners)
 				return err
-			},
-		},
-		{
-			stage:           "verifying protected restore acceptance",
-			rollbackOnError: true,
-			run: func(ctx context.Context) error {
-				if restoreProtectedPostActionHook != nil {
-					return restoreProtectedPostActionHook(ctx)
-				}
-				return nil
 			},
 		},
 		{
@@ -75,15 +61,14 @@ func importRollbackProtectedPostActions(dbPath string, owners []RestoreOwnerStat
 	}
 }
 
-func importFinalPostActions() []importPostAction {
+func (r Restorer) importFinalPostActions() []importPostAction {
 	return []importPostAction{
 		{
 			stage: "restarting app",
 			run: func(context.Context) error {
-				// main.go traps SIGHUP and runs app.RestartApp (stop/start).
 				// Mandatory database owner rebinding has already completed in
 				// the protected cache-reset phase before candidate acceptance.
-				return SendSighup()
+				return r.Restart()
 			},
 		},
 	}
@@ -111,5 +96,5 @@ func handleImportPostActionError(action importPostAction, rollback importRollbac
 	if action.rollbackOnError && rollback != nil {
 		return rollback(action.stage, cause)
 	}
-	return common.NewErrorf("Error %s: %v", action.stage, cause)
+	return fmt.Errorf("Error %s: %v", action.stage, cause)
 }

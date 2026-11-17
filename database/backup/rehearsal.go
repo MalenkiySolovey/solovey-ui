@@ -239,7 +239,7 @@ func stageRehearsalFile(ctx context.Context, source io.ReadSeeker) (string, func
 		return "", nil, "", 0, err
 	}
 	path := file.Name()
-	cleanup := func() { cleanupRestoreFile(path) }
+	cleanup := func() { canonical.CleanupStagedFile(path) }
 	hash := sha256.New()
 	written, copyErr := copyContext(ctx, io.MultiWriter(file, hash), io.LimitReader(source, MaxRestoreBytes+1))
 	syncErr, closeErr := file.Sync(), file.Close()
@@ -252,32 +252,8 @@ func stageRehearsalFile(ctx context.Context, source io.ReadSeeker) (string, func
 }
 
 func copyContext(ctx context.Context, destination io.Writer, source io.Reader) (int64, error) {
-	buffer := make([]byte, 128<<10)
-	var total int64
-	for {
-		if err := ctx.Err(); err != nil {
-			return total, err
-		}
-		count, readErr := source.Read(buffer)
-		if count > 0 {
-			written, writeErr := destination.Write(buffer[:count])
-			total += int64(written)
-			if writeErr != nil {
-				return total, writeErr
-			}
-			if written != count {
-				return total, io.ErrShortWrite
-			}
-		}
-		if errors.Is(readErr, io.EOF) {
-			return total, nil
-		}
-		if readErr != nil {
-			return total, readErr
-		}
-	}
+	return canonical.CopyContext(ctx, destination, source)
 }
-
 func schemaCompatibility(value string) (string, string) {
 	comparison, ok := versionpolicy.CompareVersions(value, dbschema.CurrentCoreVersion)
 	if !ok || comparison > 0 {
@@ -368,7 +344,7 @@ func schemaSemver(value string) string {
 
 func rehearseMigrationsAndOwnersWithFindings(ctx context.Context, staged string, statuses []RestoreOwnerStatus, report func([]diagnostics.Finding), files ...*FileBackupManifest) ([]RestoreOwnerStatus, error) {
 	copyPath := staged + ".migration"
-	cleanup := func() { cleanupRestoreFile(copyPath) }
+	cleanup := func() { canonical.CleanupStagedFile(copyPath) }
 	defer cleanup()
 	if err := cloneRestoreFile(ctx, staged, copyPath); err != nil {
 		return statuses, err
