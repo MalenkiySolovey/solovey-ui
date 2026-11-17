@@ -58,7 +58,7 @@ func initAuthorizationDB(t *testing.T) (*gorm.DB, uint) {
 			t.Error(err)
 		}
 	})
-	if err := dbsqlite.InitializeContext(context.Background(), path, dbsqlite.Bootstrap{AfterOpen: func(db *gorm.DB) error {
+	if err := dbsqlite.InitializeContext(context.Background(), path, dbsqlite.Bootstrap{BeforeOpen: func() error { return nil }, AfterOpen: func(db *gorm.DB) error {
 		return db.AutoMigrate(&model.User{}, &model.AdminMFAFactor{}, &model.AdminRecoveryCode{}, &model.StepUpGrant{})
 	}}); err != nil {
 		t.Fatal(err)
