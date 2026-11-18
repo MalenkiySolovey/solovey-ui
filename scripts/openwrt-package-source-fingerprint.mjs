@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 export const sourceFingerprintSchema = 'solovey-ui/openwrt-package-source-fingerprint/v4'
 
 const productRoots = [
-  'api', 'app', 'cmd', 'componenthost', 'componentkit', 'components',
+  'api', 'app', 'cmd', 'componenthost', 'componentkit', 'components', 'composition',
   'config', 'core', 'cronjob', 'database', 'deploy', 'internal',
   'ipmonitor', 'logger', 'middleware', 'network', 'realtime', 'service',
   'sub', 'util', 'web', 'backend',

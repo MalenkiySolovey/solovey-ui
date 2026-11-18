@@ -158,14 +158,17 @@ test('external Frontend pin, toolchain and consumer verifier bind package source
   assert.equal(createSourceFingerprint(source, buildFacts()).sourceFingerprint, before.sourceFingerprint)
 })
 
-test('OpenWrt snapshot preserves component UI tests bound by the Frontend pin', () => {
+test('OpenWrt snapshot preserves the Product composition and pinned component UI inputs', () => {
   const source = makeSource()
+  const adapter = 'composition/componenthttp/adapter.go'
   const pinnedUI = 'components/widget/frontend/tests/payload.test.ts'
   const unrelated = 'components/widget/tests/payload.test.ts'
+  write(source, adapter, 'package componenthttp\n')
   write(source, pinnedUI, '// pinned UI input\n')
   write(source, unrelated, '// not a package input\n')
   const snapshot = path.join(temporaryDirectory('solovey-source-container-'), 'source')
   materializeSource(source, snapshot)
+  assert.ok(enumerateSourcePaths(snapshot).includes(adapter))
   assert.equal(fs.readFileSync(path.join(snapshot, pinnedUI), 'utf8'), '// pinned UI input\n')
   assert.ok(!fs.existsSync(path.join(snapshot, unrelated)))
   const fingerprint = createSourceFingerprint(snapshot, buildFacts())
