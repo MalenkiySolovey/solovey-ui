@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { coreSourceProperties, componentSourceProperties, inspectDisclosureArchive, mergeProviderModuleGraphs, verifyProviderInventory, verifyComponentInventory, verifyBackendInventory, verifyCompositionInventory, verifyDisclosedFiles } from './release-metadata.mjs'
+import { coreSourceProperties, componentSourceProperties, inspectDisclosureArchive, mergeProviderModuleGraphs, verifyProviderInventory, verifyComponentInventory, verifyBackendInventory, verifyCompositionInventory, verifyDisclosedFiles, verifyArchivedProduct } from './release-metadata.mjs'
 import { compositionDigest, compositionSchema } from './release-composition.mjs'
 import { resolveProviderSource } from './core-provider-build.mjs'
 
@@ -233,4 +233,30 @@ test('actual source zip and notice archive bytes cannot be omitted or substitute
   assert.throws(() => verifyDisclosedFiles(inspect().files, inventory(fs.readFileSync(path.join(src,modulePath))), 'source'), /moduleSum differs/)
   writeZip(pinned); fs.unlinkSync(path.join(src,license)); pack()
   assert.throws(() => verifyDisclosedFiles(inspect().files, inventory(bytes), 'notice'), /archive member inventory differs/)
+})
+
+test('corresponding Product archive matches frozen Git bytes, executable bits and membership', {skip: process.platform === 'win32'}, t => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'disclosure-project-'))
+  t.after(() => fs.rmSync(temp, {recursive:true, force:true}))
+  const root = path.join(temp, 'solovey-ui'), archive = path.join(temp, 'source.tar.gz')
+  fs.mkdirSync(root)
+  const git = (...args) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { cwd:root, encoding:'utf8' }).trim()
+  git('init', '-q')
+  const source = path.join(root, 'script.sh')
+  fs.writeFileSync(source, 'original\n', {mode:0o755})
+  git('add', '--chmod=+x', 'script.sh')
+  git('commit', '-qm', 'Disclosure fixture', '--no-gpg-sign')
+  const commit = git('rev-parse', 'HEAD')
+  const verify = () => {
+    execFileSync('tar', ['-czf', archive, '--exclude=.git', '-C', temp, 'solovey-ui'])
+    verifyArchivedProduct(inspectDisclosureArchive(archive).files, commit, root)
+  }
+  verify()
+  fs.writeFileSync(source, 'modified\n') // same byte count
+  assert.throws(verify, /sha256 differs: solovey-ui\/script.sh/)
+  fs.writeFileSync(source, 'original\n')
+  fs.chmodSync(source, 0o644)
+  assert.throws(verify, /executable differs: solovey-ui\/script.sh/)
+  fs.unlinkSync(source)
+  assert.throws(verify, /archive member inventory differs/)
 })

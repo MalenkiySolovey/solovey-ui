@@ -148,12 +148,18 @@ const digestFile = async file => {
 export function inspectDisclosureArchive(file, retain = [], goInputs = []) {
   const stat = fs.lstatSync(file)
   assert.ok(stat.isFile() && stat.size > 0 && stat.size < 2 * 1024 ** 3, 'invalid disclosure archive')
+  return inspectTar(file, retain, goInputs)
+}
+
+function inspectTar(file, retain, goInputs, input) {
   return JSON.parse(run('python3', ['-c', `
 import base64, hashlib, json, re, sys, tarfile, tempfile, zipfile
 retain=set(json.loads(sys.argv[2])); go_inputs=set(json.loads(sys.argv[3]))
 documents={}; files={}; names=set(); size=0
 def b64(data): return base64.b64encode(data).decode('ascii')
-with tarfile.open(sys.argv[1], 'r|gz') as archive:
+raw=sys.argv[1]=='-'
+with tarfile.open(name=None if raw else sys.argv[1], mode='r|*' if raw else 'r|gz',
+                  fileobj=sys.stdin.buffer if raw else None) as archive:
     for member in archive:
         name=member.name.removeprefix('./')
         if name in ('', '.') and member.isdir(): continue
@@ -169,8 +175,6 @@ with tarfile.open(sys.argv[1], 'r|gz') as archive:
                 assert member.size<=4*1024**2
                 documents[name]=b64(contents.read())
                 continue
-            if name.startswith('solovey-ui/'):
-                continue
             hashed=hashlib.sha256()
             sri=hashlib.sha512() if name.startswith('dependency-sources/npm/') else None
             with tempfile.SpooledTemporaryFile(max_size=4*1024**2) if name in go_inputs else open('/dev/null','wb') as spool:
@@ -178,7 +182,7 @@ with tarfile.open(sys.argv[1], 'r|gz') as archive:
                     hashed.update(chunk)
                     if sri: sri.update(chunk)
                     if name in go_inputs: spool.write(chunk)
-                record={'size':member.size,'sha256':hashed.hexdigest()}
+                record={'size':member.size,'sha256':hashed.hexdigest(),'executable':bool(member.mode & 0o111)}
                 if sri: record['sri']='sha512-'+b64(sri.digest())
                 if name in go_inputs:
                     h=hashlib.sha256(); notices={}
@@ -197,7 +201,7 @@ with tarfile.open(sys.argv[1], 'r|gz') as archive:
                     record['notices']=notices
                 files[name]=record
 print(json.dumps({'documents':documents,'files':files}))
-`, file, JSON.stringify(retain), JSON.stringify(goInputs)]))
+`, file, JSON.stringify(retain), JSON.stringify(goInputs)], { input }))
 }
 
 function lockedNpmPackages(lock) {
@@ -224,6 +228,15 @@ export function verifyDisclosedFiles(observed, expected, label) {
   }
 }
 
+export function verifyArchivedProduct(files, commit, cwd = process.cwd()) {
+  assert.match(commit, /^[a-f0-9]{40}$/, 'expected an exact Product commit')
+  const prefix = 'solovey-ui/'
+  const input = run('git', ['archive', '--format=tar', `--prefix=${prefix}`, commit], { cwd, encoding: 'buffer' })
+  const expected = Object.entries(inspectTar('-', [], [], input).files).map(([path, record]) => ({ path, ...record }))
+  const observed = Object.fromEntries(Object.entries(files).filter(([name]) => name.startsWith(prefix)))
+  verifyDisclosedFiles(observed, expected, 'corresponding Product source')
+}
+
 async function verifyMaterialArchives(directory, provenance, bom, inventory, composition, frontend, backend) {
   const graph = composition.graph
   const sources = [backend.source, ...graph.shared, ...graph.components.external]
@@ -233,8 +246,9 @@ async function verifyMaterialArchives(directory, provenance, bom, inventory, com
   }
   const goInputs = new Map(sources), goPath = identity => `dependency-sources/go/${sha(identity)}.zip`
   const documents = ['DEPENDENCY_SOURCES.json', 'PRODUCT_COMPOSITION.json', 'SOURCE_IDENTITY.json', 'COMPONENT_SOURCE_INPUTS.json',
-    'FRONTEND_SOURCE_INPUT.json', 'BACKEND_SOURCE_INPUT.json', 'NATIVE_SOURCE_DISCLOSURE.json', 'solovey-ui/deploy/dependencies/solovey-backend-source.json']
+    'FRONTEND_SOURCE_INPUT.json', 'BACKEND_SOURCE_INPUT.json', 'NATIVE_SOURCE_DISCLOSURE.json']
   const source = inspectDisclosureArchive(path.join(directory, 'solovey-ui-source.tar.gz'), documents, [...goInputs.keys()].map(goPath))
+  verifyArchivedProduct(source.files, graph.product.commit)
   const document = (archive, name) => JSON.parse(Buffer.from(archive.documents[name] ?? '', 'base64'))
   verifyCompositionInventory(provenance, bom, inventory, composition, document(source, 'PRODUCT_COMPOSITION.json'))
   assert.deepEqual(document(source, 'SOURCE_IDENTITY.json'), {commit:graph.product.commit, tree:graph.product.tree,
@@ -242,7 +256,6 @@ async function verifyMaterialArchives(directory, provenance, bom, inventory, com
   assert.deepEqual(document(source, 'COMPONENT_SOURCE_INPUTS.json'), provenance.componentInputs, 'corresponding-source Component inputs differ')
   assert.deepEqual(document(source, 'FRONTEND_SOURCE_INPUT.json'), frontend, 'corresponding-source Frontend input differs')
   assert.deepEqual(document(source, 'BACKEND_SOURCE_INPUT.json'), backend, 'corresponding-source Backend input differs')
-  assert.deepEqual(document(source, 'solovey-ui/deploy/dependencies/solovey-backend-source.json'), backend.source, 'corresponding-source Backend lock differs')
   assert.deepEqual(document(source, 'NATIVE_SOURCE_DISCLOSURE.json'), graph.native, 'corresponding-source native input differs')
   const records = document(source, 'DEPENDENCY_SOURCES.json')
   const byPath = new Map(records.map(item => [item.source, item]))
@@ -272,7 +285,8 @@ async function verifyMaterialArchives(directory, provenance, bom, inventory, com
   expected.push(expect('dependency-sources/frontend/frontend-source.json.gz', {ecosystem:'frontend-git', sha256:frontend.sourceArchive.sha256}),
     expect(`dependency-sources/native/naiveproxy-${graph.native.nativeSource.commit}.tar.gz`, {ecosystem:'native-git', sha256:graph.native.nativeSource.archiveSha256}, {size:graph.native.nativeSource.archiveSize}))
   assert.equal(byPath.size, expected.length, 'dependency inventory contains an unknown source')
-  verifyDisclosedFiles(source.files, expected, 'corresponding source')
+  const dependencies = Object.fromEntries(Object.entries(source.files).filter(([name]) => !name.startsWith('solovey-ui/')))
+  verifyDisclosedFiles(dependencies, expected, 'corresponding dependency source')
 
   const notices = inspectDisclosureArchive(path.join(directory, 'solovey-ui-license-notices.tar.gz'), ['LICENSE_INVENTORY.json', 'NATIVE_SOURCE_DISCLOSURE.json'])
   assert.deepEqual(document(notices, 'NATIVE_SOURCE_DISCLOSURE.json'), graph.native, 'notice native disclosure differs')
