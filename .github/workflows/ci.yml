@@ -2,6 +2,11 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      qualify_metadata:
+        description: 'Produce and verify exact-source release disclosure without signing'
+        type: boolean
+        default: false
   pull_request:
   push:
     branches:
@@ -11,6 +16,44 @@ permissions:
   contents: read
 
 jobs:
+  metadata-qualification:
+    name: Exact-source metadata qualification
+    if: github.event_name == 'workflow_dispatch' && inputs.qualify_metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      GOWORK: 'off'
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            go.extended.sum
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: .node-version
+      - name: Produce and verify disclosure at the requested SHA
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/release-metadata"
+          node scripts/release-metadata.mjs produce "$output" "$GITHUB_SHA"
+          node scripts/release-metadata.mjs verify "$output" "$GITHUB_SHA"
+          (cd "$output" && sha256sum -c -- *.sha256)
+      - name: Retain the provenance, SBOM and verified archive hashes
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: metadata-qualification-evidence
+          path: |
+            ${{ runner.temp }}/release-metadata/*.json
+            ${{ runner.temp }}/release-metadata/*.sha256
+          if-no-files-found: error
+          retention-days: 7
+
   build-tooling:
     name: Build tooling (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

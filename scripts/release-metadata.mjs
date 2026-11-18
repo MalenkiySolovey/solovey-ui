@@ -282,8 +282,12 @@ async function verifyMaterialArchives(directory, provenance, bom, inventory, com
     assert.deepEqual(modules.get(identity)?.hashes, [{alg:'SHA-512', content:Buffer.from(sri.slice(7),'base64').toString('hex')}], 'SBOM npm source integrity differs')
     expected.push(expect(`dependency-sources/npm/${sha(identity)}.tgz`, {ecosystem:'npm', name, version:item.version, integrity:item.integrity, distribution:item.resolved}, {sri}))
   }
-  expected.push(expect('dependency-sources/frontend/frontend-source.json.gz', {ecosystem:'frontend-git', sha256:frontend.sourceArchive.sha256}),
-    expect(`dependency-sources/native/naiveproxy-${graph.native.nativeSource.commit}.tar.gz`, {ecosystem:'native-git', sha256:graph.native.nativeSource.archiveSha256}, {size:graph.native.nativeSource.archiveSize}))
+  expected.push(expect('dependency-sources/frontend/frontend-source.json.gz', {ecosystem:'frontend-git', name:frontend.source.repo,
+    version:frontend.version, sha256:frontend.sourceArchive.sha256, sourceCommit:frontend.source.commit,
+    sourceTree:frontend.source.tree, filesSHA256:frontend.source.filesSHA256}),
+    expect(`dependency-sources/native/naiveproxy-${graph.native.nativeSource.commit}.tar.gz`, {ecosystem:'native-git', name:'SagerNet/naiveproxy',
+      version:graph.native.nativeSource.commit, sha256:graph.native.nativeSource.archiveSha256, distribution:graph.native.nativeSource.archiveURL},
+      {size:graph.native.nativeSource.archiveSize}))
   assert.equal(byPath.size, expected.length, 'dependency inventory contains an unknown source')
   const dependencies = Object.fromEntries(Object.entries(source.files).filter(([name]) => !name.startsWith('solovey-ui/')))
   verifyDisclosedFiles(dependencies, expected, 'corresponding dependency source')

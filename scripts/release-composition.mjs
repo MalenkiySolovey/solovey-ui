@@ -197,6 +197,7 @@ export async function deriveProductComposition(commit, root = process.cwd()) {
   }
   const nodeVersion = text(project('.node-version')).trim()
   assert.equal(nodeVersion, pin.toolchain.node, 'Product and Frontend Node pins differ')
+  assert.equal(process.version, `v${nodeVersion}`, 'Product composition requires the pinned Node toolchain')
   const graph = { schema: compositionSchema, canonicalization: 'sha256/sorted-keys-utf8-json/v1', product,
     frontend: { version: pin.version, source: pin.source, sourceArchive: pin.sourceArchive, input: pin.input, toolchain: pin.toolchain },
     backend, shared, components: { sourceLockDigest: input.sourceLockDigest,
