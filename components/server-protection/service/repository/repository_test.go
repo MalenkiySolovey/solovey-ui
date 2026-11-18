@@ -493,7 +493,9 @@ func TestLeaseCapacityPruningPreservesFreshActiveLease(t *testing.T) {
 
 func openTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "server-protection.db")), &gorm.Config{})
+	// Keep real disk-backed SQLite and commits; WAL avoids an fsync for every
+	// schema/index statement across the repository suite on Windows runners.
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "server-protection.db")+"?_journal_mode=WAL&_synchronous=NORMAL"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}

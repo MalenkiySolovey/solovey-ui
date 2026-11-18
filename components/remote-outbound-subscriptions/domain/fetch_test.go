@@ -367,6 +367,8 @@ func TestSubscriptionFetchCandidatesPreserveOriginalResource(t *testing.T) {
 }
 
 func TestFetchSubscriptionQueriesFormatVariantsAndMerges(t *testing.T) {
+	// The transport is mocked below; variant parsing must not depend on public DNS.
+	t.Setenv("SUI_ALLOW_PRIVATE_SUB_URLS", "true")
 	originalFetch := fetchSubscriptionData
 	originalUserAgentFetch := fetchSubscriptionDataWithUserAgent
 	t.Cleanup(func() {
