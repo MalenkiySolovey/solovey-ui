@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
-import { coreSourceProperties, componentSourceProperties, mergeProviderModuleGraphs, verifyProviderInventory, verifyComponentInventory, verifyBackendInventory, verifyCompositionInventory } from './release-metadata.mjs'
+import { coreSourceProperties, componentSourceProperties, inspectDisclosureArchive, mergeProviderModuleGraphs, verifyProviderInventory, verifyComponentInventory, verifyBackendInventory, verifyCompositionInventory, verifyDisclosedFiles } from './release-metadata.mjs'
 import { compositionDigest, compositionSchema } from './release-composition.mjs'
 import { resolveProviderSource } from './core-provider-build.mjs'
 
@@ -205,4 +208,29 @@ test('release disclosure binds Frontend source and all qualified distribution id
  verifyFrontendInventory(provenance,bom,pin)
  for(const edit of [b=>b.components=[],b=>b.components.push(structuredClone(component)),b=>b.components[0].hashes[0].content='0'.repeat(64),b=>b.components[0].properties.find(p=>p.name==='solovey:frontendArtifacts').value='{}',b=>b.metadata.component.properties[0].value='0'.repeat(64)]){const copy=structuredClone(bom);edit(copy);assert.throws(()=>verifyFrontendInventory(provenance,copy,pin))}
  assert.throws(()=>verifyFrontendInventory({frontendInput:{...pin,version:'0.9.0'}},bom,pin))
+})
+test('actual source zip and notice archive bytes cannot be omitted or substituted behind regenerated outer digests', {skip: process.platform === 'win32'}, t => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'disclosure-members-'))
+  t.after(() => fs.rmSync(temp, {recursive:true, force:true}))
+  const name = 'example.invalid/pinned@v1.0.0/LICENSE', pinned = 'original license\n'
+  const modulePath = 'dependency-sources/go/fixture.zip', license = 'notices/LICENSE', document = 'INDEX.json'
+  const sha = value => crypto.createHash('sha256').update(value).digest('hex')
+  const goSum = sum(`${sha(pinned)}  ${name}\n`)
+  const src = path.join(temp, 'src'), archive = path.join(temp, 'source.tar.gz')
+  fs.mkdirSync(path.join(src, 'dependency-sources/go'), {recursive:true})
+  fs.mkdirSync(path.join(src, 'notices'))
+  fs.writeFileSync(path.join(src, document), JSON.stringify({source:'committed proof'}))
+  fs.writeFileSync(path.join(src, license), pinned)
+  const writeZip = content => execFileSync('python3', ['-c', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1],"w"); z.writestr(sys.argv[2],sys.argv[3]); z.close()', path.join(src,modulePath), name, content])
+  const pack = () => execFileSync('tar', ['-czf', archive, '-C', src, '.'])
+  const inspect = () => inspectDisclosureArchive(archive, [document], [modulePath])
+  const inventory = (moduleBytes) => [{path:modulePath, sha256:sha(moduleBytes), moduleSum:goSum}, {path:license, sha256:sha(pinned), size:Buffer.byteLength(pinned)}]
+  writeZip(pinned); pack()
+  const bytes = fs.readFileSync(path.join(src,modulePath)), reported = inspect()
+  assert.deepEqual(JSON.parse(Buffer.from(reported.documents[document],'base64')), {source:'committed proof'})
+  verifyDisclosedFiles(reported.files, inventory(bytes), 'source')
+  writeZip('substituted license'); pack()
+  assert.throws(() => verifyDisclosedFiles(inspect().files, inventory(fs.readFileSync(path.join(src,modulePath))), 'source'), /moduleSum differs/)
+  writeZip(pinned); fs.unlinkSync(path.join(src,license)); pack()
+  assert.throws(() => verifyDisclosedFiles(inspect().files, inventory(bytes), 'notice'), /archive member inventory differs/)
 })

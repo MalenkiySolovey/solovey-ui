@@ -143,6 +143,162 @@ const digestFile = async file => {
   return hash.digest('hex')
 }
 
+// Read archive evidence in one pass, without extracting paths supplied by a
+// candidate. Independently verify the Go ZIP h1 for the pinned source owners.
+export function inspectDisclosureArchive(file, retain = [], goInputs = []) {
+  const stat = fs.lstatSync(file)
+  assert.ok(stat.isFile() && stat.size > 0 && stat.size < 2 * 1024 ** 3, 'invalid disclosure archive')
+  return JSON.parse(run('python3', ['-c', `
+import base64, hashlib, json, re, sys, tarfile, tempfile, zipfile
+retain=set(json.loads(sys.argv[2])); go_inputs=set(json.loads(sys.argv[3]))
+documents={}; files={}; names=set(); size=0
+def b64(data): return base64.b64encode(data).decode('ascii')
+with tarfile.open(sys.argv[1], 'r|gz') as archive:
+    for member in archive:
+        name=member.name.removeprefix('./')
+        if name in ('', '.') and member.isdir(): continue
+        assert all(p and p not in ('.','..') for p in name.split('/')) and chr(92) not in name
+        assert name not in names and len(names)<65536
+        names.add(name)
+        if member.isdir(): continue
+        assert member.isreg() and 0<=member.size<=1024**3
+        size+=member.size
+        assert size<=4*1024**3
+        with archive.extractfile(member) as contents:
+            if name in retain:
+                assert member.size<=4*1024**2
+                documents[name]=b64(contents.read())
+                continue
+            if name.startswith('solovey-ui/'):
+                continue
+            hashed=hashlib.sha256()
+            sri=hashlib.sha512() if name.startswith('dependency-sources/npm/') else None
+            with tempfile.SpooledTemporaryFile(max_size=4*1024**2) if name in go_inputs else open('/dev/null','wb') as spool:
+                for chunk in iter(lambda: contents.read(1024*1024), b''):
+                    hashed.update(chunk)
+                    if sri: sri.update(chunk)
+                    if name in go_inputs: spool.write(chunk)
+                record={'size':member.size,'sha256':hashed.hexdigest()}
+                if sri: record['sri']='sha512-'+b64(sri.digest())
+                if name in go_inputs:
+                    h=hashlib.sha256(); notices={}
+                    with zipfile.ZipFile(spool) as module:
+                        items=sorted(module.infolist(),key=lambda item:item.filename.encode('utf8'))
+                        assert len(items)==len({item.filename for item in items}) and sum(item.file_size for item in items)<=128*1024**2
+                        for item in items:
+                            assert chr(10) not in item.filename
+                            with module.open(item) as f:
+                                digest=hashlib.file_digest(f,'sha256').hexdigest()
+                            h.update((digest+'  '+item.filename+'\\n').encode('utf8'))
+                            relative=item.filename.split('@',1)[1].partition('/')[2] if '@' in item.filename else ''
+                            if not item.is_dir() and re.match(r'^(licen[cs]e|copying|notice|copyright)([._-]|$)',relative.rsplit('/',1)[-1],re.I):
+                                notices[relative]={'sha256':digest,'size':item.file_size}
+                    record['moduleSum']='h1:'+b64(h.digest())
+                    record['notices']=notices
+                files[name]=record
+print(json.dumps({'documents':documents,'files':files}))
+`, file, JSON.stringify(retain), JSON.stringify(goInputs)]))
+}
+
+function lockedNpmPackages(lock) {
+  const npm = new Map()
+  for (const [location, item] of Object.entries(lock.packages).sort(([a], [b]) => a.localeCompare(b))) {
+    if (!location) continue
+    assert.ok(item.resolved?.startsWith('https://registry.npmjs.org/') && item.integrity, `unpinned npm source ${location}`)
+    const name = item.name ?? location.slice(location.lastIndexOf('node_modules/') + 'node_modules/'.length)
+    const identity = `npm:${name}@${item.version}`
+    const sri = item.integrity.split(/\s+/).find(value => value.startsWith('sha512-'))
+    assert.ok(sri, `npm source requires SHA512 SRI: ${name}`)
+    if (npm.has(identity)) assert.equal(npm.get(identity).item.integrity, item.integrity, 'duplicate npm source integrity differs')
+    else npm.set(identity, {name, item, sri})
+  }
+  return npm
+}
+
+export function verifyDisclosedFiles(observed, expected, label) {
+  const names = expected.map(item => item.path)
+  assert.equal(new Set(names).size, names.length, `${label} inventory duplicates a member`)
+  assert.deepEqual(Object.keys(observed).sort(), names.sort(), `${label} archive member inventory differs`)
+  for (const {path: member, ...fields} of expected) {
+    for (const [field, value] of Object.entries(fields)) assert.equal(observed[member][field], value, `${label} ${field} differs: ${member}`)
+  }
+}
+
+async function verifyMaterialArchives(directory, provenance, bom, inventory, composition, frontend, backend) {
+  const graph = composition.graph
+  const sources = [backend.source, ...graph.shared, ...graph.components.external]
+    .map(item => [`${item.module}@${item.version}`, item.moduleChecksum])
+  for (const {copies} of Object.values(graph.providers)) {
+    for (const {replacement} of copies) sources.push([`${replacement.module}@${replacement.version}`, replacement.sum])
+  }
+  const goInputs = new Map(sources), goPath = identity => `dependency-sources/go/${sha(identity)}.zip`
+  const documents = ['DEPENDENCY_SOURCES.json', 'PRODUCT_COMPOSITION.json', 'SOURCE_IDENTITY.json', 'COMPONENT_SOURCE_INPUTS.json',
+    'FRONTEND_SOURCE_INPUT.json', 'BACKEND_SOURCE_INPUT.json', 'NATIVE_SOURCE_DISCLOSURE.json', 'solovey-ui/deploy/dependencies/solovey-backend-source.json']
+  const source = inspectDisclosureArchive(path.join(directory, 'solovey-ui-source.tar.gz'), documents, [...goInputs.keys()].map(goPath))
+  const document = (archive, name) => JSON.parse(Buffer.from(archive.documents[name] ?? '', 'base64'))
+  verifyCompositionInventory(provenance, bom, inventory, composition, document(source, 'PRODUCT_COMPOSITION.json'))
+  assert.deepEqual(document(source, 'SOURCE_IDENTITY.json'), {commit:graph.product.commit, tree:graph.product.tree,
+    version:graph.product.version, sourceFingerprint:graph.product.fingerprint}, 'corresponding-source Product identity differs')
+  assert.deepEqual(document(source, 'COMPONENT_SOURCE_INPUTS.json'), provenance.componentInputs, 'corresponding-source Component inputs differ')
+  assert.deepEqual(document(source, 'FRONTEND_SOURCE_INPUT.json'), frontend, 'corresponding-source Frontend input differs')
+  assert.deepEqual(document(source, 'BACKEND_SOURCE_INPUT.json'), backend, 'corresponding-source Backend input differs')
+  assert.deepEqual(document(source, 'solovey-ui/deploy/dependencies/solovey-backend-source.json'), backend.source, 'corresponding-source Backend lock differs')
+  assert.deepEqual(document(source, 'NATIVE_SOURCE_DISCLOSURE.json'), graph.native, 'corresponding-source native input differs')
+  const records = document(source, 'DEPENDENCY_SOURCES.json')
+  const byPath = new Map(records.map(item => [item.source, item]))
+  assert.equal(byPath.size, records.length, 'duplicate dependency source member')
+  const expect = (filename, declaration, fields = {}) => {
+    const row = byPath.get(filename)
+    assert.ok(row, `missing dependency source disclosure: ${filename}`)
+    for (const [key, value] of Object.entries(declaration)) assert.deepEqual(row[key], value, `source ${key} differs: ${filename}`)
+    assert.match(row.sha256, /^[a-f0-9]{64}$/)
+    return {path:filename, sha256:row.sha256, ...fields}
+  }
+  const modules = new Map(bom.components.map(item => [item['bom-ref'], item]))
+  const expected = inventory.modules.map(item => {
+    const properties = Object.fromEntries(modules.get(item.identity).properties.map(({name, value}) => [name, value]))
+    const moduleSum = goInputs.get(item.identity)
+    return expect(goPath(item.identity), {ecosystem:'golang', name:item.name, version:item.version, providers:item.providers,
+      moduleSum:properties['solovey:moduleSum'], goModSum:properties['solovey:goModSum']}, moduleSum ? {moduleSum} : {})
+  })
+  assert.ok([...goInputs.keys()].every(id => inventory.modules.some(item => item.identity === id)), 'pinned composition material missing from corresponding source')
+  const frontendDirectory = await resolveFrontendSource({pin: frontend})
+  const npm = lockedNpmPackages(json(path.join(frontendDirectory, 'package-lock.json')))
+  assert.equal(bom.components.filter(item => item['bom-ref'].startsWith('npm:')).length, npm.size, 'SBOM npm inventory differs from Frontend lock')
+  for (const [identity, {name, item, sri}] of npm) {
+    assert.deepEqual(modules.get(identity)?.hashes, [{alg:'SHA-512', content:Buffer.from(sri.slice(7),'base64').toString('hex')}], 'SBOM npm source integrity differs')
+    expected.push(expect(`dependency-sources/npm/${sha(identity)}.tgz`, {ecosystem:'npm', name, version:item.version, integrity:item.integrity, distribution:item.resolved}, {sri}))
+  }
+  expected.push(expect('dependency-sources/frontend/frontend-source.json.gz', {ecosystem:'frontend-git', sha256:frontend.sourceArchive.sha256}),
+    expect(`dependency-sources/native/naiveproxy-${graph.native.nativeSource.commit}.tar.gz`, {ecosystem:'native-git', sha256:graph.native.nativeSource.archiveSha256}, {size:graph.native.nativeSource.archiveSize}))
+  assert.equal(byPath.size, expected.length, 'dependency inventory contains an unknown source')
+  verifyDisclosedFiles(source.files, expected, 'corresponding source')
+
+  const notices = inspectDisclosureArchive(path.join(directory, 'solovey-ui-license-notices.tar.gz'), ['LICENSE_INVENTORY.json', 'NATIVE_SOURCE_DISCLOSURE.json'])
+  assert.deepEqual(document(notices, 'NATIVE_SOURCE_DISCLOSURE.json'), graph.native, 'notice native disclosure differs')
+  const index = document(notices, 'LICENSE_INVENTORY.json')
+  assert.equal(index.length, provenance.inventory.dependencyNotices, 'notice inventory count differs')
+  for (const dependency of goInputs.keys()) {
+    const original = source.files[goPath(dependency)].notices
+    const prefix = `${sha(dependency).slice(0, 24)}/`
+    assert.ok(Object.keys(original).some(name => /(?:^|\/)(?:licen[cs]e|copying)(?:[._-]|$)/i.test(name)), `missing pinned source license: ${dependency}`)
+    assert.deepEqual(Object.fromEntries(index.filter(item => item.dependency === dependency).map(item => {
+      assert.ok(item.path.startsWith(prefix), 'notice dependency does not own this path')
+      return [item.path.slice(prefix.length), {sha256:item.sha256, size:item.size}]
+    })), original, `pinned source notices differ: ${dependency}`)
+  }
+  const frontendIdentity = `frontend:solovey-frontend@${frontend.version}`
+  assert.ok(index.some(item => item.dependency === frontendIdentity && item.path === `${sha(frontendIdentity).slice(0, 24)}/LICENSE` && item.sha256 === sha(fs.readFileSync(path.join(frontendDirectory,'LICENSE')))), 'missing or substituted original Frontend license')
+  const nativeIdentity = `native:SagerNet/naiveproxy@${graph.native.nativeSource.commit}`
+  for (const item of graph.native.notices) assert.ok(index.some(record => record.dependency === nativeIdentity && record.path === `${sha(nativeIdentity).slice(0, 24)}/${item.path}` && record.sha256 === item.sha256 && record.size === item.size), 'missing or substituted original native notice')
+  for (const {module, version, files} of readSourceLock().sources) for (const name of ['LICENSE', 'NOTICE']) {
+    const identity = `${module}@${version}`
+    assert.ok(index.some(item => item.dependency === identity && item.path === `${sha(identity).slice(0, 24)}/${name}` && item.sha256 === files[name]), 'missing or substituted original Component notice')
+  }
+  const top = ['LICENSE','NOTICE.md'].map(file => ({path:file, sha256:sha(fs.readFileSync(file))}))
+  verifyDisclosedFiles(notices.files, [...top, ...index.map(({path, size, sha256}) => ({path, size, sha256}))], 'notice')
+}
+
 export function mergeProviderModuleGraphs(graphs) {
   const modules = new Map(), seen = new Set(), providers = []
   for (const graph of graphs) {
@@ -303,18 +459,8 @@ export async function verifyMetadata(directory, commit) {
   const frontendInput = readFrontendPin()
   verifyFrontendInventory(p, bom, frontendInput)
   const backendInput = verifyBackendInventory(p, bom, inventory, readBackendSourceLock())
-  const sourceArchive = path.join(directory, 'solovey-ui-source.tar.gz')
   const composition = await deriveProductComposition(commit)
-  verifyCompositionInventory(p, bom, inventory, composition,
-    JSON.parse(run('tar', ['-xOf', sourceArchive, './PRODUCT_COMPOSITION.json'])))
-  assert.deepEqual(JSON.parse(run('tar', ['-xOf', sourceArchive, './FRONTEND_SOURCE_INPUT.json'])), frontendInput, 'corresponding-source Frontend input differs')
-  const frontendBytes = await frontendBlob(frontendInput, frontendInput.sourceArchive.filename, frontendInput.sourceArchive.sha256)
-  const correspondingFrontend = execFileSync('tar', ['-xOf', sourceArchive, './dependency-sources/frontend/frontend-source.json.gz'], {maxBuffer:32*1024*1024})
-  assert.ok(correspondingFrontend.equals(frontendBytes), 'corresponding-source Frontend archive differs')
-  assert.deepEqual(JSON.parse(run('tar', ['-xOf', sourceArchive, './BACKEND_SOURCE_INPUT.json'])),
-    backendInput, 'corresponding-source Backend input differs')
-  assert.deepEqual(JSON.parse(run('tar', ['-xOf', sourceArchive, './solovey-ui/deploy/dependencies/solovey-backend-source.json'])),
-    backendInput.source, 'corresponding-source Product Backend lock differs')
+  await verifyMaterialArchives(directory, p, bom, inventory, composition, frontendInput, backendInput)
   assert.deepEqual(p.integrations, ['sing-box-ssm', 'sing-quic', 'sing-anytls'].map(name => json(`deploy/dependencies/${name}-integration.json`)))
   assert.deepEqual(p.extendedIntegration, readExtendedProvenance())
   const native = json('deploy/dependencies/cronet-native-source.json')
@@ -484,21 +630,11 @@ async function produce(directory, commit) {
       components.push({ type: 'library', 'bom-ref': identity, name: module.name, version: module.version, scope: 'optional', purl: `pkg:golang/${module.name}@${encodeURIComponent(module.version)}`, ...(license ? { licenses: [{ license: { id: license } }] } : {}), properties })
     }
     const npmSources = new Map()
-    for (const [location, item] of Object.entries(npm.packages).sort(([a], [b]) => a.localeCompare(b))) {
-      if (!location) continue
-      assert.ok(item.resolved?.startsWith('https://registry.npmjs.org/') && item.integrity, `unpinned npm source ${location}`)
-      const name = item.name ?? location.slice(location.lastIndexOf('node_modules/') + 'node_modules/'.length)
-      const identity = `npm:${name}@${item.version}`
-      if (npmSources.has(identity)) {
-        assert.equal(npmSources.get(identity).integrity, item.integrity, 'duplicate npm source integrity differs')
-        continue
-      }
+    for (const [identity, {name, item, sri}] of lockedNpmPackages(npm)) {
       const response = await fetch(item.resolved, { redirect: 'error', signal: AbortSignal.timeout(60000) })
       assert.ok(response.ok, `npm source HTTP ${response.status}: ${name}`)
       const bytes = Buffer.from(await response.arrayBuffer())
       assert.ok(bytes.length > 0 && bytes.length < 128 * 1024 * 1024)
-      const sri = item.integrity.split(/\s+/).find(x => x.startsWith('sha512-'))
-      assert.ok(sri, `npm source requires SHA512 SRI: ${name}`)
       assert.equal('sha512-' + crypto.createHash('sha512').update(bytes).digest('base64'), sri)
       const filename = `${sha(identity)}.tgz`, file = path.join(npmDirectory, filename)
       fs.writeFileSync(file, bytes); npmSources.set(identity, { file, integrity: item.integrity })
