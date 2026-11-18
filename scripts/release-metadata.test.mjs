@@ -1,12 +1,45 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import test from 'node:test'
-import { coreSourceProperties, componentSourceProperties, mergeProviderModuleGraphs, verifyProviderInventory, verifyComponentInventory, verifyBackendInventory } from './release-metadata.mjs'
+import { coreSourceProperties, componentSourceProperties, inspectDisclosureArchive, mergeProviderModuleGraphs, verifyProviderInventory, verifyComponentInventory, verifyBackendInventory, verifyCompositionInventory, verifyDisclosedFiles, verifyArchivedProduct } from './release-metadata.mjs'
+import { compositionDigest, compositionSchema } from './release-composition.mjs'
 import { resolveProviderSource } from './core-provider-build.mjs'
 
 const sum = label => 'h1:' + crypto.createHash('sha256').update(label).digest('base64')
 const source = (Path, Version) => ({ Path, Version, Sum: sum(Path + Version), GoModSum: sum(Path + Version + '/go.mod') })
+
+test('source archive, SBOM and provenance must agree with the rederived composition', () => {
+  const shared = { module: 'example.invalid/shared', version: 'v1.0.0', moduleChecksum: sum('source'),
+    goModChecksum: sum('mod'), sourceCommit: '1'.repeat(40), sourceTree: '2'.repeat(40), provenanceSHA256: '3'.repeat(64) }
+  const graph = { schema: compositionSchema, shared: [shared], providers: { 'sing-box': {}, 'shtorm-extended': {} } }
+  const composition = { graph, sha256: compositionDigest(graph) }
+  const provenance = { composition: structuredClone(composition) }, archive = structuredClone(composition)
+  const bom = { metadata: { component: { properties: [{ name: 'solovey:compositionSHA256', value: composition.sha256 }] } },
+    components: [{ name: shared.module, version: shared.version, properties: [
+      { name: 'solovey:sourceAuthority', value: 'https://' + shared.module },
+      { name: 'solovey:sourceCommit', value: shared.sourceCommit },
+      { name: 'solovey:sourceTree', value: shared.sourceTree },
+      { name: 'solovey:sourceProvenanceSHA256', value: shared.provenanceSHA256 },
+    ] }] }
+  const modules = [{ name: shared.module, version: shared.version, moduleSum: shared.moduleChecksum, goModSum: shared.goModChecksum,
+    providers: ['shtorm-extended', 'sing-box'] }]
+  verifyCompositionInventory(provenance, bom, { modules }, composition, archive)
+  assert.throws(() => verifyCompositionInventory({}, bom, { modules }, composition, archive), /unknown composition schema/)
+  assert.throws(() => verifyCompositionInventory(provenance, bom, { modules }, composition, undefined), /unknown composition schema/)
+  const mutated = structuredClone(archive)
+  mutated.graph.shared[0].sourceTree = '4'.repeat(40)
+  mutated.sha256 = compositionDigest(mutated.graph)
+  assert.throws(() => verifyCompositionInventory(provenance, bom, { modules }, composition, mutated), /verified Product inputs/)
+  assert.throws(() => verifyCompositionInventory(provenance, { ...bom, components: [] }, { modules }, composition, archive), /missing.*SBOM/)
+  assert.throws(() => verifyCompositionInventory(provenance, bom, { modules: [] }, composition, archive), /missing.*provider union/)
+  const omitted = structuredClone(bom)
+  omitted.metadata.component.properties = []
+  assert.throws(() => verifyCompositionInventory(provenance, omitted, { modules }, composition, archive), /SBOM composition digest differs/)
+})
 test('SBOM core disclosure separates upstream authority, owned commits and the actual build tree',()=>{
   const lock=JSON.parse(fs.readFileSync(new URL('../deploy/dependencies/sing-box-extended-integration.json',import.meta.url),'utf8'))
   const engine=lock.sources[0]
@@ -175,4 +208,55 @@ test('release disclosure binds Frontend source and all qualified distribution id
  verifyFrontendInventory(provenance,bom,pin)
  for(const edit of [b=>b.components=[],b=>b.components.push(structuredClone(component)),b=>b.components[0].hashes[0].content='0'.repeat(64),b=>b.components[0].properties.find(p=>p.name==='solovey:frontendArtifacts').value='{}',b=>b.metadata.component.properties[0].value='0'.repeat(64)]){const copy=structuredClone(bom);edit(copy);assert.throws(()=>verifyFrontendInventory(provenance,copy,pin))}
  assert.throws(()=>verifyFrontendInventory({frontendInput:{...pin,version:'0.9.0'}},bom,pin))
+})
+test('actual source zip and notice archive bytes cannot be omitted or substituted behind regenerated outer digests', {skip: process.platform === 'win32'}, t => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'disclosure-members-'))
+  t.after(() => fs.rmSync(temp, {recursive:true, force:true}))
+  const name = 'example.invalid/pinned@v1.0.0/LICENSE', pinned = 'original license\n'
+  const modulePath = 'dependency-sources/go/fixture.zip', license = 'notices/LICENSE', document = 'INDEX.json'
+  const sha = value => crypto.createHash('sha256').update(value).digest('hex')
+  const goSum = sum(`${sha(pinned)}  ${name}\n`)
+  const src = path.join(temp, 'src'), archive = path.join(temp, 'source.tar.gz')
+  fs.mkdirSync(path.join(src, 'dependency-sources/go'), {recursive:true})
+  fs.mkdirSync(path.join(src, 'notices'))
+  fs.writeFileSync(path.join(src, document), JSON.stringify({source:'committed proof'}))
+  fs.writeFileSync(path.join(src, license), pinned)
+  const writeZip = content => execFileSync('python3', ['-c', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1],"w"); z.writestr(sys.argv[2],sys.argv[3]); z.close()', path.join(src,modulePath), name, content])
+  const pack = () => execFileSync('tar', ['-czf', archive, '-C', src, '.'])
+  const inspect = () => inspectDisclosureArchive(archive, [document], [modulePath])
+  const inventory = (moduleBytes) => [{path:modulePath, sha256:sha(moduleBytes), moduleSum:goSum}, {path:license, sha256:sha(pinned), size:Buffer.byteLength(pinned)}]
+  writeZip(pinned); pack()
+  const bytes = fs.readFileSync(path.join(src,modulePath)), reported = inspect()
+  assert.deepEqual(JSON.parse(Buffer.from(reported.documents[document],'base64')), {source:'committed proof'})
+  verifyDisclosedFiles(reported.files, inventory(bytes), 'source')
+  writeZip('substituted license'); pack()
+  assert.throws(() => verifyDisclosedFiles(inspect().files, inventory(fs.readFileSync(path.join(src,modulePath))), 'source'), /moduleSum differs/)
+  writeZip(pinned); fs.unlinkSync(path.join(src,license)); pack()
+  assert.throws(() => verifyDisclosedFiles(inspect().files, inventory(bytes), 'notice'), /archive member inventory differs/)
+})
+
+test('corresponding Product archive matches frozen Git bytes, executable bits and membership', {skip: process.platform === 'win32'}, t => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'disclosure-project-'))
+  t.after(() => fs.rmSync(temp, {recursive:true, force:true}))
+  const root = path.join(temp, 'solovey-ui'), archive = path.join(temp, 'source.tar.gz')
+  fs.mkdirSync(root)
+  const git = (...args) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { cwd:root, encoding:'utf8' }).trim()
+  git('init', '-q')
+  const source = path.join(root, 'script.sh')
+  fs.writeFileSync(source, 'original\n', {mode:0o755})
+  git('add', '--chmod=+x', 'script.sh')
+  git('commit', '-qm', 'Disclosure fixture', '--no-gpg-sign')
+  const commit = git('rev-parse', 'HEAD')
+  const verify = () => {
+    execFileSync('tar', ['-czf', archive, '--exclude=.git', '-C', temp, 'solovey-ui'])
+    verifyArchivedProduct(inspectDisclosureArchive(archive).files, commit, root)
+  }
+  verify()
+  fs.writeFileSync(source, 'modified\n') // same byte count
+  assert.throws(verify, /sha256 differs: solovey-ui\/script.sh/)
+  fs.writeFileSync(source, 'original\n')
+  fs.chmodSync(source, 0o644)
+  assert.throws(verify, /executable differs: solovey-ui\/script.sh/)
+  fs.unlinkSync(source)
+  assert.throws(verify, /archive member inventory differs/)
 })

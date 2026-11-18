@@ -27,6 +27,8 @@ const policy = fs.existsSync('scripts/release-providers.mjs') ? await load('rele
 const buildTargets = policy?.openwrtBuildTargets ? policy.openwrtBuildTargets() : profiles.map(profile => ({
   profile, provider: 'sing-box', name: `solovey-ui-openwrt-${profile}.apk`,
 }))
+const compositionBuild = fs.existsSync('scripts/release-composition-build.mjs') ? await load('release-composition-build.mjs') : null
+const expectedFrontend = compositionBuild ? (await compositionBuild.referenceFrontends()).split : null
 const json = file => JSON.parse(fs.readFileSync(file, 'utf8'))
 const digest = file => sha256(fs.readFileSync(file))
 const [mode, directory, productCommit, selected, destination] = process.argv.slice(2)
@@ -86,6 +88,7 @@ function verify(apk, proofDir, profile, provider = coreProvider) {
   assert.equal(stage.sourceFingerprint, fingerprint.sourceFingerprint)
   assert.equal(stage.buildIdentity, fingerprint.build.identity)
   assert.deepEqual(stage.target, facts.target)
+  if (compositionBuild) compositionBuild.verifyStagedFrontend(facts, fingerprint.generated.outputs, stage.payload.entries, expectedFrontend)
   assert.equal(stage.payload.treeDigest, sha256(canonical(stage.payload.entries)))
   assert.equal(stage.stageIdentity, sha256(canonical({ schema: stage.schema,
     sourceFingerprint: stage.sourceFingerprint, generatedOutputDigest: stage.generatedOutputDigest,

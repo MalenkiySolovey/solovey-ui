@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -8,7 +9,7 @@ import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import {frontendFixtureDirectory} from '../frontend-source.mjs'
 import './aggregate.test.mjs'
-import { selectLatestAuditArtifacts } from './download-go-artifacts.mjs'
+import { downloadGoAuditArtifacts, selectLatestAuditArtifacts } from './download-go-artifacts.mjs'
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const YAML = createRequire(path.join(await frontendFixtureDirectory(), 'package.json'))('yaml')
@@ -117,6 +118,51 @@ test('artifact selection rejects missing, ambiguous, expired or unverifiable cur
   const good = { id: 1, name: 'audit-go-test', created_at: '2026-10-16T00:11:58Z', expired: false, digest: `sha256:${'a'.repeat(64)}` }
   for (const input of [[], [good, { ...good }], [{ ...good, created_at: '' }], [good, { ...good, id: 2 }], [{ ...good, expired: true }], [{ ...good, digest: undefined }], [{ ...good, name: 'audit-go-../escape' }]]) {
     assert.throws(() => selectLatestAuditArtifacts(input))
+  }
+})
+
+test('artifact download retries the same ID on transient HTTP errors and still fails closed', async t => {
+  const zip = Buffer.from('verified ZIP bytes')
+  const artifact = { id: 17, name: 'audit-go-test', created_at: '2026-10-16T00:11:58Z', expired: false,
+    digest: `sha256:${createHash('sha256').update(zip).digest('hex')}`, workflow_run: { id: 42 } }
+  for (const [name, responses, delays, failure] of [
+    ['recovers', [503, 502, zip], [2000, 4000]],
+    ['exhausts the retry budget', [503, 503, 503, 503, 503], [2000, 4000, 8000, 16000], /HTTP 503/],
+    ['does not retry authorization failures', [403], [], /HTTP 403/],
+    ['does not retry or extract corrupt bytes', [503, Buffer.from('corrupt ZIP')], [2000], /archive digest mismatch/],
+  ]) {
+    await t.test(name, async t => {
+      const destination = fs.mkdtempSync(path.join(os.tmpdir(), 'go-audit-retry-test-'))
+      t.after(() => fs.rmSync(destination, { recursive: true, force: true }))
+      const observedDelays = []
+      let calls = 0
+      let unzipCalls = 0
+      const execute = (command, args) => {
+        if (command === 'unzip') {
+          assert.equal(failure, undefined, 'must not inspect or extract an unverified archive')
+          unzipCalls++
+          return Buffer.from('report.txt\n')
+        }
+        assert.equal(command, 'gh')
+        if (args.includes('--paginate')) return Buffer.from(JSON.stringify([{ total_count: 1, artifacts: [artifact] }]))
+        assert.equal(args.at(-1), 'repos/owner/repo/actions/artifacts/17/zip')
+        const response = responses[calls++]
+        assert.notEqual(response, undefined, 'unexpected extra download attempt')
+        if (Buffer.isBuffer(response)) return response
+        throw Object.assign(new Error(`HTTP ${response}`), { stderr: Buffer.from(`gh: HTTP ${response}\n`) })
+      }
+      const download = downloadGoAuditArtifacts({ repository: 'owner/repo', runId: 42, destination, execute,
+        wait: async ms => { observedDelays.push(ms) } })
+      if (failure) {
+        await assert.rejects(download, failure)
+        assert.deepEqual(fs.readdirSync(destination), [])
+      } else {
+        assert.equal((await download).selected[0].digest, artifact.digest)
+        assert.equal(unzipCalls, 2)
+      }
+      assert.deepEqual(observedDelays, delays)
+      assert.equal(calls, responses.length)
+    })
   }
 })
 

@@ -130,25 +130,36 @@ func TestQUICParentIdentitySurvivesNATPortRebinding(t *testing.T) {
 			if newPort == oldPort {
 				t.Fatal("fixture did not change UDP source port")
 			}
-			stream, err := peer.echoStream(t.Context(), f.echo.Addr().String())
-			if err != nil {
-				t.Fatal("authenticated rebinding echo:", err)
-			}
-			defer stream.CancelRead(0)
-			defer stream.Close()
-			after := f.parents(t, 7)
-			if len(after.Parents) != 1 || before.Parents[0].QUICParentTarget != after.Parents[0].QUICParentTarget {
-				t.Fatal("address migration confused parent identity")
-			}
-			migratedSource := false
-			for _, flow := range after.Connections {
-				_, port, _ := net.SplitHostPort(flow.Source)
-				if port == strconv.Itoa(newPort) {
-					migratedSource = true
+			// TUIC snapshots RemoteAddr when routing a stream, which can happen
+			// before QUIC processes the new source address. A fresh stream on
+			// the same peer resamples it; polling the old stream cannot.
+			const maxProbes = 10
+			wantPort := strconv.Itoa(newPort)
+		observeMigration:
+			for probe := 1; probe <= maxProbes; probe++ {
+				stream, err := peer.echoStream(t.Context(), f.echo.Addr().String())
+				if err != nil {
+					t.Fatalf("authenticated rebinding echo %d: %v", probe, err)
 				}
-			}
-			if !migratedSource {
-				t.Fatal("server-side migrated source was not observed")
+				after := f.parents(t, 7)
+				if len(after.Parents) != 1 || before.Parents[0].QUICParentTarget != after.Parents[0].QUICParentTarget {
+					t.Fatalf("address migration confused parent identity on probe %d", probe)
+				}
+				for _, flow := range after.Connections {
+					_, port, _ := net.SplitHostPort(flow.Source)
+					if port == wantPort {
+						defer stream.CancelRead(0)
+						defer stream.Close()
+						t.Logf("observed migrated source after %d authenticated streams", probe)
+						break observeMigration
+					}
+				}
+				stream.CancelRead(0)
+				_ = stream.Close()
+				if probe == maxProbes {
+					t.Fatalf("server-side migrated source port %d (was %d) not observed after %d authenticated streams", newPort, oldPort, probe)
+				}
+				time.Sleep(20 * time.Millisecond)
 			}
 			result, err := f.core.Disconnect(t.Context(), DisconnectRequest{Generation: before.Generation, ClientID: 7, Parents: []QUICParentTarget{before.Parents[0].QUICParentTarget}})
 			if err != nil || result.ParentsClosed != 1 {
