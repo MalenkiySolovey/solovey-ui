@@ -9,7 +9,7 @@ on:
         default: "v2026.5.1"
         type: string
       preflight_only:
-        description: "Validate and build release artifacts without publishing"
+        description: "Validate with an ephemeral test key; do not publish"
         required: true
         default: true
         type: boolean
@@ -55,7 +55,6 @@ jobs:
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       preflight_only: ${{ github.event_name == 'workflow_dispatch' && inputs.preflight_only }}
       source_commit: ${{ needs.release-preflight.outputs.product-commit }}
-    secrets: inherit
 
   build-docker-extended:
     if: inputs.resume_run_id == ''
@@ -66,7 +65,6 @@ jobs:
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       preflight_only: ${{ github.event_name == 'workflow_dispatch' && inputs.preflight_only }}
       source_commit: ${{ needs.release-preflight.outputs.product-commit }}
-    secrets: inherit
 
   build-windows:
     if: inputs.resume_run_id == ''
@@ -76,7 +74,6 @@ jobs:
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       preflight_only: true
       source_commit: ${{ needs.release-preflight.outputs.product-commit }}
-    secrets: inherit
 
   release-preflight:
     name: Release preflight
@@ -121,6 +118,10 @@ jobs:
         run: |
           set -euo pipefail
           COMMIT="$(git rev-parse HEAD)"
+          if [ "$PREFLIGHT_ONLY" = true ] && [ -n "$RESUME_RUN_ID" ]; then
+            echo 'preflight cannot resume a publication' >&2
+            exit 1
+          fi
           if [ -n "$PREPARATION_SOURCE_COMMIT" ]; then
             [ "$PREFLIGHT_ONLY" = true ] && [ -z "$RESUME_RUN_ID" ] || { echo 'source_commit is permitted only for a fresh non-publishing preflight' >&2; exit 1; }
             [[ "$PREPARATION_SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]] && [ "$COMMIT" = "$PREPARATION_SOURCE_COMMIT" ] || { echo 'preflight requires the exact requested product SHA' >&2; exit 1; }
@@ -131,6 +132,7 @@ jobs:
           printf 'Product commit: %s\nSource fingerprint: %s\nOrchestrator commit: %s\n' "$COMMIT" "$FINGERPRINT" "$GITHUB_SHA"
 
       - name: Validate configured release authority
+        if: github.event_name == 'push' || inputs.preflight_only == false
         env:
           SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
           SUI_RELEASE_SIGNING_KEY_ID: ${{ vars.SUI_RELEASE_SIGNING_KEY_ID }}
@@ -748,16 +750,37 @@ jobs:
             node scripts/release-composition-build.mjs verify-linux "$RUNNER_TEMP/product-composition.json" release-assets "$RELEASE_TAG_INPUT"
           fi
 
-      - name: Generate release manifest
+      - name: Generate and verify complete signed release set
         env:
-          SUI_RELEASE_SIGNING_PRIVATE_KEY_B64: ${{ secrets.SUI_RELEASE_SIGNING_PRIVATE_KEY_B64 }}
-          SUI_RELEASE_SIGNING_KEY_ID: ${{ vars.SUI_RELEASE_SIGNING_KEY_ID }}
+          PREFLIGHT_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.preflight_only }}
+          SUI_RELEASE_SIGNING_PRIVATE_KEY_B64: ${{ (github.event_name == 'push' || inputs.preflight_only == false) && secrets.SUI_RELEASE_SIGNING_PRIVATE_KEY_B64 || '' }}
+          SUI_RELEASE_SIGNING_KEY_ID: ${{ (github.event_name == 'push' || inputs.preflight_only == false) && vars.SUI_RELEASE_SIGNING_KEY_ID || '' }}
         run: |
-          set -e
-          [ -n "$SUI_RELEASE_SIGNING_PRIVATE_KEY_B64" ] || { echo "release signing secret is required" >&2; exit 1; }
-          [ -n "$SUI_RELEASE_SIGNING_KEY_ID" ] || { echo "release signing key id variable is required" >&2; exit 1; }
+          set -euo pipefail
           ISSUED_AT="$(date +%s)"
           RELEASE_SEQUENCE="$((GITHUB_RUN_NUMBER * 1000 + GITHUB_RUN_ATTEMPT))"
+          if [ "$PREFLIGHT_ONLY" = true ]; then
+            [ -z "${SUI_RELEASE_SIGNING_PRIVATE_KEY_B64}${SUI_RELEASE_SIGNING_KEY_ID}" ] || { echo 'preflight received production signing configuration' >&2; exit 1; }
+            export SUI_RELEASE_SIGNING_KEY_ID=ci-preflight
+            TEST_AUTHORITY="$(node --input-type=module - "$ISSUED_AT" "$RELEASE_SEQUENCE" <<'NODE'
+          import { generateKeyPairSync } from 'node:crypto'
+          const [issuedAt, sequence] = process.argv.slice(2).map(Number)
+          const { publicKey, privateKey } = generateKeyPairSync('ed25519')
+          const root = {
+            keyId: process.env.SUI_RELEASE_SIGNING_KEY_ID,
+            publicKey: Buffer.from(publicKey.export({ format: 'jwk' }).x, 'base64url').toString('base64'),
+            state: 'ACTIVE', notBefore: issuedAt, notAfter: issuedAt + 14 * 86400,
+            minSequence: sequence, maxSequence: sequence,
+          }
+          console.log(privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64'), Buffer.from(JSON.stringify([root])).toString('base64'))
+          NODE
+            )"
+            read -r SUI_RELEASE_SIGNING_PRIVATE_KEY_B64 SUI_RELEASE_TRUST_ROOTS_B64 <<< "$TEST_AUTHORITY"
+            export SUI_RELEASE_SIGNING_PRIVATE_KEY_B64 SUI_RELEASE_TRUST_ROOTS_B64
+            node scripts/release-preflight.mjs --tag "$RELEASE_TAG_INPUT" --sequence "$RELEASE_SEQUENCE"
+          fi
+          [ -n "$SUI_RELEASE_SIGNING_PRIVATE_KEY_B64" ] || { echo "release signing secret is required" >&2; exit 1; }
+          [ -n "$SUI_RELEASE_SIGNING_KEY_ID" ] || { echo "release signing key id variable is required" >&2; exit 1; }
           CHANNEL=main
           [ "${{ steps.vars.outputs.prerelease }}" = "true" ] && CHANNEL=beta
           node scripts/release-manifest.mjs \
@@ -770,15 +793,12 @@ jobs:
             --assets-dir release-assets \
             --components-dir .release/components
 
-      - name: Verify complete signed release set
-        env:
-          SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
-        run: node scripts/release-verify.mjs release-assets "$RELEASE_TAG_INPUT"
+          node scripts/release-verify.mjs release-assets "$RELEASE_TAG_INPUT"
 
       - name: Retain complete release candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: complete-linux-release
+          name: ${{ github.event_name == 'workflow_dispatch' && inputs.preflight_only && 'preflight-linux-release' || 'complete-linux-release' }}
           path: release-assets/
           if-no-files-found: error
           retention-days: 7
