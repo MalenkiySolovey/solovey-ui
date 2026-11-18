@@ -2,6 +2,7 @@ package service
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -9,12 +10,25 @@ import (
 )
 
 func TestCoreFrontendSettingsPayloadDefaultsMatchBackendSchema(t *testing.T) {
+	// Reuse the Product admission resolver so parity is checked against the exact
+	// pinned source archive, including its complete file and toolchain hashes.
+	command := exec.CommandContext(t.Context(), "node", "--input-type=module", "--eval",
+		`import {resolveFrontendSource} from "./scripts/frontend-artifacts.mjs"; process.stdout.write(await resolveFrontendSource())`)
+	command.Dir = ".."
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("resolve pinned frontend source: %v\n%s", err, output)
+	}
+	frontendSource := strings.TrimSpace(string(output))
+	if !filepath.IsAbs(frontendSource) {
+		t.Fatalf("frontend source resolver returned a non-absolute path: %q", frontendSource)
+	}
 	payloadObjects := []struct {
 		file string
 		name string
 	}{
 		{
-			file: filepath.Join("..", "frontend", "src", "features", "settingsPayload.ts"),
+			file: filepath.Join(frontendSource, "src", "features", "settingsPayload.ts"),
 			name: "settingsPageDefaults",
 		},
 	}

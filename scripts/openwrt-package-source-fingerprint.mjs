@@ -10,18 +10,12 @@ export const sourceFingerprintSchema = 'solovey-ui/openwrt-package-source-finger
 
 const productRoots = [
   'api', 'app', 'cmd', 'componenthost', 'componentkit', 'components',
-  'config', 'core', 'cronjob', 'database', 'deploy', 'frontend', 'internal',
+  'config', 'core', 'cronjob', 'database', 'deploy', 'internal',
   'ipmonitor', 'logger', 'middleware', 'network', 'realtime', 'service',
   'sub', 'util', 'web', 'backend',
 ]
 
 const topLevelInputs = new Set(['LICENSE', '.node-version', 'go.mod', 'go.sum', 'go.extended.mod', 'go.extended.sum', 'main.go'])
-
-const sourceHiddenFiles = new Set([
-  'frontend/.browserslistrc',
-  'frontend/.npmrc',
-  'frontend/.node-version',
-])
 
 const targetBuildScripts = new Set([
   'scripts/build-linux-target.sh',
@@ -220,7 +214,6 @@ export function materializeSource(sourceRoot, out) {
 }
 
 function isSourceInput(file) {
-  if (sourceHiddenFiles.has(file)) return true
   if (generatedGo.has(file)) return false
   if (file.startsWith('web/html/') || file.startsWith('frontend/dist/') || file.startsWith('frontend/node_modules/')) return false
   if (file.includes('/node_modules/') || file.includes('/testdata/') || file.includes('/tests/')) return false
