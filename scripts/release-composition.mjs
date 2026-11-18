@@ -12,13 +12,13 @@ import { readExtendedProvenance } from './extended-integration-provenance.mjs'
 import { readFrontendPin, resolveFrontendDistribution, sha256 } from './frontend-artifacts.mjs'
 import { prepareFrontendBuildInputs } from './frontend-build-inputs.mjs'
 import { openwrtBuildTargets, linuxPanelArtifacts, windowsPanelArtifacts, targets } from './release-providers.mjs'
+import { validatePin as validateHostPin } from './verify-host-pin.mjs'
+import { validatePin as validateContractPin } from './verify-contract-pin.mjs'
 
 export const compositionSchema = 'solovey.product-composition/v1'
 const repository = 'github.com/MalenkiySolovey/solovey-ui'
-const commonOwners = ['github.com/MalenkiySolovey/solovey-host', 'github.com/MalenkiySolovey/solovey-contracts']
 const sha1 = /^[a-f0-9]{40}$/
 const h1 = /^h1:[A-Za-z0-9+/]{43}=$/
-const stableVersion = /^v\d+\.\d+\.\d+$/
 const versioned = /^v\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/
 const text = file => fs.readFileSync(file, 'utf8').replaceAll('\r\n', '\n')
 const json = file => JSON.parse(text(file))
@@ -78,28 +78,25 @@ function moduleSums(sums, module, version) {
   return { moduleChecksum, goModChecksum }
 }
 
-// Go may reuse extracted cache directories without reading source bytes again.
-// Recompute Go's published Hash1 over the two small, directly owned modules
-// that do not already have a Git tree in a Product source lock.
+// Reuse the source owner's tree and verify the cached Go metadata bytes, not
+// just the sums returned by the Go command.
 export function verifySharedModule(observed, locked) {
-  const { module, version, moduleChecksum, goModChecksum } = locked
+  const { module, version, moduleChecksum, goModChecksum, sourceCommit, sourceTree } = locked
   assert.equal(observed.Path, module, 'shared module owner differs')
   assert.equal(observed.Version, version, 'shared module version differs')
   assert.ok(!observed.Replace && !observed.Main && !observed.Error, 'shared module substitution rejected')
   assert.equal(observed.Sum, moduleChecksum, 'shared module checksum differs')
   assert.equal(observed.GoModSum, goModChecksum, 'shared go.mod checksum differs')
   const origin = observed.Origin
-  assert.ok(origin?.VCS === 'git' && origin.URL === `https://${module}` && origin.Ref === `refs/tags/${version}` && sha1.test(origin.Hash), 'shared module version provenance differs')
-  const sourceTree = regularSourceTree(observed.Dir)
-  const files = fs.readdirSync(observed.Dir, { recursive: true, withFileTypes: true }).filter(entry => entry.isFile())
-    .map(entry => path.relative(observed.Dir, path.join(entry.parentPath, entry.name)).split(path.sep).join('/'))
-    .sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)))
-  const sum = createHash('sha256')
-  for (const file of files) sum.update(`${sha256(fs.readFileSync(path.join(observed.Dir, file)))}  ${module}@${version}/${file}\n`)
-  assert.equal(`h1:${sum.digest('base64')}`, moduleChecksum, 'shared module cache content differs from go.sum')
+  assert.ok(origin?.VCS === 'git' && origin.URL === `https://${module}` && origin.Ref === `refs/tags/${version}` && origin.Hash === sourceCommit, 'shared module version provenance differs')
+  assert.equal(regularSourceTree(observed.Dir), sourceTree, 'shared module cache differs from pinned source tree')
+  assert.ok(fs.lstatSync(observed.GoMod).isFile(), 'shared cached go.mod must be a regular file')
   const mod = fs.readFileSync(observed.GoMod)
   assert.equal(`h1:${createHash('sha256').update(`${sha256(mod)}  go.mod\n`).digest('base64')}`, goModChecksum, 'shared cached go.mod differs from go.sum')
-  return { ...locked, sourceCommit: origin.Hash, moduleTree: sourceTree, sourceRef: origin.Ref }
+  const provenance = fs.readFileSync(path.join(observed.Dir, 'SOURCE_PROVENANCE.json'))
+  const proof = JSON.parse(provenance)
+  assert.ok(['solovey.host.source-provenance/v1', 'solovey.contracts.source-provenance/v1'].includes(proof.schema), 'unadmitted shared source provenance')
+  return { ...locked, sourceRef: origin.Ref, provenanceSHA256: sha256(provenance) }
 }
 
 export function verifyFrontendProjection(pin, input, components) {
@@ -158,7 +155,16 @@ export async function deriveProductComposition(commit, root = process.cwd()) {
 
   const officialCopies = ['ssm', 'quic', 'anytls'].map(name => JSON.parse(run(process.execPath, [`scripts/${name}-integration-provenance.mjs`, 'manifest'], { cwd: root, env })))
   const extendedCopies = [...readExtendedProvenance(root).sources, officialCopies[2]]
-  const providers = {}, shared = new Map()
+  const providers = {}, shared = ['host', 'contracts'].map((owner, index) => {
+    const pin = json(project(`${owner}/PIN.json`))
+    const validate = index === 0 ? validateHostPin : validateContractPin
+    validate(pin)
+    run(process.execPath, [`scripts/verify-${owner === 'contracts' ? 'contract' : owner}-pin.mjs`], { cwd: root, env })
+    const observed = JSON.parse(go('mod', 'download', '-json', `${pin.module}@${pin.version}`))
+    const { module, version, sourceCommit, sourceTree, moduleChecksum, goModChecksum, contractVersion } = pin
+    return verifySharedModule(observed, { module, version, sourceCommit, sourceTree, moduleChecksum, goModChecksum,
+      ...(contractVersion ? { contractVersion } : {}) })
+  })
   const goVersion = go('env', 'GOVERSION').slice(2)
   for (const [provider, copies] of [['sing-box', officialCopies], [targets.extended.provider, extendedCopies]]) {
     assert.ok(!Object.hasOwn(providers, provider), 'duplicate provider')
@@ -183,28 +189,17 @@ export async function deriveProductComposition(commit, root = process.cwd()) {
     providers[provider] = { modFile: plan.modFile, modFileSHA256: sha256(text(project(plan.modFile))), sumFile: sumName,
       sumFileSHA256: sha256(sumBytes), engine: plan.source, buildTags: plan.tags.split(',').filter(Boolean), copies }
 
-    for (const module of commonOwners) {
-      const version = mod.Require?.find(item => item.Path === module)?.Version
-      assert.match(version ?? '', stableVersion, 'immutable shared module version required')
-      const locked = { module, version, ...moduleSums(sums, module, version) }
-      validateModuleRequirement(mod, locked)
-      const selected = JSON.parse(go('list', '-m', `-modfile=${plan.modFile}`, '-json', module))
-      assert.equal(selected.Version, version, 'provider selects a different shared module version')
-      assert.ok(!selected.Replace && !selected.Main && !selected.Error, 'provider substitutes a shared module')
-      if (shared.has(module)) {
-        const { sourceCommit, moduleTree, sourceRef, ...previous } = shared.get(module)
-        assert.deepEqual(locked, previous, 'provider shared module identity differs')
-      } else {
-        const downloaded = JSON.parse(go('mod', 'download', `-modfile=${plan.modFile}`, '-json', `${module}@${version}`))
-        shared.set(module, verifySharedModule(downloaded, locked))
-      }
+    for (const input of shared) {
+      const { module, version, moduleChecksum, goModChecksum } = input
+      validateModuleRequirement(mod, input)
+      assert.deepEqual(moduleSums(sums, module, version), { moduleChecksum, goModChecksum }, 'provider shared module checksums differ')
     }
   }
   const nodeVersion = text(project('.node-version')).trim()
   assert.equal(nodeVersion, pin.toolchain.node, 'Product and Frontend Node pins differ')
   const graph = { schema: compositionSchema, canonicalization: 'sha256/sorted-keys-utf8-json/v1', product,
     frontend: { version: pin.version, source: pin.source, sourceArchive: pin.sourceArchive, input: pin.input, toolchain: pin.toolchain },
-    backend, shared: [...shared.values()], components: { sourceLockDigest: input.sourceLockDigest,
+    backend, shared, components: { sourceLockDigest: input.sourceLockDigest,
       external: lock.sources.map(({ files, ...source }) => source), catalog: components },
     profiles, providers, toolchain: { go: goVersion, node: nodeVersion }, native: json(project('deploy/dependencies/cronet-native-source.json')),
     eligibility: { linux: linuxPanelArtifacts(), windows: windowsPanelArtifacts(), docker: targets.docker,

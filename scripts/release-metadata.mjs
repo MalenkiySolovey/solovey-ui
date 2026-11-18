@@ -14,6 +14,7 @@ import { linuxBuildTargets } from './release-providers.mjs'
 import { verifySeriesMetadata } from './core-source-provenance.mjs'
 import { readSourceLock, prepareComponentSources, verifyModuleSource } from './component-source-inputs.mjs'
 import { prepareBackendSource, verifyBackendModuleSource, backendSourceProperties, readBackendSourceLock, validateBackendSourceLock } from './backend-source-inputs.mjs'
+import { deriveProductComposition, verifyComposition } from './release-composition.mjs'
 
 export function frontendSourceProperties(pin) {
   return Object.entries({sourceRepository:pin.source.repo,sourceCommit:pin.source.commit,sourceTree:pin.source.tree,sourceFilesSHA256:pin.source.filesSHA256,sourceArchiveSHA256:pin.sourceArchive.sha256,frontendInputSHA256:pin.input.manifestSHA256,frontendArtifacts:JSON.stringify(pin.profiles),packageLockSHA256:pin.toolchain.packageLockSHA256}).map(([name,value])=>({name:'solovey:'+name,value}))
@@ -91,6 +92,32 @@ export function verifyBackendInventory(provenance, bom, inventory, source) {
   for (const property of backendSourceProperties(source))
     assert.deepEqual(components[0].properties.filter(item => item.name === property.name), [property], 'Backend SBOM source identity differs')
   return expected
+}
+
+function sharedSourceProperties(source) {
+  return Object.entries({ sourceAuthority: `https://${source.module}`, sourceCommit: source.sourceCommit,
+    sourceTree: source.sourceTree, sourceProvenanceSHA256: source.provenanceSHA256,
+    ...(source.contractVersion ? { contractVersion: source.contractVersion } : {}) })
+    .map(([name, value]) => ({ name: `solovey:${name}`, value }))
+}
+
+export function verifyCompositionInventory(provenance, bom, inventory, expected, archivedComposition) {
+  verifyComposition(provenance.composition, expected)
+  verifyComposition(archivedComposition, expected)
+  assert.deepEqual(bom.metadata.component.properties.filter(item => item.name === 'solovey:compositionSHA256'),
+    [{ name: 'solovey:compositionSHA256', value: expected.sha256 }], 'SBOM composition digest differs')
+  for (const source of expected.graph.shared) {
+    const modules = inventory.modules.filter(item => item.name === source.module)
+    assert.equal(modules.length, 1, 'shared source missing or ambiguous in the provider union')
+    assert.equal(modules[0].version, source.version)
+    assert.equal(modules[0].moduleSum, source.moduleChecksum)
+    assert.equal(modules[0].goModSum, source.goModChecksum)
+    assert.deepEqual(modules[0].providers, Object.keys(expected.graph.providers).sort(), 'shared source missing from one provider')
+    const components = bom.components.filter(item => item.name === source.module && item.version === source.version)
+    assert.equal(components.length, 1, 'shared source missing or ambiguous in the SBOM')
+    for (const property of sharedSourceProperties(source))
+      assert.deepEqual(components[0].properties.filter(item => item.name === property.name), [property], 'shared source SBOM disclosure differs')
+  }
 }
 
 export function coreSourceProperties(source) {
@@ -277,6 +304,9 @@ export async function verifyMetadata(directory, commit) {
   verifyFrontendInventory(p, bom, frontendInput)
   const backendInput = verifyBackendInventory(p, bom, inventory, readBackendSourceLock())
   const sourceArchive = path.join(directory, 'solovey-ui-source.tar.gz')
+  const composition = await deriveProductComposition(commit)
+  verifyCompositionInventory(p, bom, inventory, composition,
+    JSON.parse(run('tar', ['-xOf', sourceArchive, './PRODUCT_COMPOSITION.json'])))
   assert.deepEqual(JSON.parse(run('tar', ['-xOf', sourceArchive, './FRONTEND_SOURCE_INPUT.json'])), frontendInput, 'corresponding-source Frontend input differs')
   const frontendBytes = await frontendBlob(frontendInput, frontendInput.sourceArchive.filename, frontendInput.sourceArchive.sha256)
   const correspondingFrontend = execFileSync('tar', ['-xOf', sourceArchive, './dependency-sources/frontend/frontend-source.json.gz'], {maxBuffer:32*1024*1024})
@@ -313,6 +343,7 @@ async function produce(directory, commit) {
   const timestamp = run('git', ['show', '-s', '--format=%cI', commit]).trim()
   const version = fs.readFileSync('config/identity/version', 'utf8').trim()
   const fingerprint = run(process.execPath, ['scripts/release-source.mjs', root]).trim()
+  const composition = await deriveProductComposition(commit, root)
   const integrations = ['sing-box-ssm', 'sing-quic', 'sing-anytls'].map(name => json(`deploy/dependencies/${name}-integration.json`))
   const extendedIntegration = readExtendedProvenance()
   const backendInput = prepareBackendSource(root)
@@ -442,6 +473,13 @@ async function produce(directory, commit) {
         componentLicense = disclosure.license
         properties.push(...disclosure.properties)
       }
+      const sharedSource = composition.graph.shared.find(source => source.module === module.name)
+      if (sharedSource) {
+        assert.equal(module.version, sharedSource.version, 'shared SBOM version differs')
+        assert.equal(bytes.Sum, sharedSource.moduleChecksum, 'shared SBOM source checksum differs')
+        assert.equal(bytes.GoModSum, sharedSource.goModChecksum, 'shared SBOM metadata checksum differs')
+        properties.push(...sharedSourceProperties(sharedSource))
+      }
       const license = integration?.license ?? extended?.license ?? componentLicense ?? (module.name === backendInput.source.module ? 'GPL-3.0-only' : undefined)
       components.push({ type: 'library', 'bom-ref': identity, name: module.name, version: module.version, scope: 'optional', purl: `pkg:golang/${module.name}@${encodeURIComponent(module.version)}`, ...(license ? { licenses: [{ license: { id: license } }] } : {}), properties })
     }
@@ -482,6 +520,7 @@ async function produce(directory, commit) {
     for (const [index, provider] of inventory.providers.entries()) dependencies.push({ ref: variants[index]['bom-ref'], dependsOn: [...new Set([...provider.dependencies, ...sharedSources])].sort() })
     components.sort((a, b) => a['bom-ref'].localeCompare(b['bom-ref']))
     const app = { type: 'application', 'bom-ref': `solovey-ui@${version}`, name: 'solovey-ui', version, licenses: [{ license: { id: 'GPL-3.0-only' } }], properties: [{ name: 'solovey:sourceCommit', value: commit }, { name: 'solovey:sourceTree', value: tree }, { name: 'solovey:sourceFingerprint', value: fingerprint }, { name: 'solovey:componentInputDigest', value: componentInputs.inputDigest }, { name: 'solovey:backendInputDigest', value: backendInput.inputDigest }, {name:'solovey:frontendInputDigest',value:frontendSHA256(JSON.stringify(frontendInput))}] }
+    app.properties.push({ name: 'solovey:compositionSHA256', value: composition.sha256 })
     dependencies.push({ ref: app['bom-ref'], dependsOn: variants.map(item => item['bom-ref']) })
     const bom = { bomFormat: 'CycloneDX', specVersion: '1.6', version: 1, metadata: { timestamp, component: app, properties: [{ name: 'solovey:inventoryScope', value: 'Complete resolved Official and Extended Go module graphs, npm lockfile and pinned native C++ source inventory; provider edges distinguish both graphs. Includes platform alternatives and build tools, not a claim that every source is linked into every artifact. Graph digests bind resolved coordinates; individual components bind authenticated source content checksums.' }] }, components, dependencies }
     writeJSON(path.join(directory, 'solovey-ui-sbom.cdx.json'), bom)
@@ -491,6 +530,7 @@ async function produce(directory, commit) {
     writeJSON(path.join(source, 'SOURCE_IDENTITY.json'), { commit, tree, version, sourceFingerprint: fingerprint })
     writeJSON(path.join(source, 'COMPONENT_SOURCE_INPUTS.json'), componentInputs)
     writeJSON(path.join(source, 'BACKEND_SOURCE_INPUT.json'), backendInput)
+    writeJSON(path.join(source, 'PRODUCT_COMPOSITION.json'), composition)
     writeJSON(path.join(notices, 'LICENSE_INVENTORY.json'), noticeRecords)
     for (const integration of [...integrations, ...extendedIntegration.sources]) assert.ok(noticeRecords.some(n => n.dependency === `${integration.replacement.module}@${integration.replacement.version}`), 'integration license missing')
     for (const input of componentInputs.sources) {
@@ -507,7 +547,7 @@ async function produce(directory, commit) {
     const subjects = []
     for (const name of metadataNames.filter(n => n !== 'solovey-ui-provenance.json')) subjects.push({ name, sha256: await digestFile(path.join(directory, name)), size: fs.statSync(path.join(directory, name)).size })
     writeJSON(path.join(directory, 'solovey-ui-provenance.json'), { schema: 'solovey.release-provenance/v1', version, source: { repository: 'https://github.com/MalenkiySolovey/solovey-ui', commit, tree, fingerprint }, officialSemanticBaseline: integrations[0].semanticBaseline, officialByteIdentical: false, integrations, extendedIntegration,
-      coreProviders: inventory.providers.map(({ dependencies, ...provider }) => provider), nativeSource: native, componentInputs, backendInput, frontendInput, toolchain: { go: run('go', ['version']).trim(), node: process.version, npm: run('npm', ['--version']).trim() }, builder: '.github/workflows/release.yml:release-metadata; scripts/release-metadata.mjs', inventory: { goModules: inventory.modules.length, goModulesByProvider: Object.fromEntries(inventory.providers.map(item => [item.id, item.moduleCount])), npmPackages: npmSources.size, nativeSourceSnapshots: 1, dependencyNotices: noticeRecords.length }, compatibility: json('scripts/release-compatibility.json'), subjects })
+      coreProviders: inventory.providers.map(({ dependencies, ...provider }) => provider), nativeSource: native, componentInputs, backendInput, frontendInput, composition, toolchain: { go: run('go', ['version']).trim(), node: process.version, npm: run('npm', ['--version']).trim() }, builder: '.github/workflows/release.yml:release-metadata; scripts/release-metadata.mjs', inventory: { goModules: inventory.modules.length, goModulesByProvider: Object.fromEntries(inventory.providers.map(item => [item.id, item.moduleCount])), npmPackages: npmSources.size, nativeSourceSnapshots: 1, dependencyNotices: noticeRecords.length }, compatibility: json('scripts/release-compatibility.json'), subjects })
     for (const name of metadataNames) fs.writeFileSync(path.join(directory, `${name}.sha256`), `${await digestFile(path.join(directory, name))}  ${name}\n`)
     assert.equal(run(process.execPath, ['scripts/release-source.mjs', root]).trim(), fingerprint, 'producer changed frozen source')
     await verifyMetadata(directory, commit)

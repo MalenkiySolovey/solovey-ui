@@ -30,7 +30,20 @@ jobs:
           cache-dependency-path: deploy/dependencies/solovey-frontend.json
       - run: node scripts/frontend.mjs install
       - name: Native tooling regressions
-        run: node --test scripts/backend-source-inputs.test.mjs scripts/component-source-inputs.test.mjs scripts/frontend-build-inputs.test.mjs scripts/frontend-artifacts.test.mjs scripts/frontend-source-authority.test.mjs scripts/protection-owner-inputs.test.mjs scripts/frontend-assets.test.mjs scripts/frontend-runtime-closure.test.mjs scripts/frontend-test-runner.test.mjs scripts/windows-build.test.mjs scripts/core-provider-build.test.mjs scripts/core-source-provenance.test.mjs scripts/release-providers.test.mjs scripts/release-metadata.test.mjs scripts/audit/source-hygiene.test.mjs scripts/audit/performance.test.mjs scripts/audit/provider-vuln.test.mjs
+        run: node --test scripts/release-composition.test.mjs scripts/backend-source-inputs.test.mjs scripts/component-source-inputs.test.mjs scripts/frontend-build-inputs.test.mjs scripts/frontend-artifacts.test.mjs scripts/frontend-source-authority.test.mjs scripts/protection-owner-inputs.test.mjs scripts/frontend-assets.test.mjs scripts/frontend-runtime-closure.test.mjs scripts/frontend-test-runner.test.mjs scripts/windows-build.test.mjs scripts/core-provider-build.test.mjs scripts/core-source-provenance.test.mjs scripts/release-providers.test.mjs scripts/release-metadata.test.mjs scripts/audit/source-hygiene.test.mjs scripts/audit/performance.test.mjs scripts/audit/provider-vuln.test.mjs
+      - name: Derive and retain exact Product composition
+        if: runner.os == 'Linux'
+        env:
+          GOWORK: 'off'
+        run: node scripts/release-composition.mjs derive "$GITHUB_SHA" > "$RUNNER_TEMP/product-composition.json"
+      - name: Upload Product composition evidence
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: product-composition
+          path: ${{ runner.temp }}/product-composition.json
+          if-no-files-found: error
+          retention-days: 7
       - name: Verify exact external frontend profiles and rollback
         run: node scripts/frontend-consumer.mjs --out "${{ runner.temp }}/frontend-standalone"
       - name: Upload frontend consumer evidence

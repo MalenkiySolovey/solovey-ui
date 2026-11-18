@@ -2,11 +2,41 @@ import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import test from 'node:test'
-import { coreSourceProperties, componentSourceProperties, mergeProviderModuleGraphs, verifyProviderInventory, verifyComponentInventory, verifyBackendInventory } from './release-metadata.mjs'
+import { coreSourceProperties, componentSourceProperties, mergeProviderModuleGraphs, verifyProviderInventory, verifyComponentInventory, verifyBackendInventory, verifyCompositionInventory } from './release-metadata.mjs'
+import { compositionDigest, compositionSchema } from './release-composition.mjs'
 import { resolveProviderSource } from './core-provider-build.mjs'
 
 const sum = label => 'h1:' + crypto.createHash('sha256').update(label).digest('base64')
 const source = (Path, Version) => ({ Path, Version, Sum: sum(Path + Version), GoModSum: sum(Path + Version + '/go.mod') })
+
+test('source archive, SBOM and provenance must agree with the rederived composition', () => {
+  const shared = { module: 'example.invalid/shared', version: 'v1.0.0', moduleChecksum: sum('source'),
+    goModChecksum: sum('mod'), sourceCommit: '1'.repeat(40), sourceTree: '2'.repeat(40), provenanceSHA256: '3'.repeat(64) }
+  const graph = { schema: compositionSchema, shared: [shared], providers: { 'sing-box': {}, 'shtorm-extended': {} } }
+  const composition = { graph, sha256: compositionDigest(graph) }
+  const provenance = { composition: structuredClone(composition) }, archive = structuredClone(composition)
+  const bom = { metadata: { component: { properties: [{ name: 'solovey:compositionSHA256', value: composition.sha256 }] } },
+    components: [{ name: shared.module, version: shared.version, properties: [
+      { name: 'solovey:sourceAuthority', value: 'https://' + shared.module },
+      { name: 'solovey:sourceCommit', value: shared.sourceCommit },
+      { name: 'solovey:sourceTree', value: shared.sourceTree },
+      { name: 'solovey:sourceProvenanceSHA256', value: shared.provenanceSHA256 },
+    ] }] }
+  const modules = [{ name: shared.module, version: shared.version, moduleSum: shared.moduleChecksum, goModSum: shared.goModChecksum,
+    providers: ['shtorm-extended', 'sing-box'] }]
+  verifyCompositionInventory(provenance, bom, { modules }, composition, archive)
+  assert.throws(() => verifyCompositionInventory({}, bom, { modules }, composition, archive), /unknown composition schema/)
+  assert.throws(() => verifyCompositionInventory(provenance, bom, { modules }, composition, undefined), /unknown composition schema/)
+  const mutated = structuredClone(archive)
+  mutated.graph.shared[0].sourceTree = '4'.repeat(40)
+  mutated.sha256 = compositionDigest(mutated.graph)
+  assert.throws(() => verifyCompositionInventory(provenance, bom, { modules }, composition, mutated), /verified Product inputs/)
+  assert.throws(() => verifyCompositionInventory(provenance, { ...bom, components: [] }, { modules }, composition, archive), /missing.*SBOM/)
+  assert.throws(() => verifyCompositionInventory(provenance, bom, { modules: [] }, composition, archive), /missing.*provider union/)
+  const omitted = structuredClone(bom)
+  omitted.metadata.component.properties = []
+  assert.throws(() => verifyCompositionInventory(provenance, omitted, { modules }, composition, archive), /SBOM composition digest differs/)
+})
 test('SBOM core disclosure separates upstream authority, owned commits and the actual build tree',()=>{
   const lock=JSON.parse(fs.readFileSync(new URL('../deploy/dependencies/sing-box-extended-integration.json',import.meta.url),'utf8'))
   const engine=lock.sources[0]

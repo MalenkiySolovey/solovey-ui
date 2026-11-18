@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
+import { regularSourceTree } from './component-source-inputs.mjs'
 import { compositionDigest, compositionSchema, readComponentCatalog, verifyComposition, verifyFrontendProjection, verifySharedModule } from './release-composition.mjs'
 
 const makeReceipt = graph => ({ graph, sha256: compositionDigest(graph) })
@@ -63,18 +64,20 @@ test('shared module requires tag provenance and authenticates extracted bytes an
   fs.mkdirSync(Dir)
   const module = 'github.com/example/shared', version = 'v1.0.0', sourceCommit = 'd'.repeat(40), expected = 'module ' + module + '\n'
   fs.writeFileSync(path.join(Dir, 'go.mod'), expected)
+  fs.writeFileSync(path.join(Dir, 'SOURCE_PROVENANCE.json'), JSON.stringify({ schema: 'solovey.host.source-provenance/v1' }))
   fs.writeFileSync(GoMod, expected)
   const hash = createHash('sha256').update(expected).digest('hex')
   const sum = file => 'h1:' + createHash('sha256').update(`${hash}  ${file}\n`).digest('base64')
-  const locked = { module, version, moduleChecksum: sum(`${module}@${version}/go.mod`), goModChecksum: sum('go.mod') }
+  const locked = { module, version, sourceCommit, sourceTree: regularSourceTree(Dir), moduleChecksum: sum(`${module}@${version}/go.mod`), goModChecksum: sum('go.mod') }
   const data = { Path: module, Version: version, Dir, GoMod, Sum: locked.moduleChecksum, GoModSum: locked.goModChecksum,
     Origin: { VCS: 'git', URL: 'https://' + module, Ref: `refs/tags/${version}`, Hash: sourceCommit } }
   assert.equal(verifySharedModule(data, locked).sourceCommit, sourceCommit)
   assert.throws(() => verifySharedModule({ ...data, Origin: { ...data.Origin, Ref: 'refs/heads/main' } }, locked), /version provenance differs/)
+  assert.throws(() => verifySharedModule({ ...data, Origin: { ...data.Origin, Hash: 'e'.repeat(40) } }, locked), /version provenance differs/)
   assert.throws(() => verifySharedModule({ ...data, Sum: locked.goModChecksum }, locked), /module checksum differs/)
   assert.throws(() => verifySharedModule({ ...data, Replace: { Path: '../shared' } }, locked), /module substitution rejected/)
   fs.writeFileSync(GoMod, 'modified')
   assert.throws(() => verifySharedModule(data, locked), /cached go.mod differs/)
   fs.writeFileSync(path.join(Dir, 'go.mod'), 'modified')
-  assert.throws(() => verifySharedModule(data, locked), /cache content differs/)
+  assert.throws(() => verifySharedModule(data, locked), /cache differs from pinned source tree/)
 })
