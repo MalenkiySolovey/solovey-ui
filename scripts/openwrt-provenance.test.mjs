@@ -151,6 +151,9 @@ test('external Frontend pin, toolchain and consumer verifier bind package source
     before = after
   }
   write(source, '.artifacts/frontend/source/generated.ts', '// generated cache\n')
+  write(source, 'frontend/src/main.ts', '// retired local tree cannot affect package inputs\n')
+  write(source, 'frontend/package-lock.json', '{"retired":true}\n')
+  assert.ok(!enumerateSourcePaths(source).some(name => name.startsWith('frontend/')))
   assert.equal(createSourceFingerprint(source, buildFacts()).sourceFingerprint, before.sourceFingerprint)
 })
 
@@ -843,8 +846,8 @@ function makeSource() {
   write(root, 'deploy/openwrt/package/solovey-ui/Makefile', 'target recipe\n')
   write(root, 'deploy/openwrt/solovey-ui.init', '#!/bin/sh\n')
   write(root, 'deploy/openwrt/solovey-openwrt-prepare', '#!/bin/sh\n')
-  write(root, 'frontend/package-lock.json', '{"lockfileVersion":3}\n')
-  write(root, 'frontend/src/main.ts', 'export const product = true\n')
+  write(root, '.node-version', '25.9.0\n')
+  write(root, 'deploy/dependencies/solovey-frontend.json', '{"source":"qualified-producer"}\n')
   write(root, 'components/widget/component.json', `${JSON.stringify({ id: 'widget', delivery: 'in-process', frontend: { entries: ['frontend/index.ts'] } }, null, 2)}\n`)
   write(root, 'components/widget/frontend/index.ts', 'export default true\n')
   write(root, 'scripts/generate-component-imports.mjs', '// generator\n')

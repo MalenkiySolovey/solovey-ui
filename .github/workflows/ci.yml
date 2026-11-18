@@ -30,7 +30,7 @@ jobs:
           cache-dependency-path: deploy/dependencies/solovey-frontend.json
       - run: node scripts/frontend.mjs install
       - name: Native tooling regressions
-        run: node --test scripts/backend-source-inputs.test.mjs scripts/component-source-inputs.test.mjs scripts/frontend-build-inputs.test.mjs scripts/frontend-artifacts.test.mjs scripts/protection-owner-inputs.test.mjs scripts/frontend-assets.test.mjs scripts/frontend-runtime-closure.test.mjs scripts/frontend-test-runner.test.mjs scripts/windows-build.test.mjs scripts/core-provider-build.test.mjs scripts/core-source-provenance.test.mjs scripts/release-providers.test.mjs scripts/release-metadata.test.mjs scripts/audit/source-hygiene.test.mjs scripts/audit/performance.test.mjs scripts/audit/provider-vuln.test.mjs
+        run: node --test scripts/backend-source-inputs.test.mjs scripts/component-source-inputs.test.mjs scripts/frontend-build-inputs.test.mjs scripts/frontend-artifacts.test.mjs scripts/frontend-source-authority.test.mjs scripts/protection-owner-inputs.test.mjs scripts/frontend-assets.test.mjs scripts/frontend-runtime-closure.test.mjs scripts/frontend-test-runner.test.mjs scripts/windows-build.test.mjs scripts/core-provider-build.test.mjs scripts/core-source-provenance.test.mjs scripts/release-providers.test.mjs scripts/release-metadata.test.mjs scripts/audit/source-hygiene.test.mjs scripts/audit/performance.test.mjs scripts/audit/provider-vuln.test.mjs
       - name: Verify exact external frontend profiles and rollback
         run: node scripts/frontend-consumer.mjs --out "${{ runner.temp }}/frontend-standalone"
       - name: Upload frontend consumer evidence
