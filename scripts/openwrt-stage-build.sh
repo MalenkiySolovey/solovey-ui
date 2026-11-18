@@ -265,23 +265,21 @@ run_node -e 'console.log(JSON.stringify(require(process.argv[1]).source))' "$pro
 (
 	cd "$snapshot"
 	run_node scripts/generate-component-imports.mjs --profile full
-	cd frontend
-	run_npm ci
-	run_node "$snapshot/scripts/frontend.mjs" build
+	SOLOVEY_UI_PROFILE=full run_node "$snapshot/scripts/frontend.mjs" build
 )
-run_node "$snapshot/scripts/check-frontend-profile.mjs" --dist "$snapshot/frontend/dist" \
+run_node "$snapshot/scripts/check-frontend-profile.mjs" --dist "$snapshot/.artifacts/frontend-dist" \
 	--components-dir "$snapshot/components" --profile full
 run_node "$snapshot/scripts/extract-component-frontend.mjs" \
-	--dist "$snapshot/frontend/dist" --components-dir "$snapshot/components" \
+	--dist "$snapshot/.artifacts/frontend-dist" --components-dir "$snapshot/components" \
 	--out-dir "$snapshot/.release/components" --prune-dist
 run_node "$snapshot/scripts/write-component-installed-metadata.mjs" \
 	--components-dir "$snapshot/.release/components" \
 	--out "$snapshot/.release/components/installed.json" --profile full --binary full
 run_node "$snapshot/scripts/frontend-runtime-closure.mjs" \
-	--dist "$snapshot/frontend/dist" --components-dir "$snapshot/.release/components" \
+	--dist "$snapshot/.artifacts/frontend-dist" --components-dir "$snapshot/.release/components" \
 	--out "$snapshot/.release/components/runtime-closure.json"
 run_node "$snapshot/scripts/frontend-assets.mjs" publish \
-	--dist "$snapshot/frontend/dist" --destination "$snapshot/web/html" \
+	--dist "$snapshot/.artifacts/frontend-dist" --destination "$snapshot/web/html" \
 	--components-dir "$snapshot/.release/components"
 
 go_dependency_proof="$temporary_root/GO_DEPENDENCY_AUTHORITY.json"
@@ -378,10 +376,12 @@ BF_GOARCH="$OPENWRT_GOARCH" BF_GOARCH_VARIANT="$OPENWRT_GOARCH_VARIANT" \
 BF_PLATFORM="$OPENWRT_PLATFORM" BF_CC_TARGET="$OPENWRT_CC_TARGET" \
 BF_SOURCE_REVISION="$commit" BF_SOURCE_DATE="$source_date" BF_OUT="$build_facts" \
 BF_CORE_PROVIDER_SOURCE="$provider_source" BF_PANEL_DEPENDENCIES="$panel_dependency_proof" \
+BF_FRONTEND_PIN="$snapshot/deploy/dependencies/solovey-frontend.json" \
 "$node_program" --input-type=module - <<'NODE'
 import fs from 'node:fs'
 const e = process.env
 const panelDependencies = JSON.parse(fs.readFileSync(e.BF_PANEL_DEPENDENCIES, 'utf8'))
+const frontendPin = JSON.parse(fs.readFileSync(e.BF_FRONTEND_PIN, 'utf8'))
 const facts = {
   coreProvider: JSON.parse(fs.readFileSync(e.BF_CORE_PROVIDER_SOURCE, 'utf8')),
   revision: { commit: e.BF_SOURCE_REVISION, sourceDate: e.BF_SOURCE_DATE },
@@ -471,7 +471,9 @@ const facts = {
     nodeExecutableSha256: e.BF_NODE_SHA256,
     npm: e.BF_NPM_VERSION,
     npmExecutableSha256: e.BF_NPM_SHA256,
-    install: 'npm ci',
+    install: 'verified immutable Frontend artifact',
+    producer: frontendPin,
+    artifact: frontendPin.profiles.full,
     command: 'SOLOVEY_UI_PROFILE=full node scripts/frontend.mjs build',
     profile: 'full',
     environment: {

@@ -9,7 +9,7 @@ import { readComponentFrontendEntries, resolveComponentManifestKey } from './com
 
 const schema = 'solovey-ui/frontend-runtime-closure/v1'
 const args = parseArgs()
-const dist = path.resolve(args.get('dist') ?? 'frontend/dist')
+const dist = path.resolve(args.get('dist') ?? '.artifacts/frontend-dist')
 const componentsDir = path.resolve(args.get('components-dir') ?? '.release/components')
 const out = path.resolve(args.get('out') ?? path.join(componentsDir, 'runtime-closure.json'))
 const manifestPath = path.join(dist, '.vite', 'manifest.json')
@@ -230,7 +230,7 @@ function parseArgs() {
 }
 
 function usage() {
-  console.error('Usage: node scripts/frontend-runtime-closure.mjs [--dist frontend/dist] [--components-dir .release/components] [--out .release/components/runtime-closure.json]')
+  console.error('Usage: node scripts/frontend-runtime-closure.mjs [--dist .artifacts/frontend-dist] [--components-dir .release/components] [--out .release/components/runtime-closure.json]')
   process.exit(2)
 }
 

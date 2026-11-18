@@ -25,15 +25,11 @@ BUILD_TAGS="$(node scripts/core-provider-build.mjs tags --provider "$PROVIDER" -
 PROVIDER_GO_ARGS="$(node scripts/core-provider-build.mjs go-args --provider "$PROVIDER")"
 mapfile -t provider_go_args <<< "$PROVIDER_GO_ARGS"
 
-(
-    cd frontend
-    npm ci
-    SOLOVEY_UI_PROFILE=full node ../scripts/frontend.mjs build
-)
-node scripts/check-frontend-profile.mjs --profile full --dist frontend/dist
+SOLOVEY_UI_PROFILE=full node scripts/frontend.mjs build
+node scripts/check-frontend-profile.mjs --profile full --dist .artifacts/frontend-dist
 node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go
 
 printf 'Building backend\n'
-node scripts/frontend-assets.mjs publish --dist frontend/dist --destination web/html
+node scripts/frontend-assets.mjs publish --dist .artifacts/frontend-dist --destination web/html
 
 go build "${provider_go_args[@]}" -ldflags '-w -s -checklinkname=0' -tags "${BUILD_TAGS}" -o solovey-ui main.go

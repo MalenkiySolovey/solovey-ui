@@ -6,8 +6,10 @@ import * as policy from './release-providers.mjs'
 import * as candidate from './release-candidate.mjs'
 import { validateReleaseTrain } from './release-preflight.mjs'
 
-const require = createRequire(import.meta.url)
-const YAML = require('../frontend/node_modules/yaml')
+import {frontendFixtureDirectory} from './frontend-source.mjs'
+import path from 'node:path'
+const require = createRequire(path.join(await frontendFixtureDirectory(),'package.json'))
+const YAML = require('yaml')
 const workflow = name => YAML.parse(fs.readFileSync(`.github/workflows/${name}.yml`, 'utf8'))
 
 test('R7 milestone admits only its reviewed feature transition from the real previous stable', () => {

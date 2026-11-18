@@ -395,7 +395,7 @@ if ($Build -or !(Test-Path $webIndex)) {
         Write-Output "Skipping frontend build because -SkipFrontendBuild was provided."
     } else {
         Write-Output "Building frontend..."
-        Push-Location (Join-Path $repoRoot "frontend")
+        Push-Location $repoRoot
         try {
             $previousFrontendProfile = $env:SOLOVEY_UI_PROFILE
             $previousFrontendComponents = $env:SOLOVEY_UI_COMPONENT_IDS
@@ -405,9 +405,7 @@ if ($Build -or !(Test-Path $webIndex)) {
             } else {
                 Remove-Item Env:\SOLOVEY_UI_COMPONENT_IDS -ErrorAction SilentlyContinue
             }
-            & npm ci
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            & node ../scripts/frontend.mjs build
+            & node scripts/frontend.mjs build
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         } finally {
             if ($null -eq $previousFrontendProfile) {
@@ -423,7 +421,7 @@ if ($Build -or !(Test-Path $webIndex)) {
             Pop-Location
         }
 
-        & node (Join-Path $repoRoot 'scripts/frontend-assets.mjs') publish --dist (Join-Path $repoRoot 'frontend/dist') --destination (Join-Path $repoRoot 'web/html')
+        & node (Join-Path $repoRoot 'scripts/frontend-assets.mjs') publish --dist (Join-Path $repoRoot '.artifacts/frontend-dist') --destination (Join-Path $repoRoot 'web/html')
         if ($LASTEXITCODE -ne 0) { throw 'Frontend asset publication failed' }
     }
 }

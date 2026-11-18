@@ -6,8 +6,9 @@ import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import test from 'node:test'
 
-const require = createRequire(import.meta.url)
-const YAML = require('../frontend/node_modules/yaml')
+import {frontendFixtureDirectory} from './frontend-source.mjs'
+const require = createRequire(path.join(await frontendFixtureDirectory(),'package.json'))
+const YAML = require('yaml')
 const read = name => YAML.parse(fs.readFileSync(`.github/workflows/${name}.yml`, 'utf8'))
 const release = read('release')
 const productRef = '${{ needs.release-preflight.outputs.product-commit }}'

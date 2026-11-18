@@ -3,8 +3,9 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { componentSourceRoot, prepareComponentSources } from '../component-source-inputs.mjs'
+import { frontendSourceDirectory, frontendFixtureDirectory } from '../frontend-source.mjs'
 
-const require = createRequire(new URL('../../frontend/package.json', import.meta.url))
+const require = createRequire(path.join(await frontendFixtureDirectory(), 'package.json'))
 const ts = require('typescript')
 const { parse } = require('@vue/compiler-sfc')
 
@@ -41,22 +42,24 @@ export function inspectPolicy(source, filename) {
 
 export function inspectFrontendPolicy(root) {
   const sites = []
-  const visit = directory => {
+  const visit = (directory, ownerRoot = root, logicalRoot = '') => {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
       const absolute = path.join(directory, entry.name)
       if (entry.isDirectory()) {
-        if (!['node_modules', 'dist', 'testdata'].includes(entry.name)) visit(absolute)
+        if (!['node_modules', 'dist', 'testdata'].includes(entry.name)) visit(absolute, ownerRoot, logicalRoot)
       } else if (/\.(?:ts|vue)$/.test(entry.name) && !/\.(?:test|spec)\.ts$/.test(entry.name) && !entry.name.endsWith('.d.ts')) {
         for (const expression of inspectPolicy(fs.readFileSync(absolute, 'utf8'), absolute)) {
-          sites.push({ path: path.relative(root, absolute).replaceAll('\\', '/'), expression })
+          sites.push({ path: path.posix.join(logicalRoot, path.relative(ownerRoot, absolute).replaceAll('\\', '/')), expression })
         }
       }
     }
   }
-  visit(path.join(root, 'frontend/src'))
+  visit(path.join(frontendSourceDirectory, 'src'), frontendSourceDirectory, 'frontend')
   for (const entry of fs.readdirSync(path.join(root, 'components'), { withFileTypes: true })) {
-    const frontend = path.join(componentSourceRoot(entry.name, root), 'frontend')
-    if (entry.isDirectory() && fs.existsSync(frontend)) visit(frontend)
+    if (!entry.isDirectory()) continue
+    const owner = entry.name === 'panel-update-ui' ? path.join(frontendSourceDirectory, 'components/panel-update-ui') : componentSourceRoot(entry.name, root)
+    const frontend = path.join(owner, 'frontend')
+    if (entry.isDirectory() && fs.existsSync(frontend)) visit(frontend, owner, 'components/' + entry.name)
   }
   return sites.sort((a, b) => a.path.localeCompare(b.path) || a.expression.localeCompare(b.expression))
 }

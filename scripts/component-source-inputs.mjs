@@ -5,7 +5,8 @@ import path from 'node:path'
 import assert from 'node:assert/strict'
 import {execFileSync} from 'node:child_process'
 import {fileURLToPath} from 'node:url'
-import {digest, frontendDigest, safeSourcePath, validateSourceLock, verifySourceFiles, regularSourceTree, verifyUIAPIInputs} from '../frontend/scripts/component-source-integrity.mjs'
+import {digest, frontendDigest, safeSourcePath, validateSourceLock, verifySourceFiles, regularSourceTree, verifyUIAPIInputs} from './frontend-source.mjs'
+import {frontendSourceDirectory} from './frontend-source.mjs'
 
 export {digest, frontendDigest, safeSourcePath, validateSourceLock, verifySourceFiles, regularSourceTree}
 
@@ -39,8 +40,8 @@ export function validateModuleRequirement(metadata, source) {
   assert.ok(!(metadata.Replace ?? []).some(item => item.Old.Path === source.module), 'component replace rejected')
 }
 
-export function verifyUIAPI(root, directory) {
-  return verifyUIAPIInputs(path.join(root, 'frontend'), directory)
+export function verifyUIAPI(root, directory, frontendRoot = frontendSourceDirectory) {
+  return verifyUIAPIInputs(frontendRoot, directory)
 }
 
 export function verifyModuleSource(directory, source) {
@@ -60,13 +61,13 @@ function stageRoot(root) {
   return directory
 }
 
-export function componentSourceRoot(id, root = productRoot) {
+export function componentSourceRoot(id, root = productRoot, frontendRoot = frontendSourceDirectory) {
   const source = readSourceLock(root).sources.find(source => source.id === id)
   if (!source) return path.join(root, 'components', id)
   const directory = path.join(stageRoot(root), id)
   verifySourceFiles(directory, source)
   verifyComponentManifest(id, path.join(root,'components',id,'component.json'), root)
-  verifyUIAPI(root, directory)
+  verifyUIAPI(root, directory, frontendRoot)
   return directory
 }
 
@@ -83,7 +84,7 @@ export function validateBuildEnvironment(env) {
   assert.ok(flags.every(flag => ['-mod=readonly','-modfile=go.extended.mod'].includes(flag)) && new Set(flags).size === flags.length, 'component build rejects Go flag substitution')
 }
 
-export function prepareComponentSources(root = productRoot) {
+export function prepareComponentSources(root = productRoot, frontendRoot = frontendSourceDirectory) {
   const lock = readSourceLock(root)
   if (lock.sources.length === 0) return {sources:[], inputDigest:digest(JSON.stringify(lock))}
   validateBuildEnvironment(process.env)
@@ -93,7 +94,7 @@ export function prepareComponentSources(root = productRoot) {
     const downloaded = go(['mod','download','-json',`${source.module}@${source.version}`])
     validateModuleResolution(downloaded, source)
     verifyModuleSource(downloaded.Dir, source)
-    verifyUIAPI(root, downloaded.Dir)
+    verifyUIAPI(root, downloaded.Dir, frontendRoot)
     for (const modfile of ['go.mod','go.extended.mod'].filter(name => fs.existsSync(path.join(root,name)))) {
       validateModuleRequirement(go(['mod','edit','-json',`-modfile=${modfile}`]), source)
       const selected = go(['list','-m','-json','-mod=readonly',`-modfile=${modfile}`,source.module])

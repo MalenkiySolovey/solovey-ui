@@ -35,19 +35,19 @@ audit\:vuln:
 	$(RUN) -Group analysis -Name govulncheck -CommandLine "node scripts/audit/provider-vuln.mjs"
 
 audit\:fe-install:
-	$(RUN) -Group core -Name npm-ci -WorkingDirectory frontend -CommandLine "npm ci"
+	$(RUN) -Group core -Name npm-ci -CommandLine "node scripts/frontend.mjs install"
 
 audit\:fe-typecheck:
-	$(RUN) -Group core -Name npm-run-typecheck -WorkingDirectory frontend -CommandLine "node ../scripts/frontend.mjs typecheck"
+	$(RUN) -Group core -Name npm-run-typecheck -CommandLine "node scripts/frontend.mjs typecheck"
 
 audit\:fe-lint:
-	$(RUN) -Group core -Name npm-run-lint -WorkingDirectory frontend -CommandLine "npm run lint"
+	$(RUN) -Group core -Name npm-run-lint -CommandLine "node scripts/frontend.mjs lint"
 
 audit\:fe-build:
-	$(RUN) -Group core -Name npm-run-build -WorkingDirectory frontend -CommandLine "node ../scripts/frontend.mjs build"
+	$(RUN) -Group core -Name npm-run-build -CommandLine "node scripts/frontend.mjs build"
 
 audit\:test-fe:
-	$(RUN) -Group core -Name npm-run-test -WorkingDirectory frontend -CommandLine "node ../scripts/frontend.mjs test"
+	$(RUN) -Group core -Name npm-run-test -CommandLine "node scripts/frontend.mjs test"
 
 audit\:e2e:
 	$(RUN) -Group core -Name e2e -SkipReason "The end-to-end suite runs in its dedicated workflow."

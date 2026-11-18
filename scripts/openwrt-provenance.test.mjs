@@ -135,6 +135,25 @@ test('package recipe and generator changes alter source identity', () => {
   assert.notEqual(closureVerifierChanged.sourceFingerprint, generatorChanged.sourceFingerprint)
 })
 
+test('external Frontend pin, toolchain and consumer verifier bind package source identity', () => {
+  const source = makeSource()
+  write(source, '.node-version', '25.9.0\n')
+  write(source, 'deploy/dependencies/solovey-frontend.json', '{"source":"qualified-producer"}\n')
+  write(source, 'scripts/frontend-artifacts.mjs', '// immutable distribution verifier\n')
+  write(source, 'scripts/frontend-source.mjs', '// canonical source fixture verifier\n')
+  const required = ['.node-version','deploy/dependencies/solovey-frontend.json','scripts/frontend-artifacts.mjs','scripts/frontend-source.mjs']
+  for (const name of required) assert.ok(enumerateSourcePaths(source).includes(name), name)
+  let before = createSourceFingerprint(source, buildFacts())
+  for (const name of required) {
+    append(source, name, '\nchanged-input\n')
+    const after = createSourceFingerprint(source, buildFacts())
+    assert.notEqual(after.sourceFingerprint, before.sourceFingerprint, name)
+    before = after
+  }
+  write(source, '.artifacts/frontend/source/generated.ts', '// generated cache\n')
+  assert.equal(createSourceFingerprint(source, buildFacts()).sourceFingerprint, before.sourceFingerprint)
+})
+
 test('changed target-affecting flag changes build and source identity', () => {
   const source = makeSource()
   const first = createSourceFingerprint(source, buildFacts())

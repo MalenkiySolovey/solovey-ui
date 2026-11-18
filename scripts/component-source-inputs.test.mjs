@@ -4,7 +4,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import {execFileSync} from 'node:child_process'
-import {digest, frontendDigest, validateSourceLock, validateModuleResolution, validateModuleRequirement, verifySourceFiles, componentSourceRoot, componentManifestKey, validateBuildEnvironment, regularSourceTree, verifyModuleSource, verifyUIAPI, verifyComponentManifest} from './component-source-inputs.mjs'
+import {digest, frontendDigest, validateSourceLock, validateModuleResolution, validateModuleRequirement, verifySourceFiles, componentSourceRoot as rawComponentSourceRoot, componentManifestKey, validateBuildEnvironment, regularSourceTree, verifyModuleSource, verifyUIAPI as rawVerifyUIAPI, verifyComponentManifest} from './component-source-inputs.mjs'
+
+// Synthetic API files are explicit test inputs; production always uses the admitted source.
+const componentSourceRoot = (id, root) => rawComponentSourceRoot(id, root, path.join(root, 'frontend'))
+const verifyUIAPI = (root, directory) => rawVerifyUIAPI(root, directory, path.join(root, 'frontend'))
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(),'component sources '))

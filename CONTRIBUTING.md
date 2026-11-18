@@ -40,21 +40,30 @@ Pinned OpenWrt capability checks use
 checks protect platform contracts; supported hardware/storage combinations are
 documented with their deployment owner.
 
-Frontend setup:
+Classic and Nexus share one source owner, `MalenkiySolovey/solovey-frontend`.
+Edit frontend features there. Product admits the immutable producer identity in
+`deploy/dependencies/solovey-frontend.json`; component source acceptance remains
+in `components/sources.lock.json`. Run these commands from the Product root
+with Node from `.node-version`:
 
 ```sh
-cd frontend
-npm ci
-node ../scripts/frontend.mjs test:unit
-node ../scripts/frontend.mjs build
+node scripts/frontend.mjs install
+node scripts/frontend.mjs test:unit
+node scripts/frontend.mjs build
 ```
+
+`build` verifies and consumes the selected qualified distribution. Audit, test
+and development commands use an explicit hash-verified source fixture under
+`.artifacts/frontend/`. Fixture source edits fail validation; change the canonical
+repository and qualify a new immutable producer version instead. For offline
+consumption, prepopulate the verified cache and set `SOLOVEY_FRONTEND_OFFLINE=1`.
+A new profile or component input tuple requires its own producer qualification.
 
 Playwright setup:
 
 ```sh
-cd frontend
-npx playwright install chromium
-node ../scripts/frontend.mjs test:e2e
+node scripts/frontend.mjs browser-install chromium
+node scripts/frontend.mjs test:e2e
 ```
 
 ## Component Rules

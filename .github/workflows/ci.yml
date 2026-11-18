@@ -25,16 +25,15 @@ jobs:
           go-version-file: go.mod
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - run: npm ci
-        working-directory: frontend
+          cache-dependency-path: deploy/dependencies/solovey-frontend.json
+      - run: node scripts/frontend.mjs install
       - name: Native tooling regressions
-        run: node --test scripts/backend-source-inputs.test.mjs scripts/component-source-inputs.test.mjs scripts/frontend-build-inputs.test.mjs scripts/protection-owner-inputs.test.mjs scripts/frontend-assets.test.mjs scripts/frontend-runtime-closure.test.mjs scripts/frontend-test-runner.test.mjs scripts/windows-build.test.mjs scripts/core-provider-build.test.mjs scripts/core-source-provenance.test.mjs scripts/release-providers.test.mjs scripts/release-metadata.test.mjs scripts/audit/source-hygiene.test.mjs scripts/audit/performance.test.mjs scripts/audit/provider-vuln.test.mjs
-      - name: Independent frontend build without Product parents or Go
-        run: node scripts/frontend-standalone.mjs --out "${{ runner.temp }}/frontend-standalone"
-      - name: Upload independent frontend evidence
+        run: node --test scripts/backend-source-inputs.test.mjs scripts/component-source-inputs.test.mjs scripts/frontend-build-inputs.test.mjs scripts/frontend-artifacts.test.mjs scripts/protection-owner-inputs.test.mjs scripts/frontend-assets.test.mjs scripts/frontend-runtime-closure.test.mjs scripts/frontend-test-runner.test.mjs scripts/windows-build.test.mjs scripts/core-provider-build.test.mjs scripts/core-source-provenance.test.mjs scripts/release-providers.test.mjs scripts/release-metadata.test.mjs scripts/audit/source-hygiene.test.mjs scripts/audit/performance.test.mjs scripts/audit/provider-vuln.test.mjs
+      - name: Verify exact external frontend profiles and rollback
+        run: node scripts/frontend-consumer.mjs --out "${{ runner.temp }}/frontend-standalone"
+      - name: Upload frontend consumer evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -72,7 +71,7 @@ jobs:
           cache-dependency-path: go.extended.sum
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
       - name: Generate shared full profile imports
         run: node scripts/generate-component-imports.mjs --profile full
       - name: Validate explicit provider selection
@@ -275,7 +274,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
 
       - name: Shell syntax
         run: bash -n install.sh solovey-ui.sh scripts/release-package-linux.sh scripts/release-package-components.sh scripts/server-smoke-debian.sh tests/installer/backup.sh tests/installer/doctor.sh tests/installer/release-manifest.sh tests/installer/release-package.sh tests/installer/install-update.sh tests/installer/migrate-from-sui.sh tests/installer/rollback.sh tests/installer/manager-cookie-key.sh tests/installer/systemd-contracts.sh
@@ -362,7 +361,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
 
       - name: Generate backend component imports
         run: node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go
@@ -447,7 +446,7 @@ jobs:
           cache-dependency-path: go.sum
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
       - name: Generate accepted full profile imports
         run: node scripts/generate-component-imports.mjs --profile full
       - name: Verify pinned QUIC source provenance
@@ -517,7 +516,7 @@ jobs:
           cache-dependency-path: go.sum
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
       - name: Generate accepted full profile imports
         run: node scripts/generate-component-imports.mjs --profile full
       - name: Verify pinned SSM source and package provenance
@@ -546,7 +545,7 @@ jobs:
           cache-dependency-path: go.sum
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
       - name: Generate accepted full profile imports
         run: node scripts/generate-component-imports.mjs --profile full
       - name: Verify pinned AnyTLS source and package provenance
@@ -577,14 +576,12 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: deploy/dependencies/solovey-frontend.json
 
       - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
+        run: node scripts/frontend.mjs install
       - name: Linux package source and release builder contracts
         run: |
           node scripts/openwrt-package-static-check.mjs
@@ -612,64 +609,56 @@ jobs:
           node scripts/audit/validate-workflows.js
 
       - name: Frontend lint
-        working-directory: frontend
-        run: npm run lint
-
+        run: node scripts/frontend.mjs lint
       - name: Frontend unit tests
-        working-directory: frontend
-        run: node ../scripts/frontend.mjs test
+        run: node scripts/frontend.mjs test
 
       - name: Frontend full build
-        working-directory: frontend
-        run: SOLOVEY_UI_PROFILE=full node ../scripts/frontend.mjs build
+        run: SOLOVEY_UI_PROFILE=full node scripts/frontend.mjs build
 
       - name: Frontend full profile scan
-        run: node scripts/check-frontend-profile.mjs --profile full --dist frontend/dist
+        run: node scripts/check-frontend-profile.mjs --profile full --dist .artifacts/frontend-dist
 
       - name: Verify frontend production assets
-        run: node scripts/frontend-assets.mjs verify --dist frontend/dist
+        run: node scripts/frontend-assets.mjs verify --dist .artifacts/frontend-dist
 
       - name: Frontend component pack extraction scan
-        run: node scripts/extract-component-frontend.mjs --dist frontend/dist --components-dir components --out-dir .release/components --prune-dist
+        run: node scripts/extract-component-frontend.mjs --dist .artifacts/frontend-dist --components-dir components --out-dir .release/components --prune-dist
 
       - name: Frontend packaged runtime closure
         run: |
           node scripts/write-component-installed-metadata.mjs --components-dir .release/components
-          node scripts/frontend-runtime-closure.mjs --dist frontend/dist --components-dir .release/components
+          node scripts/frontend-runtime-closure.mjs --dist .artifacts/frontend-dist --components-dir .release/components
 
       - name: Frontend core build
-        working-directory: frontend
-        run: SOLOVEY_UI_PROFILE=core node ../scripts/frontend.mjs build
+        run: SOLOVEY_UI_PROFILE=core node scripts/frontend.mjs build
 
       - name: Frontend core profile scan
-        run: node scripts/check-frontend-profile.mjs --profile core --dist frontend/dist
+        run: node scripts/check-frontend-profile.mjs --profile core --dist .artifacts/frontend-dist
 
       - name: Frontend custom Fallback build
-        working-directory: frontend
-        run: SOLOVEY_UI_PROFILE=full SOLOVEY_UI_COMPONENT_IDS=fallback-html node ../scripts/frontend.mjs build
+        run: SOLOVEY_UI_PROFILE=full SOLOVEY_UI_COMPONENT_IDS=fallback-html node scripts/frontend.mjs build
 
       - name: Frontend custom Fallback profile and asset closure
         run: |
-          node scripts/check-frontend-profile.mjs --profile full --selected-ids fallback-html --dist frontend/dist
-          node scripts/frontend-assets.mjs verify --dist frontend/dist
+          node scripts/check-frontend-profile.mjs --profile full --selected-ids fallback-html --dist .artifacts/frontend-dist
+          node scripts/frontend-assets.mjs verify --dist .artifacts/frontend-dist
 
       - name: Frontend custom protection build
-        working-directory: frontend
-        run: SOLOVEY_UI_PROFILE=full SOLOVEY_UI_COMPONENT_IDS=server-protection node ../scripts/frontend.mjs build
+        run: SOLOVEY_UI_PROFILE=full SOLOVEY_UI_COMPONENT_IDS=server-protection node scripts/frontend.mjs build
 
       - name: Frontend custom protection profile and asset closure
         run: |
-          node scripts/check-frontend-profile.mjs --profile full --selected-ids server-protection --dist frontend/dist
-          node scripts/frontend-assets.mjs verify --dist frontend/dist
+          node scripts/check-frontend-profile.mjs --profile full --selected-ids server-protection --dist .artifacts/frontend-dist
+          node scripts/frontend-assets.mjs verify --dist .artifacts/frontend-dist
 
       - name: Frontend custom subscriptions build
-        working-directory: frontend
-        run: SOLOVEY_UI_PROFILE=full SOLOVEY_UI_COMPONENT_IDS=remote-outbound-subscriptions node ../scripts/frontend.mjs build
+        run: SOLOVEY_UI_PROFILE=full SOLOVEY_UI_COMPONENT_IDS=remote-outbound-subscriptions node scripts/frontend.mjs build
 
       - name: Frontend custom subscriptions profile and asset closure
         run: |
-          node scripts/check-frontend-profile.mjs --profile full --selected-ids remote-outbound-subscriptions --dist frontend/dist
-          node scripts/frontend-assets.mjs verify --dist frontend/dist
+          node scripts/check-frontend-profile.mjs --profile full --selected-ids remote-outbound-subscriptions --dist .artifacts/frontend-dist
+          node scripts/frontend-assets.mjs verify --dist .artifacts/frontend-dist
 
   frontend-embedded-browser:
     name: Frontend embedded browser
@@ -683,29 +672,28 @@ jobs:
           cache-dependency-path: go.sum
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - run: npm ci --prefix frontend
+          cache-dependency-path: deploy/dependencies/solovey-frontend.json
+      - run: node scripts/frontend.mjs install
       - name: Build and publish the actual embedded Full frontend
         run: |
           node scripts/frontend.mjs build
-          node scripts/frontend-assets.mjs publish --dist frontend/dist --destination web/html
+          node scripts/frontend-assets.mjs publish --dist .artifacts/frontend-dist --destination web/html
       - name: Verify actual embedded bytes, nested URL and every dynamic asset
         env:
-          SOLOVEY_FRONTEND_TEST_DIST: ${{ github.workspace }}/frontend/dist
+          SOLOVEY_FRONTEND_TEST_DIST: ${{ github.workspace }}/.artifacts/frontend-dist
           CGO_ENABLED: "1"
         run: go test -count=1 -v ./web -run 'TestEmbeddedFrontendMatchesDeclaredDistribution|TestFrontendInput|TestAssetsFS|TestComponentFrontendAssetDirs'
       - name: Restore Playwright browsers
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('deploy/dependencies/solovey-frontend.json') }}
           restore-keys: |
             playwright-${{ runner.os }}-
       - name: Install Playwright Chromium
-        working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        run: node scripts/frontend.mjs browser-install --with-deps chromium
       - name: Qualify Classic Nexus Host sessions and component UI against embedded assets
         env:
           SUI_E2E_FRONTEND_MODE: embedded

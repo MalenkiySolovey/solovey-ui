@@ -6,8 +6,10 @@ import test from 'node:test'
 import { releaseOCIIdentity, releaseOCIFlavor } from './release-oci.mjs'
 
 const revision = '9555471a21b9b87323c726cb61c2f113b572d83d'
-const require = createRequire(import.meta.url)
-const YAML = require('../frontend/node_modules/yaml')
+import {frontendFixtureDirectory} from './frontend-source.mjs'
+import path from 'node:path'
+const require = createRequire(path.join(await frontendFixtureDirectory(),'package.json'))
+const YAML = require('yaml')
 
 test('OCI version and revision bind the exact release and source, including prereleases', () => {
   for (const version of ['2026.4.1', '2026.4.17', '2026.4.2-rc.1']) {

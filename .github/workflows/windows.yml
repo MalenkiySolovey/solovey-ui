@@ -75,19 +75,17 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
           registry-url: "https://registry.npmjs.org"
           cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: deploy/dependencies/solovey-frontend.json
 
       - name: Build frontend
         run: |
-          cd frontend
-          npm ci
-          SOLOVEY_UI_PROFILE=full node ../scripts/frontend.mjs build
-          cp -a dist ../.release-frontend-full
-          SOLOVEY_UI_PROFILE=core node ../scripts/frontend.mjs build
-          cp -a dist ../.release-frontend-core
+          SOLOVEY_UI_PROFILE=full node scripts/frontend.mjs build
+          cp -a .artifacts/frontend-dist .release-frontend-full
+          SOLOVEY_UI_PROFILE=core node scripts/frontend.mjs build
+          cp -a .artifacts/frontend-dist .release-frontend-core
 
       - name: Check full frontend profile
         run: |
@@ -161,7 +159,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
 
       - name: Resolve immutable Windows source identity
         id: source_identity
@@ -311,6 +309,6 @@ jobs:
       - name: Set up verifier Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
       - name: Verify complete Windows candidates before publication eligibility
         run: node scripts/release-verify.mjs windows-assets "$RELEASE_TAG_INPUT" --windows

@@ -6,7 +6,7 @@ import process from 'node:process'
 import { flattenComponentFrontendEntries, readComponentFrontendEntries, resolveComponentManifestKey } from './component-frontend-manifest.mjs'
 
 const args = parseArgs()
-const dist = path.resolve(args.get('dist') ?? 'frontend/dist')
+const dist = path.resolve(args.get('dist') ?? '.artifacts/frontend-dist')
 const componentsDir = path.resolve(args.get('components-dir') ?? 'components')
 const outDir = path.resolve(args.get('out-dir') ?? '.release/components')
 const pruneDist = args.has('prune-dist')
@@ -195,7 +195,7 @@ function parseArgs() {
 }
 
 function usage() {
-  console.error('Usage: node scripts/extract-component-frontend.mjs [--dist frontend/dist] [--components-dir components] [--out-dir .release/components] [--prune-dist]')
+  console.error('Usage: node scripts/extract-component-frontend.mjs [--dist .artifacts/frontend-dist] [--components-dir components] [--out-dir .release/components] [--prune-dist]')
   process.exit(2)
 }
 

@@ -4,11 +4,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import {execFileSync} from 'node:child_process'
-import {fileURLToPath} from 'node:url'
 import {runFrontendTask} from './frontend.mjs'
 import {digest, frontendDigest, regularSourceTree} from './component-source-inputs.mjs'
 import {projectFrontendBuildInputs} from './frontend-build-inputs.mjs'
-import {frontendAPIFiles, readFrontendBuildInputs, validateFrontendBuildInputs, selectFrontendEntries} from '../frontend/scripts/component-build-inputs.mjs'
+import {frontendAPIFiles, readFrontendBuildInputs, validateFrontendBuildInputs, selectFrontendEntries} from './frontend-source.mjs'
+import {frontendSourceDirectory} from './frontend-source.mjs'
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'frontend inputs '))
@@ -31,7 +31,7 @@ function fixture(t) {
   write('components/panel-update-ui/frontend/index.ts', 'export const register = () => {}\n')
   write('components/panel-update-ui/frontend/locales/ru.json', '{}\n')
   write('components/panel-update-ui/owner.go', 'package owner\n')
-  const prepare = () => projectFrontendBuildInputs(root)
+  const prepare = () => projectFrontendBuildInputs(root, {frontendRoot: frontend, directory: path.join(frontend, '.component-inputs'), panelRoot: path.join(root, 'components/panel-update-ui')})
   const read = prepared => readFrontendBuildInputs(frontend, prepared.manifestSHA256)
   const inputRoot = path.join(frontend, '.component-inputs')
   const manifestPath = path.join(inputRoot, 'manifest.json')
@@ -58,7 +58,7 @@ test('consumer verifies in isolation with no Product siblings, Go, Git, or PATH'
   const isolated = fs.mkdtempSync(path.join(os.tmpdir(), 'isolated frontend '))
   t.after(() => fs.rmSync(isolated, {recursive: true, force: true}))
   fs.cpSync(f.frontend, isolated, {recursive: true})
-  const scripts = fileURLToPath(new URL('../frontend/scripts/', import.meta.url))
+  const scripts = path.join(frontendSourceDirectory, 'scripts')
   fs.mkdirSync(path.join(isolated, 'scripts'))
   for (const name of ['component-build-inputs.mjs', 'component-source-integrity.mjs']) fs.copyFileSync(path.join(scripts, name), path.join(isolated, 'scripts', name))
   const result = JSON.parse(execFileSync(process.execPath, ['scripts/component-build-inputs.mjs', 'verify'], {cwd: isolated, encoding: 'utf8', env: {...process.env, PATH: '', SOLOVEY_UI_INPUTS_SHA256: prepared.manifestSHA256}}))
@@ -196,21 +196,21 @@ test('profile selection is drawn only from declared entries; Core/minimal admit 
   assert.throws(() => selectFrontendEntries(input, {SOLOVEY_UI_PROFILE: 'unknown'}), /unsupported/)
 })
 
-test('Product adapter supplies freshly verified inputs and explicit E2E integration without shell argument loss', t => {
+test('Product adapter supplies freshly verified inputs and explicit E2E integration without shell argument loss', async t => {
   const f = fixture(t)
   fs.writeFileSync(path.join(f.root, 'components/sources.lock.json'), JSON.stringify({schema: 'solovey.component-source-inputs/v1', sources: []}))
   fs.rmSync(path.join(f.root, 'components/telegram'), {recursive: true})
   const npm = path.join(f.root, 'npm-cli.mjs'), output = path.join(f.root, 'observation.json')
-  fs.writeFileSync(npm, `import fs from 'node:fs'; fs.writeFileSync(process.env.SOLOVEY_FRONTEND_TEST_RESULT, JSON.stringify({args: process.argv.slice(2), cwd: process.cwd(), hash: process.env.SOLOVEY_UI_INPUTS_SHA256, server: process.env.SUI_E2E_SERVER_SCRIPT})); process.exitCode = 17`)
+  fs.writeFileSync(npm, `import fs from 'node:fs'; if(process.argv[2]==='--version'){console.log('11.12.1');process.exit(0)} fs.writeFileSync(process.env.SOLOVEY_FRONTEND_TEST_RESULT, JSON.stringify({args: process.argv.slice(2), cwd: process.cwd(), hash: process.env.SOLOVEY_UI_INPUTS_SHA256, server: process.env.SUI_E2E_SERVER_SCRIPT})); process.exitCode = 17`)
   const values = {npm_execpath: npm, SOLOVEY_FRONTEND_TEST_RESULT: output, SOLOVEY_UI_INPUTS_SHA256: 'untrusted'}
   const previous = Object.fromEntries(Object.keys(values).map(name => [name, process.env[name]]))
   Object.assign(process.env, values)
-  try { assert.equal(runFrontendTask('test:e2e', ['--grep', 'two words'], f.root), 17) }
+  try { assert.equal(await runFrontendTask('test:e2e', ['--grep', 'two words'], f.root, {frontendRoot: f.frontend, panelRoot: path.join(f.root, 'components/panel-update-ui')}), 17) }
   finally { for (const [name, value] of Object.entries(previous)) { if (value === undefined) delete process.env[name]; else process.env[name] = value } }
   const observation = JSON.parse(fs.readFileSync(output))
   assert.deepEqual(observation.args, ['run', 'test:e2e', '--', '--grep', 'two words'])
-  assert.equal(observation.cwd, fs.realpathSync.native(f.frontend))
+  assert.equal(fs.realpathSync.native(observation.cwd), fs.realpathSync.native(f.frontend))
   assert.equal(observation.hash, digest(fs.readFileSync(f.manifestPath)))
   assert.equal(observation.server, path.join(fs.realpathSync.native(f.root), 'tests/e2e/run-server.js'))
-  assert.throws(() => runFrontendTask('unknown', [], f.root), /unsupported/)
+  await assert.rejects(() => runFrontendTask('unknown', [], f.root), /unsupported/)
 })

@@ -1,9 +1,11 @@
 const fs = require('fs');
 const path = require('path');
+const {execFileSync} = require('node:child_process');
 
 let YAML;
 try {
-  YAML = require(path.join(process.cwd(), 'frontend', 'node_modules', 'yaml'));
+  const fixture = execFileSync(process.execPath, [path.join(__dirname, '../frontend.mjs'), 'source'], {encoding: 'utf8'}).trim();
+  YAML = require(path.join(fixture, 'node_modules', 'yaml'));
 } catch (error) {
   console.error(`ERROR: yaml parser is unavailable: ${error.message}`);
   process.exit(1);
