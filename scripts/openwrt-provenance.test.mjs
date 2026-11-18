@@ -11,6 +11,7 @@ import { createApkMetadataProof, proveApkLifecycleScripts } from './openwrt-apk-
 import {
   createSourceFingerprint,
   enumerateSourcePaths,
+  materializeSource,
   verifySourceFingerprint,
 } from './openwrt-package-source-fingerprint.mjs'
 import {
@@ -155,6 +156,21 @@ test('external Frontend pin, toolchain and consumer verifier bind package source
   write(source, 'frontend/package-lock.json', '{"retired":true}\n')
   assert.ok(!enumerateSourcePaths(source).some(name => name.startsWith('frontend/')))
   assert.equal(createSourceFingerprint(source, buildFacts()).sourceFingerprint, before.sourceFingerprint)
+})
+
+test('OpenWrt snapshot preserves component UI tests bound by the Frontend pin', () => {
+  const source = makeSource()
+  const pinnedUI = 'components/widget/frontend/tests/payload.test.ts'
+  const unrelated = 'components/widget/tests/payload.test.ts'
+  write(source, pinnedUI, '// pinned UI input\n')
+  write(source, unrelated, '// not a package input\n')
+  const snapshot = path.join(temporaryDirectory('solovey-source-container-'), 'source')
+  materializeSource(source, snapshot)
+  assert.equal(fs.readFileSync(path.join(snapshot, pinnedUI), 'utf8'), '// pinned UI input\n')
+  assert.ok(!fs.existsSync(path.join(snapshot, unrelated)))
+  const fingerprint = createSourceFingerprint(snapshot, buildFacts())
+  append(source, pinnedUI, '// changed input\n')
+  assert.throws(() => verifySourceFingerprint(fingerprint, source), /source input content mismatch/)
 })
 
 test('changed target-affecting flag changes build and source identity', () => {

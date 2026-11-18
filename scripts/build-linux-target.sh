@@ -73,6 +73,8 @@ if [[ "$mode" == 'openwrt' ]]; then
 	tags="${tags},with_naive_outbound,with_musl"
 elif [[ "$naive" == 'true' ]]; then
 	tags="${tags},with_naive_outbound,with_musl"
+	# The pinned Cronet module names its exact static archive in #cgo LDFLAGS.
+	export CGO_LDFLAGS_ALLOW='^-l:libcronet[.]a$'
 fi
 if [[ "$profile" == 'core' ]]; then
 	tags="${tags},minimal"

@@ -63,6 +63,7 @@ const generatedGo = new Set([
 ])
 
 const commands = new Set(['create', 'materialize', 'verify'])
+const componentFrontendPath = /^components\/[^/]+\/frontend(?:\/|$)/
 
 if (isMain()) {
   try {
@@ -215,6 +216,8 @@ export function materializeSource(sourceRoot, out) {
 
 function isSourceInput(file) {
   if (generatedGo.has(file)) return false
+  // The pinned Frontend tuple covers the entire authored component UI tree.
+  if (componentFrontendPath.test(file)) return true
   if (file.startsWith('web/html/') || file.startsWith('frontend/dist/') || file.startsWith('frontend/node_modules/')) return false
   if (file.includes('/node_modules/') || file.includes('/testdata/') || file.includes('/tests/')) return false
   if (file.startsWith('tests/') || file.startsWith('testsupport/')) return false
@@ -243,6 +246,7 @@ function walk(directory, sourceRoot, files, include) {
 }
 
 function isExcludedDirectory(file) {
+  if (componentFrontendPath.test(file)) return false
   return file === 'frontend/node_modules' || file === 'frontend/dist' || file === 'web/html' ||
     file.includes('/node_modules') || file.includes('/testdata') || file.includes('/tests') ||
     file.includes('/coverage') || file.includes('/.cache') || file.includes('/.vite')
