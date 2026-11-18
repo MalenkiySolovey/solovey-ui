@@ -136,6 +136,7 @@ run_rollback() {
     PATH="${FAKEBIN}:${PATH}" \
     TEST_INSTALLER_LOG="${LOG_DIR}" \
     TEST_FAIL_RESTORE_CP="${TEST_FAIL_RESTORE_CP:-}" \
+    TEST_FAIL_MANIFEST="${TEST_FAIL_MANIFEST:-}" \
     SOLOVEY_UI_ALLOW_NON_ROOT=1 \
     SOLOVEY_UI_INSTALL_DIR="${INSTALL_DIR}" \
     SOLOVEY_UI_CLI_PATH="${CLI_PATH}" \
@@ -234,6 +235,49 @@ assert_failed_restore_leaves_current_install() {
     assert_contains "${CLI_PATH}" 'current manager'
 }
 
+assert_native_authority_rebinding() {
+    local backup="${BACKUP_ROOT}/20260101T000000Z"
+    local release="${backup}/app/releases/fixture"
+    mkdir -p "${release}"
+    ln -s fixture "${backup}/app/releases/current"
+    cp "${backup}/app/solovey-ui" "${release}/solovey-ui"
+    printf 'stale broker policy\n' > "${backup}/etc/broker-clients.json"
+    printf 'stale owner contract\n' > "${backup}/etc/application-owner-contract.json"
+    cat > "${release}/solovey-broker-manifest" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "${TEST_FAIL_MANIFEST}" != 1 ]] || exit 42
+stat -Lc '%d:%i' "${SOLOVEY_UI_INSTALL_DIR}/releases/current/solovey-ui" > "${SOLOVEY_UI_ENV_DIR}/broker-clients.json"
+printf 'rebind broker\n' >> "${TEST_INSTALLER_LOG}/systemctl.log"
+SH
+    cat > "${release}/solovey-owner-manifest" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'restored owner\n' > "${SOLOVEY_UI_ENV_DIR}/application-owner-contract.json"
+printf 'rebind owner\n' >> "${TEST_INSTALLER_LOG}/systemctl.log"
+SH
+    chmod +x "${release}"/solovey-{broker,owner}-manifest
+
+    : > "${LOG_DIR}/systemctl.log"
+    run_rollback 20260101T000000Z
+    [[ "$(< "${ENV_DIR}/broker-clients.json")" == "$(stat -Lc '%d:%i' "${INSTALL_DIR}/releases/current/solovey-ui")" ]] || fail 'policy not bound to restored inode'
+    assert_contains "${ENV_DIR}/application-owner-contract.json" '^restored owner$'
+    diff -u <(printf '%s\n' \
+        'stop solovey-privileged-broker.socket' 'stop solovey-privileged-proof.socket' \
+        'stop solovey-privileged-broker.service' 'stop solovey-ui' \
+        'rebind broker' 'rebind owner' 'daemon-reload' 'restart solovey-ui' 'is-active --quiet solovey-ui') \
+        <(grep -v '^show ' "${LOG_DIR}/systemctl.log") || fail 'incorrect rollback activation order'
+
+    : > "${LOG_DIR}/systemctl.log"
+    if TEST_FAIL_MANIFEST=1 run_rollback 20260101T000000Z > "${LOG_DIR}/rollback-policy-fail.out" 2>&1; then
+        fail 'rollback succeeded without a valid broker policy'
+    fi
+    assert_contains "${LOG_DIR}/rollback-policy-fail.out" 'could not rebuild broker-clients.json; service remains stopped'
+    if grep -Eq '^(rebind owner|daemon-reload|restart)|rollback complete' "${LOG_DIR}/systemctl.log" "${LOG_DIR}/rollback-policy-fail.out"; then
+        fail 'rollback activated a partially restored release'
+    fi
+}
+
 write_fake_tools
 create_current_install
 create_backup
@@ -244,6 +288,7 @@ assert_doctor
 assert_failed_restore_leaves_current_install
 run_rollback 20260101T000000Z
 assert_rollback
+assert_native_authority_rebinding
 run_rollback uninstall
 [[ ! -e "${TARGET}/etc/tmpfiles.d/solovey-ui.conf" && ! -L "${TARGET}/etc/tmpfiles.d/solovey-ui.conf" ]] || fail "uninstall left a boot registration"
 
