@@ -18,7 +18,7 @@ for (let index = 2; index < process.argv.length; index += 2) {
 }
 
 const profile = args.get('profile')
-const dist = args.get('dist') ?? 'frontend/dist'
+const dist = args.get('dist') ?? '.artifacts/frontend-dist'
 const componentsDir = args.get('components-dir') ?? 'components'
 const selectedIDs = parseSelectedIDs(args.get('selected-ids'))
 if (profile !== 'full' && profile !== 'core') {
@@ -95,7 +95,7 @@ function readComponentIDs(componentsDir) {
 }
 
 function usage() {
-  console.error('Usage: node scripts/check-frontend-profile.mjs --profile <full|core> [--dist frontend/dist] [--components-dir components] [--selected-ids id,id]')
+  console.error('Usage: node scripts/check-frontend-profile.mjs --profile <full|core> [--dist .artifacts/frontend-dist] [--components-dir components] [--selected-ids id,id]')
   process.exit(2)
 }
 

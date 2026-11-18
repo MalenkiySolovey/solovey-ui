@@ -4,7 +4,10 @@ const { randomBytes } = require('node:crypto')
 const { spawn, spawnSync } = require('node:child_process')
 
 const repoRoot = path.resolve(__dirname, '..', '..')
-const frontendDir = path.join(repoRoot, 'frontend')
+const frontendDir = process.env.SUI_E2E_FRONTEND_DIR
+  ? path.resolve(process.env.SUI_E2E_FRONTEND_DIR)
+  : null
+if (process.env.SUI_E2E_FRONTEND_MODE !== 'embedded' && !frontendDir) throw new Error('Product E2E requires an explicit admitted Frontend fixture')
 const resultDir = process.env.SUI_E2E_RESULT_DIR
   ? path.resolve(process.env.SUI_E2E_RESULT_DIR)
   : path.join(repoRoot, 'tests', 'baseline', 'e2e')
@@ -269,7 +272,7 @@ process.on('exit', stopAll)
 
 const main = async () => {
   const { prepareFrontendBuildInputs } = await import('../../scripts/frontend-build-inputs.mjs')
-  const frontendInputs = prepareFrontendBuildInputs(repoRoot)
+  const frontendInputs = prepareFrontendBuildInputs(repoRoot, frontendDir ? {frontendRoot: frontendDir, directory: path.join(frontendDir, '.component-inputs')} : {})
   generateComponentOverlay()
 
   const backendEnv = {

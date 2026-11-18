@@ -5,7 +5,8 @@ COPY --from=component-source-tools /usr/local/go/ /usr/local/go/
 ENV PATH="/usr/local/go/bin:${PATH}" GOWORK=off
 RUN apk add --no-cache git ca-certificates
 WORKDIR /app
-COPY frontend/ ./frontend/
+COPY .node-version ./
+COPY deploy/dependencies/solovey-frontend.json ./deploy/dependencies/
 COPY components/ ./components/
 COPY go.mod go.sum go.extended.mod go.extended.sum ./
 COPY deploy/dependencies/sing-quic-integration.json ./deploy/dependencies/
@@ -16,17 +17,14 @@ COPY scripts/core-source-provenance.mjs ./scripts/
 COPY scripts/quic-integration-provenance.mjs ./scripts/
 COPY scripts/ssm-integration-provenance.mjs ./scripts/
 COPY scripts/anytls-integration-provenance.mjs ./scripts/
-COPY scripts/backend-source-inputs.mjs scripts/component-source-inputs.mjs scripts/frontend-build-inputs.mjs scripts/frontend.mjs scripts/component-frontend-manifest.mjs scripts/extract-component-frontend.mjs scripts/generate-component-imports.mjs scripts/write-component-installed-metadata.mjs scripts/frontend-assets.mjs scripts/frontend-runtime-closure.mjs ./scripts/
+COPY scripts/frontend-artifacts.mjs scripts/frontend-source.mjs scripts/backend-source-inputs.mjs scripts/component-source-inputs.mjs scripts/frontend-build-inputs.mjs scripts/frontend.mjs scripts/component-frontend-manifest.mjs scripts/extract-component-frontend.mjs scripts/generate-component-imports.mjs scripts/write-component-installed-metadata.mjs scripts/frontend-assets.mjs scripts/frontend-runtime-closure.mjs ./scripts/
 RUN node scripts/quic-integration-provenance.mjs manifest > QUIC_INTEGRATION.json \
     && node scripts/ssm-integration-provenance.mjs manifest > SSM_INTEGRATION.json \
     && node scripts/anytls-integration-provenance.mjs manifest > ANYTLS_INTEGRATION.json \
-    && cd frontend \
-    && npm ci \
-    && SOLOVEY_UI_PROFILE=full node ../scripts/frontend.mjs build \
-    && cd .. \
-    && node scripts/extract-component-frontend.mjs --dist frontend/dist --components-dir components --out-dir component-packs --prune-dist \
+    && SOLOVEY_UI_PROFILE=full node scripts/frontend.mjs build \
+    && node scripts/extract-component-frontend.mjs --dist .artifacts/frontend-dist --components-dir components --out-dir component-packs --prune-dist \
     && node scripts/write-component-installed-metadata.mjs --components-dir component-packs --out component-packs/installed.json --profile full --binary full \
-    && node scripts/frontend-assets.mjs publish --dist frontend/dist --destination web/html --components-dir component-packs \
+    && node scripts/frontend-assets.mjs publish --dist .artifacts/frontend-dist --destination web/html --components-dir component-packs \
     && node scripts/generate-component-imports.mjs --profile full --out generated/components_generated.go --cmd-out generated/optional_commands_generated.go
 
 FROM --platform=$TARGETPLATFORM golang:1.26.11-alpine@sha256:ae52b5bc6ed045a9ed26ab03dc19327a802a9cc9aa8b27ed57f5c6b60579b0bb AS backend-builder
@@ -61,6 +59,7 @@ RUN --mount=type=cache,id=solovey-ui-go-build,target=/root/.cache/go-build,shari
     echo "${CRONET_SHA256}  $CRONET_DIR/libcronet.a" | sha256sum -c -; \
     CRONET_VERSION="$(go list -mod=readonly -modfile="$MOD_FILE" -m -f '{{.Version}}' "$CRONET_MODULE")"; \
     printf '{"schema":"solovey.native-cronet/v1","linkage":"static-musl","nativeVersion":"150.0.7871.63","module":"%s","moduleVersion":"%s","archiveSha256":"%s"}\n' "$CRONET_MODULE" "$CRONET_VERSION" "$CRONET_SHA256" > CRONET_INTEGRATION.json
+COPY --from=front-builder /app/.artifacts/frontend/ /app/.artifacts/frontend/
 COPY --from=front-builder /app/web/html/ /app/web/html/
 COPY --from=front-builder /app/generated/components_generated.go /app/app/components_generated.go
 COPY --from=front-builder /app/generated/optional_commands_generated.go /app/cmd/optional_commands_generated.go

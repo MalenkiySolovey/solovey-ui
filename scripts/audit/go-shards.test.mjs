@@ -6,11 +6,12 @@ import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
+import {frontendFixtureDirectory} from '../frontend-source.mjs'
 import './aggregate.test.mjs'
 import { selectLatestAuditArtifacts } from './download-go-artifacts.mjs'
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const YAML = createRequire(import.meta.url)(path.join(repo, 'frontend/node_modules/yaml'))
+const YAML = createRequire(path.join(await frontendFixtureDirectory(), 'package.json'))('yaml')
 const workflow = YAML.parse(fs.readFileSync(path.join(repo, '.github/workflows/audit-go.yml'), 'utf8'))
 const jobs = workflow.jobs
 const shards = ['test-go-windows-shard', 'test-go-race-linux-shard', 'test-go-race-windows-shard']

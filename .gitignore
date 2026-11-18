@@ -93,3 +93,6 @@ test-db/
 frontend/.component-inputs/
 frontend/.component-inputs.lock/
 frontend/.component-inputs-stage-*/
+
+# Generated, hash-verified build inputs, Frontend caches and distributions.
+/.artifacts/

@@ -94,12 +94,10 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
 
       - name: Install workflow validator dependencies
-        working-directory: frontend
-        run: npm ci
-
+        run: node scripts/frontend.mjs install
       - name: Validate static release contracts
         run: |
           node --check scripts/release-preflight.mjs
@@ -177,7 +175,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
 
       - name: Validate release tag against source version
         run: |
@@ -259,9 +257,9 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
           cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: deploy/dependencies/solovey-frontend.json
 
       # Strict, fail-closed install: a desynced package-lock.json aborts the
       # release here instead of silently shipping an unvalidated bundle.
@@ -270,9 +268,7 @@ jobs:
       # (v1.5.7-beta6). Mirror the same gates CI runs so a release can never
       # carry a frontend that CI would reject.
       - name: Install frontend dependencies (strict)
-        working-directory: frontend
-        run: npm ci
-
+        run: node scripts/frontend.mjs install
       - name: Frontend utility script syntax
         run: |
           node --check scripts/audit/validate-workflows.js
@@ -287,33 +283,29 @@ jobs:
         run: node scripts/audit/validate-workflows.js
 
       - name: Frontend lint
-        working-directory: frontend
-        run: npm run lint
-
+        run: node scripts/frontend.mjs lint
       - name: Frontend unit tests
-        working-directory: frontend
-        run: node ../scripts/frontend.mjs test
+        run: node scripts/frontend.mjs test
 
       - name: Build full frontend
-        working-directory: frontend
-        run: SOLOVEY_UI_PROFILE=full node ../scripts/frontend.mjs build
+        run: SOLOVEY_UI_PROFILE=full node scripts/frontend.mjs build
 
       - name: Check full frontend profile
-        run: node scripts/check-frontend-profile.mjs --profile full --dist frontend/dist
+        run: node scripts/check-frontend-profile.mjs --profile full --dist .artifacts/frontend-dist
 
       - name: Extract optional component frontend packs
-        run: node scripts/extract-component-frontend.mjs --dist frontend/dist --components-dir components --out-dir .release/components --prune-dist
+        run: node scripts/extract-component-frontend.mjs --dist .artifacts/frontend-dist --components-dir components --out-dir .release/components --prune-dist
 
       - name: Verify split frontend asset contract
         run: |
           node scripts/write-component-installed-metadata.mjs --components-dir .release/components --out .release/components/installed.json --profile full --binary full
-          node scripts/frontend-assets.mjs verify --dist frontend/dist --components-dir .release/components
+          node scripts/frontend-assets.mjs verify --dist .artifacts/frontend-dist --components-dir .release/components
 
       - name: Upload full frontend build artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: frontend-dist-full
-          path: frontend/dist/
+          path: .artifacts/frontend-dist/
           include-hidden-files: true
           retention-days: 1
 
@@ -325,17 +317,16 @@ jobs:
           retention-days: 1
 
       - name: Build core frontend
-        working-directory: frontend
-        run: SOLOVEY_UI_PROFILE=core node ../scripts/frontend.mjs build
+        run: SOLOVEY_UI_PROFILE=core node scripts/frontend.mjs build
 
       - name: Check core frontend profile
-        run: node scripts/check-frontend-profile.mjs --profile core --dist frontend/dist
+        run: node scripts/check-frontend-profile.mjs --profile core --dist .artifacts/frontend-dist
 
       - name: Upload core frontend build artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: frontend-dist-core
-          path: frontend/dist/
+          path: .artifacts/frontend-dist/
           include-hidden-files: true
           retention-days: 1
 
@@ -367,7 +358,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
 
       - name: Generate backend component imports
         run: node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go
@@ -433,7 +424,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
 
       - name: Clone cronet-go (naive platforms)
         if: matrix.naive && matrix.compiler != 'bootlin'
@@ -646,7 +637,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
       - name: Produce and verify immutable release disclosure
         env:
           PRODUCT_COMMIT: ${{ needs.release-preflight.outputs.product-commit }}
@@ -705,7 +696,7 @@ jobs:
       - name: Set up Node.js for release tooling
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
 
       - name: Build the shared release inspector once
         run: |
@@ -792,7 +783,7 @@ jobs:
       - name: Set up Node.js for recovery inspection
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
       - name: Verify original complete candidate and existing registry
         env:
           GH_TOKEN: ${{ github.token }}
@@ -864,7 +855,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
       - name: Prepare native SDK executor
         run: |
           sudo apt-get update
@@ -957,7 +948,7 @@ jobs:
       - name: Set up Node.js for publication inspection
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version-file: frontend/.node-version
+          node-version-file: .node-version
 
       - name: Download verified complete candidate
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8

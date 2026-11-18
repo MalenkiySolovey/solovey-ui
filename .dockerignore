@@ -57,3 +57,6 @@ tests/baseline/e2e/zig-*-cache/
 # Editor directories and files
 .idea
 .vscode
+
+# Generated, hash-verified build inputs, Frontend caches and distributions.
+/.artifacts/

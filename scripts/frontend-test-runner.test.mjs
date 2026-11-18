@@ -4,11 +4,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
 import { stripVTControlCharacters } from 'node:util'
 import { digest } from './component-source-inputs.mjs'
 import { prepareFrontendBuildInputs } from './frontend-build-inputs.mjs'
-import { buildInputSchema, frontendAPIFiles } from '../frontend/scripts/component-build-inputs.mjs'
+import { buildInputSchema, frontendAPIFiles } from './frontend-source.mjs'
+import {frontendSourceDirectory, frontendFixtureDirectory} from './frontend-source.mjs'
+import {productRoot} from './component-source-inputs.mjs'
 
 test('Vitest receives one native path, unchanged arguments and propagates exit status',t => {
   const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'frontend runner '))
@@ -17,8 +18,8 @@ test('Vitest receives one native path, unchanged arguments and propagates exit s
   fs.mkdirSync(path.join(frontend,'scripts'),{recursive:true})
   fs.mkdirSync(path.join(frontend,'node_modules/vitest'),{recursive:true})
   const runner=path.join(frontend,'scripts/run-vitest.mjs')
-  fs.copyFileSync(fileURLToPath(new URL('../frontend/scripts/run-vitest.mjs',import.meta.url)),runner)
-  for(const name of ['component-build-inputs.mjs','component-source-integrity.mjs'])fs.copyFileSync(fileURLToPath(new URL('../frontend/scripts/'+name,import.meta.url)),path.join(frontend,'scripts',name))
+  fs.copyFileSync(path.join(frontendSourceDirectory,'scripts/run-vitest.mjs'),runner)
+  for(const name of ['component-build-inputs.mjs','component-source-integrity.mjs'])fs.copyFileSync(path.join(frontendSourceDirectory,'scripts',name),path.join(frontend,'scripts',name))
   for(const name of frontendAPIFiles) { const target=path.join(frontend,name);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,'fixture') }
   const sourceLock={schema:'solovey.component-source-inputs/v1',sources:[]}
   const input={schema:buildInputSchema,sourceLock,sourceLockDigest:digest(JSON.stringify(sourceLock)),frontendFiles:Object.fromEntries(frontendAPIFiles.map(name=>[name,digest('fixture')])),components:[]}
@@ -34,15 +35,15 @@ test('Vitest receives one native path, unchanged arguments and propagates exit s
     const result=spawnSync(process.execPath,[alias,...args],{cwd:temporary,encoding:'utf8',env})
     assert.equal(result.status,17,result.stderr)
     const observation=JSON.parse(result.stdout)
-    assert.equal(observation.cwd,fs.realpathSync.native(frontend))
+    assert.equal(fs.realpathSync.native(observation.cwd),fs.realpathSync.native(frontend))
     assert.deepEqual(observation.args,args)
   }
 })
 
-test('real Windows Vitest works through a drive-letter alias',{skip:process.platform!=='win32'},() => {
-  const frontend=fs.realpathSync.native(fileURLToPath(new URL('../frontend/',import.meta.url)))
+test('real Windows Vitest works through a drive-letter alias',{skip:process.platform!=='win32'},async() => {
+  const frontend=fs.realpathSync.native(await frontendFixtureDirectory())
   const alias=frontend[0].toLowerCase()+frontend.slice(1)
-  const inputs=prepareFrontendBuildInputs(path.dirname(frontend))
+  const inputs=prepareFrontendBuildInputs(productRoot,{frontendRoot:frontend,directory:path.join(frontend,'.component-inputs')})
   const result=spawnSync(process.execPath,[path.join(alias,'scripts/run-vitest.mjs'),'run','src/features/inboundGuidance.test.ts'],{env:{...process.env,SOLOVEY_UI_INPUTS_SHA256:inputs.manifestSHA256},cwd:os.tmpdir(),encoding:'utf8',maxBuffer:4*1024*1024})
   assert.equal(result.status,0,result.stdout+result.stderr)
   assert.match(stripVTControlCharacters(result.stdout),/Tests\s+[1-9]\d* passed/)

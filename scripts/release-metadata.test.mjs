@@ -165,3 +165,14 @@ test('Backend disclosure rejects omitted source, substituted module and ambiguou
     assert.throws(() => verifyBackendInventory(fixture.provenance, fixture.bom, fixture.inventory, input))
   }
 })
+
+import {readFrontendPin,sha256 as frontendHash} from './frontend-artifacts.mjs'
+import {frontendSourceProperties,verifyFrontendInventory} from './release-metadata.mjs'
+test('release disclosure binds Frontend source and all qualified distribution identities',()=>{
+ const pin=readFrontendPin(),identity='frontend:solovey-frontend@'+pin.version
+ const component={'bom-ref':identity,name:'solovey-frontend',version:pin.version,hashes:[{alg:'SHA-256',content:pin.sourceArchive.sha256}],properties:frontendSourceProperties(pin)}
+ const provenance={frontendInput:pin},bom={components:[component],metadata:{component:{properties:[{name:'solovey:frontendInputDigest',value:frontendHash(JSON.stringify(pin))}]}}}
+ verifyFrontendInventory(provenance,bom,pin)
+ for(const edit of [b=>b.components=[],b=>b.components.push(structuredClone(component)),b=>b.components[0].hashes[0].content='0'.repeat(64),b=>b.components[0].properties.find(p=>p.name==='solovey:frontendArtifacts').value='{}',b=>b.metadata.component.properties[0].value='0'.repeat(64)]){const copy=structuredClone(bom);edit(copy);assert.throws(()=>verifyFrontendInventory(provenance,copy,pin))}
+ assert.throws(()=>verifyFrontendInventory({frontendInput:{...pin,version:'0.9.0'}},bom,pin))
+})

@@ -41,7 +41,6 @@ Push-Location -LiteralPath $repoRoot
 try {
     $go = (Get-Command go -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
     $node = (Get-Command node -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
-    $npm = (Get-Command npm.cmd -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
     $hostArchitecture = (& $go env GOHOSTARCH).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Cannot determine the native Go host architecture' }
     if ($hostArchitecture -ne $Architecture -and (!$CrossCompile -or !$env:CC)) { throw "CGO cross-build requires explicit CrossCompile and CC; Go host is $hostArchitecture" }
@@ -64,13 +63,10 @@ try {
     if ($ExpectedSourceFingerprint -and $sourceFingerprint -ne $ExpectedSourceFingerprint) { throw 'Source fingerprint changed before the producer' }
     if ($PackageDirectory -and (& git status --porcelain)) { throw 'Package source must be clean before generation' }
     if (!$FrontendDist) {
-        Push-Location -LiteralPath (Join-Path $repoRoot 'frontend')
-        try {
-            Invoke-Native $npm @('ci')
-            Invoke-Native $npm @('run', 'build')
-        } finally { Pop-Location }
-        $FrontendDist = Join-Path $repoRoot 'frontend/dist'
+        Invoke-Native $node @('scripts/frontend.mjs', 'build')
+        $FrontendDist = Join-Path $repoRoot '.artifacts/frontend-dist'
     }
+    Invoke-Native $node @('scripts/frontend.mjs', 'verify', '--dist', $FrontendDist)
     Invoke-Native $node @('scripts/check-frontend-profile.mjs', '--profile', $Profile, '--dist', $FrontendDist)
     Invoke-Native $node @('scripts/generate-component-imports.mjs', '--profile', $Profile)
     Invoke-Native $node @('scripts/frontend-assets.mjs', 'publish', '--dist', $FrontendDist, '--destination', 'web/html')

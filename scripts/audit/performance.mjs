@@ -107,14 +107,23 @@ async function main() {
       worktrees.push(directory)
       const group=path.join(out,'perf-'+label)
       fs.mkdirSync(group,{recursive:true})
-      run('npm',['ci'],{cwd:path.join(directory,'frontend'),env,file:path.join(group,'install.txt')})
+      const external=fs.existsSync(path.join(directory,'deploy/dependencies/solovey-frontend.json'))
       const adapter=path.join(directory,'scripts/frontend.mjs')
-      if(fs.existsSync(adapter))run(process.execPath,[adapter,'build'],{cwd:directory,env,file:path.join(group,'frontend.txt')})
-      else run('npm',['run','build'],{cwd:path.join(directory,'frontend'),env,file:path.join(group,'frontend.txt')})
+      let distribution
+      if(external) {
+        run(process.execPath,[adapter,'build'],{cwd:directory,env,file:path.join(group,'frontend.txt')})
+        distribution=path.join(directory,'.artifacts/frontend-dist')
+      } else {
+        // Historical comparison is an explicit immutable Git fixture. Current
+        // Product candidates must resolve their admitted external distribution.
+        if(label!=='baseline')throw Error('Current performance candidate lacks the Frontend producer pin')
+        run('npm',['ci'],{cwd:path.join(directory,'frontend'),env,file:path.join(group,'install.txt')})
+        if(fs.existsSync(adapter))run(process.execPath,[adapter,'build'],{cwd:directory,env,file:path.join(group,'frontend.txt')})
+        else run('npm',['run','build'],{cwd:path.join(directory,'frontend'),env,file:path.join(group,'frontend.txt')})
+        distribution=path.join(directory,'frontend/dist')
+      }
       run(process.execPath,[path.join(directory,'scripts/generate-component-imports.mjs'),'--profile','full'],{cwd:directory,env,file:path.join(group,'composition.txt')})
-      // The current publication owner validates both revisions, including an
-      // older baseline that predates this helper. No checkout is reused.
-      run(process.execPath,[path.join(repo,'scripts/frontend-assets.mjs'),'publish','--dist',path.join(directory,'frontend/dist'),'--destination',path.join(directory,'web/html')],{cwd:directory,env,file:path.join(group,'publication.txt')})
+      run(process.execPath,[path.join(repo,'scripts/frontend-assets.mjs'),'publish','--dist',distribution,'--destination',path.join(directory,'web/html')],{cwd:directory,env,file:path.join(group,'publication.txt')})
       run('go',['test','-run=^$','-bench=.','-benchmem','-benchtime='+config.benchtime,'-count='+config.samples,'-p=1','-timeout=25m',...(config.tags?['-tags',config.tags]:[]),...config.packages],{cwd:directory,env,file:path.join(group,'benchmarks.txt')})
     }
     const rawBase=fs.readFileSync(path.join(out,'perf-baseline/benchmarks.txt'),'utf8'),rawHead=fs.readFileSync(path.join(out,'perf-candidate/benchmarks.txt'),'utf8')
