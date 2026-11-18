@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
+import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 
 export function selectLatestAuditArtifacts(artifacts) {
@@ -30,11 +31,27 @@ export function selectLatestAuditArtifacts(artifacts) {
   return selected
 }
 
-export function downloadGoAuditArtifacts({ repository, runId, destination, execute = execFileSync }) {
+async function downloadArchive(execute, endpoint, options, wait) {
+  const retryDelays = [2_000, 4_000, 8_000, 16_000]
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return execute('gh', ['api', '--allow-escape-sequences', endpoint], options)
+    } catch (error) {
+      const transient = error.stderr?.toString().match(/^gh: .*\bHTTP (500|502|503|504)\b/m)
+      const backoff = retryDelays[attempt]
+      if (!transient || backoff === undefined) throw error
+      console.warn(`Audit artifact ${endpoint}: HTTP ${transient[1]}; retrying in ${backoff / 1000}s`)
+      await wait(backoff)
+    }
+  }
+}
+
+export async function downloadGoAuditArtifacts({ repository, runId, destination, execute = execFileSync, wait = delay }) {
   assert.match(repository ?? '', /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/)
   assert.match(String(runId ?? ''), /^[1-9][0-9]*$/)
   const api = `repos/${repository}/actions/runs/${runId}/artifacts?per_page=100`
   const options = { maxBuffer: 64 << 20, windowsHide: true }
+  const zipOptions = { ...options, timeout: 120_000, stdio: ['ignore', 'pipe', 'pipe'] }
   const pages = JSON.parse(execute('gh', ['api', '--paginate', '--slurp', api], options).toString('utf8'))
   assert.ok(pages.length > 0, 'complete artifact pages required')
   const artifacts = pages.flatMap(page => page.artifacts)
@@ -48,7 +65,7 @@ export function downloadGoAuditArtifacts({ repository, runId, destination, execu
     for (const artifact of selected) {
       // Download the exact REST ID. The pinned download action's latest=true
       // selection sorts by numeric ID, which need not follow creation order.
-      const bytes = execute('gh', ['api', '--allow-escape-sequences', `repos/${repository}/actions/artifacts/${artifact.id}/zip`], options)
+      const bytes = await downloadArchive(execute, `repos/${repository}/actions/artifacts/${artifact.id}/zip`, zipOptions, wait)
       assert.equal(`sha256:${crypto.createHash('sha256').update(bytes).digest('hex')}`, artifact.digest, `${artifact.name}: archive digest mismatch`)
       const archive = path.join(scratch, `${artifact.id}.zip`)
       fs.writeFileSync(archive, bytes)
@@ -71,5 +88,5 @@ export function downloadGoAuditArtifacts({ repository, runId, destination, execu
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  downloadGoAuditArtifacts({ repository: process.env.GITHUB_REPOSITORY, runId: process.env.GITHUB_RUN_ID, destination: process.argv[2] ?? 'tests/baseline' })
+  await downloadGoAuditArtifacts({ repository: process.env.GITHUB_REPOSITORY, runId: process.env.GITHUB_RUN_ID, destination: process.argv[2] ?? 'tests/baseline' })
 }
