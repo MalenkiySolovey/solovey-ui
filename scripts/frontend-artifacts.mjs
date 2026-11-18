@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import {createHash} from 'node:crypto'
 import {gunzipSync} from 'node:zlib'
 import {fileURLToPath} from 'node:url'
-import {verifyDist, publishAssets} from './frontend-assets.mjs'
+import {inspectDist, verifyDist, publishAssets} from './frontend-assets.mjs'
 export const productRoot = fileURLToPath(new URL('../', import.meta.url))
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
 const sha = value => assert.match(value, /^[a-f0-9]{64}$/, 'trusted Frontend SHA256 required')
@@ -195,4 +195,48 @@ export async function verifyFrontendDistributionDirectory(directory,options={}) 
   const expected=verifyDist(accepted.directory),actual=verifyDist(directory)
   assert.deepEqual([...actual].map(([name,value])=>[name,value.sha256]),[...expected].map(([name,value])=>[name,value.sha256]),'Frontend directory differs from admitted immutable distribution')
   return {...accepted,directory:path.resolve(directory)}
+}
+
+function digestEntries(inventory) {
+  return [...inventory.keys()].sort().map(name => [name, inventory.get(name).sha256])
+}
+
+export async function verifyFrontendReleaseInput(directory, {root=productRoot, pin=readFrontendPin(root), key, componentsDirectory, ...options}={}) {
+  assert.ok(['full', 'core'].includes(key) && (!componentsDirectory || key === 'full'), 'unadmitted release Frontend layout')
+  const parameters = {...options, root, pin, key}
+  const packed = []
+  let embedded, artifact
+  if (componentsDirectory) {
+    assert.ok(fs.lstatSync(componentsDirectory).isDirectory(), 'component pack root is not a regular directory')
+    artifact = await resolveFrontendDistribution(parameters)
+    const inspected = inspectDist(directory, {componentsDirectory})
+    embedded = digestEntries(inspected.embedded)
+    assert.deepEqual(digestEntries(inspected.provided), digestEntries(verifyDist(artifact.directory)),
+      'split Frontend file hashes differ from admitted immutable distribution')
+    const ids = [...inspected.packs.keys()].sort()
+    assert.deepEqual(ids, pin.profiles.full.componentIDs, 'split Frontend pack IDs differ from admitted profile')
+    const directories = fs.readdirSync(componentsDirectory,{withFileTypes:true}).filter(entry => entry.isDirectory()).map(entry => entry.name).sort()
+    assert.deepEqual(directories, ids, 'unexpected component pack directory')
+    for (const id of ids) {
+      const pack = inspected.packs.get(id)
+      const manifest = path.join(componentsDirectory, id, 'component.json')
+      assert.ok(fs.lstatSync(manifest).isFile(), 'component manifest is not regular')
+      const manifestSHA256 = sha256(fs.readFileSync(manifest))
+      assert.equal(manifestSHA256, sha256(fs.readFileSync(path.join(root,'components',id,'component.json'))), 'pack component manifest differs from Product')
+      const metadata = JSON.parse(fs.readFileSync(pack.get('assets.json').path, 'utf8'))
+      assert.deepEqual([...pack.keys()].sort(), ['assets.json', ...metadata.files].sort(), 'unexpected file in component Frontend pack')
+      packed.push([`${id}/component.json`, manifestSHA256], ...digestEntries(pack).map(([name, hash]) => [`${id}/frontend/${name}`, hash]))
+    }
+  } else {
+    artifact = await verifyFrontendDistributionDirectory(directory, parameters)
+    embedded = digestEntries(verifyDist(directory))
+  }
+  return {archiveSHA256: artifact.archiveSHA256, embedded, packed}
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const [mode, key, directory, componentsDirectory, extra] = process.argv.slice(2)
+  assert.ok(mode === 'verify-release-input' && directory && !extra,
+    'usage: node scripts/frontend-artifacts.mjs verify-release-input <full|core> <embed-dir> [component-packs-dir]')
+  console.log(JSON.stringify(await verifyFrontendReleaseInput(directory, {key, componentsDirectory})))
 }

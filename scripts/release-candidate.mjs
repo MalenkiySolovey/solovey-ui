@@ -15,14 +15,59 @@ const load = name => import(pathToFileURL(path.resolve('scripts', name)))
 // disclosure binds that same commit to its Git tree; Windows BUILD_INFO does
 // not invent the Linux producer's additional tree field.
 export function verifyArchiveBuildInfo(data, target, { commit, tree, fingerprint, tag }) {
-  const fields = Object.fromEntries(data.split(/\r?\n/).filter(line => line.includes('=')).map(line => {
+  const entries = data.split(/\r?\n/).filter(line => line.includes('=')).map(line => {
     const separator = line.indexOf('='); return [line.slice(0, separator), line.slice(separator + 1)]
-  }))
+  })
+  const fields = Object.fromEntries(entries)
+  assert.equal(Object.keys(fields).length, entries.length, 'duplicate archive build information field')
   assert.ok(['linux', 'windows'].includes(target.platform), 'unsupported archive metadata platform')
   for (const [name, expected] of Object.entries({ commit, source_fingerprint: fingerprint, version: tag,
     platform: `${target.platform}/${target.arch}`, profile: target.profile })) assert.equal(fields[name], expected, `archive ${name} differs`)
   if (target.platform === 'linux' || fields.tree !== undefined) assert.equal(fields.tree, tree, 'archive tree differs')
   if (target.provider !== undefined) assert.equal(fields.core_provider, target.provider, 'archive provider differs')
+  return fields
+}
+
+// Read actual archive members without executing candidate binaries.
+export function observePanelArchives(linux, windows, panels, windowsTargets, { hashPanel = false } = {}) {
+  for (const [directory, targets] of [[linux, panels], [windows, windowsTargets]]) {
+    for (const {name} of targets) {
+      assert.match(name, /^[a-z0-9.-]+\.(?:tar\.gz|zip)$/, 'unadmitted Panel archive name')
+      const stat = fs.lstatSync(path.join(directory, name))
+      assert.ok(stat.isFile() && stat.size > 0 && stat.size <= 1024 ** 3, 'invalid Panel archive')
+    }
+  }
+  return JSON.parse(run('python3', ['-c', `
+import hashlib, json, pathlib, sys, tarfile, zipfile
+linux=pathlib.Path(sys.argv[1]); windows=pathlib.Path(sys.argv[2]); result=[]
+hash_panel=sys.argv[5]=='true'
+for target in json.loads(sys.argv[3]):
+ with tarfile.open(linux/target['name']) as archive:
+  members=archive.getmembers()
+  def select(name, limit):
+   matches=[m for m in members if m.name=='solovey-ui/'+name]
+   assert len(matches)==1 and matches[0].isreg() and 0<matches[0].size<=limit
+   return archive.extractfile(matches[0])
+  with select('BUILD_INFO.txt', 65536) as data:
+   item={'target':target,'data':data.read().decode()}
+  if hash_panel:
+   with select('solovey-ui', 512*1024*1024) as panel:
+    item['binarySHA256']=hashlib.file_digest(panel,'sha256').hexdigest()
+  result.append(item)
+for target in json.loads(sys.argv[4]):
+ with zipfile.ZipFile(windows/target['name']) as archive:
+  def select(name, limit):
+   matches=[m for m in archive.infolist() if m.filename.replace(chr(92),'/')=='solovey-ui-windows/'+name]
+   assert len(matches)==1 and not matches[0].is_dir() and 0<matches[0].file_size<=limit
+   return archive.open(matches[0])
+  with select('BUILD_INFO.txt', 65536) as data:
+   item={'target':target,'data':data.read().decode()}
+  if hash_panel:
+   with select('sui.exe', 512*1024*1024) as panel:
+    item['binarySHA256']=hashlib.file_digest(panel,'sha256').hexdigest()
+  result.append(item)
+print(json.dumps(result))
+`, linux, windows ?? '', JSON.stringify(panels), JSON.stringify(windowsTargets), String(hashPanel)]))
 }
 
 // An execution-only recovery orchestrator can be newer than its immutable
@@ -105,25 +150,16 @@ export async function verifyCandidate(directory, { commit, tag, fingerprint, tru
   await verifyWindowsSet(windows)
   const disclosure = await verifyMetadata(path.join(directory, 'metadata'), commit)
   run(process.execPath, [openwrtVerifier, 'verify', path.join(directory, 'openwrt'), commit], { stdio: 'inherit' })
-  // Read archive metadata without extraction or executing any candidate binary.
-  const archiveMetadata = JSON.parse(run('python3', ['-c', `
-import json, pathlib, sys, tarfile, zipfile
-root=pathlib.Path(sys.argv[1]); panels=json.loads(sys.argv[2]); windows=json.loads(sys.argv[3]); result=[]
-for target in panels:
- with tarfile.open(root/'linux'/target['name']) as archive:
-  result.append({'target':target,'data':archive.extractfile('solovey-ui/BUILD_INFO.txt').read().decode()})
-for target in windows:
- with zipfile.ZipFile(root/'windows'/target['name']) as archive:
-  names=[n for n in archive.namelist() if n.replace(chr(92),'/')=='solovey-ui-windows/BUILD_INFO.txt']
-  assert len(names)==1
-  result.append({'target':target,'data':archive.read(names[0]).decode()})
-print(json.dumps(result))
-`, directory, JSON.stringify(panelInventory.panels.map(target => ({ ...target, platform: 'linux',
-    provider: panelInventory.providerAware ? target.provider : undefined }))), JSON.stringify(inventory.windows.map(target => ({ ...target, platform: 'windows' })))]))
   assert.equal(disclosure.source.fingerprint, fingerprint, 'archive source fingerprint differs from verified disclosure')
-  for (const { data, target } of archiveMetadata) verifyArchiveBuildInfo(data, target, {
-    commit, tree: disclosure.source.tree, fingerprint, tag,
-  })
+  if (fs.existsSync(path.resolve('scripts/release-composition-build.mjs'))) {
+    assert.ok(disclosure.composition, 'Product composition missing from verified disclosure')
+    const { verifyComposedArchives } = await load('release-composition-build.mjs')
+    await verifyComposedArchives(disclosure.composition, { linux, windows, tag })
+  } else {
+    const archiveMetadata = observePanelArchives(linux, windows, panelInventory.panels.map(target => ({ ...target, platform: 'linux',
+      provider: panelInventory.providerAware ? target.provider : undefined })), inventory.windows.map(target => ({ ...target, platform: 'windows' })))
+    for (const { data, target } of archiveMetadata) verifyArchiveBuildInfo(data, target, { commit, tree: disclosure.source.tree, fingerprint, tag })
+  }
   const assets = [], names = new Set()
   for (const relative of ['linux', 'windows', 'metadata', 'openwrt/assets']) {
     for (const name of fs.readdirSync(path.join(directory, relative)).sort()) {

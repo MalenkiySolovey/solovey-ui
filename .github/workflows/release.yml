@@ -476,6 +476,9 @@ jobs:
           SING_BOX_VERSION="$(node scripts/core-provider-build.mjs plan --provider '${{ matrix.provider }}' | node --input-type=module -e 'let data=""; for await (const chunk of process.stdin) data+=chunk; process.stdout.write("v"+JSON.parse(data).source.runtimeSemanticVersion)')"
           SOURCE_FINGERPRINT="$(node scripts/release-source.mjs .)"
           [ "$SOURCE_FINGERPRINT" = "${{ needs.release-preflight.outputs.source-fingerprint }}" ] || { echo "product source fingerprint changed" >&2; exit 1; }
+          if [ -f scripts/release-composition.mjs ]; then
+            GOWORK=off node scripts/release-composition.mjs derive '${{ needs.release-preflight.outputs.product-commit }}' > "$RUNNER_TEMP/product-composition.json"
+          fi
           [ -n "$SING_BOX_VERSION" ] || { echo "sing-box module version is empty" >&2; exit 1; }
           echo "panel_version=$PANEL_VERSION" >> "$GITHUB_OUTPUT"
           echo "sing_box_version=$SING_BOX_VERSION" >> "$GITHUB_OUTPUT"
@@ -525,16 +528,26 @@ jobs:
           NAIVE_ARGS=()
           [ "${{ matrix.naive }}" = "true" ] && NAIVE_ARGS+=(--naive)
           node scripts/frontend-assets.mjs publish --dist .release/frontend-full --destination web/html --components-dir .release/components
-          bash scripts/build-linux-target.sh --mode release --profile full \
+          FULL=(bash scripts/build-linux-target.sh --mode release --profile full \
             --core-provider '${{ matrix.provider }}' \
             --out .release/linux-full --platform "${{ matrix.platform }}" \
-            --trust-roots-file /tmp/solovey-release-trust-roots.b64 "${NAIVE_ARGS[@]}"
+            --trust-roots-file /tmp/solovey-release-trust-roots.b64 "${NAIVE_ARGS[@]}")
+          if [ -f scripts/release-composition-build.mjs ]; then
+            node scripts/release-composition-build.mjs build "$RUNNER_TEMP/product-composition.json" linux "${{ matrix.platform }}" full '${{ matrix.provider }}' .release/linux-full/solovey-ui .release/components -- "${FULL[@]}" > "$RUNNER_TEMP/full-composition-fields"
+          else
+            "${FULL[@]}"
+          fi
           cp -a .release/linux-full/. ./
           node scripts/frontend-assets.mjs publish --dist .release/frontend-core --destination web/html
-          bash scripts/build-linux-target.sh --mode release --profile core \
+          CORE=(bash scripts/build-linux-target.sh --mode release --profile core \
             --core-provider '${{ matrix.provider }}' \
             --out .release/linux-core --platform "${{ matrix.platform }}" \
-            --trust-roots-file /tmp/solovey-release-trust-roots.b64 "${NAIVE_ARGS[@]}"
+            --trust-roots-file /tmp/solovey-release-trust-roots.b64 "${NAIVE_ARGS[@]}")
+          if [ -f scripts/release-composition-build.mjs ]; then
+            node scripts/release-composition-build.mjs build "$RUNNER_TEMP/product-composition.json" linux "${{ matrix.platform }}" core '${{ matrix.provider }}' .release/linux-core/solovey-ui-core -- "${CORE[@]}" > "$RUNNER_TEMP/core-composition-fields"
+          else
+            "${CORE[@]}"
+          fi
           cp -a .release/linux-core/solovey-ui-core ./solovey-ui-core
           file solovey-ui
           file solovey-ui-core
@@ -561,6 +574,7 @@ jobs:
               node scripts/ssm-integration-provenance.mjs build-info
             fi
             node scripts/anytls-integration-provenance.mjs build-info
+            if [ -f scripts/release-composition-build.mjs ]; then cat "$RUNNER_TEMP/full-composition-fields"; fi
           } > BUILD_INFO.full.txt
           {
             echo "app=solovey-ui"
@@ -583,6 +597,7 @@ jobs:
               node scripts/ssm-integration-provenance.mjs build-info
             fi
             node scripts/anytls-integration-provenance.mjs build-info
+            if [ -f scripts/release-composition-build.mjs ]; then cat "$RUNNER_TEMP/core-composition-fields"; fi
           } > BUILD_INFO.core.txt
 
       - name: Package full profile
@@ -703,6 +718,12 @@ jobs:
           CGO_ENABLED=0 go build -mod=readonly -trimpath -o "$RUNNER_TEMP/solovey-artifact-info" ./cmd/solovey-artifact-info
           echo "SOLOVEY_ARTIFACT_INFO=$RUNNER_TEMP/solovey-artifact-info" >> "$GITHUB_ENV"
 
+      - name: Resolve immutable Product composition
+        run: |
+          if [ -f scripts/release-composition.mjs ]; then
+            GOWORK=off node scripts/release-composition.mjs derive '${{ needs.release-preflight.outputs.product-commit }}' > "$RUNNER_TEMP/product-composition.json"
+          fi
+
       - name: Download component frontend packs
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -720,6 +741,12 @@ jobs:
           pattern: solovey-ui*linux-*
           path: release-assets
           merge-multiple: true
+
+      - name: Verify composed Linux packages before signing
+        run: |
+          if [ -f scripts/release-composition-build.mjs ]; then
+            node scripts/release-composition-build.mjs verify-linux "$RUNNER_TEMP/product-composition.json" release-assets "$RELEASE_TAG_INPUT"
+          fi
 
       - name: Generate release manifest
         env:

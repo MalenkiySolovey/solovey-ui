@@ -25,6 +25,7 @@ RUN node scripts/quic-integration-provenance.mjs manifest > QUIC_INTEGRATION.jso
     && node scripts/extract-component-frontend.mjs --dist .artifacts/frontend-dist --components-dir components --out-dir component-packs --prune-dist \
     && node scripts/write-component-installed-metadata.mjs --components-dir component-packs --out component-packs/installed.json --profile full --binary full \
     && node scripts/frontend-assets.mjs publish --dist .artifacts/frontend-dist --destination web/html --components-dir component-packs \
+    && node scripts/frontend-artifacts.mjs verify-release-input full web/html component-packs >/dev/null \
     && node scripts/generate-component-imports.mjs --profile full --out generated/components_generated.go --cmd-out generated/optional_commands_generated.go
 
 FROM --platform=$TARGETPLATFORM golang:1.26.11-alpine@sha256:ae52b5bc6ed045a9ed26ab03dc19327a802a9cc9aa8b27ed57f5c6b60579b0bb AS backend-builder

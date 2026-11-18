@@ -281,6 +281,8 @@ run_node "$snapshot/scripts/frontend-runtime-closure.mjs" \
 run_node "$snapshot/scripts/frontend-assets.mjs" publish \
 	--dist "$snapshot/.artifacts/frontend-dist" --destination "$snapshot/web/html" \
 	--components-dir "$snapshot/.release/components"
+run_node "$snapshot/scripts/frontend-artifacts.mjs" verify-release-input full \
+	"$snapshot/web/html" "$snapshot/.release/components" >/dev/null
 
 go_dependency_proof="$temporary_root/GO_DEPENDENCY_AUTHORITY.json"
 panel_dependency_proof="$temporary_root/GO_PANEL_DEPENDENCY_AUTHORITY.json"

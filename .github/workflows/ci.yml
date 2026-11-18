@@ -617,7 +617,7 @@ jobs:
       - name: Validate workflow contracts
         run: |
           node --test scripts/release-preflight.test.mjs
-          node --test scripts/release-execution.test.mjs scripts/release-resume.test.mjs scripts/release-candidate.test.mjs scripts/release-oci.test.mjs scripts/release-completeness.test.mjs
+          node --test scripts/release-execution.test.mjs scripts/release-resume.test.mjs scripts/release-candidate.test.mjs scripts/release-composition-build.test.mjs scripts/release-oci.test.mjs scripts/release-completeness.test.mjs
           node --test scripts/audit/go-shards.test.mjs
           node scripts/audit/validate-workflows.js
 
@@ -642,12 +642,15 @@ jobs:
         run: |
           node scripts/write-component-installed-metadata.mjs --components-dir .release/components
           node scripts/frontend-runtime-closure.mjs --dist .artifacts/frontend-dist --components-dir .release/components
+          node scripts/frontend-artifacts.mjs verify-release-input full .artifacts/frontend-dist .release/components > "$RUNNER_TEMP/full-frontend-layout.json"
 
       - name: Frontend core build
         run: SOLOVEY_UI_PROFILE=core node scripts/frontend.mjs build
 
       - name: Frontend core profile scan
-        run: node scripts/check-frontend-profile.mjs --profile core --dist .artifacts/frontend-dist
+        run: |
+          node scripts/check-frontend-profile.mjs --profile core --dist .artifacts/frontend-dist
+          node scripts/frontend-artifacts.mjs verify-release-input core .artifacts/frontend-dist > "$RUNNER_TEMP/core-frontend-layout.json"
 
       - name: Frontend custom Fallback build
         run: SOLOVEY_UI_PROFILE=full SOLOVEY_UI_COMPONENT_IDS=fallback-html node scripts/frontend.mjs build

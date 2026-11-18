@@ -39,7 +39,8 @@ function inventory(root) {
 }
 
 function componentProviders(dist, componentsDirectory) {
-  if (!componentsDirectory) return new Map()
+  const providers = new Map(), packs = new Map()
+  if (!componentsDirectory) return { providers, packs }
   // Optional packs retain their manifest/closure owner. Its proof identifies
   // every provider; publication never redefines component membership.
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(),'frontend-closure-'))
@@ -47,19 +48,18 @@ function componentProviders(dist, componentsDirectory) {
     const proofPath = path.join(temporary,'closure.json')
     execFileSync(process.execPath,[path.join(scriptDirectory,'frontend-runtime-closure.mjs'),'--dist',dist,'--components-dir',path.resolve(componentsDirectory),'--out',proofPath],{stdio:'pipe',maxBuffer:4*1024*1024})
     const proof = JSON.parse(fs.readFileSync(proofPath,'utf8'))
-    const providers = new Map(), inventories = new Map()
     for (const asset of proof.runtimeAssets) {
       safePath(asset.file)
       for (const owner of asset.providers.filter(owner => owner.startsWith('component:'))) {
         const id = owner.slice('component:'.length)
         if (!/^[a-z0-9-]+$/.test(id)) throw Error('Invalid component asset owner')
-        if (!inventories.has(id)) inventories.set(id,inventory(path.join(path.resolve(componentsDirectory),id,'frontend')))
-        const entry = inventories.get(id).get(asset.file)
+        if (!packs.has(id)) packs.set(id,inventory(path.join(path.resolve(componentsDirectory),id,'frontend')))
+        const entry = packs.get(id).get(asset.file)
         if (!entry || entry.sha256 !== asset.sha256) throw Error(`Component asset changed during verification: ${asset.file}`)
         providers.set(asset.file,entry)
       }
     }
-    return providers
+    return { providers, packs }
   } finally { fs.rmSync(temporary,{recursive:true,force:true}) }
 }
 
@@ -86,12 +86,13 @@ function references(name, source) {
   return result
 }
 
-export function verifyDist(directory, {componentsDirectory} = {}) {
+export function inspectDist(directory, {componentsDirectory} = {}) {
   const dist = path.resolve(directory), files = inventory(dist)
   if (!files.has('index.html') || !files.has('.vite/manifest.json')) throw Error('Production dist requires index.html and .vite/manifest.json')
   const manifest = JSON.parse(fs.readFileSync(files.get('.vite/manifest.json').path,'utf8'))
   if (!manifest['index.html']?.isEntry || !manifest['index.html']?.file) throw Error('Production manifest has no index entry')
-  const provided = new Map([...files,...componentProviders(dist,componentsDirectory)])
+  const {providers,packs} = componentProviders(dist,componentsDirectory)
+  const provided = new Map([...files,...providers])
   const requireFile = value => {
     safePath(value)
     if (!provided.has(value)) throw Error(`Missing generated asset: ${value}`)
@@ -115,7 +116,11 @@ export function verifyDist(directory, {componentsDirectory} = {}) {
       requireFile(resolved)
     }
   }
-  return files
+  return { embedded: files, provided, packs }
+}
+
+export function verifyDist(directory, options) {
+  return inspectDist(directory, options).embedded
 }
 
 export function publishAssets(directory, destination, options = {}) {

@@ -34,6 +34,7 @@ function Invoke-Native([string]$Program, [string[]]$Arguments) {
 }
 
 $savedEnvironment = @{}
+$compositionFile = $null
 foreach ($name in @('GOOS', 'GOARCH', 'CGO_ENABLED', 'SOLOVEY_UI_PROFILE', 'GOFLAGS', 'GOWORK')) {
     $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
@@ -62,6 +63,12 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Source fingerprint is unavailable' }
     if ($ExpectedSourceFingerprint -and $sourceFingerprint -ne $ExpectedSourceFingerprint) { throw 'Source fingerprint changed before the producer' }
     if ($PackageDirectory -and (& git status --porcelain)) { throw 'Package source must be clean before generation' }
+    if ($PackageDirectory) {
+        $composition = & $node scripts/release-composition.mjs derive $sourceCommit
+        if ($LASTEXITCODE -ne 0) { throw 'Product composition verification failed before generation' }
+        $compositionFile = [IO.Path]::GetTempFileName()
+        [IO.File]::WriteAllText($compositionFile, ($composition -join "`n"), (New-Object Text.UTF8Encoding $false))
+    }
     if (!$FrontendDist) {
         Invoke-Native $node @('scripts/frontend.mjs', 'build')
         $FrontendDist = Join-Path $repoRoot '.artifacts/frontend-dist'
@@ -78,7 +85,14 @@ try {
         $ldflags += " -X github.com/MalenkiySolovey/solovey-ui/config/update.ReleaseTrustRootsBase64=$roots"
     }
     if ($PackageDirectory) { New-Item -ItemType Directory -Path $PackageDirectory | Out-Null }
-    Invoke-Native $go (@('build') + @($plan.goArgs) + @('-trimpath', '-buildvcs=false', '-ldflags', $ldflags, '-tags', $plan.tags, '-o', $OutputPath, 'main.go'))
+    $buildArguments = @('build') + @($plan.goArgs) + @('-trimpath', '-buildvcs=false', '-ldflags', $ldflags, '-tags', $plan.tags, '-o', $OutputPath, 'main.go')
+    if ($PackageDirectory) {
+        $composeArgs = @('scripts/release-composition-build.mjs', 'build', $compositionFile, 'windows', $Architecture, $Profile, $Provider, $OutputPath, '--', $go) + $buildArguments
+        $compositionFields = & $node @composeArgs
+        if ($LASTEXITCODE -ne 0) { throw 'Built Windows composition does not match admitted inputs' }
+    } else {
+        Invoke-Native $go $buildArguments
+    }
     if ($PackageDirectory) {
         # The selected lock authenticates both the engine and its companion.
         $module = "github.com/sagernet/cronet-go/lib/windows_$Architecture"
@@ -110,10 +124,12 @@ try {
         }
         $metadata += & $node scripts/anytls-integration-provenance.mjs build-info
         if ($LASTEXITCODE -ne 0) { throw 'AnyTLS provenance is unavailable' }
+        $metadata += $compositionFields
         [IO.File]::WriteAllText((Join-Path $PackageDirectory 'BUILD_INFO.txt'), (($metadata -join "`n") + "`n"), (New-Object Text.UTF8Encoding $false))
     }
     Write-Host "Built Windows $Architecture $Profile ${Provider}: $OutputPath"
 } finally {
+    if ($compositionFile) { Remove-Item -LiteralPath $compositionFile -Force }
     foreach ($name in $savedEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name], 'Process') }
     Pop-Location
 }
