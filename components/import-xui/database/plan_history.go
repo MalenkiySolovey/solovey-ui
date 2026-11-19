@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-component-import-xui/preview"
 	"github.com/MalenkiySolovey/solovey-component-import-xui/source"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
@@ -14,47 +15,7 @@ import (
 )
 
 func planHistorical(ctx context.Context, src *source.Database, plan *MigrationPlan) error {
-	if err := checkContext(ctx); err != nil {
-		return err
-	}
-	clients, err := src.Clients()
-	if err != nil {
-		return err
-	}
-	outbounds, err := src.OutboundTraffics()
-	if err != nil {
-		return err
-	}
-	count := 0
-	for _, row := range clients {
-		if row.Email != "" && (row.Up > 0 || row.Down > 0) {
-			count++
-		}
-	}
-	for _, row := range outbounds {
-		if row.Tag != "" && (row.Up > 0 || row.Down > 0) {
-			count++
-		}
-	}
-	preview, err := marshalJSON(map[string]any{
-		"client_traffics":   len(clients),
-		"outbound_traffics": len(outbounds),
-		"mode":              "aggregated_only",
-	})
-	if err != nil {
-		return err
-	}
-	plan.Items = append(plan.Items, PlanItem{
-		Kind:        KindHistory,
-		SrcID:       "traffic",
-		SrcTag:      "client_traffics/outbound_traffics",
-		DstTag:      "stats",
-		Action:      ActionCreate,
-		PreviewJSON: preview,
-		Warnings:    []string{"historical_aggregated_only"},
-	})
-	plan.Defaults.IncludeHistory = count > 0
-	return nil
+	return preview.AddHistorical(ctx, src, plan)
 }
 
 func (s *applyState) applyHistorical(ctx context.Context, tx *gorm.DB, src *source.Database, opts ApplyOptions) error {
