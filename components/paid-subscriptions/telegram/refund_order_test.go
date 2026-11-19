@@ -182,7 +182,7 @@ func TestRefundRestoresUsageCounters(t *testing.T) {
 	db.Create(&order)
 
 	ps := newPaymentCoordinator()
-	if applied, _, err := ps.ApplyPaidOrder(order.Id, "ch:1", nil); err != nil || !applied {
+	if applied, _, err := ps.applyPaidOrder(db, order.Id, "ch:1"); err != nil || !applied {
 		t.Fatalf("ApplyPaidOrder = (%v,%v), want applied", applied, err)
 	}
 	var afterApply model.Client

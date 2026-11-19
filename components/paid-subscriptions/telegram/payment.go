@@ -15,15 +15,17 @@ import (
 	paidcore "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
 	paidprovider "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
 	commerce "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
+	"github.com/MalenkiySolovey/solovey-component-paid-subscriptions/workflow"
 	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
 	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	"gorm.io/gorm"
 )
 
 var errAlreadyApplied = commerce.ErrOrderAlreadyFinalized
-var errRefundNotApplicable = errors.New("order is not refundable")
+var errRefundNotApplicable = workflow.ErrRefundNotApplicable
 
 // isAlreadyRefunded reports whether a refundStarPayment error means the charge
 // was already refunded (e.g. by a concurrent refund via the other path).
@@ -103,161 +105,31 @@ func (p *paymentCoordinator) providerByKind(kind paidprovider.ProviderKind) paid
 	return nil
 }
 
-// enabledProvidersForTariff returns providers usable for a tariff: Stars needs
-// StarsAmount>0, fiat providers need Price>0. Zero-price tariffs are not
-// purchasable (anti free-renewal).
-func (p *paymentCoordinator) enabledProvidersForTariff(t *paidcore.Tariff) []paidprovider.PaymentProvider {
-	var kinds []paidprovider.ProviderKind
-	if t.StarsAmount > 0 {
-		kinds = append(kinds, paidprovider.ProviderStars)
-	}
-	if t.Price > 0 {
-		kinds = append(kinds, paidprovider.ProviderYooKassa, paidprovider.ProviderStripe, paidprovider.ProviderPayMaster, paidprovider.ProviderCryptoBot, paidprovider.ProviderExternal)
-	}
-	var out []paidprovider.PaymentProvider
-	for _, k := range kinds {
-		if prov := p.providerByKind(k); prov != nil {
-			out = append(out, prov)
-		}
-	}
-	return out
-}
-
-// CreateOrder snapshots the price from the tariff, persists a pending order, and
-// asks the provider to prepare an invoice.
-func (p *paymentCoordinator) CreateOrder(ctx context.Context, client *model.Client, tariff *paidcore.Tariff, kind paidprovider.ProviderKind, tgUserId int64) (*paidcore.PaymentOrder, *paidprovider.Invoice, error) {
+// createOrder keeps the Panel operation admitted across provider I/O, with no
+// SQL transaction held by the transport. Paid reloads the tariff and owns the
+// immutable quote, intent reuse and ambiguity handling.
+func (p *paymentCoordinator) createOrder(ctx context.Context, clientID, tariffID uint, kind paidprovider.ProviderKind, telegramID int64) (*paidcore.PaymentOrder, *paidprovider.Invoice, error) {
 	ctx, release, err := dbsqlite.AcquireOperation(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer release()
-	db := dbsqlite.DB()
-	if client == nil || tariff == nil || client.Id == 0 || tariff.Id == 0 {
-		return nil, nil, fmt.Errorf("purchase identity is missing")
-	}
-	prov := p.providerByKind(kind)
-	if prov == nil {
-		return nil, nil, fmt.Errorf("provider not available")
-	}
-	if kind == paidprovider.ProviderCryptoBot {
-		existing, err := commerce.ActiveCryptoBotOrder(db, client.Id, tariff.Id, tgUserId)
-		if err != nil {
-			return nil, nil, err
-		}
-		if existing != nil {
-			return reusableInvoice(existing)
-		}
-	}
-	ttlMin, err := p.setting.GetPaidSubOrderTTLMinutes()
-	if err != nil || ttlMin < 1 {
+	ttl, err := p.setting.GetPaidSubOrderTTLMinutes()
+	if err != nil {
 		return nil, nil, fmt.Errorf("invalid paid subscription order TTL")
 	}
-	// Caller supplies identifiers only. Re-resolve authoritative facts before
-	// creating the immutable purchase, including stale/forged caller structs.
-	tariff, err = commerce.GetTariff(db, tariff.Id)
-	if err != nil || !tariff.Enabled {
-		return nil, nil, fmt.Errorf("tariff is unavailable")
-	}
-	var resolvedClient model.Client
-	if err := db.First(&resolvedClient, client.Id).Error; err != nil {
-		return nil, nil, err
-	}
-	client = &resolvedClient
-	var amount int64
-	var currency string
-	if kind == paidprovider.ProviderStars {
-		if tariff.StarsAmount <= 0 {
-			return nil, nil, fmt.Errorf("tariff has no stars price")
-		}
-		amount = tariff.StarsAmount
-		currency = "XTR"
-	} else {
-		if tariff.Price <= 0 {
-			return nil, nil, fmt.Errorf("tariff has no price")
-		}
-		amount = tariff.Price
-		currency = tariff.Currency
-	}
-	now := nowUnix()
-	payload, err := common.SecureRandom(32)
-	if err != nil {
-		return nil, nil, err
-	}
-	order := commerce.NewPendingOrder(client.Id, tariff, kind, amount, currency, tgUserId, payload, now, ttlMin)
-	if err := paidstore.ValidateOrderGrant(*order); err != nil {
-		return nil, nil, err
-	}
-	if kind == paidprovider.ProviderCryptoBot {
-		var created bool
-		order, created, err = commerce.CreateInvoiceIntent(db, order)
-		if err != nil {
-			return nil, nil, err
-		}
-		if !created {
-			return reusableInvoice(order)
-		}
-	} else if err := db.Create(order).Error; err != nil {
-		return nil, nil, err
-	}
-	_ = (&service.AuditService{Runtime: p.runtime}).Record(service.AuditEvent{Actor: "PaidSubBot", Event: "paidsub_order_created", Resource: "paidsub", Severity: service.AuditSeverityInfo, Details: map[string]any{"orderId": order.Id, "provider": order.Provider}})
-	snapshot := providerOrder(*order)
-	offer := paidprovider.Offer{Id: tariff.Id, Name: tariff.Name, Description: tariff.Description}
-	inv, err := prov.CreateInvoice(ctx, &snapshot, &offer, client.Id)
-	if err == nil && inv == nil {
-		err = errors.New("provider returned an empty invoice")
-	}
-	if err == nil && kind == paidprovider.ProviderCryptoBot && (inv.ProviderRef == "" || inv.PayURL == "") {
-		err = errors.New("provider returned an incomplete invoice")
-	}
-	if err != nil {
-		if kind == paidprovider.ProviderCryptoBot {
-			return order, nil, errors.Join(err, commerce.MarkInvoiceRecoverable(db, order.Id))
-		}
-		return nil, nil, errors.Join(err, commerce.MarkOrderFailed(db, order.Id))
-	}
-	if err := commerce.SaveInvoiceResult(db, order.Id, inv); err != nil {
-		if kind == paidprovider.ProviderCryptoBot {
-			return order, nil, errors.Join(err, commerce.MarkInvoiceRecoverable(db, order.Id))
-		}
-		return nil, nil, errors.Join(err, commerce.MarkOrderFailed(db, order.Id))
-	}
-	order.Status, order.ProviderRef, order.ExternalURL = paidcore.StatusPending, inv.ProviderRef, inv.PayURL
-	return order, inv, nil
-}
-
-func providerOrder(order paidcore.PaymentOrder) paidprovider.Order {
-	return paidprovider.Order{
-		Id: order.Id, Amount: order.Amount, Currency: order.Currency,
-		IdempotencyKey: order.IdempotencyKey, ProviderRef: order.ProviderRef,
-		ProviderPayload: append([]byte(nil), order.ProviderPayload...),
-	}
-}
-
-func providerOrders(orders []paidcore.PaymentOrder) []paidprovider.Order {
-	result := make([]paidprovider.Order, len(orders))
-	for i, order := range orders {
-		result[i] = providerOrder(order)
-	}
-	return result
-}
-
-func reusableInvoice(order *paidcore.PaymentOrder) (*paidcore.PaymentOrder, *paidprovider.Invoice, error) {
-	if order.Status != paidcore.StatusPending || !order.GrantSnapshot || order.ProviderRef == "" || order.ExternalURL == "" {
-		return order, nil, fmt.Errorf("existing invoice requires reconciliation or manual review")
-	}
-	return order, &paidprovider.Invoice{Method: paidprovider.InvoiceURL, PayURL: order.ExternalURL, ProviderRef: order.ProviderRef, Payload: order.IdempotencyKey}, nil
-}
-
-func (p *paymentCoordinator) getOrder(id uint) (*paidcore.PaymentOrder, error) {
-	return commerce.GetOrder(dbsqlite.DB(), id)
-}
-
-func (p *paymentCoordinator) findOrderByPayload(payload string) (*paidcore.PaymentOrder, error) {
-	return commerce.FindOrderByPayload(dbsqlite.DB(), payload)
-}
-
-func (p *paymentCoordinator) markFailed(id uint) error {
-	return commerce.MarkOrderFailed(dbsqlite.DB(), id)
+	return workflow.CreateInvoice(ctx, dbsqlite.DB(), workflow.PurchaseRequest{
+		ClientID: clientID, TariffID: tariffID, TelegramUserID: telegramID, TTLMinutes: ttl,
+	}, p.providerByKind(kind), workflow.PurchasePorts{
+		CheckClient: func(db *gorm.DB, id uint) error { return db.Select("id").First(&model.Client{}, id).Error },
+		NewIdentity: func() (string, error) { return common.SecureRandom(32) },
+		OnCreated: func(order paidcore.PaymentOrder) {
+			_ = (&service.AuditService{Runtime: p.runtime}).Record(service.AuditEvent{
+				Actor: "PaidSubBot", Event: "paidsub_order_created", Resource: "paidsub", Severity: service.AuditSeverityInfo,
+				Details: map[string]any{"orderId": order.Id, "provider": order.Provider},
+			})
+		},
+	})
 }
 
 // ApplyPaidOrder finalizes a pending order and renews the client exactly once.
@@ -265,20 +137,19 @@ func (p *paymentCoordinator) markFailed(id uint) error {
 // is atomic under SQLite write serialization, so concurrent confirmations (a
 // redelivered Telegram update or a poll race) are safe no-ops. Returns whether
 // a renewal was applied and the bound Telegram user id (for notification).
-func (p *paymentCoordinator) ApplyPaidOrder(orderID uint, chargeID string, raw []byte) (bool, int64, error) {
-	db := dbsqlite.DB()
-	result, err := paidstore.ApplyPaidOrderGrant(db, orderID, chargeID, raw, nowUnix(), "PaidSubBot")
+func (p *paymentCoordinator) applyPaidOrder(db *gorm.DB, orderID uint, chargeID string) (bool, int64, error) {
+	result, err := paidstore.ApplyPaidOrderGrant(db, orderID, chargeID, nil, nowUnix(), "PaidSubBot")
 	if errors.Is(err, errAlreadyApplied) {
 		return false, 0, nil
 	}
 	if err != nil {
 		return false, 0, err
 	}
-	p.afterPaidCommit(result, orderID)
+	p.afterPaidCommit(db, result, orderID)
 	return result.Applied, result.TelegramUserID, nil
 }
 
-func (p *paymentCoordinator) afterPaidCommit(result paidstore.AppliedOrderResult, orderID uint) {
+func (p *paymentCoordinator) afterPaidCommit(db *gorm.DB, result paidstore.AppliedOrderResult, orderID uint) {
 	if !result.Applied {
 		return
 	}
@@ -286,7 +157,7 @@ func (p *paymentCoordinator) afterPaidCommit(result paidstore.AppliedOrderResult
 	// Post-commit: re-add the (re-enabled) user to its inbounds in the running
 	// core. A restart failure does not roll back the paid renewal (logged).
 	if len(result.InboundIDs) > 0 {
-		if rErr := (&service.InboundService{Runtime: p.runtime}).RestartInbounds(dbsqlite.DB(), result.InboundIDs); rErr != nil {
+		if rErr := (&service.InboundService{Runtime: p.runtime}).RestartInbounds(db, result.InboundIDs); rErr != nil {
 			logger.Warning("paidsub: restart inbounds after renewal failed: ", rErr)
 		}
 	}
@@ -307,38 +178,30 @@ func (p *paymentCoordinator) ExpireStaleOrders() error {
 	return commerce.ExpireStaleOrders(dbsqlite.DB(), nowUnix())
 }
 
-// ---- order history & refunds ----
-
-// OrdersForTgUser returns the most recent orders belonging to a Telegram user,
-// scoped strictly by telegram_user_id (never another user's orders).
-func (p *paymentCoordinator) OrdersForTgUser(tgUserId int64, limit int) ([]paidcore.PaymentOrder, error) {
-	return commerce.OrdersForTelegramUser(dbsqlite.DB(), tgUserId, limit)
-}
-
-// RefundableOrdersForTgUser returns a user's paid (refundable) orders.
-func (p *paymentCoordinator) RefundableOrdersForTgUser(tgUserId int64, limit int) ([]paidcore.PaymentOrder, error) {
-	return commerce.RefundableOrdersForTelegramUser(dbsqlite.DB(), tgUserId, limit)
-}
-
 // finalizeRefund marks a paid order as refunded exactly once and, when revoke is
 // true, rolls back the days/traffic that order granted. The conditional UPDATE
 // ... WHERE status='paid' (checked via RowsAffected) makes a double refund a
 // safe no-op (returns errAlreadyApplied). Affected inbounds are restarted
 // post-commit so the running core re-evaluates the reduced limits. The client is
 // never disabled by a refund.
-func (p *paymentCoordinator) finalizeRefund(orderID uint, revoke bool) error {
-	db := dbsqlite.DB()
-	inboundIds, err := paidstore.FinalizeRefundGrant(db, orderID, revoke, nowUnix(), "PaidSubBot")
+func (p *paymentCoordinator) finalizeRefund(db *gorm.DB, orderID uint, claim string, revoke bool) error {
+	var inboundIds []uint
+	var err error
+	if claim == "" {
+		inboundIds, err = paidstore.FinalizeRefundGrant(db, orderID, revoke, nowUnix(), "PaidSubBot")
+	} else {
+		inboundIds, err = paidstore.FinalizeClaimedRefundGrant(db, orderID, claim, nowUnix(), "PaidSubBot")
+	}
 	if err != nil {
 		return err
 	}
-	p.afterRefundCommit(inboundIds, orderID, revoke)
+	p.afterRefundCommit(db, inboundIds, orderID, revoke)
 	return nil
 }
 
-func (p *paymentCoordinator) afterRefundCommit(inboundIds []uint, orderID uint, revoke bool) {
+func (p *paymentCoordinator) afterRefundCommit(db *gorm.DB, inboundIds []uint, orderID uint, revoke bool) {
 	if len(inboundIds) > 0 {
-		if rErr := (&service.InboundService{Runtime: p.runtime}).RestartInbounds(dbsqlite.DB(), inboundIds); rErr != nil {
+		if rErr := (&service.InboundService{Runtime: p.runtime}).RestartInbounds(db, inboundIds); rErr != nil {
 			logger.Warning("paidsub: restart inbounds after refund failed: ", rErr)
 		}
 	}
@@ -351,12 +214,8 @@ func (p *paymentCoordinator) afterRefundCommit(inboundIds []uint, orderID uint, 
 	})
 }
 
-// RefundOrder is the admin-initiated refund (panel Orders tab). For Stars it
-// returns the money via refundStarPayment FIRST, then marks the order refunded
-// (so the admin can cleanly retry if Telegram rejects the call); for every other
-// provider the money must be refunded in the provider's own dashboard, so this
-// only marks the order refunded (status "refunded_manual"). revoke is the
-// admin's per-refund choice to roll back the granted days/traffic.
+// refundOrder retains DB admission across the remote Stars refund. Paid
+// preserves the durable claim; the Panel finalizes its entitlement transaction.
 func (p *paymentCoordinator) refundOrder(ctx context.Context, orderID uint, revoke bool) (string, error) {
 	ctx, release, err := dbsqlite.AcquireOperation(ctx)
 	if err != nil {
@@ -365,69 +224,24 @@ func (p *paymentCoordinator) refundOrder(ctx context.Context, orderID uint, revo
 	defer release()
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	order, err := p.getOrder(orderID)
-	if err != nil {
-		return "", err
-	}
-	if order.Status != paidcore.StatusPaid && order.Status != paidcore.StatusRefundPending {
-		return "", errRefundNotApplicable
-	}
-	// Defensive: a paid order always has Amount > 0 (CreateOrder rejects zero),
-	// so a non-positive amount means a corrupted row — never act on it.
-	if order.Amount <= 0 {
-		return "", errRefundNotApplicable
-	}
-	if err := paidstore.ValidateOrderGrant(*order); err != nil {
-		return "", errRefundNotApplicable
-	}
-	if order.Provider == string(paidprovider.ProviderStars) {
-		if !strings.HasPrefix(order.ProviderChargeID, "tg:") || strings.TrimPrefix(order.ProviderChargeID, "tg:") == "" {
-			return "", errRefundNotApplicable
-		}
-		token, err := common.SecureRandom(32)
-		if err != nil {
-			return "", err
-		}
-		refundDB := dbsqlite.DB()
-		claimed, err := paidstore.ClaimStarsRefund(refundDB, orderID, revoke, token, nowUnix())
-		if err != nil {
-			return "", err
-		}
-		defer func() {
-			if err := paidstore.ReleaseRefundClaim(refundDB, orderID, token); err != nil {
-				// Keep the durable lease and intent recoverable; do not expose
-				// private claim/provider details or undo a committed refund.
-				logger.Warning("paidsub: refund claim release deferred to lease expiry, order ", orderID)
+	return workflow.RefundOrder(ctx, dbsqlite.DB(), orderID, revoke, workflow.RefundPorts{
+		NewIdentity: func() (string, error) { return common.SecureRandom(32) },
+		RefundStars: func(ctx context.Context, userID int64, charge string) error {
+			sender, err := newSenderBot(p.runtime)
+			if err != nil {
+				return err
 			}
-		}()
-		sender, err := newSenderBot(p.runtime)
-		if err != nil {
-			return "", err
-		}
-		defer sender.closeIdleConnections()
-		charge := strings.TrimPrefix(claimed.ProviderChargeID, "tg:")
-		if charge == "" {
-			return "", fmt.Errorf("order has no Stars charge id")
-		}
-		// An "already refunded" response means a concurrent refund (e.g. the bot
-		// path) returned the money first — treat it as success, not a failure.
-		if err := sender.refundStarPayment(ctx, claimed.TelegramUserId, charge); err != nil && !isAlreadyRefunded(err) {
-			return "", fmt.Errorf("stars refund failed")
-		}
-		inbounds, err := paidstore.FinalizeClaimedRefundGrant(refundDB, orderID, token, nowUnix(), "PaidSubBot")
-		if err != nil {
-			return "", err
-		}
-		p.afterRefundCommit(inbounds, orderID, claimed.RefundRevoke)
-		return "refunded", nil
-	}
-	if order.Status != paidcore.StatusPaid {
-		return "", errRefundNotApplicable
-	}
-	if err := p.finalizeRefund(orderID, revoke); err != nil && !errors.Is(err, errAlreadyApplied) {
-		return "", err
-	}
-	return "refunded_manual", nil
+			defer sender.closeIdleConnections()
+			if err := sender.refundStarPayment(ctx, userID, charge); err != nil && !isAlreadyRefunded(err) {
+				return fmt.Errorf("stars refund failed")
+			}
+			return nil
+		},
+		Finalize: p.finalizeRefund,
+		ReleaseFailed: func(orderID uint) {
+			logger.Warning("paidsub: refund claim release deferred to lease expiry, order ", orderID)
+		},
+	})
 }
 
 // RefundOrder performs the admin-facing refund operation. Telegram Stars need

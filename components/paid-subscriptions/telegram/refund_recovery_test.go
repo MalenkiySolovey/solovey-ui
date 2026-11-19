@@ -16,8 +16,8 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	paid "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
+	paidstore "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
 	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
-	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
 	paidsettings "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/settings"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )

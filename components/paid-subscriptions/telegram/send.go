@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 
+	"github.com/MalenkiySolovey/solovey-component-paid-subscriptions/customerbot"
 	paidprovider "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
 	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
 )
@@ -25,7 +26,7 @@ func (b *Bot) callJSON(ctx context.Context, method string, payload any) error {
 	return err
 }
 
-func (b *Bot) getUpdates(ctx context.Context, offset int64, timeout int) ([]tgUpdate, error) {
+func (b *Bot) getUpdates(ctx context.Context, offset int64, timeout int) ([]customerbot.Update, error) {
 	query := url.Values{}
 	query.Set("timeout", strconv.Itoa(timeout))
 	query.Set("offset", strconv.FormatInt(offset, 10))
@@ -34,14 +35,14 @@ func (b *Bot) getUpdates(ctx context.Context, offset int64, timeout int) ([]tgUp
 	if err != nil {
 		return nil, err
 	}
-	var updates []tgUpdate
+	var updates []customerbot.Update
 	if err := json.Unmarshal(result, &updates); err != nil {
 		return nil, fmt.Errorf("telegram getUpdates: malformed result")
 	}
 	return updates, nil
 }
 
-func (b *Bot) sendMessage(ctx context.Context, chatID int64, text string, markup *inlineKeyboard) error {
+func (b *Bot) sendMessage(ctx context.Context, chatID int64, text string, markup *customerbot.Keyboard) error {
 	payload := map[string]any{"chat_id": chatID, "text": text, "disable_web_page_preview": true}
 	if markup != nil {
 		payload["reply_markup"] = markup

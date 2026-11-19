@@ -25,7 +25,7 @@ func TestRefundRacingUncommittedGrantWaitsForCompleteApplication(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A refund arriving before application cannot claim or mutate this order.
-	if _, err := ClaimStarsRefund(db, order.Id, true, "too-early", 1000); !errors.Is(err, ErrRefundInProgress) {
+	if _, err := commerce.ClaimStarsRefund(db, order.Id, true, "too-early", 1000); !errors.Is(err, commerce.ErrRefundInProgress) {
 		t.Fatal("unapplied refund accepted", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -65,7 +65,7 @@ func TestRefundRacingUncommittedGrantWaitsForCompleteApplication(t *testing.T) {
 		t.Fatal("grant barrier not reached")
 	}
 	go func() {
-		_, err := ClaimStarsRefund(db.WithContext(ctx), order.Id, true, "refund-claim", 1000)
+		_, err := commerce.ClaimStarsRefund(db.WithContext(ctx), order.Id, true, "refund-claim", 1000)
 		refundDone <- err
 	}()
 	select {

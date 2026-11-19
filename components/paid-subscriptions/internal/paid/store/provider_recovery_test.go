@@ -46,11 +46,11 @@ func TestRecoveryPreservesHistoricalIdentityAndLegacyPaidEvidence(t *testing.T) 
 			if err := json.Unmarshal(persisted.ProviderPayload, &evidence); err != nil || evidence["ref"] != "17" {
 				t.Fatal("original reference erased", err)
 			}
-			queued, err := CancellationWork(db, 100)
+			queued, err := commerce.CancellationWork(db, 100)
 			if err != nil || len(queued) != 1 || queued[0].Ref != "17" {
 				t.Fatal("active sibling not durable", queued, err)
 			}
-			if err := CompleteCancellation(db, queued[0].Id); err != nil {
+			if err := commerce.CompleteCancellation(db, queued[0].Id); err != nil {
 				t.Fatal(err)
 			}
 			if err := paid.EnsureSchema(db); err != nil {
@@ -172,11 +172,11 @@ func TestLegacyRecoveryAndAmbiguityNeverInventPurchase(t *testing.T) {
 				t.Fatal("ambiguous grant")
 			}
 			if kind == "legacy_active" {
-				work, err := CancellationWork(db, 100)
+				work, err := commerce.CancellationWork(db, 100)
 				if err != nil || len(work) != 1 || got.LegacyResolved {
 					t.Fatal("legacy cancellation not durable", work, err)
 				}
-				if err := CompleteCancellation(db, work[0].Id); err != nil {
+				if err := commerce.CompleteCancellation(db, work[0].Id); err != nil {
 					t.Fatal(err)
 				}
 				for range 2 {
@@ -210,7 +210,7 @@ func TestRefundClaimArbitratesConcurrentCallsAndRetainsOriginalPolicy(t *testing
 		go func(token string) {
 			defer wg.Done()
 			<-start
-			_, err := ClaimStarsRefund(db, order.Id, true, token, 100)
+			_, err := commerce.ClaimStarsRefund(db, order.Id, true, token, 100)
 			if err == nil {
 				tokens <- token
 			} else {
@@ -226,13 +226,13 @@ func TestRefundClaimArbitratesConcurrentCallsAndRetainsOriginalPolicy(t *testing
 		t.Fatal("refund network claim duplicated")
 	}
 	first := <-tokens
-	if !errors.Is(<-failures, ErrRefundInProgress) {
+	if !errors.Is(<-failures, commerce.ErrRefundInProgress) {
 		t.Fatal("wrong conflict")
 	}
-	if err := ReleaseRefundClaim(db, order.Id, first); err != nil {
+	if err := commerce.ReleaseRefundClaim(db, order.Id, first); err != nil {
 		t.Fatal(err)
 	}
-	retry, err := ClaimStarsRefund(db, order.Id, false, "retry", 101)
+	retry, err := commerce.ClaimStarsRefund(db, order.Id, false, "retry", 101)
 	if err != nil || !retry.RefundRevoke || retry.ProviderChargeID != "tg:original" {
 		t.Fatal("retry changed intent", retry, err)
 	}
@@ -262,7 +262,7 @@ func TestPersistentProviderCursorRotatesBeyondThousandAndWraps(t *testing.T) {
 		t.Fatal(err)
 	}
 	for batch := 0; batch < 13; batch++ {
-		work, err := WorkOrders(db.Session(&gorm.Session{NewDB: true}), "poll", 100)
+		work, err := commerce.WorkOrders(db.Session(&gorm.Session{NewDB: true}), "poll", 100)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -272,11 +272,11 @@ func TestPersistentProviderCursorRotatesBeyondThousandAndWraps(t *testing.T) {
 		if work[0].Id != uint(batch*100+1) {
 			t.Fatal("cursor starvation", batch, work[0].Id)
 		}
-		if err := AdvanceProviderCursor(db, "poll", work[len(work)-1].Id); err != nil {
+		if err := commerce.AdvanceProviderCursor(db, "poll", work[len(work)-1].Id); err != nil {
 			t.Fatal(err)
 		}
 	}
-	work, err := WorkOrders(db, "poll", 100)
+	work, err := commerce.WorkOrders(db, "poll", 100)
 	if err != nil || len(work) == 0 || work[0].Id != 1 {
 		t.Fatal("cursor did not wrap", err)
 	}
@@ -305,17 +305,17 @@ func TestPersistentProviderCursorRotatesBeyondThousandAndWraps(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = restartedPool.Close() })
-	work, err = WorkOrders(restarted, "poll", 100)
+	work, err = commerce.WorkOrders(restarted, "poll", 100)
 	if err != nil || len(work) != 100 || work[0].Id != 1 {
 		t.Fatal("restart/deleted cursor prevented wrap", work, err)
 	}
-	if err := AdvanceProviderCursor(restarted, "poll", work[len(work)-1].Id); err != nil {
+	if err := commerce.AdvanceProviderCursor(restarted, "poll", work[len(work)-1].Id); err != nil {
 		t.Fatal(err)
 	}
 	if err := restarted.Delete(&paid.PaymentOrder{}, []uint{100, 101}).Error; err != nil {
 		t.Fatal(err)
 	}
-	work, err = WorkOrders(restarted, "poll", 100)
+	work, err = commerce.WorkOrders(restarted, "poll", 100)
 	if err != nil || len(work) != 100 || work[0].Id != 102 {
 		t.Fatal("deletion near cursor lost fair progress", work, err)
 	}
@@ -330,16 +330,16 @@ func TestExpiredRefundClaimRetainsIntentAndRejectsOldCompletion(t *testing.T) {
 	if err := db.Create(&order).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ClaimStarsRefund(db, order.Id, true, "prior-process", 100); err != nil {
+	if _, err := commerce.ClaimStarsRefund(db, order.Id, true, "prior-process", 100); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ClaimStarsRefund(db, order.Id, false, "early-retry", 219); !errors.Is(err, ErrRefundInProgress) {
+	if _, err := commerce.ClaimStarsRefund(db, order.Id, false, "early-retry", 219); !errors.Is(err, commerce.ErrRefundInProgress) {
 		t.Fatal("unexpired claim stolen", err)
 	}
-	if recovered, err := ClaimStarsRefund(db.Session(&gorm.Session{NewDB: true}), order.Id, false, "restarted-process", 221); err != nil || !recovered.RefundRevoke {
+	if recovered, err := commerce.ClaimStarsRefund(db.Session(&gorm.Session{NewDB: true}), order.Id, false, "restarted-process", 221); err != nil || !recovered.RefundRevoke {
 		t.Fatal("restart lost original policy", err)
 	}
-	if err := ReleaseRefundClaim(db, order.Id, "prior-process"); err != nil {
+	if err := commerce.ReleaseRefundClaim(db, order.Id, "prior-process"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := FinalizeClaimedRefundGrant(db, order.Id, "prior-process", 222, "test"); !errors.Is(err, commerce.ErrOrderAlreadyFinalized) {

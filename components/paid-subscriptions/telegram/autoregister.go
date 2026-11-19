@@ -13,6 +13,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	paidcore "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
+	"github.com/MalenkiySolovey/solovey-component-paid-subscriptions/customerbot"
 	commerce "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -26,7 +27,7 @@ import (
 // user when auto-registration is enabled. Returns true if it handled the
 // interaction. All client data is built server-side; nothing from the message
 // except the (validated) numeric id and a sanitized username is used.
-func (b *Bot) tryAutoRegister(ctx context.Context, chatID int64, from *tgUser, l lang) bool {
+func (b *Bot) tryAutoRegister(ctx context.Context, chatID int64, from *customerbot.User, l customerbot.Language) bool {
 	enabled, err := b.setting.GetPaidSubAutoRegister()
 	if err != nil || !enabled {
 		return false
@@ -36,17 +37,17 @@ func (b *Bot) tryAutoRegister(ctx context.Context, chatID int64, from *tgUser, l
 	maxStart, err := b.setting.GetPaidSubStartRateLimitPerMin()
 	if err != nil {
 		logger.Warning("paidsub: read auto-register rate limit: ", err)
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
+		_ = b.sendMessage(ctx, chatID, customerbot.Text(l, "error"), nil)
 		return true
 	}
 	if !b.startLimiter.AllowWithLimit(from.ID, maxStart).Allowed {
-		_ = b.sendMessage(ctx, chatID, tr(l, "rate_limited"), nil)
+		_ = b.sendMessage(ctx, chatID, customerbot.Text(l, "rate_limited"), nil)
 		return true
 	}
 
 	inbounds, _ := b.setting.GetPaidSubAutoInbounds()
 	if len(inbounds) == 0 {
-		_ = b.sendMessage(ctx, chatID, tr(l, "reg_no_setup"), nil)
+		_ = b.sendMessage(ctx, chatID, customerbot.Text(l, "reg_no_setup"), nil)
 		return true
 	}
 
@@ -56,7 +57,7 @@ func (b *Bot) tryAutoRegister(ctx context.Context, chatID int64, from *tgUser, l
 	maxClients, err := b.setting.GetPaidSubMaxClients()
 	if err != nil || maxClients < 1 {
 		logger.Warning("paidsub: invalid auto-register client cap")
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
+		_ = b.sendMessage(ctx, chatID, customerbot.Text(l, "error"), nil)
 		return true
 	}
 	var cnt int64
@@ -64,11 +65,11 @@ func (b *Bot) tryAutoRegister(ctx context.Context, chatID int64, from *tgUser, l
 		// Fail closed: if the anti-DoS cap cannot be evaluated, refuse rather
 		// than risk unbounded auto-registration.
 		logger.Warning("paidsub: count bindings for cap failed: ", err)
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
+		_ = b.sendMessage(ctx, chatID, customerbot.Text(l, "error"), nil)
 		return true
 	}
 	if cnt >= int64(maxClients) {
-		_ = b.sendMessage(ctx, chatID, tr(l, "reg_full"), nil)
+		_ = b.sendMessage(ctx, chatID, customerbot.Text(l, "reg_full"), nil)
 		return true
 	}
 
@@ -76,7 +77,7 @@ func (b *Bot) tryAutoRegister(ctx context.Context, chatID int64, from *tgUser, l
 	config, err := generateClientConfig(name)
 	if err != nil {
 		logger.Warning("paidsub: generate client config: ", err)
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
+		_ = b.sendMessage(ctx, chatID, customerbot.Text(l, "error"), nil)
 		return true
 	}
 
@@ -84,7 +85,7 @@ func (b *Bot) tryAutoRegister(ctx context.Context, chatID int64, from *tgUser, l
 	trialGB, volumeErr := b.setting.GetPaidSubTrialVolumeGB()
 	if daysErr != nil || volumeErr != nil || trialDays < 0 || trialGB < 0 {
 		logger.Warning("paidsub: invalid auto-register trial limits")
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
+		_ = b.sendMessage(ctx, chatID, customerbot.Text(l, "error"), nil)
 		return true
 	}
 	var expiry int64
@@ -108,32 +109,32 @@ func (b *Bot) tryAutoRegister(ctx context.Context, chatID int64, from *tgUser, l
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
+		_ = b.sendMessage(ctx, chatID, customerbot.Text(l, "error"), nil)
 		return true
 	}
 
 	host, _ := b.setting.GetWebDomain()
 	if b.runtime == nil {
 		logger.Warning("paidsub: auto-register runtime unavailable")
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
+		_ = b.sendMessage(ctx, chatID, customerbot.Text(l, "error"), nil)
 		return true
 	}
 	cfg := service.NewConfigServiceWithRuntime(b.runtime)
 	if _, err := cfg.Save("clients", "new", data, "", "PaidSubBot", host); err != nil {
 		logger.Warning("paidsub: auto-register save failed: ", err)
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
+		_ = b.sendMessage(ctx, chatID, customerbot.Text(l, "error"), nil)
 		return true
 	}
 
 	var created model.Client
 	if err := db.Where("name = ?", name).First(&created).Error; err != nil {
 		logger.Warning("paidsub: auto-register lookup failed: ", err)
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
+		_ = b.sendMessage(ctx, chatID, customerbot.Text(l, "error"), nil)
 		return true
 	}
 	if err := commerce.SetBinding(db, created.Id, from.ID, nowUnix()); err != nil {
 		logger.Warning("paidsub: auto-register bind failed: ", err)
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
+		_ = b.sendMessage(ctx, chatID, customerbot.Text(l, "error"), nil)
 		return true
 	}
 	_ = (&service.AuditService{Runtime: b.runtime}).Record(service.AuditEvent{
@@ -143,7 +144,7 @@ func (b *Bot) tryAutoRegister(ctx context.Context, chatID int64, from *tgUser, l
 		Severity: service.AuditSeverityInfo,
 		Details:  map[string]any{"clientId": created.Id, "tgUserId": from.ID},
 	})
-	_ = b.sendMessage(ctx, chatID, tr(l, "registered"), b.menuKeyboard(l))
+	_ = b.sendMessage(ctx, chatID, customerbot.Text(l, "registered"), customerbot.MenuKeyboard(l))
 	return true
 }
 

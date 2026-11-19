@@ -13,6 +13,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
+	"github.com/MalenkiySolovey/solovey-component-paid-subscriptions/customerbot"
 	"github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
 )
 
@@ -68,7 +69,7 @@ func TestHandlePreCheckoutApprovesValidOrder(t *testing.T) {
 
 	rt := &recordingTransport{}
 	b := newTestBot(rt)
-	b.handlePreCheckout(context.Background(), &tgPreCheckoutQuery{ID: "q1", From: tgUser{ID: 7}, Currency: "XTR", TotalAmount: 100, InvoicePayload: "pc-ok"})
+	b.customerHandler(db).HandlePreCheckout(context.Background(), &customerbot.PreCheckoutQuery{ID: "q1", From: customerbot.User{ID: 7}, Currency: "XTR", TotalAmount: 100, InvoicePayload: "pc-ok"})
 
 	call, ok := rt.lastCall("answerPreCheckoutQuery")
 	if !ok {
@@ -93,7 +94,7 @@ func TestStarsCallbackCannotSubstituteNonTelegramRefundCharge(t *testing.T) {
 		t.Fatal(err)
 	}
 	b := newTestBot(&recordingTransport{})
-	b.handleSuccessfulPayment(context.Background(), &tgMessage{From: &tgUser{ID: 7}, Chat: tgChat{ID: 7}, SuccessfulPayment: &tgSuccessfulPayment{InvoicePayload: order.IdempotencyKey, Currency: "XTR", TotalAmount: 10, ProviderPaymentChargeID: "different-provider-charge"}})
+	b.customerHandler(db).HandleSuccessfulPayment(context.Background(), &customerbot.Message{From: &customerbot.User{ID: 7}, Chat: customerbot.Chat{ID: 7}, SuccessfulPayment: &customerbot.SuccessfulPayment{InvoicePayload: order.IdempotencyKey, Currency: "XTR", TotalAmount: 10, ProviderPaymentChargeID: "different-provider-charge"}})
 	db.First(&order, order.Id)
 	db.First(&client, 1)
 	if order.Status != paid.StatusManualReview || client.Volume != 100 || order.ProviderChargeID != "" {
@@ -109,25 +110,25 @@ func TestHandlePreCheckoutRejectsInvalid(t *testing.T) {
 	if err := ensureTestSchema(db); err != nil {
 		t.Fatalf("EnsureSchema: %v", err)
 	}
-	db.Create(&paid.PaymentOrder{ClientId: 1, TariffId: 1, Provider: string(provider.ProviderStars), Amount: 100, Currency: "XTR", Status: paid.StatusPending, TelegramUserId: 7, IdempotencyKey: "pc"})
-	db.Create(&paid.PaymentOrder{ClientId: 1, TariffId: 1, Provider: string(provider.ProviderStars), Amount: 100, Currency: "XTR", Status: paid.StatusPaid, TelegramUserId: 7, IdempotencyKey: "pc-paid"})
+	db.Create(&paid.PaymentOrder{GrantSnapshot: true, ClientId: 1, TariffId: 1, Provider: string(provider.ProviderStars), Amount: 100, Currency: "XTR", Status: paid.StatusPending, TelegramUserId: 7, IdempotencyKey: "pc"})
+	db.Create(&paid.PaymentOrder{GrantSnapshot: true, ClientId: 1, TariffId: 1, Provider: string(provider.ProviderStars), Amount: 100, Currency: "XTR", Status: paid.StatusPaid, TelegramUserId: 7, IdempotencyKey: "pc-paid"})
 
 	cases := []struct {
 		name string
-		q    tgPreCheckoutQuery
+		q    customerbot.PreCheckoutQuery
 	}{
-		{"wrong amount", tgPreCheckoutQuery{ID: "q", From: tgUser{ID: 7}, Currency: "XTR", TotalAmount: 999, InvoicePayload: "pc"}},
-		{"wrong currency", tgPreCheckoutQuery{ID: "q", From: tgUser{ID: 7}, Currency: "USD", TotalAmount: 100, InvoicePayload: "pc"}},
-		{"non-pending order", tgPreCheckoutQuery{ID: "q", From: tgUser{ID: 7}, Currency: "XTR", TotalAmount: 100, InvoicePayload: "pc-paid"}},
-		{"unknown payload", tgPreCheckoutQuery{ID: "q", From: tgUser{ID: 7}, Currency: "XTR", TotalAmount: 100, InvoicePayload: "nope"}},
-		{"wrong telegram user", tgPreCheckoutQuery{ID: "q", From: tgUser{ID: 999}, Currency: "XTR", TotalAmount: 100, InvoicePayload: "pc"}},
+		{"wrong amount", customerbot.PreCheckoutQuery{ID: "q", From: customerbot.User{ID: 7}, Currency: "XTR", TotalAmount: 999, InvoicePayload: "pc"}},
+		{"wrong currency", customerbot.PreCheckoutQuery{ID: "q", From: customerbot.User{ID: 7}, Currency: "USD", TotalAmount: 100, InvoicePayload: "pc"}},
+		{"non-pending order", customerbot.PreCheckoutQuery{ID: "q", From: customerbot.User{ID: 7}, Currency: "XTR", TotalAmount: 100, InvoicePayload: "pc-paid"}},
+		{"unknown payload", customerbot.PreCheckoutQuery{ID: "q", From: customerbot.User{ID: 7}, Currency: "XTR", TotalAmount: 100, InvoicePayload: "nope"}},
+		{"wrong telegram user", customerbot.PreCheckoutQuery{ID: "q", From: customerbot.User{ID: 999}, Currency: "XTR", TotalAmount: 100, InvoicePayload: "pc"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			rt := &recordingTransport{}
 			b := newTestBot(rt)
 			q := tc.q
-			b.handlePreCheckout(context.Background(), &q)
+			b.customerHandler(db).HandlePreCheckout(context.Background(), &q)
 			call, ok := rt.lastCall("answerPreCheckoutQuery")
 			if !ok {
 				t.Fatal("expected answerPreCheckoutQuery to be called")
@@ -153,9 +154,9 @@ func TestHandleSuccessfulPaymentAppliesRenewalOnMatch(t *testing.T) {
 
 	rt := &recordingTransport{}
 	b := newTestBot(rt)
-	b.handleSuccessfulPayment(context.Background(), &tgMessage{
-		From: &tgUser{ID: 7}, Chat: tgChat{ID: 7},
-		SuccessfulPayment: &tgSuccessfulPayment{Currency: "XTR", TotalAmount: 100, InvoicePayload: "sp-ok", TelegramPaymentChargeID: "ch1"},
+	b.customerHandler(db).HandleSuccessfulPayment(context.Background(), &customerbot.Message{
+		From: &customerbot.User{ID: 7}, Chat: customerbot.Chat{ID: 7},
+		SuccessfulPayment: &customerbot.SuccessfulPayment{Currency: "XTR", TotalAmount: 100, InvoicePayload: "sp-ok", TelegramPaymentChargeID: "ch1"},
 	})
 
 	var o paid.PaymentOrder
@@ -179,10 +180,10 @@ func TestHandleSuccessfulPaymentAppliesRenewalOnMatch(t *testing.T) {
 func TestHandleSuccessfulPaymentRefusesMismatch(t *testing.T) {
 	cases := []struct {
 		name string
-		sp   tgSuccessfulPayment
+		sp   customerbot.SuccessfulPayment
 	}{
-		{"amount mismatch", tgSuccessfulPayment{Currency: "XTR", TotalAmount: 50, InvoicePayload: "sp", TelegramPaymentChargeID: "x"}},
-		{"currency mismatch", tgSuccessfulPayment{Currency: "USD", TotalAmount: 100, InvoicePayload: "sp", TelegramPaymentChargeID: "x"}},
+		{"amount mismatch", customerbot.SuccessfulPayment{Currency: "XTR", TotalAmount: 50, InvoicePayload: "sp", TelegramPaymentChargeID: "x"}},
+		{"currency mismatch", customerbot.SuccessfulPayment{Currency: "USD", TotalAmount: 100, InvoicePayload: "sp", TelegramPaymentChargeID: "x"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -198,7 +199,7 @@ func TestHandleSuccessfulPaymentRefusesMismatch(t *testing.T) {
 			rt := &recordingTransport{}
 			b := newTestBot(rt)
 			sp := tc.sp
-			b.handleSuccessfulPayment(context.Background(), &tgMessage{From: &tgUser{ID: 7}, Chat: tgChat{ID: 7}, SuccessfulPayment: &sp})
+			b.customerHandler(db).HandleSuccessfulPayment(context.Background(), &customerbot.Message{From: &customerbot.User{ID: 7}, Chat: customerbot.Chat{ID: 7}, SuccessfulPayment: &sp})
 
 			var o paid.PaymentOrder
 			db.Where("id = ?", order.Id).First(&o)
@@ -229,9 +230,9 @@ func TestHandleSuccessfulPaymentRefusesWrongTelegramUser(t *testing.T) {
 
 	rt := &recordingTransport{}
 	b := newTestBot(rt)
-	b.handleSuccessfulPayment(context.Background(), &tgMessage{
-		From: &tgUser{ID: 999}, Chat: tgChat{ID: 999},
-		SuccessfulPayment: &tgSuccessfulPayment{Currency: "XTR", TotalAmount: 100, InvoicePayload: "spw", TelegramPaymentChargeID: "x"},
+	b.customerHandler(db).HandleSuccessfulPayment(context.Background(), &customerbot.Message{
+		From: &customerbot.User{ID: 999}, Chat: customerbot.Chat{ID: 999},
+		SuccessfulPayment: &customerbot.SuccessfulPayment{Currency: "XTR", TotalAmount: 100, InvoicePayload: "spw", TelegramPaymentChargeID: "x"},
 	})
 
 	var o paid.PaymentOrder
@@ -256,9 +257,9 @@ func TestHandleSuccessfulPaymentUnknownPayloadIsNoop(t *testing.T) {
 
 	rt := &recordingTransport{}
 	b := newTestBot(rt)
-	b.handleSuccessfulPayment(context.Background(), &tgMessage{
-		From: &tgUser{ID: 7}, Chat: tgChat{ID: 7},
-		SuccessfulPayment: &tgSuccessfulPayment{Currency: "XTR", TotalAmount: 100, InvoicePayload: "ghost", TelegramPaymentChargeID: "x"},
+	b.customerHandler(db).HandleSuccessfulPayment(context.Background(), &customerbot.Message{
+		From: &customerbot.User{ID: 7}, Chat: customerbot.Chat{ID: 7},
+		SuccessfulPayment: &customerbot.SuccessfulPayment{Currency: "XTR", TotalAmount: 100, InvoicePayload: "ghost", TelegramPaymentChargeID: "x"},
 	})
 
 	// The known order must be untouched (no order matched the unknown payload).
