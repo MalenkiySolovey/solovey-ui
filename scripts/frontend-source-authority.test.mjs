@@ -24,6 +24,10 @@ test('Product has one immutable external Frontend pin and no second editable sou
  }
  const lock=JSON.parse(fs.readFileSync(path.join(root,'components/sources.lock.json')))
  assert.equal(lock.schema,'solovey.component-source-inputs/v1')
+ for(const {id} of lock.sources) {
+  const prefix=`components/${id}/frontend/`
+  assert.ok(!tracked.some(name=>name.startsWith(prefix)),`Product retains editable Frontend source for pinned ${id}`)
+ }
  assert.ok(!tracked.includes('frontend/components/sources.lock.json'))
 })
 
