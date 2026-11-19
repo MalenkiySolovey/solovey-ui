@@ -4,12 +4,16 @@ ADVISORY_RUN = $(RUN) -ExpectedFailureExitCode 1
 GO_TEST_ARGS ?=
 GO_TEST_NAME_SUFFIX ?=
 
-.PHONY: audit audit\:lint-go audit\:vet audit\:build audit\:test-go audit\:test-go-race audit\:cover audit\:gosec audit\:vuln audit\:fe-typecheck audit\:fe-lint audit\:fe-build audit\:test-fe audit\:e2e audit\:fe-install
+.PHONY: audit audit\:lint-go audit\:staticcheck audit\:golangci-lint audit\:vet audit\:build audit\:test-go audit\:test-go-race audit\:cover audit\:gosec audit\:vuln audit\:fe-typecheck audit\:fe-lint audit\:fe-build audit\:test-fe audit\:e2e audit\:fe-install
 
 audit: audit\:build audit\:vet audit\:test-go audit\:test-go-race audit\:cover audit\:gosec audit\:vuln audit\:lint-go audit\:fe-typecheck audit\:fe-lint audit\:fe-build audit\:test-fe audit\:e2e
 
-audit\:lint-go:
+audit\:lint-go: audit\:staticcheck audit\:golangci-lint
+
+audit\:staticcheck:
 	$(RUN) -Group analysis -Name staticcheck -CommandLine "staticcheck ./..."
+
+audit\:golangci-lint:
 	$(RUN) -Group analysis -Name golangci-lint-blocking -CommandLine "golangci-lint run --config .golangci-blocking.yml"
 	$(ADVISORY_RUN) -Group advisory -Name golangci-lint-full -CommandLine "golangci-lint run"
 
