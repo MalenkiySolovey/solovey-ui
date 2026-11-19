@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/mapping"
-	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
+	"github.com/MalenkiySolovey/solovey-component-import-xui/mapping"
+	"github.com/MalenkiySolovey/solovey-component-import-xui/source"
 )
 
 func classifyPlan(ctx context.Context, src *source.Database, plan *MigrationPlan) error {
