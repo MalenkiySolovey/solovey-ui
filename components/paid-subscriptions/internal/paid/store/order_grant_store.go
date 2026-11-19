@@ -53,8 +53,9 @@ func ApplyPaidOrderGrant(db *gorm.DB, orderID uint, chargeID string, raw []byte,
 			return err
 		}
 		if grant.TrafficBytes > 0 {
+			orderUpdates := map[string]any{"granted_up": renewal.Usage.Up, "granted_down": renewal.Usage.Down}
 			if err := tx.Model(&paid.PaymentOrder{}).Where("id = ?", orderID).
-				Updates(map[string]any{"granted_up": renewal.Usage.Up, "granted_down": renewal.Usage.Down}).Error; err != nil {
+				Updates(orderUpdates).Error; err != nil {
 				return err
 			}
 		}
