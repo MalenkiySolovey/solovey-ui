@@ -4,10 +4,41 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 )
+
+func TestLegacyPanelUpdateIsReadOnlyCompatibilityMetadata(t *testing.T) {
+	t.Setenv(ManagementEnv, "runtime")
+	path := filepath.Join(t.TempDir(), "installed.json")
+	t.Setenv(InstalledFileEnv, path)
+	old := InstalledComponent{ID: FormerPanelUpdateID, Delivery: manifest.DeliveryInProcess, Installed: true}
+	other := InstalledComponent{ID: "fixture-component", Delivery: manifest.DeliveryInProcess, Installed: true}
+	if err := Store(path, Metadata{Version: 1, Components: []InstalledComponent{old, other}}); err != nil {
+		t.Fatal(err)
+	}
+	available := []manifest.Manifest{{ID: old.ID, Name: "Old", Version: "1", Delivery: old.Delivery}, {ID: other.ID, Name: "Fixture", Version: "1", Delivery: other.Delivery}}
+	ids, err := InstalledIDs(available)
+	if _, legacy := ids[old.ID]; err != nil || legacy || len(ids) != 1 {
+		t.Fatalf("effective installed IDs = %v, %v", ids, err)
+	}
+	items, err := InstalledComponents()
+	if err != nil || !slices.Equal(items, []InstalledComponent{other}) {
+		t.Fatalf("effective components = %v, %v", items, err)
+	}
+	if _, err := SetInstalled(path, available, old.ID, false); err == nil {
+		t.Fatal("legacy install metadata was mutable")
+	}
+	if _, err := SetInstalled(path, available, other.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	raw, _, err := Load(path)
+	if err != nil || !slices.Equal(raw.Components, []InstalledComponent{old}) {
+		t.Fatalf("raw rollback data = %v, %v", raw.Components, err)
+	}
+}
 
 func TestInstallerOwnedInventoryCannotBeRewrittenByRuntime(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "installed.json")

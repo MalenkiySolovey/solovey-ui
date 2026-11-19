@@ -69,7 +69,7 @@ export function validateFrontendPin(pin) {
     assert.ok(Number.isSafeInteger(item.files)&&item.files>0&&item.files<=4096)
     if(name!=='core-empty-inputs')assert.equal(item.inputManifestSHA256,pin.input.manifestSHA256)
   }
-  const selections = {'full': ['full', ['fallback-html','import-xui','observability-extra','paid-subscriptions','panel-update-ui','remote-outbound-subscriptions','server-protection','telegram']], 'core': ['core', []], 'minimal': ['minimal', []], 'core-empty-inputs': ['core', []], 'custom-fallback-html': ['full', ['fallback-html']], 'custom-server-protection': ['full', ['server-protection']], 'custom-remote-outbound-subscriptions': ['full', ['remote-outbound-subscriptions']]}
+  const selections = {'full': ['full', ['fallback-html','import-xui','observability-extra','paid-subscriptions','remote-outbound-subscriptions','server-protection','telegram']], 'core': ['core', []], 'minimal': ['minimal', []], 'core-empty-inputs': ['core', []], 'custom-fallback-html': ['full', ['fallback-html']], 'custom-server-protection': ['full', ['server-protection']], 'custom-remote-outbound-subscriptions': ['full', ['remote-outbound-subscriptions']]}
   for(const [name,[profile,ids]] of Object.entries(selections)) { assert.equal(pin.profiles[name].profile,profile); assert.deepEqual(pin.profiles[name].componentIDs,ids) }
   assert.notEqual(pin.profiles['core-empty-inputs'].inputManifestSHA256,pin.input.manifestSHA256)
   return pin

@@ -79,7 +79,7 @@ func InspectWith(options Options) Report {
 	metadataIDs := map[string]struct{}{}
 	componentsDir := filepath.Dir(options.InstalledPath)
 	if metadataPresent && metadataErr == nil {
-		for _, item := range metadata.Components {
+		for _, item := range metadata.EffectiveComponents() {
 			metadataIDs[item.ID] = struct{}{}
 			installed[item.ID] = item
 		}
@@ -104,10 +104,14 @@ func InspectWith(options Options) Report {
 		allIDs[id] = struct{}{}
 	}
 	for id := range migrations {
-		allIDs[id] = struct{}{}
+		if id != installstate.FormerPanelUpdateID {
+			allIDs[id] = struct{}{}
+		}
 	}
 	for id := range enabledSettings {
-		allIDs[id] = struct{}{}
+		if id != installstate.FormerPanelUpdateID {
+			allIDs[id] = struct{}{}
+		}
 	}
 
 	ids := make([]string, 0, len(allIDs))

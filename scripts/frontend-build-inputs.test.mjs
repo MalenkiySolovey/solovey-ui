@@ -27,11 +27,11 @@ function fixture(t) {
   const sourceLock = {schema: 'solovey.component-source-inputs/v1', sources: [source]}
   write('components/sources.lock.json', JSON.stringify(sourceLock))
   write('components/telegram/component.json', contents['component.json'])
-  write('components/panel-update-ui/component.json', JSON.stringify({id: 'panel-update-ui', frontend: {entries: ['frontend/index.ts']}}))
-  write('components/panel-update-ui/frontend/index.ts', 'export const register = () => {}\n')
-  write('components/panel-update-ui/frontend/locales/ru.json', '{}\n')
-  write('components/panel-update-ui/owner.go', 'package owner\n')
-  const prepare = () => projectFrontendBuildInputs(root, {frontendRoot: frontend, directory: path.join(frontend, '.component-inputs'), panelRoot: path.join(root, 'components/panel-update-ui')})
+  write('components/panel-example/component.json', JSON.stringify({id: 'panel-example', frontend: {entries: ['frontend/index.ts']}}))
+  write('components/panel-example/frontend/index.ts', 'export const register = () => {}\n')
+  write('components/panel-example/frontend/locales/ru.json', '{}\n')
+  write('components/panel-example/owner.go', 'package owner\n')
+  const prepare = () => projectFrontendBuildInputs(root, {frontendRoot: frontend, directory: path.join(frontend, '.component-inputs')})
   const read = prepared => readFrontendBuildInputs(frontend, prepared.manifestSHA256)
   const inputRoot = path.join(frontend, '.component-inputs')
   const manifestPath = path.join(inputRoot, 'manifest.json')
@@ -42,12 +42,12 @@ function fixture(t) {
 
 test('Product projects exact pinned UI, retains locales/tests, excludes Go, and repeats deterministically', t => {
   const f = fixture(t), first = f.prepare(), accepted = f.read(first)
-  assert.deepEqual(first.components, ['panel-update-ui', 'telegram'])
+  assert.deepEqual(first.components, ['panel-example', 'telegram'])
   assert.deepEqual(accepted.manifest.sourceLock, f.sourceLock)
   assert.equal(first.sourceLockDigest, digest(JSON.stringify(f.sourceLock)))
   assert.ok(fs.existsSync(path.join(f.inputRoot, 'components/telegram/frontend/view.test.ts')))
-  assert.ok(fs.existsSync(path.join(f.inputRoot, 'components/panel-update-ui/frontend/locales/ru.json')))
-  assert.ok(!fs.existsSync(path.join(f.inputRoot, 'components/panel-update-ui/owner.go')))
+  assert.ok(fs.existsSync(path.join(f.inputRoot, 'components/panel-example/frontend/locales/ru.json')))
+  assert.ok(!fs.existsSync(path.join(f.inputRoot, 'components/panel-example/owner.go')))
   assert.ok(!fs.existsSync(path.join(f.inputRoot, 'components/telegram/go.mod')))
   assert.equal(f.prepare().manifestSHA256, first.manifestSHA256)
   assert.ok(!fs.existsSync(path.join(f.frontend, '.component-inputs.lock')))
@@ -187,7 +187,7 @@ test('failed publication restores the accepted projection before releasing the l
 
 test('profile selection is drawn only from declared entries; Core/minimal admit no optional UI', t => {
   const f = fixture(t), input = f.read(f.prepare())
-  assert.deepEqual(selectFrontendEntries(input, {}).map(entry => entry.id), ['panel-update-ui', 'telegram'])
+  assert.deepEqual(selectFrontendEntries(input, {}).map(entry => entry.id), ['panel-example', 'telegram'])
   assert.deepEqual(selectFrontendEntries(input, {SOLOVEY_UI_COMPONENT_IDS: 'telegram, telegram'}).map(entry => entry.id), ['telegram'])
   for (const profile of ['core', 'minimal']) assert.deepEqual(selectFrontendEntries(input, {SOLOVEY_UI_PROFILE: profile}), [])
   assert.deepEqual(selectFrontendEntries(input, {SOLOVEY_UI_COMPONENT_IDS: ''}), [])
@@ -205,7 +205,7 @@ test('Product adapter supplies freshly verified inputs and explicit E2E integrat
   const values = {npm_execpath: npm, SOLOVEY_FRONTEND_TEST_RESULT: output, SOLOVEY_UI_INPUTS_SHA256: 'untrusted'}
   const previous = Object.fromEntries(Object.keys(values).map(name => [name, process.env[name]]))
   Object.assign(process.env, values)
-  try { assert.equal(await runFrontendTask('test:e2e', ['--grep', 'two words'], f.root, {frontendRoot: f.frontend, panelRoot: path.join(f.root, 'components/panel-update-ui')}), 17) }
+  try { assert.equal(await runFrontendTask('test:e2e', ['--grep', 'two words'], f.root, {frontendRoot: f.frontend}), 17) }
   finally { for (const [name, value] of Object.entries(previous)) { if (value === undefined) delete process.env[name]; else process.env[name] = value } }
   const observation = JSON.parse(fs.readFileSync(output))
   assert.deepEqual(observation.args, ['run', 'test:e2e', '--', '--grep', 'two words'])

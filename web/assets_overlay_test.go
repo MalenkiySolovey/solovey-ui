@@ -58,6 +58,19 @@ func TestAssetsFSMissingFileReturnsNotExist(t *testing.T) {
 	}
 }
 
+func TestFormerPanelUpdatePackIsNeverAnAssetProvider(t *testing.T) {
+	root := t.TempDir()
+	writeInstalledMetadata(t, root, `{"version":1,"components":[{"id":"panel-update-ui","delivery":"in-process","installed":true}]}`)
+	metadata := filepath.Join(root, "components", "installed.json")
+	if dirs, err := resolveComponentFrontendAssetDirs(metadata); err != nil || len(dirs) != 0 {
+		t.Fatalf("a missing historical pack affected assets: %v, %v", dirs, err)
+	}
+	writeComponentPack(t, root, installstate.FormerPanelUpdateID, map[string]string{"obsolete.js": "old"})
+	if dirs, err := resolveComponentFrontendAssetDirs(metadata); err != nil || len(dirs) != 0 {
+		t.Fatalf("a retained historical pack supplied assets: %v, %v", dirs, err)
+	}
+}
+
 func TestAssetsFSReadsNewlyInstalledComponentAssets(t *testing.T) {
 	root := t.TempDir()
 	dbDir := filepath.Join(root, "db")

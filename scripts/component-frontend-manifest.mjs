@@ -5,6 +5,7 @@ import { componentManifestKey, safeSourcePath } from './component-source-inputs.
 
 const componentIdPattern = /^[a-z0-9-]+$/
 const frontendEntryPattern = /^(src|frontend)\/[A-Za-z0-9_./-]+\.(ts|vue)$/
+export const historicalPanelUpdateID = 'panel-update-ui'
 
 export function readComponentFrontendEntries(componentsDir) {
   if (!fs.existsSync(componentsDir)) {
@@ -43,7 +44,9 @@ export function readComponentFrontendEntries(componentsDir) {
         throw new Error(`component ${manifest.id} has invalid frontend entry: ${frontendEntry}`)
       }
     }
-    entriesByComponent[manifest.id] = entries
+    // The old manifest can remain during runtime qualification. It no longer
+    // represents a separately compiled entry or release pack.
+    if (manifest.id !== historicalPanelUpdateID) entriesByComponent[manifest.id] = entries
   }
 
   return entriesByComponent

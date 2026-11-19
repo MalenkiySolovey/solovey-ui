@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { prepareComponentSources } from './component-source-inputs.mjs'
 import { prepareBackendSource } from './backend-source-inputs.mjs'
+import { historicalPanelUpdateID } from './component-frontend-manifest.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 prepareBackendSource(repoRoot)
@@ -60,6 +61,7 @@ function readManifests() {
       }
 
       if (!manifest?.id) fail(`component manifest ${manifestPath} is missing id`)
+      if (manifest.id === historicalPanelUpdateID) return null
       return {
         id: String(manifest.id),
         dirName: entry.name,

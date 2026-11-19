@@ -7,6 +7,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 )
 
@@ -32,6 +33,11 @@ func IsSettingKey(key string) bool {
 	return ok
 }
 
+func IsMutableSettingKey(key string) bool {
+	id, ok := ComponentIDFromSettingKey(key)
+	return ok && id != installstate.FormerPanelUpdateID
+}
+
 func ValidateSettingValue(value string) error {
 	_, err := strconv.ParseBool(value)
 	return err
@@ -51,6 +57,9 @@ func EnabledIDs(available []manifest.Manifest) (map[string]struct{}, error) {
 	defaults := make(map[string]bool, len(available))
 	keys := make([]string, 0, len(available))
 	for _, item := range available {
+		if item.ID == installstate.FormerPanelUpdateID {
+			continue
+		}
 		if err := manifest.ValidateID(item.ID); err != nil {
 			return nil, err
 		}

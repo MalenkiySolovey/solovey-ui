@@ -17,6 +17,10 @@ import (
 
 const InstalledFileEnv = "SUI_COMPONENTS_INSTALLED_FILE"
 
+// FormerPanelUpdateID is retained in raw upgrade inputs for older binaries.
+// It is never an installed component in the current runtime inventory.
+const FormerPanelUpdateID = "panel-update-ui"
+
 // Deployment injects package ownership; portable/Windows runtime inventory
 // remains mutable. Unknown policies fail closed, without host OS detection.
 const ManagementEnv = "SUI_COMPONENTS_MANAGEMENT"
@@ -46,6 +50,16 @@ type InstalledComponent struct {
 	Installed bool              `json:"installed"`
 }
 
+func (m Metadata) EffectiveComponents() []InstalledComponent {
+	result := make([]InstalledComponent, 0, len(m.Components))
+	for _, item := range m.Components {
+		if item.ID != FormerPanelUpdateID {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
 func DefaultPath() string {
 	if path := os.Getenv(InstalledFileEnv); path != "" {
 		return path
@@ -68,7 +82,7 @@ func InstalledIDs(available []manifest.Manifest) (map[string]struct{}, error) {
 	}
 
 	ids := map[string]struct{}{}
-	for _, item := range metadata.Components {
+	for _, item := range metadata.EffectiveComponents() {
 		if err := manifest.ValidateID(item.ID); err != nil {
 			return nil, err
 		}
@@ -96,7 +110,7 @@ func InstalledComponents() ([]InstalledComponent, error) {
 		return nil, nil
 	}
 	components := make(map[string]InstalledComponent, len(metadata.Components))
-	for _, item := range metadata.Components {
+	for _, item := range metadata.EffectiveComponents() {
 		if err := manifest.ValidateID(item.ID); err != nil {
 			return nil, err
 		}
@@ -145,6 +159,9 @@ func Load(path string) (Metadata, bool, error) {
 }
 
 func SetInstalled(path string, available []manifest.Manifest, id string, installed bool) (Metadata, error) {
+	if id == FormerPanelUpdateID {
+		return Metadata{}, errors.New("Panel Update is built in")
+	}
 	if err := manifest.ValidateID(id); err != nil {
 		return Metadata{}, err
 	}

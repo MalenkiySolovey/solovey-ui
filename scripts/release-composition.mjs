@@ -11,6 +11,7 @@ import { resolveBuildPlan } from './core-provider-build.mjs'
 import { readExtendedProvenance } from './extended-integration-provenance.mjs'
 import { readFrontendPin, resolveFrontendDistribution, sha256 } from './frontend-artifacts.mjs'
 import { prepareFrontendBuildInputs } from './frontend-build-inputs.mjs'
+import { historicalPanelUpdateID } from './component-frontend-manifest.mjs'
 import { openwrtBuildTargets, linuxPanelArtifacts, windowsPanelArtifacts, targets } from './release-providers.mjs'
 import { validatePin as validateHostPin } from './verify-host-pin.mjs'
 import { validatePin as validateContractPin } from './verify-contract-pin.mjs'
@@ -120,6 +121,7 @@ export function readComponentCatalog(root, lock) {
     assert.match(manifest.id, /^[a-z0-9]+(?:-[a-z0-9]+)*$/)
     assert.equal(manifest.id, entry.name, 'component directory identity differs')
     assert.equal(manifest.delivery, 'in-process', 'unadmitted Product runtime component role')
+    if (manifest.id === historicalPanelUpdateID) continue
     const external = lock.sources.find(source => source.id === manifest.id)
     if (external) {
       assert.ok(!owners.has(external.module), 'duplicate component source owner')

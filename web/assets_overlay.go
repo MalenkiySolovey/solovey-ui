@@ -86,7 +86,7 @@ func resolveComponentFrontendAssetDirs(metadataPath string) ([]string, error) {
 	// assets live with installed.json under /usr/lib.
 	componentsDir := filepath.Dir(metadataPath)
 	dirs := make([]string, 0, len(metadata.Components))
-	for _, component := range metadata.Components {
+	for _, component := range metadata.EffectiveComponents() {
 		if !component.Installed {
 			continue
 		}
