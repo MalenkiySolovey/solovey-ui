@@ -10,8 +10,8 @@ import (
 	"sync"
 
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/mapping"
-	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
+	"github.com/MalenkiySolovey/solovey-component-import-xui/mapping"
+	"github.com/MalenkiySolovey/solovey-component-import-xui/source"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	"gorm.io/gorm"
 )
