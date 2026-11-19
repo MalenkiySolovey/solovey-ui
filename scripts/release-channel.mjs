@@ -66,6 +66,10 @@ export function comparePublished(version, current, tag) {
   }
 }
 
+export function requireRenewalLeadTime(expiresAt, now) {
+  assert.ok(expiresAt > now + 3 * day, 'channel-main expires within three days or has expired; dispatch Release Solovey UI with renew_main=true')
+}
+
 export function renewEnvelope(inspector, current, { trustRootsBase64, signingKeyID, signingPrivateKeyBase64, sequence, now }) {
   assert.ok(Number.isSafeInteger(sequence) && sequence > current.manifest.sequence, 'Renewal sequence must increase')
   assert.ok(now >= current.manifest.issuedAt, 'Renewal cannot precede the latest issuance')
@@ -128,7 +132,7 @@ async function run() {
   describe(prior)
 
   if (mode === 'check') {
-    assert.ok(prior.manifest.expiresAt > now + 3 * day, 'channel-main expires within three days or has expired; dispatch Release Solovey UI with renew_main=true')
+    requireRenewalLeadTime(prior.manifest.expiresAt, now)
     verifyReleaseEnvelope(inspector, priorFile, { trustRoots, now, channel })
     return
   }
