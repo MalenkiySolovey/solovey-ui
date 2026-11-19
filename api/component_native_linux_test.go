@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -52,6 +53,9 @@ func TestNativeInventoryServiceUIDMigrationAndRoutes(t *testing.T) {
 		if !routeExists(router, http.MethodGet, "/api/components/server-protection/status") {
 			t.Fatal("missing protection routes")
 		}
+		if !routeExists(router, http.MethodGet, "/api/update/components") {
+			t.Fatal("missing intrinsic component inventory route")
+		}
 		return
 	}
 	dir, err := os.MkdirTemp("/var/tmp", "solovey-component-api-")
@@ -70,8 +74,10 @@ func TestNativeInventoryServiceUIDMigrationAndRoutes(t *testing.T) {
 	for _, item := range registry.Components() {
 		ids = append(ids, item.Manifest.ID)
 	}
-	if len(ids) != 8 {
-		t.Fatalf("full registry expected: %v", ids)
+	slices.Sort(ids)
+	want := []string{"fallback-html", "import-xui", "observability-extra", "paid-subscriptions", "remote-outbound-subscriptions", "server-protection", "telegram"}
+	if !slices.Equal(ids, want) {
+		t.Fatalf("active Full registry = %v, want %v", ids, want)
 	}
 	command := exec.Command("bash", "-c", `source "$1"; INSTALL_DIR="$2/app"; mkdir -p "$INSTALL_DIR"; chmod 755 "$INSTALL_DIR"; REQUESTED_PROFILE=full; read -ra COMPONENT_IDS <<< "$3"; resolve_binary_profile; write_component_metadata 12345`, "bash", installer, dir, strings.Join(ids, " "))
 	if output, err := command.CombinedOutput(); err != nil {
