@@ -10,8 +10,8 @@ import (
 	"time"
 
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/mapping"
-	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
+	"github.com/MalenkiySolovey/solovey-component-import-xui/mapping"
+	"github.com/MalenkiySolovey/solovey-component-import-xui/source"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
@@ -239,7 +239,7 @@ func (s *applyState) applyTLS(ctx context.Context, tx *gorm.DB, src *source.Data
 			// Skip means "don't create/overwrite", not "unlink": if a matching
 			// TLS record already exists, still resolve its id so inbounds keep a
 			// valid reference instead of being saved with TlsId=0.
-			if existing, found, err := mapping.FindExistingRealityTLS(tx, *spec); err != nil {
+			if existing, found, err := findExistingRealityTLS(tx, *spec); err != nil {
 				return err
 			} else if found {
 				s.tlsIDByKey[spec.Key] = existing.Id
@@ -256,7 +256,7 @@ func (s *applyState) applyTLS(ctx context.Context, tx *gorm.DB, src *source.Data
 		if err := identity.ValidateName(record.Name); err != nil {
 			return err
 		}
-		existing, found, err := mapping.FindExistingRealityTLS(tx, *spec)
+		existing, found, err := findExistingRealityTLS(tx, *spec)
 		if err != nil {
 			return err
 		}
@@ -305,7 +305,7 @@ func (s *applyState) applyPlainTLS(tx *gorm.DB, row source.InboundRow) error {
 	if item.Action == ActionSkip {
 		// Skip means "don't create/overwrite", not "unlink": resolve an existing
 		// matching record's id so referencing inbounds keep a valid TlsId.
-		if existing, found, err := mapping.FindExistingPlainTLS(tx, *spec); err != nil {
+		if existing, found, err := findExistingPlainTLS(tx, *spec); err != nil {
 			return err
 		} else if found {
 			s.tlsIDByKey[spec.Key] = existing.Id
@@ -322,7 +322,7 @@ func (s *applyState) applyPlainTLS(tx *gorm.DB, row source.InboundRow) error {
 	if err := identity.ValidateName(record.Name); err != nil {
 		return err
 	}
-	existing, found, err := mapping.FindExistingPlainTLS(tx, *spec)
+	existing, found, err := findExistingPlainTLS(tx, *spec)
 	if err != nil {
 		return err
 	}

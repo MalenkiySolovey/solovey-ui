@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/mapping"
-	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
+	"github.com/MalenkiySolovey/solovey-component-import-xui/mapping"
+	"github.com/MalenkiySolovey/solovey-component-import-xui/source"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

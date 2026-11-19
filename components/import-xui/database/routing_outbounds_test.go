@@ -11,8 +11,8 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/mapping"
-	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
+	"github.com/MalenkiySolovey/solovey-component-import-xui/mapping"
+	"github.com/MalenkiySolovey/solovey-component-import-xui/source"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

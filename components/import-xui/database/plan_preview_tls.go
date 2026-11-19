@@ -5,8 +5,8 @@ package importxui
 import (
 	"context"
 
-	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/mapping"
-	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
+	"github.com/MalenkiySolovey/solovey-component-import-xui/mapping"
+	"github.com/MalenkiySolovey/solovey-component-import-xui/source"
 	"gorm.io/gorm"
 )
 
@@ -40,7 +40,7 @@ func (s *planningState) planTLS(ctx context.Context, tx *gorm.DB, src *source.Da
 		if err != nil {
 			return err
 		}
-		_, conflict, err := mapping.FindExistingRealityTLS(tx, *spec)
+		_, conflict, err := findExistingRealityTLS(tx, *spec)
 		if err != nil {
 			return err
 		}
@@ -83,7 +83,7 @@ func (s *planningState) planPlainTLS(tx *gorm.DB, row source.InboundRow, plan *M
 	if err != nil {
 		return err
 	}
-	_, conflict, err := mapping.FindExistingPlainTLS(tx, *spec)
+	_, conflict, err := findExistingPlainTLS(tx, *spec)
 	if err != nil {
 		return err
 	}
