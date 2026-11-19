@@ -6,30 +6,31 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/MalenkiySolovey/solovey-backend/operations/coordination"
 	"sync"
 
+	"github.com/MalenkiySolovey/solovey-backend/operations/coordination"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-component-import-xui/mapping"
+	"github.com/MalenkiySolovey/solovey-component-import-xui/preview"
 	"github.com/MalenkiySolovey/solovey-component-import-xui/source"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	"gorm.io/gorm"
 )
 
 const (
-	KindTLS      = "tls"
-	KindInbound  = "inbound"
-	KindEndpoint = "endpoint"
-	KindClient   = "client"
-	KindSetting  = "setting"
-	KindAdmin    = "admin"
-	KindHistory  = "historical"
-	KindRouting  = "routing"
+	KindTLS      = preview.KindTLS
+	KindInbound  = preview.KindInbound
+	KindEndpoint = preview.KindEndpoint
+	KindClient   = preview.KindClient
+	KindSetting  = preview.KindSetting
+	KindAdmin    = preview.KindAdmin
+	KindHistory  = preview.KindHistory
+	KindRouting  = preview.KindRouting
 
-	ActionCreate  = "create"
-	ActionMerge   = "merge"
-	ActionReplace = "replace"
-	ActionSkip    = "skip"
+	ActionCreate  = preview.ActionCreate
+	ActionMerge   = preview.ActionMerge
+	ActionReplace = preview.ActionReplace
+	ActionSkip    = preview.ActionSkip
 )
 
 var (
@@ -38,40 +39,10 @@ var (
 	applyMu      sync.Mutex
 )
 
-type MigrationPlan struct {
-	Items    []PlanItem   `json:"items"`
-	Defaults PlanDefaults `json:"defaults"`
-	Source   PlanSource   `json:"source"`
-}
-
-type PlanDefaults struct {
-	Strategy        string `json:"strategy"`
-	IncludeSettings bool   `json:"includeSettings"`
-	AdminMode       string `json:"adminMode"`
-	OnlyNew         bool   `json:"onlyNew"`
-	IncludeHistory  bool   `json:"includeHistory"`
-	IncludeRouting  bool   `json:"includeRouting"`
-}
-
-type PlanSource struct {
-	Path string `json:"path,omitempty"`
-	Hash string `json:"hash"`
-}
-
-type PlanItem struct {
-	Classification string                        `json:"classification"`
-	Fields         []mapping.FieldClassification `json:"fields,omitempty"`
-	Unsupported    []UnsupportedObject           `json:"unsupported,omitempty"`
-	Kind           string                        `json:"kind"`
-	SrcID          any                           `json:"srcId"`
-	SrcTag         string                        `json:"srcTag,omitempty"`
-	DstTag         string                        `json:"dstTag"`
-	Action         string                        `json:"action"`
-	Conflict       bool                          `json:"conflict"`
-	AdminMode      string                        `json:"adminMode,omitempty"`
-	PreviewJSON    json.RawMessage               `json:"previewJson"`
-	Warnings       []string                      `json:"warnings,omitempty"`
-}
+type MigrationPlan = preview.Plan[UnsupportedObject]
+type PlanDefaults = preview.PlanDefaults
+type PlanSource = preview.PlanSource
+type PlanItem = preview.Item[UnsupportedObject]
 
 type Progress struct {
 	Reference   *operationcoordination.Reference `json:"reference,omitempty"`
@@ -174,7 +145,7 @@ func Plan(srcPath string, opts PlanOptions) (*MigrationPlan, error) {
 	} else if err := planRoutingDisabledNotice(opts.Context, src, plan); err != nil {
 		return nil, fmt.Errorf("xui-import: %w", err)
 	}
-	if err := classifyPlan(opts.Context, src, plan); err != nil {
+	if err := preview.Classify(opts.Context, src, plan); err != nil {
 		return nil, err
 	}
 	if opts.OnlyNew {

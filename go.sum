@@ -14,6 +14,8 @@ github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0 h1:De1pv/fpu8u
 github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0/go.mod h1:JsuupXylmHWCSHtBJAqbHHEXzPfk/JeI4r4ytBjErQk=
 github.com/MalenkiySolovey/solovey-component-import-xui v0.1.0 h1:hOo+dX6oe4iSED9HkilWVcRXPXJLNC4+3ej36Y9Z5hA=
 github.com/MalenkiySolovey/solovey-component-import-xui v0.1.0/go.mod h1:Dp5fSKexPatGWWJ7+g0t9hKdNiMI/oECIT5cldq8EP4=
+github.com/MalenkiySolovey/solovey-component-import-xui v0.1.1 h1:LcPiyDbT93YphJ/oo3Y/RcCgluczdrtYqppLGdGT4xc=
+github.com/MalenkiySolovey/solovey-component-import-xui v0.1.1/go.mod h1:Dp5fSKexPatGWWJ7+g0t9hKdNiMI/oECIT5cldq8EP4=
 github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0 h1:Qczg9jmPtsLQ5V/7hr8Wk5ErlR5E9OblzxcO4Gym2gM=
 github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0/go.mod h1:wii8Hu093M9V5KqKNB1IYHtFxbJjHMXLgWzuC7huwiI=
 github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions v0.1.0 h1:UkSW5YE2EUhaBRuh8ZsNQ338iDR0GqcdzoYeeR/vgbk=
