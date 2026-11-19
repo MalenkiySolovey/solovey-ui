@@ -1,5 +1,5 @@
-// Code generated from github.com/MalenkiySolovey/solovey-contracts@v1.0.0; DO NOT EDIT.
-// Source commit: ca13e3bb8e516594467dcbf717f757d4806d553c
+// Code generated from github.com/MalenkiySolovey/solovey-contracts@v1.0.1; DO NOT EDIT.
+// Source commit: e9db27b2199d26d679aa13254607a1ee6e666d29
 // Deprecated: import github.com/MalenkiySolovey/solovey-contracts/management/v1 directly.
 package managementv1
 
