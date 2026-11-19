@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
-	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
+	"github.com/MalenkiySolovey/solovey-component-import-xui/source"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"gorm.io/gorm"
