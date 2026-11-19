@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -206,18 +207,13 @@ func nativeUDPWitness(t *testing.T, peer adapter.Outbound, contexts ...context.C
 
 func TestNativeMieruReplacementRejectsTCPPortCollision(t *testing.T) {
 	f := newNativeMieruFixture(t, "TCP")
-	occupied, err := net.Listen("tcp", "127.0.0.1:0")
+	occupied, udpCandidate, candidatePort, err := reserveQUICFixturePort(probeQUICFixturePort)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer occupied.Close()
-	address := occupied.Addr().String()
-	udpCandidate, err := net.ListenPacket("udp", address)
-	if err != nil {
-		t.Fatal(err)
-	}
 	defer udpCandidate.Close()
-	candidatePort := udpCandidate.LocalAddr().(*net.UDPAddr).Port
+	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(candidatePort))
 	calls, rejectedTCP := 0, false
 	probe := func(network, target string) (io.Closer, int, error) {
 		calls++
