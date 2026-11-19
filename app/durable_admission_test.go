@@ -9,8 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/MalenkiySolovey/solovey-backend/actions"
+	host "github.com/MalenkiySolovey/solovey-host/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/migrations"
@@ -23,7 +24,7 @@ import (
 	_ "github.com/MalenkiySolovey/solovey-ui/components/fallback-html"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
 	fallbackservice "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/service"
-	componentmanager "github.com/MalenkiySolovey/solovey-ui/components/panel-update-ui/service"
+	"github.com/MalenkiySolovey/solovey-ui/composition/componentmanagement"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
@@ -41,7 +42,7 @@ func fallbackDurableManifest(t *testing.T) manifest.Manifest {
 	return component.Manifest
 }
 
-func durableAdmissionFixture(t *testing.T, installed bool) (*supervisor.Supervisor, componentmanager.RuntimeManager, *datalifecycle.Manager) {
+func durableAdmissionFixture(t *testing.T, installed bool) (*supervisor.Supervisor, host.Manager, *datalifecycle.Manager) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("SUI_DB_FOLDER", dir)
@@ -62,17 +63,16 @@ func durableAdmissionFixture(t *testing.T, installed bool) (*supervisor.Supervis
 	data := datalifecycle.NewManager()
 	data.Drop = s.DropData
 	data.Admit = func(string) bool { return true } // resource-pressure policy is qualified separately
-	manager := componentmanager.NewRuntimeManager(nil)
+	manager := componentmanagement.New(data)
 	manager.Migrate, manager.Reconcile = s.Migrate, s.Reconcile
-	manager.Removal = &componentmanager.RemovalAdmission{Preview: data.PreviewRemoval, Resources: data.RemovalResources,
-		Inventory: resources.Refresh, Admit: s.TryAdmitRemoval}
+	manager.Removal.Inventory, manager.Removal.Admit = resources.NewRegistry(time.Second).Refresh, s.TryAdmitRemoval
 	return s, manager, data
 }
 
 func TestTypedDurableFreshInstallValidatesExistingSchemaAndRetainsDebt(t *testing.T) {
 	s, manager, _ := durableAdmissionFixture(t, false)
 	before := fallbackservice.DefaultRuntime.Status()
-	status, err := manager.Install(componentmanager.OperationContext{RequestContext: t.Context()}, durableFallbackID)
+	status, err := manager.Install(t.Context(), durableFallbackID)
 	if err != nil || !status.Installed || status.Enabled {
 		t.Fatalf("install: %+v %v", status, err)
 	}
@@ -121,12 +121,6 @@ func TestTypedDurableFreshInstallValidatesExistingSchemaAndRetainsDebt(t *testin
 	}
 }
 
-func authorizedComponentRemoval(ctx context.Context) componentmanager.OperationContext {
-	return componentmanager.OperationContext{RequestContext: ctx, Authorize: func(_ context.Context, invocation actions.Invocation) (actions.Decision, error) {
-		return actions.Decision{Allowed: true, Actor: "fixture-admin", Permission: actions.PermissionComponentUninstall, Invocation: invocation}, nil
-	}}
-}
-
 func TestTypedDurableFailedInstallAndRemovePreserveOwnership(t *testing.T) {
 	t.Run("failed_install", func(t *testing.T) {
 		s, manager, _ := durableAdmissionFixture(t, false)
@@ -136,7 +130,7 @@ func TestTypedDurableFailedInstallAndRemovePreserveOwnership(t *testing.T) {
 			}
 			return errors.New("migration response unavailable")
 		}
-		if _, err := manager.Install(componentmanager.OperationContext{RequestContext: t.Context()}, durableFallbackID); err == nil {
+		if _, err := manager.Install(t.Context(), durableFallbackID); err == nil {
 			t.Fatal("failed install reported success")
 		}
 		owners, err := installstate.InstalledComponents()
@@ -153,6 +147,16 @@ func TestTypedDurableFailedInstallAndRemovePreserveOwnership(t *testing.T) {
 		s, manager, data := durableAdmissionFixture(t, true)
 		if err := s.Migrate(t.Context()); err != nil {
 			t.Fatal(err)
+		}
+		beforeDrop, err := os.ReadFile(installstate.DefaultPath())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := manager.Remove(t.Context(), durableFallbackID); err == nil {
+			t.Fatal("removal orphaned an empty but declared schema")
+		}
+		if after, err := os.ReadFile(installstate.DefaultPath()); err != nil || string(beforeDrop) != string(after) {
+			t.Fatal("schema denial changed installed ownership", err)
 		}
 		preview, err := data.Preview(t.Context(), durableFallbackID)
 		if err != nil {
@@ -173,7 +177,7 @@ func TestTypedDurableFailedInstallAndRemovePreserveOwnership(t *testing.T) {
 			}
 			return s.Reconcile(ctx)
 		}
-		if _, err := manager.Remove(authorizedComponentRemoval(t.Context()), durableFallbackID); err == nil {
+		if _, err := manager.Remove(t.Context(), durableFallbackID); err == nil {
 			t.Fatal("failed remove reported success")
 		}
 		after, err := os.ReadFile(installstate.DefaultPath())
@@ -200,7 +204,7 @@ func TestTypedDurableActiveOperationBlocksRemoval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.Remove(authorizedComponentRemoval(t.Context()), durableFallbackID); err == nil {
+	if _, err := manager.Remove(t.Context(), durableFallbackID); err == nil {
 		t.Fatal("active/recovery operation admitted removal")
 	}
 	after, err := os.ReadFile(installstate.DefaultPath())

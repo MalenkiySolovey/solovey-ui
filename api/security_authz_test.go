@@ -33,6 +33,11 @@ func securityAuthZScopeRows() []securityAuthZRow {
 		{method: http.MethodPost, path: "/apiv2/rotateSubSecret", resource: "client", allowed: []string{"admin", "write"}},
 		{method: http.MethodPost, path: "/apiv2/importdb", resource: "database", allowed: []string{"admin", "database"}},
 		{method: http.MethodGet, path: "/apiv2/getdb", resource: "database", allowed: []string{"admin", "database"}},
+		{method: http.MethodGet, path: "/apiv2/update/components", resource: "update", allowed: []string{"admin", "update"}},
+		{method: http.MethodPost, path: "/api/update/components/telegram/enable", resource: "update", allowed: []string{"admin", "update"}},
+		{method: http.MethodPost, path: "/api/update/components/telegram/disable", resource: "update", allowed: []string{"admin", "update"}},
+		{method: http.MethodPost, path: "/api/update/components/telegram/install", resource: "update", allowed: []string{"admin", "update"}},
+		{method: http.MethodPost, path: "/api/update/components/telegram/remove", resource: "update", allowed: []string{"admin", "update"}},
 	}
 	return append(rows, securityAuthZOptionalRows()...)
 }

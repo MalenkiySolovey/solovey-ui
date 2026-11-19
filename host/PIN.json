@@ -2,10 +2,10 @@
   "schema": "solovey.host.consumer-pin/v1",
   "canonicalRepository": "MalenkiySolovey/solovey-host",
   "module": "github.com/MalenkiySolovey/solovey-host",
-  "version": "v0.10.0",
-  "sourceCommit": "22073796ed65a645a82c717beaeab2690b1639a9",
-  "sourceTree": "3f0469a587f229509706927a0c6f011efe337d00",
-  "moduleChecksum": "h1:jZePH9C8Pq/ziw4OI6HdUr/6iuAPN5KiLZcdGplLcj8=",
+  "version": "v0.11.0",
+  "sourceCommit": "e39dd1715715aa013bf81e10b07479c310421c88",
+  "sourceTree": "f5fd4dd04761e75d0e31aff008179d6182ad2176",
+  "moduleChecksum": "h1:3aS/lXMvn55HAQs6m8JU79KLToZX2jobs27QUOpr/j8=",
   "goModChecksum": "h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=",
   "fixturesSHA256": "ff83fc9c0b5a7d64d35d37ede09b530aafa07d3fe420e3e0bd055278c15b8eb3",
   "valuesSHA256": "1d4d7f29ba8c1f3c57fd2c66ee3423ea45efe3947686f5c53de753362b865a0c",
@@ -154,6 +154,10 @@
     "subscriptions/conversion/policy.go": "5489c77966d281714ec3c3ef16a34834867949c6953ce629e7ecc0977672a0db",
     "subscriptions/conversion/policy_test.go": "998a8b36e0d4e73f4296062a0fb80feb80143ff472de29b47c23a58a5df7c27c",
     "subscriptions/parseport/ports.go": "d80ac52f222ae0b2213b3647b9f0c8d79cd65ab8e9e1a3ac90e3ab4bd752be15",
-    "subscriptions/protocoldefaults/transport.go": "135c8c59bf03652a89c26a305fb2fb1922cbd202d8a5cdff12467adc92d4c1c1"
+    "subscriptions/protocoldefaults/transport.go": "135c8c59bf03652a89c26a305fb2fb1922cbd202d8a5cdff12467adc92d4c1c1",
+    "componenthost/catalog.go": "860a6873b72c211a5f94bb79afea4e9b20b794ba80f5f1fa9bb7b01a768a7b3f",
+    "componenthost/management.go": "8461acead897abbc2d466bc51f6081b8070ee6760d990382637ad7650f491e4c",
+    "componenthost/management_test.go": "a2c9db1a3ca32bd8f39020dae1d2e28c2704ab5fcc19c900621d9e05d1f6122b",
+    "componenthost/removal.go": "bb041676d35e69ecb2dcc8553db11d80f0fac778267e1312c4b1f8dabebcea18"
   }
 }

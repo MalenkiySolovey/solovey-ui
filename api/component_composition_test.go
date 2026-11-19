@@ -1,18 +1,15 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-backend/actions"
 	"github.com/MalenkiySolovey/solovey-backend/componentroutes"
 	"github.com/MalenkiySolovey/solovey-backend/componentview"
 	"github.com/MalenkiySolovey/solovey-backend/hostcontext"
-	"github.com/MalenkiySolovey/solovey-host/operationref"
 	"github.com/gin-gonic/gin"
 )
 
@@ -20,19 +17,17 @@ type componentInputFixture struct {
 	componentroutes.Composition
 	active       bool
 	stateErr     error
-	declared     bool
 	activeReads  int
 	ownerEffects int
-	declarations int
 }
 
 func (f *componentInputFixture) Routes(componentroutes.Ports) ([]componentroutes.Route, error) {
 	if f == nil {
 		return nil, componentroutes.ErrUnavailable
 	}
-	return []componentroutes.Route{{ComponentID: "panel-update-ui", Register: func(g *gin.RouterGroup) error {
+	return []componentroutes.Route{{ComponentID: "telegram", Register: func(g *gin.RouterGroup) error {
 		g.POST("/composition-proof", func(c *gin.Context) {
-			if c.GetString(componentAuthorityKey) != "panel-update-ui" {
+			if c.GetString(componentAuthorityKey) != "telegram" {
 				panic("missing server-bound Component authority")
 			}
 			f.ownerEffects++
@@ -47,13 +42,6 @@ func (f *componentInputFixture) IsActive(string) (bool, error) {
 	}
 	f.activeReads++
 	return f.active, f.stateErr
-}
-func (f *componentInputFixture) DeclaresAction(_, _ string) bool {
-	if f == nil {
-		return false
-	}
-	f.declarations++
-	return f.declared
 }
 func (f *componentInputFixture) Inventory() (componentview.RuntimeInventory, error) {
 	return componentview.RuntimeInventory{}, componentroutes.ErrUnavailable
@@ -96,50 +84,6 @@ func TestComponentRouteInputPreservesActiveGateAndServerAuthority(t *testing.T) 
 			router.ServeHTTP(response, request)
 			if response.Code != test.status || owner.activeReads != test.reads || owner.ownerEffects != test.effects {
 				t.Fatalf("status=%d reads=%d effects=%d; body=%s", response.Code, owner.activeReads, owner.ownerEffects, response.Body)
-			}
-		})
-	}
-}
-
-func TestComponentActionInputDeniesMissingDeclarationBeforeStepUp(t *testing.T) {
-	initSessionTestDB(t)
-	invocation := actions.RemoveComponent(operationref.NewReference("component-lifecycle", "component:telegram", "component-remove:composition-proof"), actions.ComponentRemoveInput{ComponentID: "telegram"})
-	var typedNil *componentInputFixture
-	for _, test := range []struct {
-		name                string
-		owner               componentroutes.Composition
-		component           string
-		declared, cancelled bool
-	}{
-		{name: "missing", component: "panel-update-ui"},
-		{name: "typed nil", owner: typedNil, component: "panel-update-ui"},
-		{name: "undeclared", owner: &componentInputFixture{}, component: "panel-update-ui"},
-		{name: "missing authority", owner: &componentInputFixture{declared: true}},
-		{name: "foreign authority", owner: &componentInputFixture{declared: true}, component: "telegram"},
-		{name: "cancelled", owner: &componentInputFixture{declared: true}, component: "panel-update-ui", cancelled: true},
-		{name: "declared", owner: &componentInputFixture{declared: true}, component: "panel-update-ui", declared: true},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			api := NewApiService(WithComponents(test.owner))
-			response := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(response)
-			c.Request = httptest.NewRequest(http.MethodPost, "/api/update/components/telegram/remove", nil)
-			c.Set(apiUsernameKey, "administrator")
-			c.Set(apiTokenScopeKey, "update")
-			c.Set(componentAuthorityKey, test.component)
-			ctx, cancel := context.WithCancel(c.Request.Context())
-			defer cancel()
-			if test.cancelled {
-				cancel()
-			}
-			assurance := 0
-			_, err := actions.Require(ctx, invocation, api.actionPolicy(func(*gin.Context, string, string) bool { assurance++; return true })(c))
-			if test.declared {
-				if err != nil || assurance != 1 {
-					t.Fatalf("declared action rejected: %v calls=%d", err, assurance)
-				}
-			} else if !errors.Is(err, actions.ErrDenied) || assurance != 0 {
-				t.Fatalf("unbound action reached assurance: %v calls=%d", err, assurance)
 			}
 		})
 	}
