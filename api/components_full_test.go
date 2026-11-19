@@ -20,7 +20,6 @@ func init() {
 	registerAPIComponentFixture("import-xui", "Import XUI", []string{"database"}, registerImportXUIFixtureRoutes)
 	registerAPIComponentFixture("observability-extra", "Observability Extra", []string{"observability"}, registerObservabilityFixtureRoutes)
 	registerAPIComponentFixture("paid-subscriptions", "Paid Subscriptions", nil, registerPaidFixtureRoutes)
-	registerAPIComponentFixture("panel-update-ui", "Panel Update UI", []string{"update"}, registerUpdateFixtureRoutes)
 	registerAPIComponentFixture("remote-outbound-subscriptions", "Remote Outbound Subscriptions", nil, registerRemoteOutboundFixtureRoutes)
 	registerAPIComponentFixture("server-protection", "Server Protection", []string{"server-protection:read", "server-protection:write", "server-protection:apply"}, registerServerProtectionFixtureRoutes)
 	registerAPIComponentFixture("telegram", "Telegram", []string{"telegram"}, registerTelegramFixtureRoutes)
@@ -96,13 +95,8 @@ func registerAPIComponentFixture(id string, name string, scopes []string, regist
 	if _, exists := registry.ComponentByID(id); exists {
 		return
 	}
-	var declaredActions []string
-	if id == "panel-update-ui" {
-		declaredActions = []string{"component.remove"}
-	}
 	registry.Register(registry.Component{
 		Manifest: manifest.Manifest{
-			Actions:        declaredActions,
 			ID:             id,
 			Name:           name,
 			Version:        "1",
@@ -276,27 +270,6 @@ func registerTelegramFixtureRoutes(g *gin.RouterGroup, deps componenthost.APIDep
 				Msg:     "telegramBackup: disabled",
 				Obj:     gin.H{"errorClass": "disabled", "trigger": "manual"},
 			})
-		})
-	}
-	return nil
-}
-
-func registerUpdateFixtureRoutes(g *gin.RouterGroup, deps componenthost.APIDeps) error {
-	group := g.Group("/update")
-	group.GET("/status", func(c *gin.Context) { c.JSON(http.StatusOK, Msg{Success: true}) })
-	group.GET("/components", func(c *gin.Context) { c.JSON(http.StatusOK, Msg{Success: true}) })
-	group.POST("/check", func(c *gin.Context) { c.JSON(http.StatusOK, Msg{Success: true}) })
-	group.POST("/apply", func(c *gin.Context) { c.JSON(http.StatusOK, Msg{Success: true}) })
-	for _, action := range []string{"enable", "disable", "install", "remove"} {
-		action := action
-		group.POST("/components/:id/"+action, func(c *gin.Context) {
-			if !deps.Auth.RequireScope(c, "update", "admin", "update") {
-				return
-			}
-			if action == "remove" && !deps.Auth.RequireStepUp(c, "component.remove", "component:"+c.Param("id")) {
-				return
-			}
-			c.JSON(http.StatusOK, Msg{Success: true})
 		})
 	}
 	return nil

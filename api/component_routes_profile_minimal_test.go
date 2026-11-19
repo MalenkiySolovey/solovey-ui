@@ -37,8 +37,8 @@ func TestTelegramComponentRoutesAbsentInMinimalProfile(t *testing.T) {
 	if routeExists(router, http.MethodGet, "/api/security/audit") {
 		t.Fatal("minimal profile must not register GET /api/security/audit")
 	}
-	if routeExists(router, http.MethodGet, "/api/update/components") {
-		t.Fatal("minimal profile must not register GET /api/update/components")
+	if !routeExists(router, http.MethodGet, "/api/update/components") {
+		t.Fatal("minimal profile must retain the intrinsic component inventory route")
 	}
 	for _, path := range []string{
 		"/api/components/server-protection/status",

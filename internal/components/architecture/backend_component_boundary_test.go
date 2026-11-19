@@ -35,7 +35,7 @@ func TestComponentHTTPAndActionOwnersHaveIndependentTransitiveClosure(t *testing
 
 func TestComponentHTTPUsesOneBackendOwnerAndNarrowSettingsCommand(t *testing.T) {
 	root := moduleRoot(t)
-	for _, retired := range []string{"components/panel-update-ui/api", "componenthost/actions"} {
+	for _, retired := range []string{"components/panel-update-ui/api", "components/panel-update-ui/service", "componenthost/actions"} {
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(retired))); err == nil {
 			entries, readErr := os.ReadDir(filepath.Join(root, filepath.FromSlash(retired)))
 			if readErr != nil || len(entries) > 0 {

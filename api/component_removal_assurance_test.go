@@ -4,17 +4,23 @@ package api
 
 import (
 	"encoding/json"
-	"github.com/MalenkiySolovey/solovey-backend/http/securityroutes"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-backend/http/securityroutes"
 	totputil "github.com/MalenkiySolovey/solovey-backend/security/totp"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/supervisor"
+	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 )
@@ -32,7 +38,7 @@ func TestComponentRemovalRequiresBoundSingleUseGrant(t *testing.T) {
 	if err := (&service.UserService{}).UpdateFirstUser("admin", password); err != nil {
 		t.Fatal(err)
 	}
-	prepareComponentRouteMetadata(t)
+	installedPath := prepareRemovalOwner(t, "telegram")
 	router, _ := newAdminFlowRouter(t)
 	jar := &integrationCookieJar{}
 	loginAdminFlowUser(t, router, jar, "admin", password)
@@ -53,6 +59,9 @@ func TestComponentRemovalRequiresBoundSingleUseGrant(t *testing.T) {
 	}
 	grant, csrf := adminFlowStepUp(t, router, jar, password, "component.remove", "component:telegram")
 	assertAdminFlowMsgSuccess(t, adminFlowPost(t, router, jar, csrf, grant, path, nil), true)
+	if metadata, exists, err := installstate.Load(installedPath); err != nil || !exists || len(metadata.Components) != 0 {
+		t.Fatalf("removal did not commit installed metadata: %+v %v %v", metadata, exists, err)
+	}
 	if replay := adminFlowPost(t, router, jar, csrf, grant, path, nil); replay.Code != http.StatusForbidden {
 		t.Fatal("removal grant replay succeeded")
 	}
@@ -104,7 +113,7 @@ func TestComponentRemovalMFARequiresCurrentAssurance(t *testing.T) {
 	if err := mfa.AcknowledgeRecoveryCodes(admin.Id); err != nil {
 		t.Fatal(err)
 	}
-	prepareComponentRouteMetadata(t)
+	prepareRemovalOwner(t, "telegram")
 	router, _ := newAdminFlowRouter(t)
 	jar := &integrationCookieJar{}
 	loginAdminFlowUser(t, router, jar, "admin", password)
@@ -129,4 +138,27 @@ func TestComponentRemovalMFARequiresCurrentAssurance(t *testing.T) {
 	token := msg.Obj.(map[string]any)["token"].(string)
 	csrf = adminFlowCSRFToken(t, router, jar)
 	assertAdminFlowMsgSuccess(t, adminFlowPost(t, router, jar, csrf, token, "/api/update/components/telegram/remove", nil), true)
+}
+
+func prepareRemovalOwner(t *testing.T, id string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "installed.json")
+	t.Setenv(installstate.InstalledFileEnv, path)
+	t.Setenv(installstate.ManagementEnv, "runtime")
+	if err := installstate.Store(path, installstate.Metadata{Version: 1, Profile: "full", Binary: "full",
+		Components: []installstate.InstalledComponent{{ID: id, Delivery: manifest.DeliveryInProcess, Installed: true}}}); err != nil {
+		t.Fatal(err)
+	}
+	key := enabledstate.SettingKey(id)
+	if err := dbsqlite.DB().Where("key = ?", key).Assign(model.Setting{Value: "false"}).FirstOrCreate(&model.Setting{Key: key}).Error; err != nil {
+		t.Fatal(err)
+	}
+	owner := supervisor.New(componenthost.Deps{})
+	service.RegisterComponentRemovalAdmitter(owner.TryAdmitRemoval)
+	service.RegisterComponentSettingsReconciler(owner.Reconcile)
+	t.Cleanup(func() {
+		service.RegisterComponentSettingsReconciler(nil)
+		service.RegisterComponentRemovalAdmitter(nil)
+	})
+	return path
 }
