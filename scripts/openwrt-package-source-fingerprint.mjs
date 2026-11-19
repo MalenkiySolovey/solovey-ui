@@ -176,7 +176,7 @@ export function enumerateSourcePaths(sourceRoot) {
   }
   for (const root of productRoots) {
     const directory = path.join(sourceRoot, root)
-    if (fs.existsSync(directory)) walk(directory, sourceRoot, files, isSourceInput)
+    if (fs.existsSync(directory)) walk(directory, sourceRoot, files, isSourceInput, isExcludedSourceDirectory)
   }
   for (const script of [...targetBuildScripts].sort(bytewise)) {
     if (fs.existsSync(path.join(sourceRoot, script))) files.push(script)
@@ -228,15 +228,15 @@ function isSourceInput(file) {
   return true
 }
 
-function walk(directory, sourceRoot, files, include) {
+function walk(directory, sourceRoot, files, include, skipDirectory = () => false) {
   const entries = fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => bytewise(a.name, b.name))
   for (const entry of entries) {
     const candidate = path.join(directory, entry.name)
     const relativePath = relative(sourceRoot, candidate)
     if (entry.isSymbolicLink()) throw new Error(`source-owned path must not be a symlink: ${relativePath}`)
     if (entry.isDirectory()) {
-      if (isExcludedDirectory(relativePath)) continue
-      walk(candidate, sourceRoot, files, include)
+      if (skipDirectory(relativePath)) continue
+      walk(candidate, sourceRoot, files, include, skipDirectory)
     } else if (entry.isFile() && include(relativePath)) {
       files.push(relativePath)
     } else if (!entry.isFile()) {
@@ -245,7 +245,7 @@ function walk(directory, sourceRoot, files, include) {
   }
 }
 
-function isExcludedDirectory(file) {
+function isExcludedSourceDirectory(file) {
   if (componentFrontendPath.test(file)) return false
   return file === 'frontend/node_modules' || file === 'frontend/dist' || file === 'web/html' ||
     file.includes('/node_modules') || file.includes('/testdata') || file.includes('/tests') ||
