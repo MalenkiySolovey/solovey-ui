@@ -36,7 +36,7 @@ require (
 )
 
 require (
-	github.com/MalenkiySolovey/solovey-component-paid-subscriptions v0.1.2
+	github.com/MalenkiySolovey/solovey-component-paid-subscriptions v0.1.3
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/axiomhq/hyperloglog v0.0.0-20240319100328-84253e514e02 // indirect
 	github.com/creack/pty v1.1.24 // indirect

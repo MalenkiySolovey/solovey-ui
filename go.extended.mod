@@ -268,7 +268,7 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-require github.com/MalenkiySolovey/solovey-component-paid-subscriptions v0.1.2
+require github.com/MalenkiySolovey/solovey-component-paid-subscriptions v0.1.3
 
 replace github.com/sagernet/sing-box => github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261104205147-493b451cdac6
 

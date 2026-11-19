@@ -4,6 +4,7 @@ package telegram
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/MalenkiySolovey/solovey-component-paid-subscriptions/customerbot"
@@ -29,10 +30,30 @@ func (b *Bot) customerHandler(db *gorm.DB) *customerbot.Handler {
 			}
 			return client.Id, nil
 		},
-		TryAutoRegister: b.tryAutoRegister,
-		Subscription:    func(id int64) (string, []string, error) { return b.subscriptionFacts(db, id) },
-		ReadUsage:       func(id int64) (customerbot.Usage, error) { return b.usageFacts(db, id) },
-		RenderQR:        renderQR, Greeting: b.setting.GetPaidSubGreeting, RefundRevokes: b.setting.GetPaidSubRefundRevoke,
+		Trial: &customerbot.TrialRegistration{
+			Enabled:     b.setting.GetPaidSubAutoRegister,
+			StartLimit:  b.setting.GetPaidSubStartRateLimitPerMin,
+			AllowStart:  func(id int64, limit int) bool { return b.startLimiter.AllowWithLimit(id, limit).Allowed },
+			Inbounds:    b.setting.GetPaidSubAutoInbounds,
+			ClientLimit: b.setting.GetPaidSubMaxClients,
+			Limits: func() (int, int, error) {
+				days, daysErr := b.setting.GetPaidSubTrialDays()
+				gigabytes, volumeErr := b.setting.GetPaidSubTrialVolumeGB()
+				return days, gigabytes, errors.Join(daysErr, volumeErr)
+			},
+			CreateClient: func(ctx context.Context, trial customerbot.TrialClient) (uint, error) {
+				return b.createTrialClient(ctx, db, trial)
+			},
+			OnRegistered: func(clientID uint, tgID int64) {
+				_ = (&service.AuditService{Runtime: b.runtime}).Record(service.AuditEvent{
+					Actor: "PaidSubBot", Event: "paidsub_registered", Resource: "paidsub", Severity: service.AuditSeverityInfo,
+					Details: map[string]any{"clientId": clientID, "tgUserId": tgID},
+				})
+			},
+		},
+		Subscription: func(id int64) (string, []string, error) { return b.subscriptionFacts(db, id) },
+		ReadUsage:    func(id int64) (customerbot.Usage, error) { return b.usageFacts(db, id) },
+		RenderQR:     renderQR, Greeting: b.setting.GetPaidSubGreeting, RefundRevokes: b.setting.GetPaidSubRefundRevoke,
 		Provider: b.payments.providerByKind, Purchase: b.payments.createOrder,
 		ApplyPayment: func(_ context.Context, orderID uint, chargeID string) (bool, error) {
 			applied, _, err := b.payments.applyPaidOrder(db, orderID, chargeID)
