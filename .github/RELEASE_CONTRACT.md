@@ -41,6 +41,9 @@ Release checklist:
 - Publish the same signed release set to the version tag and the matching
   `channel-main` or `channel-beta` pointer. The channel tag is a transport
   pointer, not a trust root; `solovey-ui-release.json` is the signed authority.
+  Subsequent [main-channel renewal](../docs/release-policy.md#main-channel-renewal)
+  can replace that envelope and checksum on the mutable pointer only. All
+  payload fields and versioned release assets remain unchanged.
 - Verify the public-root set embedded into the production build. An empty or
   unusable root set must remain fail-closed as `SIGNING_UNAVAILABLE`.
 - Run `go test ./config/... ./database/... ./service ./internal/release`.

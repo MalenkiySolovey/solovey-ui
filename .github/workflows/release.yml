@@ -23,6 +23,11 @@ on:
         required: false
         default: ""
         type: string
+      renew_main:
+        description: "Re-sign only the existing channel-main envelope for the published stable tag; no version publication"
+        required: false
+        default: false
+        type: boolean
   push:
     tags:
       - "v*"
@@ -46,6 +51,54 @@ env:
   BOOTLIN_BASE_URL: https://toolchains.bootlin.com/downloads/releases/toolchains
 
 jobs:
+  renew-main:
+    name: Renew the published main channel
+    if: github.event_name == 'workflow_dispatch' && inputs.renew_main
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Admit only canonical channel maintenance
+        env:
+          PREFLIGHT_ONLY: ${{ inputs.preflight_only }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REPOSITORY" != MalenkiySolovey/solovey-ui || "$GITHUB_REF" != refs/heads/main ||
+                "$PREFLIGHT_ONLY" != false || -n "$SOURCE_COMMIT" || -n "$RESUME_RUN_ID" ]]; then
+            echo 'Renewal requires canonical main, preflight_only=false and no source or resume override' >&2
+            exit 1
+          fi
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .node-version
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - name: Build the existing release verifier
+        run: env GOWORK=off CGO_ENABLED=0 go build -mod=readonly -trimpath -o "$RUNNER_TEMP/release-inspector" ./cmd/solovey-artifact-info
+      - name: Renew only the stable channel metadata and verify its public readback
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOLOVEY_ARTIFACT_INFO: ${{ runner.temp }}/release-inspector
+          SUI_RELEASE_SIGNING_KEY_ID: ${{ vars.SUI_RELEASE_SIGNING_KEY_ID }}
+          SUI_RELEASE_SIGNING_PRIVATE_KEY_B64: ${{ secrets.SUI_RELEASE_SIGNING_PRIVATE_KEY_B64 }}
+        run: node scripts/release-channel.mjs renew "$RUNNER_TEMP/channel-main" "$RELEASE_TAG_INPUT"
+      - name: Retain verified renewal bytes if publication is interrupted
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: interrupted-channel-renewal
+          path: ${{ runner.temp }}/channel-main/solovey-ui-release.json*
+          if-no-files-found: ignore
+          retention-days: 7
+
   build-docker:
     if: inputs.resume_run_id == ''
     needs: [release-preflight, assemble-linux, build-windows, verify-openwrt, release-metadata]
@@ -77,6 +130,7 @@ jobs:
 
   release-preflight:
     name: Release preflight
+    if: ${{ !inputs.renew_main }}
     runs-on: ubuntu-latest
     outputs:
       linux-matrix: ${{ steps.targets.outputs.linux-matrix }}

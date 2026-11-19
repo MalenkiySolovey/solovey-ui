@@ -77,7 +77,7 @@ test('orchestrator is validated before immutable product checkout and resolution
 
 test('every product checkout and reusable build is bound to resolved product source', () => {
   for (const [name, job] of Object.entries(release.jobs)) {
-    if (name === 'release-preflight') continue
+    if (name === 'release-preflight' || name === 'renew-main') continue
     assert.ok([job.needs].flat().includes('release-preflight'), name)
     if (['resume-candidate', 'build-openwrt', 'verify-openwrt', 'publish-linux', 'component-profile-checks'].includes(name)) {
       assert.deepEqual(checkouts(job).map(step => step.with.ref), ['${{ github.sha }}', productRef])
@@ -173,6 +173,26 @@ test('non-publishing preflight uses an isolated test signer and cannot feed reco
   const artifact = assemble.find(step => step.name === 'Retain complete release candidate').with.name
   assert.equal(artifact, "${{ github.event_name == 'workflow_dispatch' && inputs.preflight_only && 'preflight-linux-release' || 'complete-linux-release' }}")
   for (const caller of Object.values(release.jobs).filter(job => job.uses)) assert.equal(caller.secrets, undefined)
+})
+
+test('channel maintenance shares publication serialization without building or publishing a version', () => {
+  const input = release.on.workflow_dispatch.inputs.renew_main
+  const job = release.jobs['renew-main']
+  assert.equal(input.default, false)
+  assert.equal(release.jobs['release-preflight'].if, '${{ !inputs.renew_main }}')
+  assert.equal(release.concurrency.group, 'solovey-release-publication')
+  assert.equal(job.if, "github.event_name == 'workflow_dispatch' && inputs.renew_main")
+  assert.equal(job.permissions.contents, 'write')
+  assert.ok(job.steps[0].run.includes('refs/heads/main ||'))
+  assert.match(job.steps[0].run, /PREFLIGHT_ONLY.*!= false.*SOURCE_COMMIT.*RESUME_RUN_ID/)
+  const renew = job.steps.find(step => step.run?.includes('release-channel.mjs renew'))
+  assert.equal(renew.env.SUI_RELEASE_SIGNING_PRIVATE_KEY_B64, '${{ secrets.SUI_RELEASE_SIGNING_PRIVATE_KEY_B64 }}')
+  assert.ok(job.steps.indexOf(renew) > job.steps.findIndex(step => step.run?.includes('go build')))
+  const audit = read('audit')
+  assert.equal(audit.permissions.contents, 'read')
+  assert.ok(audit.on.schedule.length > 0)
+  assert.ok(audit.jobs['channel-main'].steps.some(step => step.run?.includes('release-channel.mjs check')))
+  assert.ok(!JSON.stringify(audit.jobs['channel-main']).includes('secrets.'))
 })
 
 test('release uses the shared capability owner with the complete original package selection', () => {

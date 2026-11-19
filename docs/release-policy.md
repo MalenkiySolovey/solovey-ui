@@ -30,6 +30,32 @@ sequence and a complete verified artifact set. Never overwrite a public release,
 move its tag, reuse retired receipts, or substitute a stored candidate for the
 official installer release.
 
+## Main channel renewal
+
+The daily Audit Dashboard fails the signed-channel check when the public main
+envelope is invalid, expired, or has at most three days left. The audit uses
+only the public trust roots and never signs or publishes.
+
+From the canonical Product repository, use the existing release workflow on
+`main` with the exact latest stable tag (example for the current stable):
+
+```sh
+gh workflow run release.yml --ref main -f tag=v2026.5.1 -f renew_main=true -f preflight_only=false
+```
+
+This mode authenticates the live channel and the immutable version envelope,
+checks the signed artifact identities against both releases, and reissues the
+same payload with a higher sequence and a fresh seven-day validity window. It
+uses the existing signer and release concurrency group. It replaces only
+`solovey-ui-release.json` and its checksum on `channel-main`, verifies the two
+public downloads, and logs the sequence, expiry, and envelope SHA-256. It
+cannot build or publish a version, change beta, or rotate a signer.
+
+If a transport error interrupts the upload, check the live asset and the
+workflow's retained verified renewal bytes before any retry. Never restore a
+lower sequence. Missing or ambiguous channel state requires the release owner
+to reconcile the interrupted publication; do not bypass the verifier.
+
 ## Package versions
 
 The OpenWrt package metadata owner encodes a prerelease such as
