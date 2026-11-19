@@ -8,6 +8,7 @@ import (
 
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	paidprovider "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
+	commerce "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
 	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -87,7 +88,7 @@ func runCryptoBotWork(ctx context.Context, runtime *service.Runtime, ps *payment
 					notifyPaid(ctx, runtime, tgID)
 				}
 			}
-			if err := paidstore.ReviewProviderOrders(db, outcome.ReviewOrderIDs); err != nil {
+			if err := commerce.ReviewProviderOrders(db, outcome.ReviewOrderIDs); err != nil {
 				logger.Warning("paidsub: review provider work: ", err)
 			}
 			if err := paidstore.ExpireVerifiedProviderOrders(db, outcome.TerminalOrderIDs, nowUnix(), cryptoBotPollGraceSeconds); err != nil {

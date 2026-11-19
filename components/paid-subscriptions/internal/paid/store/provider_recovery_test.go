@@ -10,8 +10,9 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	paid "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
 	provider "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
-	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
+	commerce "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
 )
 
 func TestRecoveryPreservesHistoricalIdentityAndLegacyPaidEvidence(t *testing.T) {
@@ -31,7 +32,7 @@ func TestRecoveryPreservesHistoricalIdentityAndLegacyPaidEvidence(t *testing.T) 
 			if err != nil || got.Applied != snapshot {
 				t.Fatal("recovery authority wrong", got, err)
 			}
-			persisted, err := GetOrder(db, order.Id)
+			persisted, err := commerce.GetOrder(db, order.Id)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -55,7 +56,7 @@ func TestRecoveryPreservesHistoricalIdentityAndLegacyPaidEvidence(t *testing.T) 
 			if err := paid.EnsureSchema(db); err != nil {
 				t.Fatal(err)
 			}
-			persisted, err = GetOrder(db, order.Id)
+			persisted, err = commerce.GetOrder(db, order.Id)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -86,7 +87,7 @@ func TestCryptoRecoveryCannotApplyAnotherProviderOrder(t *testing.T) {
 	if err != nil || got.Applied {
 		t.Fatal("wrong provider entered recovery", got, err)
 	}
-	persisted, err := GetOrder(db, order.Id)
+	persisted, err := commerce.GetOrder(db, order.Id)
 	if err != nil || persisted.Status != paid.StatusPending || persisted.ProviderChargeID != "" {
 		t.Fatal("wrong provider financial state changed", persisted, err)
 	}
@@ -109,7 +110,7 @@ func TestRecoveredPaidGrantAndSiblingQueueCommitTogether(t *testing.T) {
 	if _, err := RecoverProviderOrder(db, recovery, 1000000, 86400); err == nil {
 		t.Fatal("grant failure accepted")
 	}
-	got, _ := GetOrder(db, order.Id)
+	got, _ := commerce.GetOrder(db, order.Id)
 	var queues int64
 	db.Model(&paid.InvoiceCancellation{}).Count(&queues)
 	if got.Status != paid.StatusRecoverable || got.ProviderRef != "" || queues != 0 {
@@ -122,7 +123,7 @@ func TestRecoveredPaidGrantAndSiblingQueueCommitTogether(t *testing.T) {
 	if err != nil || !result.Applied {
 		t.Fatal(result, err)
 	}
-	got, _ = GetOrder(db, order.Id)
+	got, _ = commerce.GetOrder(db, order.Id)
 	db.Model(&paid.InvoiceCancellation{}).Count(&queues)
 	if got.Status != paid.StatusPaid || got.ProviderRef != "41" || got.ProviderChargeID != "cryptobot:41" || queues != 1 {
 		t.Fatal("recovery identity/queue missing", got, queues)
@@ -165,7 +166,7 @@ func TestLegacyRecoveryAndAmbiguityNeverInventPurchase(t *testing.T) {
 			if err != nil || out.Applied {
 				t.Fatal("unsafe recovery", out, err)
 			}
-			got, _ := GetOrder(db, order.Id)
+			got, _ := commerce.GetOrder(db, order.Id)
 			db.First(&client, 1)
 			if client.Volume != 100 || got.Status == paid.StatusPaid {
 				t.Fatal("ambiguous grant")
@@ -183,7 +184,7 @@ func TestLegacyRecoveryAndAmbiguityNeverInventPurchase(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				got, _ = GetOrder(db, order.Id)
+				got, _ = commerce.GetOrder(db, order.Id)
 				if got.Status != paid.StatusFailed || !got.LegacyResolved || got.GrantSnapshot {
 					t.Fatal("legacy was fabricated/resurrected", got)
 				}
@@ -235,17 +236,17 @@ func TestRefundClaimArbitratesConcurrentCallsAndRetainsOriginalPolicy(t *testing
 	if err != nil || !retry.RefundRevoke || retry.ProviderChargeID != "tg:original" {
 		t.Fatal("retry changed intent", retry, err)
 	}
-	if _, err := FinalizeClaimedRefundGrant(db, order.Id, first, 102, "test"); !errors.Is(err, ErrOrderAlreadyFinalized) {
+	if _, err := FinalizeClaimedRefundGrant(db, order.Id, first, 102, "test"); !errors.Is(err, commerce.ErrOrderAlreadyFinalized) {
 		t.Fatal("stale claim completed", err)
 	}
 	if _, err := FinalizeClaimedRefundGrant(db, order.Id, "retry", 102, "test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := FinalizeClaimedRefundGrant(db, order.Id, "retry", 102, "test"); !errors.Is(err, ErrOrderAlreadyFinalized) {
+	if _, err := FinalizeClaimedRefundGrant(db, order.Id, "retry", 102, "test"); !errors.Is(err, commerce.ErrOrderAlreadyFinalized) {
 		t.Fatal("refund finalized twice")
 	}
 	db.First(&client, 1)
-	got, _ := GetOrder(db, order.Id)
+	got, _ := commerce.GetOrder(db, order.Id)
 	if client.Volume != 100 || got.Status != paid.StatusRefunded {
 		t.Fatal("refund reversal wrong", client.Volume, got.Status)
 	}
@@ -341,7 +342,7 @@ func TestExpiredRefundClaimRetainsIntentAndRejectsOldCompletion(t *testing.T) {
 	if err := ReleaseRefundClaim(db, order.Id, "prior-process"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := FinalizeClaimedRefundGrant(db, order.Id, "prior-process", 222, "test"); !errors.Is(err, ErrOrderAlreadyFinalized) {
+	if _, err := FinalizeClaimedRefundGrant(db, order.Id, "prior-process", 222, "test"); !errors.Is(err, commerce.ErrOrderAlreadyFinalized) {
 		t.Fatal("stale process committed refund", err)
 	}
 	if _, err := FinalizeClaimedRefundGrant(db, order.Id, "restarted-process", 222, "test"); err != nil {

@@ -18,6 +18,8 @@ github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0 h1:Qczg9
 github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0/go.mod h1:wii8Hu093M9V5KqKNB1IYHtFxbJjHMXLgWzuC7huwiI=
 github.com/MalenkiySolovey/solovey-component-paid-subscriptions v0.1.0 h1:Y5KyR/cU4Ujbt5UWvOPEDwRad695xyy7I0SqYeJVbUc=
 github.com/MalenkiySolovey/solovey-component-paid-subscriptions v0.1.0/go.mod h1:qyJ2IQK6YQa6EUxoyiApq3I0FsoKIbaFtno0uo54oc0=
+github.com/MalenkiySolovey/solovey-component-paid-subscriptions v0.1.1 h1:1OHttAQ3HbbclJUMkn3ibDj/1ahSVk2dia5J4bk9s0k=
+github.com/MalenkiySolovey/solovey-component-paid-subscriptions v0.1.1/go.mod h1:cWcWSxtm/ZGSalSTL7VtZaJTVDHUJDICLD1UJwSwXBY=
 github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions v0.1.0 h1:UkSW5YE2EUhaBRuh8ZsNQ338iDR0GqcdzoYeeR/vgbk=
 github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions v0.1.0/go.mod h1:NFDUC3477K7w5woBBJLlzm1bh3Ah5CcnVE/SBAmrV2M=
 github.com/MalenkiySolovey/solovey-component-server-protection v0.1.0 h1:gSzRUTp93lF0d0DP+7vhBziM2CUY9dhLrT+8l8vQqwk=

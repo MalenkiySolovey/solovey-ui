@@ -3,7 +3,7 @@ package provider
 import (
 	"testing"
 
-	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
+	paid "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
 )
 
 func TestCryptoBotPaymentMatchIsExactAndFailClosed(t *testing.T) {

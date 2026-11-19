@@ -10,11 +10,11 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	paidcore "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	paidadmin "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/admin"
-	paidcore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
 	paidsettings "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/settings"
 	paidtelegram "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/telegram"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"

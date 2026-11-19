@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 
+	paid "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
 	provider "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
-	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
+	commerce "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -112,7 +113,7 @@ func RecoverProviderOrder(db *gorm.DB, recovered provider.Reconciliation, now, g
 			return res.Error
 		}
 		if res.RowsAffected != 1 {
-			return ErrOrderAlreadyFinalized
+			return commerce.ErrOrderAlreadyFinalized
 		}
 		var order paid.PaymentOrder
 		if err := tx.First(&order, recovered.OrderID).Error; err != nil {
@@ -201,7 +202,7 @@ func RecoverProviderOrder(db *gorm.DB, recovered provider.Reconciliation, now, g
 		applied, err = ApplyPaidOrderGrant(tx, order.Id, "cryptobot:"+canonical.Ref, nil, now, "PaidSubBot")
 		return err
 	})
-	if errors.Is(err, ErrOrderAlreadyFinalized) {
+	if errors.Is(err, commerce.ErrOrderAlreadyFinalized) {
 		return AppliedOrderResult{}, nil
 	}
 	return applied, err

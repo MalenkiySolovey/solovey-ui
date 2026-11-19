@@ -12,8 +12,8 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
-	paidcore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
-	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
+	paidcore "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
+	commerce "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
@@ -131,7 +131,7 @@ func (b *Bot) tryAutoRegister(ctx context.Context, chatID int64, from *tgUser, l
 		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
 		return true
 	}
-	if err := paidstore.SetBinding(db, created.Id, from.ID, nowUnix()); err != nil {
+	if err := commerce.SetBinding(db, created.Id, from.ID, nowUnix()); err != nil {
 		logger.Warning("paidsub: auto-register bind failed: ", err)
 		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
 		return true

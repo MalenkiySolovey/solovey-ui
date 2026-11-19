@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
-	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
+	paid "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
 )
 
 func TestRenderExternalURLReplacesSafeServerSidePlaceholders(t *testing.T) {

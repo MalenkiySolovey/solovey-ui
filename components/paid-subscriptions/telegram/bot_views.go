@@ -10,8 +10,8 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
-	paidcore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
-	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
+	paidcore "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
+	commerce "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
 	sublocal "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/local"
 )
 
@@ -133,7 +133,7 @@ func (b *Bot) isOnline(name string) bool {
 // tariffNameMap returns tariffId → name for labelling orders (best-effort).
 func (b *Bot) tariffNameMap() map[uint]string {
 	names := map[uint]string{}
-	all, err := paidstore.ListTariffs(dbsqlite.DB())
+	all, err := commerce.ListTariffs(dbsqlite.DB())
 	if err != nil {
 		return names
 	}

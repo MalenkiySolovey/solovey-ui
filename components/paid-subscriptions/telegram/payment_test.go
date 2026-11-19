@@ -11,8 +11,8 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
 	paidprovider "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
-	"github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
 	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
 	paidsettings "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/settings"
 )

@@ -5,8 +5,9 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	paid "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
 	"github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
-	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
+	commerce "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
 	"gorm.io/gorm"
 )
 
@@ -58,7 +59,7 @@ func TestApplyPaidOrderGrantAndRefundAreAtomicDomainOperations(t *testing.T) {
 	if !savedClient.Enable || savedClient.Volume != 1000 || savedClient.Up != 0 || savedClient.Down != 0 {
 		t.Fatalf("client grant updates wrong: %#v", savedClient)
 	}
-	gotOrder, err := GetOrder(db, order.Id)
+	gotOrder, err := commerce.GetOrder(db, order.Id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +80,7 @@ func TestApplyPaidOrderGrantAndRefundAreAtomicDomainOperations(t *testing.T) {
 	if savedClient.Volume != 100 || savedClient.Up != 30 || savedClient.Down != 20 {
 		t.Fatalf("client refund updates wrong: %#v", savedClient)
 	}
-	gotOrder, _ = GetOrder(db, order.Id)
+	gotOrder, _ = commerce.GetOrder(db, order.Id)
 	if gotOrder.Status != paid.StatusRefunded {
 		t.Fatalf("order status after refund = %s", gotOrder.Status)
 	}
@@ -180,7 +181,7 @@ func TestPaidOrderGrantAndRefundUseImmutablePurchaseSnapshot(t *testing.T) {
 	if err := db.Create(&tariff).Error; err != nil {
 		t.Fatal(err)
 	}
-	order := NewPendingOrder(&client, &tariff, provider.ProviderStripe, tariff.Price, tariff.Currency, 1, "snapshot-order", now, 30)
+	order := commerce.NewPendingOrder(client.Id, &tariff, provider.ProviderStripe, tariff.Price, tariff.Currency, 1, "snapshot-order", now, 30)
 	if err := db.Create(order).Error; err != nil {
 		t.Fatal(err)
 	}

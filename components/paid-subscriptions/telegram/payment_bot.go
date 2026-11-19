@@ -8,8 +8,9 @@ import (
 	"strings"
 
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	paidcore "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
 	paidprovider "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
-	paidcore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
+	commerce "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
 	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -20,7 +21,7 @@ func (b *Bot) cmdBuy(ctx context.Context, chatID int64, tgID int64, l lang) {
 		_ = b.sendMessage(ctx, chatID, tr(l, "not_linked"), nil)
 		return
 	}
-	tariffs, _ := paidstore.ListEnabledTariffs(dbsqlite.DB())
+	tariffs, _ := commerce.ListEnabledTariffs(dbsqlite.DB())
 	var rows [][]inlineButton
 	for i := range tariffs {
 		t := tariffs[i]
@@ -37,7 +38,7 @@ func (b *Bot) cmdBuy(ctx context.Context, chatID int64, tgID int64, l lang) {
 }
 
 func (b *Bot) handleTariffSelect(ctx context.Context, chatID int64, tgID int64, tariffID uint, l lang) {
-	t, err := paidstore.GetTariff(dbsqlite.DB(), tariffID)
+	t, err := commerce.GetTariff(dbsqlite.DB(), tariffID)
 	if err != nil || !t.Enabled {
 		_ = b.sendMessage(ctx, chatID, tr(l, "buy_none"), nil)
 		return
@@ -59,7 +60,7 @@ func (b *Bot) handleTariffSelect(ctx context.Context, chatID int64, tgID int64, 
 }
 
 func (b *Bot) handlePay(ctx context.Context, chatID int64, tgID int64, tariffID uint, kind string, l lang) {
-	t, err := paidstore.GetTariff(dbsqlite.DB(), tariffID)
+	t, err := commerce.GetTariff(dbsqlite.DB(), tariffID)
 	if err != nil || !t.Enabled {
 		_ = b.sendMessage(ctx, chatID, tr(l, "buy_none"), nil)
 		return
@@ -194,7 +195,7 @@ func (b *Bot) handleSuccessfulPayment(ctx context.Context, m *tgMessage) {
 		charge = sp.ProviderPaymentChargeID
 	}
 	if charge == "" {
-		if err := paidstore.ReviewProviderOrders(dbsqlite.DB(), []uint{order.Id}); err != nil {
+		if err := commerce.ReviewProviderOrders(dbsqlite.DB(), []uint{order.Id}); err != nil {
 			logger.Warning("paidsub: review missing payment charge: ", err)
 		}
 		return

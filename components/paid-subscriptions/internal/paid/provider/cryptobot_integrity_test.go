@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
+	paid "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
 )
 
 type contractTransport func(*http.Request) (*http.Response, error)

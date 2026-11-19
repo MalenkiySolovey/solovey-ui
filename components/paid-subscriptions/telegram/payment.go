@@ -12,16 +12,17 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	paidcore "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
 	paidprovider "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
+	commerce "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
 	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
-	paidcore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
 	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
-var errAlreadyApplied = paidstore.ErrOrderAlreadyFinalized
+var errAlreadyApplied = commerce.ErrOrderAlreadyFinalized
 var errRefundNotApplicable = errors.New("order is not refundable")
 
 // isAlreadyRefunded reports whether a refundStarPayment error means the charge
@@ -139,7 +140,7 @@ func (p *paymentCoordinator) CreateOrder(ctx context.Context, client *model.Clie
 		return nil, nil, fmt.Errorf("provider not available")
 	}
 	if kind == paidprovider.ProviderCryptoBot {
-		existing, err := paidstore.ActiveCryptoBotOrder(db, client.Id, tariff.Id, tgUserId)
+		existing, err := commerce.ActiveCryptoBotOrder(db, client.Id, tariff.Id, tgUserId)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -153,7 +154,7 @@ func (p *paymentCoordinator) CreateOrder(ctx context.Context, client *model.Clie
 	}
 	// Caller supplies identifiers only. Re-resolve authoritative facts before
 	// creating the immutable purchase, including stale/forged caller structs.
-	tariff, err = paidstore.GetTariff(db, tariff.Id)
+	tariff, err = commerce.GetTariff(db, tariff.Id)
 	if err != nil || !tariff.Enabled {
 		return nil, nil, fmt.Errorf("tariff is unavailable")
 	}
@@ -182,13 +183,13 @@ func (p *paymentCoordinator) CreateOrder(ctx context.Context, client *model.Clie
 	if err != nil {
 		return nil, nil, err
 	}
-	order := paidstore.NewPendingOrder(client, tariff, kind, amount, currency, tgUserId, payload, now, ttlMin)
+	order := commerce.NewPendingOrder(client.Id, tariff, kind, amount, currency, tgUserId, payload, now, ttlMin)
 	if err := paidstore.ValidateOrderGrant(*order); err != nil {
 		return nil, nil, err
 	}
 	if kind == paidprovider.ProviderCryptoBot {
 		var created bool
-		order, created, err = paidstore.CreateInvoiceIntent(db, order)
+		order, created, err = commerce.CreateInvoiceIntent(db, order)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -210,15 +211,15 @@ func (p *paymentCoordinator) CreateOrder(ctx context.Context, client *model.Clie
 	}
 	if err != nil {
 		if kind == paidprovider.ProviderCryptoBot {
-			return order, nil, errors.Join(err, paidstore.MarkInvoiceRecoverable(db, order.Id))
+			return order, nil, errors.Join(err, commerce.MarkInvoiceRecoverable(db, order.Id))
 		}
-		return nil, nil, errors.Join(err, paidstore.MarkOrderFailed(db, order.Id))
+		return nil, nil, errors.Join(err, commerce.MarkOrderFailed(db, order.Id))
 	}
-	if err := paidstore.SaveInvoiceResult(db, order.Id, inv); err != nil {
+	if err := commerce.SaveInvoiceResult(db, order.Id, inv); err != nil {
 		if kind == paidprovider.ProviderCryptoBot {
-			return order, nil, errors.Join(err, paidstore.MarkInvoiceRecoverable(db, order.Id))
+			return order, nil, errors.Join(err, commerce.MarkInvoiceRecoverable(db, order.Id))
 		}
-		return nil, nil, errors.Join(err, paidstore.MarkOrderFailed(db, order.Id))
+		return nil, nil, errors.Join(err, commerce.MarkOrderFailed(db, order.Id))
 	}
 	order.Status, order.ProviderRef, order.ExternalURL = paidcore.StatusPending, inv.ProviderRef, inv.PayURL
 	return order, inv, nil
@@ -248,15 +249,15 @@ func reusableInvoice(order *paidcore.PaymentOrder) (*paidcore.PaymentOrder, *pai
 }
 
 func (p *paymentCoordinator) getOrder(id uint) (*paidcore.PaymentOrder, error) {
-	return paidstore.GetOrder(dbsqlite.DB(), id)
+	return commerce.GetOrder(dbsqlite.DB(), id)
 }
 
 func (p *paymentCoordinator) findOrderByPayload(payload string) (*paidcore.PaymentOrder, error) {
-	return paidstore.FindOrderByPayload(dbsqlite.DB(), payload)
+	return commerce.FindOrderByPayload(dbsqlite.DB(), payload)
 }
 
 func (p *paymentCoordinator) markFailed(id uint) error {
-	return paidstore.MarkOrderFailed(dbsqlite.DB(), id)
+	return commerce.MarkOrderFailed(dbsqlite.DB(), id)
 }
 
 // ApplyPaidOrder finalizes a pending order and renews the client exactly once.
@@ -303,7 +304,7 @@ func (p *paymentCoordinator) afterPaidCommit(result paidstore.AppliedOrderResult
 // out-of-band, so a payment can land after the short local TTL and must remain
 // pending until an authenticated provider outcome is available.
 func (p *paymentCoordinator) ExpireStaleOrders() error {
-	return paidstore.ExpireStaleOrders(dbsqlite.DB(), nowUnix())
+	return commerce.ExpireStaleOrders(dbsqlite.DB(), nowUnix())
 }
 
 // ---- order history & refunds ----
@@ -311,12 +312,12 @@ func (p *paymentCoordinator) ExpireStaleOrders() error {
 // OrdersForTgUser returns the most recent orders belonging to a Telegram user,
 // scoped strictly by telegram_user_id (never another user's orders).
 func (p *paymentCoordinator) OrdersForTgUser(tgUserId int64, limit int) ([]paidcore.PaymentOrder, error) {
-	return paidstore.OrdersForTelegramUser(dbsqlite.DB(), tgUserId, limit)
+	return commerce.OrdersForTelegramUser(dbsqlite.DB(), tgUserId, limit)
 }
 
 // RefundableOrdersForTgUser returns a user's paid (refundable) orders.
 func (p *paymentCoordinator) RefundableOrdersForTgUser(tgUserId int64, limit int) ([]paidcore.PaymentOrder, error) {
-	return paidstore.RefundableOrdersForTelegramUser(dbsqlite.DB(), tgUserId, limit)
+	return commerce.RefundableOrdersForTelegramUser(dbsqlite.DB(), tgUserId, limit)
 }
 
 // finalizeRefund marks a paid order as refunded exactly once and, when revoke is

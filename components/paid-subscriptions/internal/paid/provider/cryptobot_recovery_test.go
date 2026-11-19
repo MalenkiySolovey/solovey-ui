@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"testing"
 
-	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
+	paid "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
 )
 
 func TestCryptoBotRecoveryCompletesBoundedScanBeforeReturningCandidates(t *testing.T) {

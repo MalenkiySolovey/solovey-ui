@@ -2,16 +2,14 @@ package store
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 
 	"github.com/MalenkiySolovey/solovey-backend/users/entitlement"
-	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
+	paid "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
+	commerce "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
 	"gorm.io/gorm"
 )
-
-var ErrOrderAlreadyFinalized = errors.New("order already finalized")
 
 type AppliedOrderResult struct {
 	Applied        bool
@@ -36,7 +34,7 @@ func ApplyPaidOrderGrant(db *gorm.DB, orderID uint, chargeID string, raw []byte,
 			return res.Error
 		}
 		if res.RowsAffected != 1 {
-			return ErrOrderAlreadyFinalized
+			return commerce.ErrOrderAlreadyFinalized
 		}
 		var order paid.PaymentOrder
 		if err := tx.Where("id = ?", orderID).First(&order).Error; err != nil {
@@ -91,7 +89,7 @@ func finalizeRefundGrant(db *gorm.DB, orderID uint, status, token string, revoke
 			return res.Error
 		}
 		if res.RowsAffected != 1 {
-			return ErrOrderAlreadyFinalized
+			return commerce.ErrOrderAlreadyFinalized
 		}
 		var order paid.PaymentOrder
 		if err := tx.Where("id = ?", orderID).First(&order).Error; err != nil {
