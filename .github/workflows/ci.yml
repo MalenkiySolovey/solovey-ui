@@ -15,7 +15,63 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  native-scope:
+    name: Native runtime scope
+    runs-on: ubuntu-24.04
+    outputs:
+      channel-only: ${{ steps.scope.outputs.channel_only }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Detect a channel-maintenance-only change to the tested tree
+        id: scope
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          channel_only=false
+          if [[ "$GITHUB_EVENT_NAME" == pull_request && -n "$BASE_SHA" && -n "$PR_SHA" ]] &&
+             [[ "$(git rev-parse --verify -q HEAD^1 || true)" == "$BASE_SHA" ]] &&
+             [[ "$(git rev-parse --verify -q HEAD^2 || true)" == "$PR_SHA" ]] &&
+             git diff --quiet --no-ext-diff --no-renames "$BASE_SHA" HEAD -- . \
+               ':(top,literal,exclude)scripts/release-channel.mjs' \
+               ':(top,literal,exclude)scripts/release-channel.test.mjs'; then
+            channel_only=true
+          fi
+          printf 'channel_only=%s\n' "$channel_only" >> "$GITHUB_OUTPUT"
+
+  native-qualification:
+    name: Native runtime qualification
+    if: always()
+    needs: [native-scope, extended-runtime, installer]
+    runs-on: ubuntu-24.04
+    env:
+      SCOPE_RESULT: ${{ needs.native-scope.result }}
+      CHANNEL_ONLY: ${{ needs.native-scope.outputs.channel-only }}
+      EXTENDED_RESULT: ${{ needs.extended-runtime.result }}
+      INSTALLER_RESULT: ${{ needs.installer.result }}
+    steps:
+      - name: Enforce the selected native and signed release gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SCOPE_RESULT" == success && "$INSTALLER_RESULT" == success ]]
+          if [[ "$GITHUB_EVENT_NAME" == pull_request && "$CHANNEL_ONLY" == true ]]; then
+            [[ "$EXTENDED_RESULT" == skipped ]]
+          else
+            [[ "$CHANNEL_ONLY" == false && "$EXTENDED_RESULT" == success ]]
+          fi
+
   metadata-qualification:
     name: Exact-source metadata qualification
     if: github.event_name == 'workflow_dispatch' && inputs.qualify_metadata
@@ -110,6 +166,8 @@ jobs:
 
   extended-runtime:
     name: Extended runtime (${{ matrix.os }})
+    needs: native-scope
+    if: needs.native-scope.outputs.channel-only != 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
