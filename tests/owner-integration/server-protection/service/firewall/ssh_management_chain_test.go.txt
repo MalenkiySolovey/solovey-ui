@@ -400,7 +400,9 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 	}
 	var startupDB *gorm.DB
 	dbConfig := workflowDatabaseConfig{Configure: func(db *gorm.DB) { startupDB = db }}
-	if len(bootRecovery) != 0 && strings.HasPrefix(bootRecovery[0], "sqlite_") {
+	if len(bootRecovery) != 0 {
+		// Recovery runs a background heartbeat alongside foreground rollback.
+		// Exercise the same SQLite journal and busy policy as the installed Panel.
 		dbConfig.Open = productionStartupSQLite(t)
 	}
 	workflow, helper, _, repo, _ := newWorkflowWithRoot(t, nil, dbConfig)

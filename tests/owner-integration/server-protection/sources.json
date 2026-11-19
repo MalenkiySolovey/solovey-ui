@@ -120,7 +120,7 @@
       "asset": "service/firewall/ssh_management_chain_test.go.txt",
       "package": "service/firewall",
       "file": "ssh_management_chain_test.go",
-      "sha256": "5004ebab00ba6f029bd1ca063cb78d76fd12be1d380a4e5c7a6eeb60f7fa17ee"
+      "sha256": "00f38eaed38381c6bd6d8f6e0d872b064b3acaa39c1da9ef9819308eb591498a"
     },
     {
       "asset": "service/firewall/test_doubles_test.go.txt",
