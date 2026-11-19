@@ -160,8 +160,14 @@ async function run() {
   inspectPublished(inspector, priorFile, beforeWrite, trustRoots, now)
   gh(['release', 'upload', channelTag, sidecar, candidate, '--clobber', '--repo', repository], { stdio: 'inherit' })
 
+  const after = releaseAt(`tags/${channelTag}`)
+  assert.equal(after.id, live.id, 'Channel release changed during publication')
+  checkBytes(after, envelopeName, bytes)
+  checkBytes(after, checksumName, fs.readFileSync(sidecar))
+
   const readBack = path.join(directory, 'live-after.json')
   const readBackSidecar = path.join(directory, 'live-after.sha256')
+  const publicDeadline = Date.now() + 3 * 60 * 1000
   for (let attempt = 0; ; attempt++) {
     try {
       fetchPublic(channelTag, envelopeName, readBack)
@@ -170,14 +176,16 @@ async function run() {
       assert.equal(fs.readFileSync(readBackSidecar, 'utf8'), checksum(bytes), 'Public channel checksum does not match the renewal')
       break
     } catch (error) {
-      if (attempt === 4) throw error
-      await new Promise(resolve => setTimeout(resolve, 3000))
+      if (Date.now() >= publicDeadline) throw error
+      // A verified upload can precede invalidation of the public tag redirect.
+      // Keep checking the same URL installed clients use, not a cache-busted URL.
+      await new Promise(resolve => setTimeout(resolve, Math.min(3000 * 2 ** attempt, 15000, publicDeadline - Date.now())))
     }
   }
-  const after = releaseAt(`tags/${channelTag}`)
-  assert.equal(after.id, live.id, 'Channel release changed during publication')
-  checkBytes(after, checksumName, fs.readFileSync(readBackSidecar))
-  const renewed = inspectPublished(inspector, readBack, after, trustRoots, Math.floor(Date.now() / 1000))
+  const publicRelease = releaseAt(`tags/${channelTag}`)
+  assert.equal(publicRelease.id, live.id, 'Channel release changed during public readback')
+  checkBytes(publicRelease, checksumName, fs.readFileSync(readBackSidecar))
+  const renewed = inspectPublished(inspector, readBack, publicRelease, trustRoots, Math.floor(Date.now() / 1000))
   verifyReleaseEnvelope(inspector, readBack, { trustRoots, now: Date.now() / 1000, channel })
   comparePublished(original, renewed, immutable.tag_name)
   assert.equal(renewed.manifest.sequence, sequence)
