@@ -6,7 +6,16 @@ import path from 'node:path'
 import test from 'node:test'
 import { resolveProviderSource } from './core-provider-build.mjs'
 import { canonicalReleaseManifest, providerSchema, verifyReleaseEnvelope, withArtifactInspector } from './release-providers.mjs'
-import { comparePublished, inspectPublished, renewEnvelope } from './release-channel.mjs'
+import { comparePublished, inspectPublished, renewEnvelope, requireRenewalLeadTime } from './release-channel.mjs'
+
+test('the channel guard alerts at the three-day renewal boundary', () => {
+  const now = 1_800_000_100
+  const threshold = now + 3 * 86400
+  assert.doesNotThrow(() => requireRenewalLeadTime(threshold + 1, now))
+  for (const expiresAt of [threshold, threshold - 1, now, now - 1]) {
+    assert.throws(() => requireRenewalLeadTime(expiresAt, now), /renew_main=true/)
+  }
+})
 
 test('renewal reuses only the authenticated stable payload and still fails closed', async t => {
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'solovey-channel-test-'))
