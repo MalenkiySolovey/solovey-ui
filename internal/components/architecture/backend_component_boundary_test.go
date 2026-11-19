@@ -11,10 +11,10 @@ import (
 func TestComponentHTTPAndActionOwnersHaveIndependentTransitiveClosure(t *testing.T) {
 	root := moduleRoot(t)
 	allowed := map[string]bool{}
-	for _, name := range []string{"backend/actions", "backend/audit", "backend/componentapi", "backend/componentview"} {
+	for _, name := range []string{"backend/actions", "backend/audit", "backend/componentapi", "backend/componentview", "backend/security/uuid"} {
 		allowed[backendModulePath+"/"+strings.TrimPrefix(name, "backend/")] = true
 	}
-	for _, target := range []string{"github.com/gin-gonic/gin", "github.com/MalenkiySolovey/solovey-host/operationref", "github.com/MalenkiySolovey/solovey-host/componenthost/manifest", "github.com/MalenkiySolovey/solovey-host/auditrecord"} {
+	for _, target := range []string{"github.com/gin-gonic/gin", "github.com/gofrs/uuid/v5", "github.com/MalenkiySolovey/solovey-host/operationref", "github.com/MalenkiySolovey/solovey-host/componenthost/manifest", "github.com/MalenkiySolovey/solovey-host/auditrecord"} {
 		for name := range goListDependencies(t, root, target) {
 			allowed[name] = true
 		}
@@ -33,9 +33,9 @@ func TestComponentHTTPAndActionOwnersHaveIndependentTransitiveClosure(t *testing
 	}
 }
 
-func TestComponentHTTPUsesOneBackendOwnerAndNarrowSettingsCommand(t *testing.T) {
+func TestRetiredPanelUpdateComponentDoesNotReturn(t *testing.T) {
 	root := moduleRoot(t)
-	for _, retired := range []string{"components/panel-update-ui/api", "componenthost/actions"} {
+	for _, retired := range []string{"components/panel-update-ui", "componenthost/actions"} {
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(retired))); err == nil {
 			entries, readErr := os.ReadDir(filepath.Join(root, filepath.FromSlash(retired)))
 			if readErr != nil || len(entries) > 0 {
@@ -44,18 +44,5 @@ func TestComponentHTTPUsesOneBackendOwnerAndNarrowSettingsCommand(t *testing.T) 
 		} else if !os.IsNotExist(err) {
 			t.Fatal(err)
 		}
-	}
-	component := filepath.Join(root, "components", "panel-update-ui", "component.go")
-	for _, imported := range fileImports(t, component) {
-		if imported == modulePath+"/service" {
-			t.Fatal("Panel Update HTTP still imports the broad Panel service")
-		}
-	}
-	data, err := os.ReadFile(component)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(data), "host.Runtime") {
-		t.Fatal("Panel Update route composition still consumes Runtime")
 	}
 }

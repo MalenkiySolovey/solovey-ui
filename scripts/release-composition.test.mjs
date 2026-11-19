@@ -49,7 +49,8 @@ test('reject missing Component owners, duplicate source owners and unsupported r
     return { id, module: 'github.com/example/component', manifestSHA256: createHash('sha256').update(bytes).digest('hex') }
   }
   const first = create('a', 'in-process')
-  assert.equal(readComponentCatalog(root, { sources: [first] }).length, 1)
+  create('panel-update-ui', 'in-process')
+  assert.deepEqual(readComponentCatalog(root, { sources: [first] }).map(component => component.id), ['a'])
   assert.throws(() => readComponentCatalog(root, { sources: [first, { ...first, id: 'missing' }] }), /missing or ambiguous Component source/)
   const second = create('b', 'in-process')
   assert.throws(() => readComponentCatalog(root, { sources: [first, second] }), /duplicate component source owner/)

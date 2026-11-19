@@ -6,7 +6,7 @@ import {spawnSync} from 'node:child_process'
 import {fileURLToPath} from 'node:url'
 import {productRoot} from './component-source-inputs.mjs'
 import {prepareFrontendBuildInputs} from './frontend-build-inputs.mjs'
-import {frontendSourceDirectory, frontendFixtureDirectory} from './frontend-source.mjs'
+import {frontendFixtureDirectory} from './frontend-source.mjs'
 import {readFrontendPin, resolveFrontendDistribution, verifyFrontendDistributionDirectory, selectFrontendArtifact} from './frontend-artifacts.mjs'
 const tasks = new Set(['build','verify','install','source','dev','typecheck','test','test:unit','test:e2e','lint','preview','browser-install'])
 export function npmCLI(env = process.env) {
@@ -44,7 +44,7 @@ export async function runFrontendTask(task,args=[],root=productRoot,options={}) 
   const pin=readFrontendPin(), env={...process.env}
   assert.equal(process.version,'v'+pin.toolchain.node,'Product frontend tooling Node drift')
   if(!['install','lint','browser-install'].includes(task)) {
-    const input=prepareFrontendBuildInputs(root,{...options,frontendRoot,directory:path.join(frontendRoot,'.component-inputs'),panelRoot:options.panelRoot||path.join(frontendSourceDirectory,'components/panel-update-ui')})
+    const input=prepareFrontendBuildInputs(root,{...options,frontendRoot,directory:path.join(frontendRoot,'.component-inputs')})
     if(path.resolve(root)===path.resolve(productRoot))assert.equal(input.manifestSHA256,pin.input.manifestSHA256,'Product Frontend fixture input drift')
     env.SOLOVEY_UI_INPUTS_SHA256=input.manifestSHA256
   }

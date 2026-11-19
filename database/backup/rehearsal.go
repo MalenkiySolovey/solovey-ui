@@ -279,9 +279,14 @@ func releaseCompatibility(value string) string {
 func restoreOwnerCompatibility(manifest BackupManifest) []RestoreOwnerStatus {
 	byID := map[string]RestoreOwnerStatus{}
 	for _, owner := range manifest.Owners {
+		if historicalPanelUpdateOwner(manifest, owner) {
+			continue
+		}
 		current, available := durableowner.Lookup(owner.ID)
 		if owner.ID == "core" {
 			available = true
+		} else if owner.ID == installstate.FormerPanelUpdateID {
+			available = false
 		}
 		status := RestoreOwnerStatus{ID: owner.ID, Included: true, Available: available, Mode: owner.Mode,
 			Compatibility: "UNKNOWN", HookStatus: "NOT_RUN"}
@@ -316,6 +321,28 @@ func restoreOwnerCompatibility(manifest BackupManifest) []RestoreOwnerStatus {
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
 	return result
+}
+
+// A verified historical backup may list Panel Update without any owned data.
+// Keep its original manifest intact; never admit resources under the old ID.
+func historicalPanelUpdateOwner(backup BackupManifest, owner BackupOwnerManifest) bool {
+	if owner.ID != installstate.FormerPanelUpdateID || owner.Mode != "NO_DURABLE_DATA" ||
+		owner.ResourceManifest == nil || owner.ResourceManifest.Declared() {
+		return false
+	}
+	for _, table := range backup.Tables {
+		if table.Owner == owner.ID {
+			return false
+		}
+	}
+	if backup.Files != nil {
+		for _, id := range backup.Files.Owners {
+			if id == owner.ID {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func ownerResourcesCompatible(backup *componentmanifest.DurableResourceManifestV1, current componentmanifest.DurableResourceManifestV1) bool {

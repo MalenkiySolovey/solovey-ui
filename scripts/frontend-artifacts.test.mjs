@@ -15,7 +15,10 @@ test('Product admits only exact producer coordinates/toolchain/profiles',()=>{
 test('Product profile selection rejects unqualified UI tuples and runtime URLs',()=>{
  assert.equal(selectFrontendArtifact(pin,{}),'full');assert.equal(selectFrontendArtifact(pin,{SOLOVEY_UI_PROFILE:'core'}),'core')
  assert.equal(selectFrontendArtifact(pin,{SOLOVEY_UI_COMPONENT_IDS:'fallback-html'}),'custom-fallback-html')
- for(const env of [{SOLOVEY_UI_PROFILE:'other'},{SOLOVEY_UI_COMPONENT_IDS:'unknown'},{SOLOVEY_UI_COMPONENT_IDS:'https://attacker.invalid/ui.js'},{SOLOVEY_UI_COMPONENT_IDS:'fallback-html,telegram'}])assert.throws(()=>selectFrontendArtifact(pin,env))
+ for(const env of [{SOLOVEY_UI_PROFILE:'other'},{SOLOVEY_UI_COMPONENT_IDS:'unknown'},{SOLOVEY_UI_COMPONENT_IDS:'https://attacker.invalid/ui.js'},{SOLOVEY_UI_COMPONENT_IDS:'fallback-html,telegram'},{SOLOVEY_UI_COMPONENT_IDS:'panel-update-ui'}])assert.throws(()=>selectFrontendArtifact(pin,env))
+ const former = clone(pin)
+ former.profiles.full.componentIDs = [...former.profiles.full.componentIDs, 'panel-update-ui'].sort()
+ assert.throws(() => validateFrontendPin(former))
 })
 test('Product archive trust rejects missing/wrong digest and untrusted format',()=>{
  const bytes=encode({'dist/index.html':'YQ=='})
