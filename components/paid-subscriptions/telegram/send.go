@@ -12,8 +12,8 @@ import (
 	"net/url"
 	"strconv"
 
+	paidprovider "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
 	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
-	paidprovider "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
 )
 
 func (b *Bot) transport() *integrationtelegram.BotClient {

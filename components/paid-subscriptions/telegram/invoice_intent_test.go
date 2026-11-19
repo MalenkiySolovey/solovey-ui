@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	paidprovider "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
 	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
-	paidprovider "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
 	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
 	paidsettings "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/settings"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -202,7 +202,7 @@ func TestRemoteInvoicePersistenceFailureReusesOriginalIntent(t *testing.T) {
 		t.Fatal("immutable intent lost")
 	}
 	reconciler := p.providerByKind(paidprovider.ProviderCryptoBot).(paidprovider.ReconciliationProvider)
-	recovered, err := reconciler.Reconcile(context.Background(), []paid.PaymentOrder{*order})
+	recovered, err := reconciler.Reconcile(context.Background(), []paidprovider.Order{providerOrder(*order)})
 	if err != nil || len(recovered) != 1 {
 		t.Fatal("remote success could not be reconciled", err)
 	}

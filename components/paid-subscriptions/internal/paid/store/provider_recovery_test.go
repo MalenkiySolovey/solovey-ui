@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	provider "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
 	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
-	provider "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
 )
 
 func TestRecoveryPreservesHistoricalIdentityAndLegacyPaidEvidence(t *testing.T) {

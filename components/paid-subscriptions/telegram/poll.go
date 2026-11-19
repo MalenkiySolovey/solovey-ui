@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
-	paidprovider "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
+	paidprovider "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
 	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -70,7 +70,7 @@ func runCryptoBotWork(ctx context.Context, runtime *service.Runtime, ps *payment
 		for _, order := range orders {
 			seen[order.Id] = true
 		}
-		outcome, err := poller.Poll(ctx, orders)
+		outcome, err := poller.Poll(ctx, providerOrders(orders))
 		if ctx.Err() != nil {
 			return
 		}
@@ -109,7 +109,7 @@ func runCryptoBotWork(ctx context.Context, runtime *service.Runtime, ps *payment
 	if err != nil {
 		logger.Warning("paidsub: load recovery work: ", err)
 	} else if len(unresolved) > 0 {
-		recovered, err := reconciler.Reconcile(ctx, unresolved)
+		recovered, err := reconciler.Reconcile(ctx, providerOrders(unresolved))
 		if ctx.Err() != nil {
 			return
 		}

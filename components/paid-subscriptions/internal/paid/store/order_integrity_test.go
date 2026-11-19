@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
 	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
-	"github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

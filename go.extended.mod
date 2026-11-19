@@ -4,7 +4,7 @@ go 1.26.11
 
 require (
 	github.com/AliRizaAynaci/gorl/v2 v2.2.0 // indirect
-	github.com/MalenkiySolovey/solovey-backend v0.1.1
+	github.com/MalenkiySolovey/solovey-backend v0.1.3
 	github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0
 	github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0
 	github.com/MalenkiySolovey/solovey-component-telegram v0.1.0
@@ -266,6 +266,8 @@ require (
 	google.golang.org/protobuf v1.36.11
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
+
+require github.com/MalenkiySolovey/solovey-component-paid-subscriptions v0.1.0 // indirect
 
 replace github.com/sagernet/sing-box => github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261104205147-493b451cdac6
 

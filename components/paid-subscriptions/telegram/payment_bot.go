@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	paidprovider "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
 	paidcore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
-	paidprovider "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
 	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"

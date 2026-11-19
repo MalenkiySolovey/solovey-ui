@@ -5,8 +5,8 @@ import (
 	"errors"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	paidprovider "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
 	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
-	paidprovider "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

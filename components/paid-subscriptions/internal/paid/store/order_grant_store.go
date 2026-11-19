@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-backend/users/entitlement"
 	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
 	"gorm.io/gorm"
 )
@@ -48,45 +48,23 @@ func ApplyPaidOrderGrant(db *gorm.DB, orderID uint, chargeID string, raw []byte,
 		if err != nil {
 			return err
 		}
-		var client model.Client
-		if err := tx.Where("id = ?", order.ClientId).First(&client).Error; err != nil {
-			return err
-		}
-
-		updates, orderUpdates, err := paid.BuildPaidClientUpdates(client, grant, now)
+		renewal, err := entitlement.Renew(tx, order.ClientId, grant, now, actor)
 		if err != nil {
 			return err
 		}
-		if len(orderUpdates) > 0 {
+		if grant.TrafficBytes > 0 {
 			if err := tx.Model(&paid.PaymentOrder{}).Where("id = ?", orderID).
-				Updates(orderUpdates).Error; err != nil {
+				Updates(map[string]any{"granted_up": renewal.Usage.Up, "granted_down": renewal.Usage.Down}).Error; err != nil {
 				return err
 			}
 		}
-		// A payment may renew quota/expiry; it is not manual access approval.
-		// Evaluate current blockers so a policy edit after the read survives.
-		updates["enable"] = gorm.Expr("CASE WHEN access_disable_reason = '' OR access_disable_reason IN (?, ?) THEN true ELSE false END", model.ClientDisabledQuota, model.ClientDisabledExpired)
-		updates["access_disable_reason"] = gorm.Expr("CASE WHEN access_disable_reason IN (?, ?) THEN '' ELSE access_disable_reason END", model.ClientDisabledQuota, model.ClientDisabledExpired)
-		if err := tx.Model(&model.Client{}).Where("id = ?", client.Id).Updates(updates).Error; err != nil {
-			return err
-		}
-		if err := tx.Create(&model.Changes{
-			DateTime: now,
-			Actor:    actor,
-			Key:      "clients",
-			Action:   "renew",
-			Obj:      JSONString(client.Name),
-		}).Error; err != nil {
-			return err
-		}
-		result.Applied = true
-		result.TelegramUserID = order.TelegramUserId
-		if len(client.Inbounds) > 0 {
-			_ = json.Unmarshal(client.Inbounds, &result.InboundIDs)
-		}
+		result = AppliedOrderResult{Applied: true, TelegramUserID: order.TelegramUserId, InboundIDs: renewal.InboundIDs}
 		return nil
 	})
-	return result, err
+	if err != nil {
+		return AppliedOrderResult{}, err
+	}
+	return result, nil
 }
 
 func FinalizeRefundGrant(db *gorm.DB, orderID uint, revoke bool, now int64, actor string) ([]uint, error) {
@@ -129,12 +107,8 @@ func finalizeRefundGrant(db *gorm.DB, orderID uint, status, token string, revoke
 		if err != nil {
 			return err
 		}
-		var client model.Client
-		if err := tx.Where("id = ?", order.ClientId).First(&client).Error; err != nil {
-			return err
-		}
 		restoreLiveUsage := true
-		if grant.AddTrafficBytes > 0 {
+		if grant.TrafficBytes > 0 {
 			var newerTrafficOrders int64
 			if err := tx.Model(&paid.PaymentOrder{}).
 				Where("client_id = ? AND id > ? AND status IN ?", order.ClientId, order.Id, []string{paid.StatusPaid, paid.StatusRefundPending}).
@@ -144,28 +118,14 @@ func finalizeRefundGrant(db *gorm.DB, orderID uint, status, token string, revoke
 			}
 			restoreLiveUsage = newerTrafficOrders == 0
 		}
-		updates := paid.BuildRefundClientUpdates(client, order, grant, now, restoreLiveUsage)
-		if len(updates) == 0 {
-			return nil
-		}
-		if err := tx.Model(&model.Client{}).Where("id = ?", client.Id).Updates(updates).Error; err != nil {
-			return err
-		}
-		if err := tx.Create(&model.Changes{
-			DateTime: now,
-			Actor:    actor,
-			Key:      "clients",
-			Action:   "refund",
-			Obj:      JSONString(client.Name),
-		}).Error; err != nil {
-			return err
-		}
-		if len(client.Inbounds) > 0 {
-			_ = json.Unmarshal(client.Inbounds, &inboundIDs)
-		}
-		return nil
+		inboundIDs, err = entitlement.Revoke(tx, order.ClientId, grant,
+			entitlement.Usage{Up: order.GrantedUp, Down: order.GrantedDown}, restoreLiveUsage, now, actor)
+		return err
 	})
-	return inboundIDs, err
+	if err != nil {
+		return nil, err
+	}
+	return inboundIDs, nil
 }
 
 func ValidateOrderGrant(order paid.PaymentOrder) error {
@@ -173,14 +133,14 @@ func ValidateOrderGrant(order paid.PaymentOrder) error {
 	return err
 }
 
-func grantForOrder(_ *gorm.DB, order paid.PaymentOrder) (paid.Tariff, error) {
+func grantForOrder(_ *gorm.DB, order paid.PaymentOrder) (entitlement.Terms, error) {
 	if order.GrantSnapshot {
 		if order.Amount <= 0 || order.GrantAddDays < 0 || int64(order.GrantAddDays) > math.MaxInt64/86400 || order.GrantTraffic < 0 {
-			return paid.Tariff{}, fmt.Errorf("payment order grant snapshot is invalid")
+			return entitlement.Terms{}, fmt.Errorf("payment order grant snapshot is invalid")
 		}
-		return paid.Tariff{AddDays: order.GrantAddDays, AddTrafficBytes: order.GrantTraffic}, nil
+		return entitlement.Terms{Days: order.GrantAddDays, TrafficBytes: order.GrantTraffic}, nil
 	}
-	return paid.Tariff{}, fmt.Errorf("payment order requires manual review: purchase snapshot missing")
+	return entitlement.Terms{}, fmt.Errorf("payment order requires manual review: purchase snapshot missing")
 }
 
 func JSONString(s string) json.RawMessage {

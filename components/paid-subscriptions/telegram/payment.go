@@ -12,9 +12,9 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	paidprovider "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
 	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
 	paidcore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
-	paidprovider "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
 	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -199,7 +199,9 @@ func (p *paymentCoordinator) CreateOrder(ctx context.Context, client *model.Clie
 		return nil, nil, err
 	}
 	_ = (&service.AuditService{Runtime: p.runtime}).Record(service.AuditEvent{Actor: "PaidSubBot", Event: "paidsub_order_created", Resource: "paidsub", Severity: service.AuditSeverityInfo, Details: map[string]any{"orderId": order.Id, "provider": order.Provider}})
-	inv, err := prov.CreateInvoice(ctx, order, tariff, client)
+	snapshot := providerOrder(*order)
+	offer := paidprovider.Offer{Id: tariff.Id, Name: tariff.Name, Description: tariff.Description}
+	inv, err := prov.CreateInvoice(ctx, &snapshot, &offer, client.Id)
 	if err == nil && inv == nil {
 		err = errors.New("provider returned an empty invoice")
 	}
@@ -220,6 +222,22 @@ func (p *paymentCoordinator) CreateOrder(ctx context.Context, client *model.Clie
 	}
 	order.Status, order.ProviderRef, order.ExternalURL = paidcore.StatusPending, inv.ProviderRef, inv.PayURL
 	return order, inv, nil
+}
+
+func providerOrder(order paidcore.PaymentOrder) paidprovider.Order {
+	return paidprovider.Order{
+		Id: order.Id, Amount: order.Amount, Currency: order.Currency,
+		IdempotencyKey: order.IdempotencyKey, ProviderRef: order.ProviderRef,
+		ProviderPayload: append([]byte(nil), order.ProviderPayload...),
+	}
+}
+
+func providerOrders(orders []paidcore.PaymentOrder) []paidprovider.Order {
+	result := make([]paidprovider.Order, len(orders))
+	for i, order := range orders {
+		result[i] = providerOrder(order)
+	}
+	return result
 }
 
 func reusableInvoice(order *paidcore.PaymentOrder) (*paidcore.PaymentOrder, *paidprovider.Invoice, error) {
