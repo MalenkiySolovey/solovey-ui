@@ -11,6 +11,7 @@ import { createApkMetadataProof, proveApkLifecycleScripts } from './openwrt-apk-
 import {
   createSourceFingerprint,
   enumerateSourcePaths,
+  materializeSource,
   verifySourceFingerprint,
 } from './openwrt-package-source-fingerprint.mjs'
 import {
@@ -157,6 +158,24 @@ test('external Frontend pin, toolchain and consumer verifier bind package source
   assert.equal(createSourceFingerprint(source, buildFacts()).sourceFingerprint, before.sourceFingerprint)
 })
 
+test('OpenWrt snapshot preserves the Product composition and pinned component UI inputs', () => {
+  const source = makeSource()
+  const adapter = 'composition/componenthttp/adapter.go'
+  const pinnedUI = 'components/widget/frontend/tests/payload.test.ts'
+  const unrelated = 'components/widget/tests/payload.test.ts'
+  write(source, adapter, 'package componenthttp\n')
+  write(source, pinnedUI, '// pinned UI input\n')
+  write(source, unrelated, '// not a package input\n')
+  const snapshot = path.join(temporaryDirectory('solovey-source-container-'), 'source')
+  materializeSource(source, snapshot)
+  assert.ok(enumerateSourcePaths(snapshot).includes(adapter))
+  assert.equal(fs.readFileSync(path.join(snapshot, pinnedUI), 'utf8'), '// pinned UI input\n')
+  assert.ok(!fs.existsSync(path.join(snapshot, unrelated)))
+  const fingerprint = createSourceFingerprint(snapshot, buildFacts())
+  append(source, pinnedUI, '// changed input\n')
+  assert.throws(() => verifySourceFingerprint(fingerprint, source), /source input content mismatch/)
+})
+
 test('changed target-affecting flag changes build and source identity', () => {
   const source = makeSource()
   const first = createSourceFingerprint(source, buildFacts())
@@ -167,14 +186,21 @@ test('changed target-affecting flag changes build and source identity', () => {
   assert.notEqual(second.sourceFingerprint, first.sourceFingerprint)
 })
 
-test('stale generated Go and stale frontend outputs fail verification', () => {
+test('generated output fingerprints include hidden Frontend inputs and reject stale bytes', () => {
   const source = makeSource()
+  const manifest = 'web/html/.vite/manifest.json'
+  write(source, manifest, '{}\n')
   const fingerprint = createSourceFingerprint(source, buildFacts())
+  assert.ok(!fingerprint.source.inputs.some(record => record.path === manifest))
+  assert.ok(fingerprint.generated.outputs.some(record => record.path === manifest))
+  assert.equal(verifySourceFingerprint(fingerprint, source, { verifyGenerated: true }), true)
   append(source, 'app/components_generated.go', '\n// stale\n')
   assert.throws(() => verifySourceFingerprint(fingerprint, source, { verifyGenerated: true }), /generated output content mismatch/)
   write(source, 'app/components_generated.go', generatedGo())
-  append(source, 'web/html/index.html', 'stale frontend')
+  append(source, manifest, 'stale frontend')
   assert.throws(() => verifySourceFingerprint(fingerprint, source, { verifyGenerated: true }), /generated output content mismatch/)
+  fs.unlinkSync(path.join(source, manifest))
+  assert.throws(() => verifySourceFingerprint(fingerprint, source, { verifyGenerated: true }), /generated output path set mismatch/)
 })
 
 test('changed staged binary is rejected', () => {

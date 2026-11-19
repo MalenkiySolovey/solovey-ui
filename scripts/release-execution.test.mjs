@@ -157,6 +157,24 @@ test('publication gates and metadata use product identity while preflight cannot
     "${{ github.event_name == 'workflow_dispatch' && inputs.preflight_only }}")
 })
 
+test('non-publishing preflight uses an isolated test signer and cannot feed recovery', () => {
+  const publication = "github.event_name == 'push' || inputs.preflight_only == false"
+  const prepare = release.jobs['release-preflight'].steps
+  const authority = prepare.find(step => step.name === 'Validate configured release authority')
+  assert.equal(authority.if, publication)
+  assert.match(prepare.find(step => step.id === 'product').run, /preflight cannot resume a publication/)
+
+  const assemble = release.jobs['assemble-linux'].steps
+  const sign = assemble.find(step => step.run?.includes('node scripts/release-manifest.mjs'))
+  assert.equal(sign.env.SUI_RELEASE_SIGNING_PRIVATE_KEY_B64, '${{ (' + publication + ") && secrets.SUI_RELEASE_SIGNING_PRIVATE_KEY_B64 || '' }}")
+  assert.match(sign.run, /preflight received production signing configuration/)
+  assert.match(sign.run, /generateKeyPairSync\('ed25519'\)/)
+  assert.match(sign.run, /node scripts\/release-verify\.mjs release-assets/)
+  const artifact = assemble.find(step => step.name === 'Retain complete release candidate').with.name
+  assert.equal(artifact, "${{ github.event_name == 'workflow_dispatch' && inputs.preflight_only && 'preflight-linux-release' || 'complete-linux-release' }}")
+  for (const caller of Object.values(release.jobs).filter(job => job.uses)) assert.equal(caller.secrets, undefined)
+})
+
 test('release uses the shared capability owner with the complete original package selection', () => {
   const steps = release.jobs['component-profile-checks'].steps
   const run = steps.find(step => step.name === 'Component profile tests').run

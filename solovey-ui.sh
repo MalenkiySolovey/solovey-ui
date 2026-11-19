@@ -912,7 +912,7 @@ rollback_backup() {
         fail "rollback accepts at most one backup path"
     fi
 
-    local backup
+    local backup unit load
     backup="$(resolve_backup "${1:-latest}")"
     if [[ ! -d "${backup}/app" && ! -d "${backup}/etc" && ! -f "${backup}/${SERVICE_NAME}.service" ]]; then
         fail "backup has no restorable app/etc/service payload: ${backup}"
@@ -922,7 +922,11 @@ rollback_backup() {
     log "creating safety backup before rollback"
     backup_local
 
-    systemctl stop "${SERVICE_NAME}" >/dev/null 2>&1 || true
+    # Stop socket activation and old writers before replacing executable objects.
+    for unit in solovey-privileged-broker.socket solovey-privileged-proof.socket solovey-privileged-broker.service "${SERVICE_NAME}"; do
+        load="$(systemctl show "${unit}" -p LoadState --value)" || fail "cannot inspect ${unit} before rollback"
+        [[ "${load}" == not-found ]] || systemctl stop "${unit}" || fail "cannot stop ${unit} before rollback"
+    done
     restore_backup_dir "${backup}/app" "${INSTALL_DIR}"
     restore_backup_dir "${backup}/etc" "${ENV_DIR}"
 	restore_backup_dir "${backup}/hardened-data" "${HARDENED_DATA_ROOT}"
@@ -938,9 +942,23 @@ rollback_backup() {
         ln -sf "${INSTALL_DIR}/${APP_NAME}.sh" "${CLI_PATH}"
     fi
 
+    # Copying the release changes executable inodes. Rebind using the restored
+    # release's fixed writers before systemd can activate the broker again.
+    refresh_rollback_authority solovey-broker-manifest broker-clients.json
+    refresh_rollback_authority solovey-owner-manifest application-owner-contract.json
     systemctl daemon-reload
     systemctl restart "${SERVICE_NAME}"
+    systemctl is-active --quiet "${SERVICE_NAME}" || fail "restored service did not become active"
     log "rollback complete"
+}
+
+refresh_rollback_authority() {
+    local writer="${CURRENT_RELEASE_DIR}/$1" manifest="${ENV_DIR}/$2"
+    if [[ ! -e "${writer}" && ! -L "${writer}" && ! -e "${manifest}" && ! -L "${manifest}" ]]; then
+        return 0 # Historical installs without this authority had no writer.
+    fi
+    [[ -f "${writer}" && ! -L "${writer}" && -x "${writer}" ]] || fail "rollback requires the restored $1 writer; service remains stopped"
+    "${writer}" || fail "rollback could not rebuild $2; service remains stopped"
 }
 
 uninstall() {
