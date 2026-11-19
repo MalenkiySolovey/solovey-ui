@@ -72,10 +72,6 @@ func expectedOptionalAPIPostRoutes() []string {
 		"/api/telegram/detect-chat",
 		"/api/telegram/backup",
 		"/api/telegram/backup/run",
-		"/api/update/components/:id/enable",
-		"/api/update/components/:id/disable",
-		"/api/update/components/:id/install",
-		"/api/update/components/:id/remove",
 	}
 }
 
@@ -106,10 +102,6 @@ func securityAuthZOptionalRows() []securityAuthZRow {
 		{method: http.MethodPost, path: "/api/remote-outbound-subscriptions/connections/group", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "write"}},
 		{method: http.MethodPost, path: "/api/remote-outbound-subscriptions/connections/sync", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "write"}},
 		{method: http.MethodGet, path: "/api/remote-outbound-subscriptions/connections/test", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "write"}},
-		{method: http.MethodPost, path: "/api/update/components/telegram/enable", resource: "update", allowed: []string{"admin", "update"}},
-		{method: http.MethodPost, path: "/api/update/components/telegram/disable", resource: "update", allowed: []string{"admin", "update"}},
-		{method: http.MethodPost, path: "/api/update/components/telegram/install", resource: "update", allowed: []string{"admin", "update"}},
-		{method: http.MethodPost, path: "/api/update/components/telegram/remove", resource: "update", allowed: []string{"admin", "update"}},
 	}
 }
 
@@ -128,7 +120,6 @@ func expectedOptionalAPIGetRoutes() []string {
 		"/api/remote-outbound-subscriptions/test-all",
 		"/api/remote-outbound-subscriptions/connections/test",
 		"/api/security/audit",
-		"/api/update/components",
 	}
 }
 
@@ -180,9 +171,5 @@ func securityCSRFOptionalPostRoutes() []string {
 		"/api/telegram/detect-chat",
 		"/api/telegram/backup",
 		"/api/telegram/backup/run",
-		"/api/update/components/telegram/enable",
-		"/api/update/components/telegram/disable",
-		"/api/update/components/telegram/install",
-		"/api/update/components/telegram/remove",
 	}
 }

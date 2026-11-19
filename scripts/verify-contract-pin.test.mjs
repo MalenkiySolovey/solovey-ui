@@ -67,7 +67,7 @@ test('wrong module version is rejected',()=>{
 })
 test('missing module/producer is rejected',()=>assert.throws(()=>validateResolution({Error:'not found'},pin),/missing module/))
 test('provider-specific module pin mismatch is rejected',()=>{
-  const current=clone(requirement);current.Require.find(item=>item.Path===pin.module).Version='v1.0.1'
+  const current=clone(requirement);current.Require.find(item=>item.Path===pin.module).Version=pin.version==='v1.0.0'?'v1.0.1':'v1.0.0'
   assert.throws(()=>validateRequirement(current,pin),/provider-specific module pin mismatch/)
 })
 test('source substitution through replace is rejected',()=>{

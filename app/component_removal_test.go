@@ -4,6 +4,7 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -15,13 +16,13 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/supervisor"
-	panelupdateservice "github.com/MalenkiySolovey/solovey-ui/components/panel-update-ui/service"
 	_ "github.com/MalenkiySolovey/solovey-ui/components/server-protection"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
+	"github.com/MalenkiySolovey/solovey-ui/composition/componentmanagement"
+	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
 func TestRemovalUsesActualProtectionAuthorityInspector(t *testing.T) {
@@ -30,24 +31,26 @@ func TestRemovalUsesActualProtectionAuthorityInspector(t *testing.T) {
 		t.Run(state, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "installed.json")
 			t.Setenv(installstate.InstalledFileEnv, path)
+			t.Setenv("SUI_DB_FOLDER", t.TempDir())
 			if err := installstate.Store(path, installstate.Metadata{Version: 1, Profile: "full", Binary: "full", Components: []installstate.InstalledComponent{{ID: id, Delivery: manifest.DeliveryInProcess, Installed: true}}}); err != nil {
 				t.Fatal(err)
 			}
-			db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "protection-removal.db")), &gorm.Config{})
-			if err != nil {
+			_ = dbsqlite.Close()
+			if err := dbsqlite.Init(configstorage.GetDBPath()); err != nil {
 				t.Fatal(err)
 			}
-			sqlDB, _ := db.DB()
-			t.Cleanup(func() { _ = sqlDB.Close() })
+			t.Cleanup(func() { _ = dbsqlite.Close() })
+			db := dbsqlite.DB()
 			if err := db.AutoMigrate(&model.Setting{}, &model.MigrationJournal{}); err != nil {
 				t.Fatal(err)
 			}
 			data := datalifecycle.NewManager()
-			data.DB, data.Now = func() *gorm.DB { return db }, time.Now
 			data.Enabled = func(manifest.Manifest) (bool, error) { return false, nil }
 			s := supervisor.New(componenthost.Deps{})
 			inventory := resources.NewRegistry(time.Second)
-			admission := &panelupdateservice.RemovalAdmission{Preview: data.PreviewRemoval, Resources: data.RemovalResources, Inventory: inventory.Refresh, Admit: s.TryAdmitRemoval}
+			manager := componentmanagement.New(data)
+			manager.Removal.Inventory, manager.Removal.Admit = inventory.Refresh, s.TryAdmitRemoval
+			manager.Reconcile = func(context.Context) error { t.Error("denied removal reached reconcile"); return nil }
 			if state == "active firewall" {
 				if err := db.AutoMigrate(&protectionrepository.FirewallContributionModel{}); err != nil {
 					t.Fatal(err)
@@ -63,7 +66,7 @@ func TestRemovalUsesActualProtectionAuthorityInspector(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			preview, err := admission.Preview(t.Context(), id)
+			preview, err := data.PreviewRemoval(t.Context(), id)
 			if err != nil || preview.ExternalAuthority != "BLOCKED" {
 				t.Fatalf("actual Protection inspector missed authority: %+v %v", preview, err)
 			}
@@ -71,8 +74,11 @@ func TestRemovalUsesActualProtectionAuthorityInspector(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			manager := panelupdateservice.RuntimeManager{Removal: admission}
-			if _, err := manager.Remove(panelupdateservice.OperationContext{}, id); err == nil {
+			status, err := manager.Inventory()
+			if err != nil || len(status.Installed) != 1 || !status.Installed[0].Removable {
+				t.Fatalf("fixture did not reach Host removal admission: %+v %v", status, err)
+			}
+			if _, err := manager.Remove(t.Context(), id); err == nil {
 				t.Fatal("Protection authority allowed metadata removal")
 			}
 			after, err := os.ReadFile(path)

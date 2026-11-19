@@ -2,15 +2,20 @@ package api
 
 import (
 	"context"
+	"net/http"
+
 	"github.com/MalenkiySolovey/solovey-backend/actions"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
-	"net/http"
 )
 
 // actionPolicy adapts the existing authenticated request/scope and one-use
 // step-up boundaries. The owner invokes it with its actual typed input.
 func (a *ApiService) actionPolicy(requireStepUp func(*gin.Context, string, string) bool) func(*gin.Context) actions.Authorizer {
+	return a.actionPolicyFor(requireStepUp, false)
+}
+
+func (a *ApiService) actionPolicyFor(requireStepUp func(*gin.Context, string, string) bool, componentManagement bool) func(*gin.Context) actions.Authorizer {
 	return func(c *gin.Context) actions.Authorizer {
 		return func(ctx context.Context, invocation actions.Invocation) (actions.Decision, error) {
 			deny := func() (actions.Decision, error) {
@@ -29,6 +34,10 @@ func (a *ApiService) actionPolicy(requireStepUp func(*gin.Context, string, strin
 			}
 			descriptor, known := actions.Lookup(invocation.ID)
 			if !known || !actions.KnownPermission(descriptor.Permission) {
+				return deny()
+			}
+			// Only the intrinsic ComponentHost route can request this core action.
+			if componentManagement != (descriptor.ID == actions.ComponentRemove) {
 				return deny()
 			}
 			actualComponent := c.GetString(componentAuthorityKey)

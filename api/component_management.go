@@ -1,15 +1,39 @@
-//go:build !minimal
-
-package panelupdateui
+package api
 
 import (
+	"errors"
+
+	"github.com/MalenkiySolovey/solovey-backend/componentapi"
 	"github.com/MalenkiySolovey/solovey-backend/componentview"
-	panelupdateservice "github.com/MalenkiySolovey/solovey-ui/components/panel-update-ui/service"
+	host "github.com/MalenkiySolovey/solovey-host/componenthost"
+	"github.com/MalenkiySolovey/solovey-ui/composition/componentmanagement"
+	"github.com/MalenkiySolovey/solovey-ui/service"
+	"github.com/gin-gonic/gin"
 )
 
-// componentManagerHTTP projects the existing lifecycle owner into Backend HTTP.
-// It does not register components or execute an independent lifecycle.
-type componentManagerHTTP struct{ owner panelupdateservice.Manager }
+func (a *ApiService) registerPanelComponentRoutes(g *gin.RouterGroup, requireStepUp func(*gin.Context, string, string) bool) {
+	owner := componentManagerHTTP{settings: a.ConfigService, owner: componentmanagement.New(a.DataLifecycle)}
+	componentapi.RegisterRoutes(g, componentapi.Deps{
+		Components:       owner,
+		ComponentManager: owner,
+		LoginUser:        requestActor,
+		RemoteIP:         getRemoteIp,
+		Hostname:         getHostname,
+		RequireScope:     a.requireTokenScopeAny,
+		RequireStepUp:    requireStepUp,
+		ActionPolicy:     a.actionPolicyFor(requireStepUp, true),
+		Audit:            a.recordAudit,
+		JSONObj:          jsonObj,
+		JSONMsg:          jsonMsg,
+	})
+}
+
+// This is composition: ComponentHost owns the rules, installstate writes the
+// metadata, and Backend authenticates the caller and projects HTTP results.
+type componentManagerHTTP struct {
+	owner    host.Manager
+	settings *service.ConfigService
+}
 
 func (a componentManagerHTTP) Inventory() (componentview.Inventory, error) {
 	inventory, err := a.owner.Inventory()
@@ -21,22 +45,34 @@ func (a componentManagerHTTP) Inventory() (componentview.Inventory, error) {
 }
 
 func (a componentManagerHTTP) Enable(operation componentview.OperationContext, id string) (componentview.ComponentStatus, error) {
-	status, err := a.owner.Enable(panelupdateservice.OperationContext(operation), id)
-	return componentStatusHTTP(status), err
+	return a.setEnabled(operation, id, true)
 }
+
 func (a componentManagerHTTP) Disable(operation componentview.OperationContext, id string) (componentview.ComponentStatus, error) {
-	status, err := a.owner.Disable(panelupdateservice.OperationContext(operation), id)
+	return a.setEnabled(operation, id, false)
+}
+
+func (a componentManagerHTTP) setEnabled(operation componentview.OperationContext, id string, enabled bool) (componentview.ComponentStatus, error) {
+	if a.settings == nil {
+		return componentview.ComponentStatus{}, errors.New("component settings authority is unavailable")
+	}
+	status, err := a.owner.SetEnabled(operation.RequestContext, id, enabled, func(value bool) error {
+		return a.settings.SetComponentEnabled(id, value, operation.Actor, operation.Hostname)
+	})
 	return componentStatusHTTP(status), err
 }
+
 func (a componentManagerHTTP) Install(operation componentview.OperationContext, id string) (componentview.ComponentStatus, error) {
-	status, err := a.owner.Install(panelupdateservice.OperationContext(operation), id)
+	status, err := a.owner.Install(operation.RequestContext, id)
 	return componentStatusHTTP(status), err
 }
+
 func (a componentManagerHTTP) Remove(operation componentview.OperationContext, id string) (componentview.ComponentStatus, error) {
-	status, err := a.owner.Remove(panelupdateservice.OperationContext(operation), id)
+	status, err := a.owner.Remove(operation.RequestContext, id)
 	return componentStatusHTTP(status), err
 }
-func componentStatusesHTTP(statuses []panelupdateservice.ComponentStatus) []componentview.ComponentStatus {
+
+func componentStatusesHTTP(statuses []host.ComponentStatus) []componentview.ComponentStatus {
 	if statuses == nil {
 		return nil
 	}
@@ -46,7 +82,8 @@ func componentStatusesHTTP(statuses []panelupdateservice.ComponentStatus) []comp
 	}
 	return result
 }
-func componentStatusHTTP(status panelupdateservice.ComponentStatus) componentview.ComponentStatus {
+
+func componentStatusHTTP(status host.ComponentStatus) componentview.ComponentStatus {
 	return componentview.ComponentStatus{ID: status.ID, Name: status.Name, Version: status.Version, LatestVersion: status.LatestVersion,
 		Since: status.Since, RequiredPanel: status.RequiredPanel, Delivery: status.Delivery, DefaultEnabled: status.DefaultEnabled,
 		TokenScopes: status.TokenScopes, AvailableInBinary: status.AvailableInBinary, Compatible: status.Compatible,

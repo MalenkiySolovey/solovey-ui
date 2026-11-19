@@ -94,6 +94,7 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	})
 
 	a.registerComponentStatusRoutes(g)
+	a.registerPanelComponentRoutes(g, a.requireStepUpAction)
 	a.registerComponentAPIRoutes(g, a.componentAPI(a.requireStepUpAction, a.reloadTokens))
 
 	realtimehttp.RegisterRoutes(g, realtimehttp.Deps{

@@ -39,6 +39,10 @@ func securityCSRFPostRoutes() []string {
 		"/api/runtime/probe",
 		"/api/runtime/maintenance",
 		"/api/ip-monitor/alice/clear",
+		"/api/update/components/telegram/enable",
+		"/api/update/components/telegram/disable",
+		"/api/update/components/telegram/install",
+		"/api/update/components/telegram/remove",
 	}
 	return append(routes, securityCSRFOptionalPostRoutes()...)
 }

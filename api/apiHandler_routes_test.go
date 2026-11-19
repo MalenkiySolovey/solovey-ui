@@ -48,6 +48,10 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 			"/api/resetTraffic",
 			"/api/ip-monitor/:client/clear",
 			"/api/realtime/ws-token",
+			"/api/update/components/:id/enable",
+			"/api/update/components/:id/disable",
+			"/api/update/components/:id/install",
+			"/api/update/components/:id/remove",
 		},
 		http.MethodGet: {
 			"/api/csrf",
@@ -68,6 +72,7 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 			"/api/status",
 			"/api/failover-status",
 			"/api/components",
+			"/api/update/components",
 			"/api/onlines",
 			"/api/logs",
 			"/api/logs/entries",
@@ -144,6 +149,7 @@ func TestAdminAPIRouteSecurityInventoryIsComplete(t *testing.T) {
 		"/api/v1/operations/update/rollback":          "update.rollback",
 		"/api/v1/operations/update/provider/maintain": "update.provider-maintenance",
 		"/api/v1/operations/data/drop":                "data.drop",
+		"/api/update/components/:id/remove":           "component.remove",
 	}
 	for path, operation := range requiredStepUp {
 		policy, ok := registry.Lookup(http.MethodPost, path)
@@ -152,9 +158,8 @@ func TestAdminAPIRouteSecurityInventoryIsComplete(t *testing.T) {
 		}
 	}
 	optionalStepUp := map[string]string{
-		"/api/update/components/:id/remove": "component.remove",
-		"/api/import-xui/apply":             "backup.restore",
-		"/api/import-xui/rollback":          "backup.restore",
+		"/api/import-xui/apply":    "backup.restore",
+		"/api/import-xui/rollback": "backup.restore",
 	}
 	for path, operation := range optionalStepUp {
 		if !routeExists(router, http.MethodPost, path) {
