@@ -1,60 +1,11 @@
 package hostsurface
 
 import (
-	"encoding/json"
 	"strings"
-	"testing"
 	"time"
 )
 
-func TestProcdListenerOwnerFactBindsSupervisorAndMainProcess(t *testing.T) {
-	now := time.Unix(7_000, 0).UTC()
-	fact := procdOwnerFactFixture(now)
-	if !fact.Valid(now) {
-		t.Fatalf("valid procd listener owner fact was rejected: %#v", fact)
-	}
-
-	mutations := []func(*ListenerOwnerFactV1){
-		func(value *ListenerOwnerFactV1) { value.Process.ProviderRevision = "" },
-		func(value *ListenerOwnerFactV1) { value.Process.EvidenceRevision = "" },
-		func(value *ListenerOwnerFactV1) { value.Service.SupervisorRevision = "" },
-		func(value *ListenerOwnerFactV1) { value.Service.CgroupRevision = "" },
-		func(value *ListenerOwnerFactV1) { value.Service.ProcdService = "" },
-		func(value *ListenerOwnerFactV1) { value.Service.ProcdInstance = "" },
-		func(value *ListenerOwnerFactV1) { value.Service.ProcdCommand = []string{"relative"} },
-		func(value *ListenerOwnerFactV1) { (*value.Service.MainPID)++ },
-		func(value *ListenerOwnerFactV1) { value.Service.SystemdUnit = "solovey-ui.service" },
-	}
-	for index, mutate := range mutations {
-		candidate := fact
-		candidate.Service.ProcdCommand = append([]string(nil), fact.Service.ProcdCommand...)
-		pid := *fact.Service.MainPID
-		candidate.Service.MainPID = &pid
-		mutate(&candidate)
-		candidate.Seal()
-		if candidate.Valid(now) {
-			t.Fatalf("procd listener owner drift %d was accepted: %#v", index, candidate)
-		}
-	}
-}
-
-func TestSystemdServiceFactSerializationDoesNotGainProcdFields(t *testing.T) {
-	pid := 100
-	data, err := json.Marshal(ServiceFact{
-		SystemdUnit: "solovey-ui.service", MainPID: &pid, FragmentPath: "/etc/systemd/system/solovey-ui.service",
-		FragmentSHA256: strings.Repeat("1", 64), ActiveState: "active", SubState: "running",
-		ControlGroup: "/system.slice/solovey-ui.service", StartMonotonicUsec: 100,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, field := range []string{"procdService", "procdInstance", "procdCommand", "procdUser", "procdGroup"} {
-		if strings.Contains(string(data), field) {
-			t.Fatalf("systemd v1 serialization gained %q: %s", field, data)
-		}
-	}
-}
-
+// The Product registry exercises this fixture; Host owns the fact vectors.
 func procdOwnerFactFixture(now time.Time) ListenerOwnerFactV1 {
 	pid, parent, session, uid, gid := 100, 1, 100, 997, 997
 	fact := ListenerOwnerFactV1{
