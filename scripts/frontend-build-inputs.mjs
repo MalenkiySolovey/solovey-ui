@@ -10,6 +10,8 @@ import {readFrontendPin, unpackFrontendArchive} from './frontend-artifacts.mjs'
 import {buildInputSchema, frontendAPIFiles, frontendProjectionFiles, readFrontendBuildInputs, validateFrontendBuildInputs} from './frontend-source.mjs'
 import {frontendSourceDirectory} from './frontend-source.mjs'
 
+const historicalPanelManifestSHA256 = 'e5d37046dbae72dd57a4a547fcfe199a13fcaf2f50027ee2fd8a2d96cabc2c6a'
+
 function localFrontendFiles(directory, manifestFilename = path.join(directory, 'component.json')) {
   assert.ok(fs.lstatSync(directory).isDirectory() && !fs.lstatSync(directory).isSymbolicLink(), 'unsafe frontend source root')
   const manifest = manifestFilename, stat = fs.lstatSync(manifest)
@@ -93,7 +95,7 @@ export function projectFrontendBuildInputs(root = productRoot, options = {}) {
     }
     // Reproduce the publisher's original input tuple. The pinned Frontend
     // validator still verifies every byte, but does not expose the old slot.
-    if (pin) {
+    if (pin?.input.manifestSHA256 === historicalPanelManifestSHA256) {
       components.push(projectHistoricalPanelInput(root, candidate, pin))
       components.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
     }

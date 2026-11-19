@@ -53,6 +53,18 @@ test('Product projects exact pinned UI, retains locales/tests, excludes Go, and 
   assert.ok(!fs.existsSync(path.join(f.frontend, '.component-inputs.lock')))
 })
 
+test('a new pinned input tuple does not read or project the legacy Panel Update archive', t => {
+  const f = fixture(t), expected = f.prepare()
+  const pin = JSON.parse(fs.readFileSync(new URL('../deploy/dependencies/solovey-frontend.json', import.meta.url)))
+  Object.assign(pin.input, {manifestSHA256: expected.manifestSHA256, sourceLockDigest: expected.sourceLockDigest})
+  for (const [name, profile] of Object.entries(pin.profiles)) {
+    if (name !== 'core-empty-inputs') profile.inputManifestSHA256 = expected.manifestSHA256
+  }
+  f.write('deploy/dependencies/solovey-frontend.json', JSON.stringify(pin))
+  assert.deepEqual(f.prepare(), expected)
+  assert.ok(!fs.existsSync(path.join(f.inputRoot, 'components/panel-update-ui')))
+})
+
 test('consumer verifies in isolation with no Product siblings, Go, Git, or PATH', t => {
   const f = fixture(t), prepared = f.prepare()
   const isolated = fs.mkdtempSync(path.join(os.tmpdir(), 'isolated frontend '))
