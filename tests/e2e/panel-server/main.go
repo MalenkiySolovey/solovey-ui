@@ -25,7 +25,7 @@ import (
 	frontendowner "github.com/MalenkiySolovey/solovey-backend/http/frontend"
 	securitymiddleware "github.com/MalenkiySolovey/solovey-backend/http/security"
 	"github.com/MalenkiySolovey/solovey-ui/api"
-	_ "github.com/MalenkiySolovey/solovey-ui/app"
+	"github.com/MalenkiySolovey/solovey-ui/app"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
@@ -104,13 +104,13 @@ func main() {
 		fatal("session store setup", err)
 	}
 	gin.SetMode(gin.ReleaseMode)
-	componentOwners := componenthost.APIDeps{
+	componentOwners := app.WithSelectedObservationOwners(componenthost.APIDeps{
 		Runtime: runtime,
 		OutboundHTTP: componenthost.OutboundHTTPClientFunc(func(tag string, timeout time.Duration) (*http.Client, error) {
 			return service.NewOutboundHTTPClientForRuntime(runtime, tag, timeout)
 		}),
 		Audit: componenthost.AuditDeps{Recorder: &service.AuditService{Runtime: runtime}},
-	}.WithObservationOwners()
+	})
 	components := componentsupervisor.New(componenthost.Deps{
 		API:               componentOwners,
 		Scheduler:         cronScheduler,

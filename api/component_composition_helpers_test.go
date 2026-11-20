@@ -22,7 +22,7 @@ func composedOptions(options []Option) []Option {
 	runtime := selected.Runtime
 	owners := componenthost.APIDeps{Runtime: runtime, OutboundHTTP: componenthost.OutboundHTTPClientFunc(func(tag string, timeout time.Duration) (*http.Client, error) {
 		return service.NewOutboundHTTPClientForRuntime(runtime, tag, timeout)
-	})}.WithObservationOwners()
+	})}
 	return append(options, WithComponents(componenthttp.New(owners)))
 }
 

@@ -4,30 +4,16 @@ package componenthost
 
 import (
 	hostports "github.com/MalenkiySolovey/solovey-host/componenthost"
+	"github.com/MalenkiySolovey/solovey-host/observation"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
-	"github.com/MalenkiySolovey/solovey-ui/service"
 	auditsvc "github.com/MalenkiySolovey/solovey-ui/service/audit"
-	observationsvc "github.com/MalenkiySolovey/solovey-ui/service/observability"
 )
 
-// ObservationPorts uses the actual owner interfaces, not SDK copies. Minimal
-// builds omit this optional feature and its implementation dependencies.
+// ObservationPorts is filled by the selected Product composition, not Host.
 type ObservationPorts struct {
-	ObservationSampler observationsvc.Sampler
-	ObservationHistory observationsvc.History
+	ObservationSampler observation.Sampler
+	ObservationHistory observation.History
 	AuditHistory       auditsvc.History
-}
-
-// WithObservationOwners belongs to core composition. Binding never constructs
-// a service or falls back to ambient Runtime when a capability is absent.
-func (d APIDeps) WithObservationOwners() APIDeps {
-	if d.Runtime == nil {
-		return d
-	}
-	owner := &service.ObservabilityService{ServerService: service.NewServerService(d.Runtime)}
-	d.ObservationSampler, d.ObservationHistory = owner, owner
-	d.AuditHistory = &service.AuditService{Runtime: d.Runtime}
-	return d
 }
 
 func (d APIDeps) bindObservationPort(port string, target *Ports) bool {

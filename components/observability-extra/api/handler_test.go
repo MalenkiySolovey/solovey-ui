@@ -24,7 +24,7 @@ import (
 func TestGetObservabilityHistoryFiltersMetricBucketAndSince(t *testing.T) {
 	initObservabilityAPITestDB(t)
 	base := time.Now().Unix() + 100000
-	observabilityService := &service.ObservabilityService{}
+	observabilityService := &observabilitysvc.PanelService{}
 	if err := observabilityService.RecordObservabilitySample(observabilitysvc.ObservabilityBucket30s, observabilitysvc.ObservabilitySample{
 		DateTime: base,
 		CPU:      1,
@@ -126,7 +126,7 @@ func newObservabilityAPITestRouter(actor string, scope string) *gin.Engine {
 		JSONObj: func(c *gin.Context, obj interface{}, err error) {
 			c.JSON(http.StatusOK, Envelope{Success: err == nil, Obj: obj})
 		},
-		ObservabilityService: &service.ObservabilityService{},
+		ObservabilityService: &observabilitysvc.PanelService{},
 	})
 	router.GET("/api/observability/history", handler.GetObservabilityHistory)
 	return router

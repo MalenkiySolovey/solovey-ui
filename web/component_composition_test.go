@@ -25,5 +25,5 @@ func TestPanelRouterRequiresExplicitProductComponentComposition(t *testing.T) {
 func productComponentFixture(runtime *service.Runtime) *componenthttp.Adapter {
 	return componenthttp.New(componenthost.APIDeps{Runtime: runtime, OutboundHTTP: componenthost.OutboundHTTPClientFunc(func(tag string, timeout time.Duration) (*http.Client, error) {
 		return service.NewOutboundHTTPClientForRuntime(runtime, tag, timeout)
-	})}.WithObservationOwners())
+	})})
 }
