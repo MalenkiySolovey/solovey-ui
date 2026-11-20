@@ -130,9 +130,12 @@ jobs:
       - name: Install Playwright Chromium
         run: node scripts/frontend.mjs browser-install --with-deps chromium
       - name: Playwright e2e via local test server
+        shell: bash
         env:
           SUI_E2E_READY_TIMEOUT_MS: "900000"
-        run: node scripts/frontend.mjs test:e2e
+        run: |
+          node scripts/frontend.mjs test:e2e
+          test -s tests/baseline/e2e/a11y/axe-results.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
@@ -144,45 +147,11 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  accessibility:
-    name: accessibility
-    runs-on: ubuntu-24.04
-    continue-on-error: true
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
-        with:
-          node-version-file: .node-version
-          cache: npm
-          cache-dependency-path: deploy/dependencies/solovey-frontend.json
-      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
-        with:
-          go-version-file: go.mod
-          cache: true
-          cache-dependency-path: go.sum
-      - name: Restore Playwright browsers
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('deploy/dependencies/solovey-frontend.json') }}
-          restore-keys: |
-            playwright-${{ runner.os }}-
-      - run: node scripts/frontend.mjs install
-      - name: Install Playwright Chromium
-        run: node scripts/frontend.mjs browser-install --with-deps chromium
-      - name: Axe accessibility specs
-        env:
-          SUI_E2E_READY_TIMEOUT_MS: "900000"
-        run: node scripts/frontend.mjs test:e2e tests/e2e/a11y.spec.ts
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - name: Upload the Axe report from the full browser suite
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: audit-frontend-accessibility
-          path: |
-            tests/baseline/e2e/a11y/**
-            tests/baseline/e2e/playwright/**
-            tests/baseline/e2e/playwright.junit.xml
-            tests/baseline/e2e/e2e-server/**
+          path: tests/baseline/e2e/a11y/axe-results.json
           if-no-files-found: ignore
           retention-days: 7
