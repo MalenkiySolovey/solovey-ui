@@ -51,7 +51,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node scripts/frontend.mjs install
           SOLOVEY_UI_PROFILE=full node scripts/frontend.mjs build
           node scripts/frontend-assets.mjs publish --dist .artifacts/frontend-dist --destination web/html
           make audit:build PS="${MAKE_PS}"
@@ -385,6 +384,9 @@ jobs:
 
   coverage:
     name: coverage (ubuntu-latest)
+    # PRs already run the full uninstrumented suite and race shards. Keep
+    # statement coverage on main, scheduled, and manually dispatched audits.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -632,3 +634,20 @@ jobs:
             tests/baseline/audit-artifact-selection.json
           if-no-files-found: ignore
           retention-days: 30
+      - name: Require expected audit job results
+        if: always()
+        shell: bash
+        env:
+          AUDIT_NEEDS: ${{ toJSON(needs) }}
+        run: |
+          node <<'JS'
+          const needs = JSON.parse(process.env.AUDIT_NEEDS)
+          if (!Object.hasOwn(needs, 'coverage')) throw new Error('Missing audit job results')
+          for (const [name, { result }] of Object.entries(needs)) {
+            const expected = name === 'coverage' && process.env.GITHUB_EVENT_NAME === 'pull_request' ? 'skipped' : 'success'
+            if (result !== expected) {
+              console.error(`${name}: expected ${expected}, got ${result}`)
+              process.exitCode = 1
+            }
+          }
+          JS
