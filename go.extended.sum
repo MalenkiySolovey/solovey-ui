@@ -52,6 +52,8 @@ github.com/MalenkiySolovey/solovey-backend v0.1.1 h1:Om4WfZZrKxq/Bz6r25oNMeJEixU
 github.com/MalenkiySolovey/solovey-backend v0.1.1/go.mod h1:xTP4fs5T1LnPV/8r8H+Li97MsEFWkpy3T9ZRRJiZ8Ro=
 github.com/MalenkiySolovey/solovey-backend v0.1.3 h1:iFzmQm9QJcWerPn5Mvk0Ry7dWKjqS8DTBcpDdOvGD4w=
 github.com/MalenkiySolovey/solovey-backend v0.1.3/go.mod h1:xTP4fs5T1LnPV/8r8H+Li97MsEFWkpy3T9ZRRJiZ8Ro=
+github.com/MalenkiySolovey/solovey-backend v0.1.4 h1:iBQDlK2tRuujfjwOqI63+pfbboUkNfIZndU8MpUv630=
+github.com/MalenkiySolovey/solovey-backend v0.1.4/go.mod h1:xTP4fs5T1LnPV/8r8H+Li97MsEFWkpy3T9ZRRJiZ8Ro=
 github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0 h1:De1pv/fpu8uoM0pfkAJX5roZ8WPCxlHZ4OpALNq+jFI=
 github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0/go.mod h1:JsuupXylmHWCSHtBJAqbHHEXzPfk/JeI4r4ytBjErQk=
 github.com/MalenkiySolovey/solovey-component-import-xui v0.1.0 h1:hOo+dX6oe4iSED9HkilWVcRXPXJLNC4+3ej36Y9Z5hA=
@@ -66,6 +68,8 @@ github.com/MalenkiySolovey/solovey-component-paid-subscriptions v0.1.2 h1:pmyQiN
 github.com/MalenkiySolovey/solovey-component-paid-subscriptions v0.1.2/go.mod h1:cWcWSxtm/ZGSalSTL7VtZaJTVDHUJDICLD1UJwSwXBY=
 github.com/MalenkiySolovey/solovey-component-paid-subscriptions v0.1.3 h1:KV4eDq7d0HMCQ9lnVk0j5XZ/Miie3ybKj0Sw8y968Og=
 github.com/MalenkiySolovey/solovey-component-paid-subscriptions v0.1.3/go.mod h1:cWcWSxtm/ZGSalSTL7VtZaJTVDHUJDICLD1UJwSwXBY=
+github.com/MalenkiySolovey/solovey-component-paid-subscriptions v0.1.4 h1:9CLmKNhkJE35A6UUxtPYd4fn/rErE4qI5bLrPw+fCfI=
+github.com/MalenkiySolovey/solovey-component-paid-subscriptions v0.1.4/go.mod h1:cWcWSxtm/ZGSalSTL7VtZaJTVDHUJDICLD1UJwSwXBY=
 github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions v0.1.0 h1:UkSW5YE2EUhaBRuh8ZsNQ338iDR0GqcdzoYeeR/vgbk=
 github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions v0.1.0/go.mod h1:NFDUC3477K7w5woBBJLlzm1bh3Ah5CcnVE/SBAmrV2M=
 github.com/MalenkiySolovey/solovey-component-server-protection v0.1.0 h1:gSzRUTp93lF0d0DP+7vhBziM2CUY9dhLrT+8l8vQqwk=

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	"github.com/MalenkiySolovey/solovey-backend/users/entitlement"
 	paid "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
 	commerce "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
@@ -15,7 +16,7 @@ type AppliedOrderResult struct {
 
 func ApplyPaidOrderGrant(db *gorm.DB, orderID uint, chargeID string, _ []byte, now int64, actor string) (AppliedOrderResult, error) {
 	var result AppliedOrderResult
-	err := commerce.SettlePayment(db, orderID, chargeID, now, func(tx *gorm.DB, order paid.PaymentOrder) (commerce.GrantedUsage, error) {
+	err := commerce.SettlePayment(db, sqlite.RunTransaction, orderID, chargeID, now, func(tx *gorm.DB, order paid.PaymentOrder) (commerce.GrantedUsage, error) {
 		renewal, err := entitlement.Renew(tx, order.ClientId, entitlementTerms(order), now, actor)
 		if err != nil {
 			return commerce.GrantedUsage{}, err
@@ -42,7 +43,7 @@ func FinalizeClaimedRefundGrant(db *gorm.DB, orderID uint, token string, now int
 
 func finalizeRefundGrant(db *gorm.DB, orderID uint, claim string, revoke bool, now int64, actor string) ([]uint, error) {
 	var inboundIDs []uint
-	err := commerce.SettleRefund(db, orderID, claim, revoke, func(tx *gorm.DB, order paid.PaymentOrder, restoreUsage bool) error {
+	err := commerce.SettleRefund(db, sqlite.RunTransaction, orderID, claim, revoke, func(tx *gorm.DB, order paid.PaymentOrder, restoreUsage bool) error {
 		var err error
 		inboundIDs, err = entitlement.Revoke(tx, order.ClientId, entitlementTerms(order),
 			entitlement.Usage{Up: order.GrantedUp, Down: order.GrantedDown}, restoreUsage, now, actor)

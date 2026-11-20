@@ -50,7 +50,7 @@ func PollOnce(ctx context.Context, runtime *service.Runtime) {
 
 func runCryptoBotWork(ctx context.Context, runtime *service.Runtime, ps *paymentCoordinator, poller paidprovider.PollingProvider, reconciler paidprovider.ReconciliationProvider) {
 	admitted := dbsqlite.DB()
-	workflow.RunCryptoBot(ctx, admitted, poller, reconciler, func(connection *gorm.DB, orderID uint, chargeID string) (func(context.Context), error) {
+	workflow.RunCryptoBot(ctx, admitted, poller, reconciler, dbsqlite.RunTransaction, func(connection *gorm.DB, orderID uint, chargeID string) (func(context.Context), error) {
 		// For recovery, connection is the transaction that also stores invoice
 		// evidence and cancellation work. No global DB writes from this callback.
 		applied, err := paidstore.ApplyPaidOrderGrant(connection, orderID, chargeID, nil, nowUnix(), "PaidSubBot")
