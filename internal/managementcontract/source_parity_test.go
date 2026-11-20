@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -21,11 +22,21 @@ import (
 
 func TestEveryCurrentComponentManifestHasTheSamePublicIdentity(t *testing.T) {
 	files, err := filepath.Glob("../../components/*/component.json")
-	if err != nil || len(files) != 8 {
-		t.Fatalf("catalog=%d err=%v", len(files), err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, name := range files {
+		ids = append(ids, filepath.Base(filepath.Dir(name)))
+	}
+	slices.Sort(ids)
+	want := []string{"fallback-html", "import-xui", "observability-extra", "paid-subscriptions", "remote-outbound-subscriptions", "server-protection", "telegram"}
+	if !slices.Equal(ids, want) {
+		t.Fatalf("active manifest catalog = %v, want %v", ids, want)
 	}
 	for _, name := range files {
-		t.Run(filepath.Base(filepath.Dir(name)), func(t *testing.T) {
+		id := filepath.Base(filepath.Dir(name))
+		t.Run(id, func(t *testing.T) {
 			raw, err := os.ReadFile(name)
 			if err != nil {
 				t.Fatal(err)
@@ -36,6 +47,9 @@ func TestEveryCurrentComponentManifestHasTheSamePublicIdentity(t *testing.T) {
 			}
 			if err := actual.Validate(); err != nil {
 				t.Fatal(err)
+			}
+			if actual.ID != id {
+				t.Fatalf("declared component identity = %q, want %q", actual.ID, id)
 			}
 			publisher := state.NewLifecyclePublisher()
 			publisher.RecordStart(actual.ID, true)
