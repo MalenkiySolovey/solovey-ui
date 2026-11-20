@@ -13,16 +13,49 @@ permissions:
   contents: read
 
 concurrency:
-  group: audit-go-${{ github.ref }}
-  cancel-in-progress: true
+  group: audit-go-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   GOFLAGS: -mod=readonly
   MAKE_PS: pwsh -NoProfile -ExecutionPolicy Bypass
 
 jobs:
+  native-scope:
+    name: Native runtime scope
+    runs-on: ubuntu-24.04
+    outputs:
+      scope: ${{ steps.scope.outputs.scope }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        if: github.event_name == 'pull_request'
+        continue-on-error: true # An unavailable merge tree selects full qualification.
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Classify the exact merge tree with the accepted base policy
+        if: always()
+        id: scope
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          scope=full
+          if [[ "$GITHUB_EVENT_NAME" == pull_request && "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] &&
+             git --no-replace-objects show "$BASE_SHA:scripts/audit/native-scope.mjs" > "$RUNNER_TEMP/native-scope.mjs" 2>/dev/null; then
+            scope=$(node "$RUNNER_TEMP/native-scope.mjs" classify) || scope=full
+          fi
+          case "$scope" in docs-only|audit-go-only) ;; *) scope=full ;; esac
+          echo "Selected native scope: $scope"
+          printf 'scope=%s\n' "$scope" >> "$GITHUB_OUTPUT"
+
   build:
     name: build (${{ matrix.os }})
+    needs: native-scope
+    if: needs.native-scope.outputs.scope != 'docs-only'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -64,11 +97,13 @@ jobs:
             tests/baseline/*/*.junit.xml
             tests/baseline/*/coverage/**
             tests/baseline/*/coverage.out
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   vet:
     name: vet (${{ matrix.os }})
+    needs: native-scope
+    if: needs.native-scope.outputs.scope != 'docs-only'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -107,11 +142,13 @@ jobs:
           path: |
             tests/baseline/*/*.txt
             tests/baseline/*/*.junit.xml
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   test-go:
     name: test-go (${{ matrix.os }})
+    needs: native-scope
+    if: needs.native-scope.outputs.scope != 'docs-only'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -154,11 +191,13 @@ jobs:
           path: |
             tests/baseline/*/*.txt
             tests/baseline/*/*.junit.xml
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   test-go-windows-shard:
     name: test-go-shard (${{ matrix.os }}, ${{ matrix.shard }}/4)
+    needs: native-scope
+    if: needs.native-scope.outputs.scope != 'docs-only'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -204,14 +243,14 @@ jobs:
           path: |
             tests/baseline/*/*.txt
             tests/baseline/*/*.junit.xml
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   test-go-windows:
     name: test-go (windows-latest)
     runs-on: ubuntu-latest
-    if: always()
-    needs: [test-go-windows-shard]
+    if: always() && needs.native-scope.outputs.scope != 'docs-only'
+    needs: [native-scope, test-go-windows-shard]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -234,6 +273,8 @@ jobs:
 
   test-go-race-linux-shard:
     name: test-go-race-shard (${{ matrix.os }}, ${{ matrix.shard }}/4)
+    needs: native-scope
+    if: needs.native-scope.outputs.scope != 'docs-only'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -279,11 +320,13 @@ jobs:
           path: |
             tests/baseline/*/*.txt
             tests/baseline/*/*.junit.xml
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   test-go-race-windows-shard:
     name: test-go-race-shard (${{ matrix.os }}, ${{ matrix.shard }}/4)
+    needs: native-scope
+    if: needs.native-scope.outputs.scope != 'docs-only'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -329,14 +372,14 @@ jobs:
           path: |
             tests/baseline/*/*.txt
             tests/baseline/*/*.junit.xml
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   test-go-race-linux:
     name: test-go-race (ubuntu-latest)
     runs-on: ubuntu-latest
-    if: always()
-    needs: [test-go-race-linux-shard]
+    if: always() && needs.native-scope.outputs.scope != 'docs-only'
+    needs: [native-scope, test-go-race-linux-shard]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -360,8 +403,8 @@ jobs:
   test-go-race-windows:
     name: test-go-race (windows-latest)
     runs-on: ubuntu-latest
-    if: always()
-    needs: [test-go-race-windows-shard]
+    if: always() && needs.native-scope.outputs.scope != 'docs-only'
+    needs: [native-scope, test-go-race-windows-shard]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -417,11 +460,13 @@ jobs:
             tests/baseline/*/*.junit.xml
             tests/baseline/*/coverage/**
             tests/baseline/*/coverage.out
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   lint-go:
     name: lint-go (${{ matrix.os }})
+    needs: native-scope
+    if: needs.native-scope.outputs.scope != 'docs-only'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -461,11 +506,13 @@ jobs:
           path: |
             tests/baseline/*/*.txt
             tests/baseline/*/*.junit.xml
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   staticcheck:
     name: staticcheck (${{ matrix.os }})
+    needs: native-scope
+    if: needs.native-scope.outputs.scope != 'docs-only'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -498,11 +545,13 @@ jobs:
           path: |
             tests/baseline/analysis/staticcheck.txt
             tests/baseline/analysis/staticcheck.junit.xml
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   gosec:
     name: gosec (${{ matrix.os }})
+    needs: native-scope
+    if: needs.native-scope.outputs.scope != 'docs-only'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -542,11 +591,13 @@ jobs:
           path: |
             tests/baseline/*/*.txt
             tests/baseline/*/*.junit.xml
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   govulncheck:
     name: govulncheck (${{ matrix.os }})
+    needs: native-scope
+    if: needs.native-scope.outputs.scope != 'docs-only'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -586,7 +637,7 @@ jobs:
           path: |
             tests/baseline/*/*.txt
             tests/baseline/*/*.junit.xml
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   dashboard:
@@ -597,6 +648,7 @@ jobs:
       actions: read
     if: always()
     needs:
+      - native-scope
       - build
       - vet
       - test-go
@@ -611,8 +663,14 @@ jobs:
       - staticcheck
       - gosec
       - govulncheck
+    env:
+      NATIVE_SCOPE: ${{ needs.native-scope.outputs.scope }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version-file: .node-version
@@ -632,22 +690,12 @@ jobs:
             tests/baseline/current/summary.json
             tests/baseline/current/aggregate.junit.xml
             tests/baseline/audit-artifact-selection.json
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 30
       - name: Require expected audit job results
         if: always()
-        shell: bash
         env:
-          AUDIT_NEEDS: ${{ toJSON(needs) }}
-        run: |
-          node <<'JS'
-          const needs = JSON.parse(process.env.AUDIT_NEEDS)
-          if (!Object.hasOwn(needs, 'coverage')) throw new Error('Missing audit job results')
-          for (const [name, { result }] of Object.entries(needs)) {
-            const expected = name === 'coverage' && process.env.GITHUB_EVENT_NAME === 'pull_request' ? 'skipped' : 'success'
-            if (result !== expected) {
-              console.error(`${name}: expected ${expected}, got ${result}`)
-              process.exitCode = 1
-            }
-          }
-          JS
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+          QUALIFICATION_NEEDS: ${{ toJSON(needs) }}
+        run: node scripts/audit/native-scope.mjs audit-go

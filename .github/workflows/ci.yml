@@ -24,14 +24,17 @@ jobs:
     name: Native runtime scope
     runs-on: ubuntu-24.04
     outputs:
-      channel-only: ${{ steps.scope.outputs.channel_only }}
+      scope: ${{ steps.scope.outputs.scope }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         if: github.event_name == 'pull_request'
+        continue-on-error: true # An unavailable merge tree selects full qualification.
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 2
           persist-credentials: false
-      - name: Detect a channel-maintenance-only change to the tested tree
+      - name: Classify the exact merge tree with the accepted base policy
+        if: always()
         id: scope
         shell: bash
         env:
@@ -39,38 +42,51 @@ jobs:
           PR_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          channel_only=false
-          if [[ "$GITHUB_EVENT_NAME" == pull_request && -n "$BASE_SHA" && -n "$PR_SHA" ]] &&
-             [[ "$(git rev-parse --verify -q HEAD^1 || true)" == "$BASE_SHA" ]] &&
-             [[ "$(git rev-parse --verify -q HEAD^2 || true)" == "$PR_SHA" ]] &&
-             git diff --quiet --no-ext-diff --no-renames "$BASE_SHA" HEAD -- . \
-               ':(top,literal,exclude)scripts/release-channel.mjs' \
-               ':(top,literal,exclude)scripts/release-channel.test.mjs'; then
-            channel_only=true
+          scope=full
+          if [[ "$GITHUB_EVENT_NAME" == pull_request && "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] &&
+             git --no-replace-objects show "$BASE_SHA:scripts/audit/native-scope.mjs" > "$RUNNER_TEMP/native-scope.mjs" 2>/dev/null; then
+            scope=$(node "$RUNNER_TEMP/native-scope.mjs" classify) || scope=full
           fi
-          printf 'channel_only=%s\n' "$channel_only" >> "$GITHUB_OUTPUT"
+          case "$scope" in docs-only|audit-go-only) ;; *) scope=full ;; esac
+          echo "Selected native scope: $scope"
+          printf 'scope=%s\n' "$scope" >> "$GITHUB_OUTPUT"
 
   native-qualification:
     name: Native runtime qualification
     if: always()
-    needs: [native-scope, extended-runtime, installer]
+    needs: [native-scope, metadata-qualification, build-tooling, extended-runtime, docker-native-cronet, installer, backend, quic-integration, ssm-integration, anytls-integration, frontend, frontend-embedded-browser]
     runs-on: ubuntu-24.04
-    env:
-      SCOPE_RESULT: ${{ needs.native-scope.result }}
-      CHANNEL_ONLY: ${{ needs.native-scope.outputs.channel-only }}
-      EXTENDED_RESULT: ${{ needs.extended-runtime.result }}
-      INSTALLER_RESULT: ${{ needs.installer.result }}
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
       - name: Enforce the selected native and signed release gates
-        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+          QUALIFICATION_NEEDS: ${{ toJSON(needs) }}
+          QUALIFY_METADATA: ${{ inputs.qualify_metadata }}
+        run: node scripts/audit/native-scope.mjs ci
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        if: needs.native-scope.outputs.scope != 'full'
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        if: needs.native-scope.outputs.scope != 'full'
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: deploy/dependencies/solovey-frontend.json
+      - name: Source integrity and workflow contracts for scoped PRs
+        if: needs.native-scope.outputs.scope != 'full'
         run: |
-          set -euo pipefail
-          [[ "$SCOPE_RESULT" == success && "$INSTALLER_RESULT" == success ]]
-          if [[ "$GITHUB_EVENT_NAME" == pull_request && "$CHANNEL_ONLY" == true ]]; then
-            [[ "$EXTENDED_RESULT" == skipped ]]
-          else
-            [[ "$CHANNEL_ONLY" == false && "$EXTENDED_RESULT" == success ]]
-          fi
+          node scripts/audit/source-hygiene.mjs
+          node scripts/frontend.mjs install
+          node scripts/audit/validate-workflows.js
+          node --test scripts/audit/native-scope.test.mjs scripts/audit/go-shards.test.mjs scripts/go-test.test.mjs
 
   metadata-qualification:
     name: Exact-source metadata qualification
@@ -112,6 +128,8 @@ jobs:
 
   build-tooling:
     name: Build tooling (${{ matrix.os }})
+    needs: native-scope
+    if: needs.native-scope.outputs.scope != 'docs-only' && needs.native-scope.outputs.scope != 'audit-go-only'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -167,7 +185,7 @@ jobs:
   extended-runtime:
     name: Extended runtime (${{ matrix.os }})
     needs: native-scope
-    if: needs.native-scope.outputs.channel-only != 'true'
+    if: needs.native-scope.outputs.scope != 'docs-only' && needs.native-scope.outputs.scope != 'audit-go-only'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -340,6 +358,8 @@ jobs:
 
   docker-native-cronet:
     name: Docker native Cronet (${{ matrix.arch }})
+    needs: native-scope
+    if: needs.native-scope.outputs.scope != 'docs-only' && needs.native-scope.outputs.scope != 'audit-go-only'
     strategy:
       fail-fast: false
       matrix:
@@ -468,6 +488,8 @@ jobs:
 
   backend:
     name: Backend
+    needs: native-scope
+    if: needs.native-scope.outputs.scope != 'docs-only' && needs.native-scope.outputs.scope != 'audit-go-only'
     runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
@@ -553,6 +575,8 @@ jobs:
 
   quic-integration:
     name: QUIC lifecycle (${{ matrix.os }})
+    needs: native-scope
+    if: needs.native-scope.outputs.scope != 'docs-only' && needs.native-scope.outputs.scope != 'audit-go-only'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -623,6 +647,8 @@ jobs:
 
   ssm-integration:
     name: SSM cache integration (${{ matrix.os }})
+    needs: native-scope
+    if: needs.native-scope.outputs.scope != 'docs-only' && needs.native-scope.outputs.scope != 'audit-go-only'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -652,6 +678,8 @@ jobs:
 
   anytls-integration:
     name: AnyTLS session integration (${{ matrix.os }})
+    needs: native-scope
+    if: needs.native-scope.outputs.scope != 'docs-only' && needs.native-scope.outputs.scope != 'audit-go-only'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -680,6 +708,8 @@ jobs:
 
   frontend:
     name: Frontend
+    needs: native-scope
+    if: needs.native-scope.outputs.scope != 'docs-only' && needs.native-scope.outputs.scope != 'audit-go-only'
     runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
@@ -726,7 +756,7 @@ jobs:
         run: |
           node --test scripts/release-preflight.test.mjs
           node --test scripts/release-execution.test.mjs scripts/release-resume.test.mjs scripts/release-candidate.test.mjs scripts/release-composition-build.test.mjs scripts/release-oci.test.mjs scripts/release-completeness.test.mjs
-          node --test scripts/audit/go-shards.test.mjs
+          node --test scripts/audit/native-scope.test.mjs scripts/audit/go-shards.test.mjs
           node scripts/audit/validate-workflows.js
 
       - name: Frontend lint
@@ -786,6 +816,8 @@ jobs:
 
   frontend-embedded-browser:
     name: Frontend embedded browser
+    needs: native-scope
+    if: needs.native-scope.outputs.scope != 'docs-only' && needs.native-scope.outputs.scope != 'audit-go-only'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:

@@ -10,6 +10,7 @@ import test from 'node:test'
 import {frontendFixtureDirectory} from '../frontend-source.mjs'
 import './aggregate.test.mjs'
 import { downloadGoAuditArtifacts, selectLatestAuditArtifacts } from './download-go-artifacts.mjs'
+import { expectedGoArtifacts, requireJobResults } from './native-scope.mjs'
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const YAML = createRequire(path.join(await frontendFixtureDirectory(), 'package.json'))('yaml')
@@ -50,7 +51,7 @@ test('only slow suites become four independent runner shards; normal Ubuntu rema
   assert.match(make, /go-test\.mjs \$\(GO_TEST_ARGS\) -race -count=1 -p 1 -timeout 30m -- \.\/\.\.\./)
 })
 
-test('only statement coverage is scoped away from PRs; Go audit and required checks remain', () => {
+test('only docs PRs skip Go audit and coverage remains selected outside PRs', () => {
   for (const event of ['pull_request', 'push', 'schedule', 'workflow_dispatch']) {
     assert.ok(Object.hasOwn(workflow.on, event), event)
   }
@@ -59,7 +60,8 @@ test('only statement coverage is scoped away from PRs; Go audit and required che
   assert.equal(jobs.coverage.name, 'coverage (ubuntu-latest)')
   assert.equal(jobs.coverage.if, "github.event_name != 'pull_request'")
   for (const id of ['build', 'vet', 'test-go', ...shards, 'lint-go', 'staticcheck', 'gosec', 'govulncheck']) {
-    assert.equal(jobs[id].if, undefined, id)
+    assert.equal(jobs[id].if, "needs.native-scope.outputs.scope != 'docs-only'", id)
+    assert.equal(jobs[id].needs, 'native-scope', id)
     assert.equal(jobs[id]['continue-on-error'], undefined, id)
   }
   for (const id of ['build', 'gosec', 'govulncheck']) {
@@ -83,8 +85,8 @@ test('legacy gates always run and only all-success passes, including cancellatio
   for (const [id, name, dependency] of gates) {
     const gate = jobs[id]
     assert.equal(gate.name, name)
-    assert.equal(gate.if, 'always()')
-    assert.deepEqual(gate.needs, [dependency])
+    assert.equal(gate.if, "always() && needs.native-scope.outputs.scope != 'docs-only'")
+    assert.deepEqual(gate.needs, ['native-scope', dependency])
     assert.equal(gate['continue-on-error'], undefined)
     const step = gate.steps.find(step => step.name === 'Require every shard to succeed')
     assert.equal(step.env.SHARD_RESULT, `\${{ needs['${dependency}'].result }}`)
@@ -129,28 +131,34 @@ test('artifact and evidence names are unique; dashboard waits for all shards and
   assert.ok(upload.with.path.includes('tests/baseline/audit-artifact-selection.json'))
 })
 
-test('dashboard only admits the intentional PR coverage skip', () => {
+test('dashboard requires exact per-scope status and artifact sets', () => {
   const step = jobs.dashboard.steps.at(-1)
   assert.equal(step.name, 'Require expected audit job results')
   assert.equal(step.if, 'always()')
-  assert.equal(step.env.AUDIT_NEEDS, '${{ toJSON(needs) }}')
-  function check(event, job, result, expectedStatus) {
-    const needs = Object.fromEntries(jobs.dashboard.needs.map(name => [name, { result: 'success' }]))
-    if (event === 'pull_request') needs.coverage.result = 'skipped'
-    if (job) needs[job].result = result
-    const actual = spawnSync(bash, ['-c', step.run], {
-      encoding: 'utf8',
-      env: { ...process.env, AUDIT_NEEDS: JSON.stringify(needs), GITHUB_EVENT_NAME: event },
+  assert.equal(step.env.QUALIFICATION_NEEDS, '${{ toJSON(needs) }}')
+  assert.equal(step.run, 'node scripts/audit/native-scope.mjs audit-go')
+  assert.deepEqual([...jobs.dashboard.needs].sort(), Object.keys(jobs).filter(name => name !== 'dashboard').sort())
+  for (const [event, scope] of [['pull_request', 'full'], ['pull_request', 'audit-go-only'], ['pull_request', 'docs-only'], ['push', 'full'], ['schedule', 'full']]) {
+    const needs = Object.fromEntries(jobs.dashboard.needs.map(name => [name, {
+      result: scope === 'docs-only' || (event === 'pull_request' && name === 'coverage') ? 'skipped' : 'success',
+    }]))
+    needs['native-scope'] = { result: 'success', outputs: { scope } }
+    assert.equal(requireJobResults('audit-go', needs, event), scope)
+    const original = needs.govulncheck.result
+    for (const result of ['success', 'skipped', 'failure', 'cancelled', undefined].filter(result => result !== original)) {
+      needs.govulncheck.result = result
+      assert.throws(() => requireJobResults('audit-go', needs, event), /govulncheck: expected/)
+    }
+    const artifacts = jobs.dashboard.needs.filter(name => name !== 'native-scope' && scope !== 'docs-only' && (name !== 'coverage' || event !== 'pull_request')).flatMap(name => {
+      const job = jobs[name]
+      const upload = job.steps.find(step => step.uses?.startsWith('actions/upload-artifact@'))
+      assert.equal(upload.with['if-no-files-found'], 'error')
+      return (job.strategy?.matrix.os ?? ['ubuntu-latest']).flatMap(os => (job.strategy?.matrix.shard ?? [0]).map(shard =>
+        upload.with.name.replace('${{ matrix.os }}', os).replace('${{ matrix.shard }}', shard)))
     })
-    assert.equal(actual.status, expectedStatus, actual.stderr || actual.error?.message)
-    if (expectedStatus) assert.ok(actual.stderr.includes(`${job}: expected`))
+    assert.deepEqual(expectedGoArtifacts(scope, event).sort(), artifacts.sort())
   }
-  check('pull_request', null, null, 0)
-  check('push', null, null, 0)
-  check('pull_request', 'govulncheck', 'skipped', 1)
-  check('pull_request', 'gosec', 'failure', 1)
-  check('pull_request', 'test-go-race-windows', 'cancelled', 1)
-  check('schedule', 'coverage', 'skipped', 1)
+  assert.throws(() => expectedGoArtifacts('docs-only', 'push'), /Invalid native scope/)
 })
 
 test('rerun artifacts follow creation time even when the older failure has a larger numeric ID', () => {
@@ -172,6 +180,9 @@ test('artifact selection rejects missing, ambiguous, expired or unverifiable cur
   for (const input of [[], [good, { ...good }], [{ ...good, created_at: '' }], [good, { ...good, id: 2 }], [{ ...good, expired: true }], [{ ...good, digest: undefined }], [{ ...good, name: 'audit-go-../escape' }]]) {
     assert.throws(() => selectLatestAuditArtifacts(input))
   }
+  assert.deepEqual(selectLatestAuditArtifacts([], []), [])
+  assert.throws(() => selectLatestAuditArtifacts([good], []), /Unexpected or missing audit job artifacts/)
+  assert.throws(() => selectLatestAuditArtifacts([], [good.name]), /Unexpected or missing audit job artifacts/)
 })
 
 test('artifact download retries the same ID on transient HTTP errors and still fails closed', async t => {
@@ -204,7 +215,7 @@ test('artifact download retries the same ID on transient HTTP errors and still f
         if (Buffer.isBuffer(response)) return response
         throw Object.assign(new Error(`HTTP ${response}`), { stderr: Buffer.from(`gh: HTTP ${response}\n`) })
       }
-      const download = downloadGoAuditArtifacts({ repository: 'owner/repo', runId: 42, destination, execute,
+      const download = downloadGoAuditArtifacts({ repository: 'owner/repo', runId: 42, destination, expected: [artifact.name], execute,
         wait: async ms => { observedDelays.push(ms) } })
       if (failure) {
         await assert.rejects(download, failure)
