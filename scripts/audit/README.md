@@ -32,14 +32,18 @@ use package seconds from complete command logs and review per-shard job and
 queue times as well: package seconds exclude build/setup/queue overhead. Keep
 the mechanism deterministic and the runner isolation intact.
 
-The exact legacy `test-go (windows-latest)` and `test-go-race (<os>)` checks
-are always-run gates. Only a `success` matrix result passes; failure,
-cancellation, skip and missing results fail. Gates also publish command JUnit
-and logs so missing shard evidence cannot make the dashboard appear green.
-Each shard has a unique artifact and result filename. The dashboard waits for
-all shards and gates and preserves separate artifact directories with
-`merge-multiple: false`. Its existing recursive aggregation shows a shard/gate
-breakdown without overwriting evidence.
+The `test-go (windows-latest)` and `test-go-race (<os>)` gates run after their
+shards when the Go suite is selected. Only a `success` matrix result passes.
+Gates and shards publish separate JUnit and log artifacts.
+
+The `dashboard` always runs. It checks each job result against the verified
+scope and requires exactly the artifacts expected from that run. It downloads
+each archive by its exact artifact ID, checks its SHA-256 digest and extracts
+it into a separate directory. It does not aggregate a previous dashboard.
+
+For a verified `docs-only` PR, no Go shards or gate artifacts are expected;
+the dashboard verifies the skip results. An `audit-go-only` PR still runs the
+Go audit suite. Coverage runs on main, scheduled and manual runs, not on PRs.
 
 Focused validation:
 
