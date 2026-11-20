@@ -221,7 +221,7 @@ jobs:
       - name: External Fallback workflows and Core lifecycle regressions
         shell: bash
         run: |
-          go test -race -count=1 -timeout=5m -tags "$EXTENDED_TAGS" ./components/fallback-html/... ./componenthost/durable ./componenthost/resources ./componenthost/health ./componenthost/publicsurface
+          go test -race -count=1 -timeout=5m -tags "$EXTENDED_TAGS" ./components/fallback-html/...
           go test -race -p 1 -count=1 -timeout=5m -tags "$EXTENDED_TAGS,minimal" ./internal/components/... ./api ./app ./web
 
       - name: Protection policy, Planner and broker boundary regressions
@@ -231,7 +231,7 @@ jobs:
             findmnt -no TARGET,OPTIONS --target /run
             findmnt -no TARGET,OPTIONS --target /tmp
           fi
-          # Bound concurrent disk-backed SQLite fixtures while retaining race checks.
+          # Includes durable, resources, health and publicsurface. Bound concurrent disk-backed SQLite fixtures.
           node scripts/go-test.mjs -race -p 1 -count=1 -timeout=10m -tags "$EXTENDED_TAGS" -- ./components/server-protection/... ./network/... ./componenthost/... ./internal/ops/privilegedbroker github.com/MalenkiySolovey/solovey-backend/operations/coordination ./internal/components/architecture
 
       - name: External protection source with actual Product owner fixtures
@@ -313,6 +313,18 @@ jobs:
               -run '^Test(ProviderMaintenance|PreparedProviderActual)' ./internal/ops/updatebroker
           done
 
+      - name: Shared non-minimal API and web race regressions
+        shell: bash
+        run: |
+          # Custom generation changes app and cmd inputs, not the API/web fixtures.
+          # Check test imports too, so new composition dependencies cannot silently lose coverage.
+          go list -race -deps -test -tags "$EXTENDED_TAGS" ./api ./web > "$RUNNER_TEMP/api-web-race-deps.txt"
+          if grep -E '^github\.com/MalenkiySolovey/solovey-ui/(app|cmd)([/ ]|$)' "$RUNNER_TEMP/api-web-race-deps.txt"; then
+            echo "API/web tests depend on generated composition; qualify them under each affected profile" >&2
+            exit 1
+          fi
+          go test -race -p 1 -count=1 -timeout=5m -tags "$EXTENDED_TAGS" ./api ./web
+
       - name: Custom Fallback native backend composition
         shell: bash
         run: |
@@ -323,7 +335,7 @@ jobs:
             echo "custom binary depends on unselected components" >&2
             exit 1
           fi
-          go test -race -p 1 -count=1 -timeout=5m -tags "$EXTENDED_TAGS" ./app ./api ./web
+          go test -race -p 1 -count=1 -timeout=5m -tags "$EXTENDED_TAGS" ./app
           go build -tags "$EXTENDED_TAGS" -o "$RUNNER_TEMP/solovey-extended-fallback-custom${{ runner.os == 'Windows' && '.exe' || '' }}" main.go
           node scripts/generate-component-imports.mjs --profile full
 
@@ -338,7 +350,7 @@ jobs:
             echo "custom binary depends on unselected components" >&2
             exit 1
           fi
-          go test -race -p 1 -count=1 -timeout=5m -tags "$EXTENDED_TAGS" ./app ./api ./web
+          go test -race -p 1 -count=1 -timeout=5m -tags "$EXTENDED_TAGS" ./app
           go build -tags "$EXTENDED_TAGS" -o "$RUNNER_TEMP/solovey-extended-subscription-custom${{ runner.os == 'Windows' && '.exe' || '' }}" main.go
           node scripts/generate-component-imports.mjs --profile full
 

@@ -123,8 +123,8 @@ jobs:
         run: node scripts/generate-component-imports.mjs --profile full
       - name: Qualify independent protection policy source
         run: node scripts/verify-protection-source.mjs
-      - name: Qualify selected independent subscription source
-        run: go test -race -count=1 github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions/...
+      # The pinned subscription producer race suite is provider-independent.
+      # CI's Extended runtime runs it on both OSes alongside Product integration.
       - name: Ensure make on Windows
         if: runner.os == 'Windows'
         shell: pwsh
