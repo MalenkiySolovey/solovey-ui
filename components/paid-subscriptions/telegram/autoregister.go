@@ -33,32 +33,12 @@ func (b *Bot) createTrialClient(ctx context.Context, db *gorm.DB, trial customer
 	if err != nil {
 		return 0, fmt.Errorf("generate client config: %w", err)
 	}
-	inboundsJSON, _ := json.Marshal(trial.Inbounds)
-	payload := map[string]any{
-		"enable":   true,
-		"name":     name,
-		"config":   json.RawMessage(config),
-		"inbounds": json.RawMessage(inboundsJSON),
-		"volume":   trial.Volume,
-		"expiry":   trial.Expiry,
-		"desc":     trial.Description,
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return 0, err
-	}
-
 	host, _ := b.setting.GetWebDomain()
 	cfg := service.NewConfigServiceWithRuntime(b.runtime)
-	if _, err := cfg.Save("clients", "new", data, "", "PaidSubBot", host); err != nil {
-		return 0, fmt.Errorf("save client: %w", err)
-	}
-
-	var created model.Client
-	if err := db.Where("name = ?", name).First(&created).Error; err != nil {
-		return 0, fmt.Errorf("look up created client: %w", err)
-	}
-	return created.Id, nil
+	return cfg.ProvisionClient(ctx, service.ClientProvision{
+		Name: name, Config: config, Inbounds: trial.Inbounds,
+		Volume: trial.Volume, Expiry: trial.Expiry, Description: trial.Description,
+	}, "PaidSubBot", host)
 }
 
 // uniqueClientName derives a collision-free name from the Telegram id.
