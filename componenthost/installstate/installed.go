@@ -160,7 +160,7 @@ func Load(path string) (Metadata, bool, error) {
 
 func SetInstalled(path string, available []manifest.Manifest, id string, installed bool) (Metadata, error) {
 	if id == FormerPanelUpdateID {
-		return Metadata{}, errors.New("Panel Update is built in")
+		return Metadata{}, errors.New("panel update is built in")
 	}
 	if err := manifest.ValidateID(id); err != nil {
 		return Metadata{}, err

@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"syscall"
 	"testing"
 	"time"
@@ -55,10 +56,13 @@ func TestSysupgradeProductionOwnerChild(t *testing.T) {
 	}
 	installed := installstate.Metadata{Version: 1, Profile: "full"}
 	for _, owner := range registry.Components() {
+		if owner.Manifest.ID == installstate.FormerPanelUpdateID {
+			t.Fatal("intrinsic Panel Update must not register a package owner")
+		}
 		installed.Components = append(installed.Components, installstate.InstalledComponent{ID: owner.Manifest.ID, Delivery: owner.Manifest.Delivery, Installed: true})
 	}
-	if len(installed.Components) != 8 {
-		t.Fatal("full package owner inventory incomplete")
+	if len(installed.Components) != 7 {
+		t.Fatalf("full package owner inventory has %d entries, want 7", len(installed.Components))
 	}
 	// Models the package's exact installed-owner declaration being available
 	// again after reinstall; no runtime component is started in this process.
@@ -177,8 +181,18 @@ func TestSysupgradeProductionOwnerChild(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(manifest.Owners) != 9 {
-			t.Fatal("snapshot omitted installed owners")
+		wantOwners := []string{"core"}
+		for _, component := range installed.Components {
+			wantOwners = append(wantOwners, component.ID)
+		}
+		var gotOwners []string
+		for _, owner := range manifest.Owners {
+			gotOwners = append(gotOwners, owner.ID)
+		}
+		slices.Sort(wantOwners)
+		slices.Sort(gotOwners)
+		if !slices.Equal(gotOwners, wantOwners) {
+			t.Fatalf("snapshot owners = %v, want %v", gotOwners, wantOwners)
 		}
 		excluded, err := durableowner.NonportableBackupTables("server-protection")
 		if err != nil {

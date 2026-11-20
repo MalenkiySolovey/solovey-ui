@@ -444,14 +444,14 @@ jobs:
           if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
             choco install make -y --no-progress
           }
-      - name: Install Go lint tools
+      - name: Install golangci-lint
         shell: bash
         run: |
-          node scripts/audit/install-tools.mjs staticcheck golangci-lint
+          node scripts/audit/install-tools.mjs golangci-lint
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-      - name: make audit:lint-go
+      - name: make audit:golangci-lint
         shell: bash
-        run: make audit:lint-go PS="${MAKE_PS}"
+        run: make audit:golangci-lint PS="${MAKE_PS}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:

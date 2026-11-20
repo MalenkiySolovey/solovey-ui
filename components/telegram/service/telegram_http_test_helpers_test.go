@@ -10,6 +10,12 @@ import (
 	"sync/atomic"
 )
 
+type telegramFixtureRoundTripper func(*http.Request) (*http.Response, error)
+
+func (f telegramFixtureRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
 type countingRoundTripper struct {
 	count atomic.Int32
 }

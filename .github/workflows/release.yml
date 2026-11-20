@@ -427,7 +427,8 @@ jobs:
       - name: Minimal dependency boundary
         run: |
           set -euo pipefail
-          if go list -tags minimal -deps ./app | grep -E 'github.com/MalenkiySolovey/solovey-ui/(components|api/remotesub|paidsub|api/telegram|service/remote_outbound|internal/subscriptions/remote|cronjob/jobs/notifications)'; then
+          go list -tags minimal -deps main.go > "$RUNNER_TEMP/official-core-deps.txt"
+          if grep -E '^github\.com/MalenkiySolovey/(solovey-component-|solovey-ui/(components|api/remotesub|paidsub|api/telegram|service/remote_outbound|internal/subscriptions/remote|cronjob/jobs/notifications))' "$RUNNER_TEMP/official-core-deps.txt"; then
             echo "minimal app depends on optional backend packages" >&2
             exit 1
           fi

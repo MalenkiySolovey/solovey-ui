@@ -70,6 +70,16 @@ func probeQUICFixturePort(network, address string) (io.Closer, int, error) {
 }
 
 func findQUICFixturePort(bind func(string, string) (io.Closer, int, error)) (int, error) {
+	tcp, udp, port, err := reserveQUICFixturePort(bind)
+	if err != nil {
+		return 0, err
+	}
+	_ = tcp.Close()
+	_ = udp.Close()
+	return port, nil
+}
+
+func reserveQUICFixturePort(bind func(string, string) (io.Closer, int, error)) (tcp, udp io.Closer, port int, err error) {
 	var last error
 	// TCP and UDP have independent ephemeral allocators and exclusion ranges.
 	// Sample both while requiring each candidate to bind both protocols. Keep
@@ -87,14 +97,16 @@ func findQUICFixturePort(bind func(string, string) (io.Closer, int, error)) (int
 		}
 		address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
 		other, _, err := bind(second, address)
-		_ = socket.Close()
 		if err == nil {
-			_ = other.Close()
-			return port, nil
+			if first == "tcp" {
+				return socket, other, port, nil
+			}
+			return other, socket, port, nil
 		}
+		_ = socket.Close()
 		last = fmt.Errorf("%s %s after %s allocation: %w", second, address, first, err)
 	}
-	return 0, fmt.Errorf("no loopback port available for both TCP and UDP after 32 probes: %w", last)
+	return nil, nil, 0, fmt.Errorf("no loopback port available for both TCP and UDP after 32 probes: %w", last)
 }
 
 func quicBindings(users ...uint) []inboundidentity.Binding {

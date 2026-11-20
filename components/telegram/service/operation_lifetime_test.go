@@ -25,10 +25,6 @@ func (lifetimeTelegramSettings) GetTelegramBotToken(context.Context) (string, er
 }
 func (lifetimeTelegramSettings) GetTelegramChatID() (string, error) { return "41", nil }
 
-type telegramLifetimeTransport func(*http.Request) (*http.Response, error)
-
-func (f telegramLifetimeTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-
 func TestNotificationAndDocumentRetainAdmissionUntilSendCompletes(t *testing.T) {
 	for _, kind := range []string{"notification", "document"} {
 		t.Run(kind, func(t *testing.T) {
@@ -38,7 +34,7 @@ func TestNotificationAndDocumentRetainAdmissionUntilSendCompletes(t *testing.T) 
 			var once sync.Once
 			resume := func() { once.Do(func() { close(proceed) }) }
 			t.Cleanup(resume)
-			service := &telegramservice.Service{Settings: lifetimeTelegramSettings{}, Client: &http.Client{Transport: telegramLifetimeTransport(func(r *http.Request) (*http.Response, error) {
+			service := &telegramservice.Service{Settings: lifetimeTelegramSettings{}, Client: &http.Client{Transport: telegramFixtureRoundTripper(func(r *http.Request) (*http.Response, error) {
 				close(entered)
 				select {
 				case <-proceed:

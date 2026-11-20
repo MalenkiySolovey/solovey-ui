@@ -120,7 +120,7 @@ func TestTelegramBackupUploadApplicationFailureIsNotReportedAsDelivery(t *testin
 	})
 	capture := &captureRoundTripper{}
 	calls := 0
-	client := &http.Client{Timeout: time.Second, Transport: discoveryRoundTrip(func(request *http.Request) (*http.Response, error) {
+	client := &http.Client{Timeout: time.Second, Transport: telegramFixtureRoundTripper(func(request *http.Request) (*http.Response, error) {
 		calls++
 		response, err := capture.RoundTrip(request)
 		if err != nil {
