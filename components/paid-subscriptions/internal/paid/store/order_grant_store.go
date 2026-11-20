@@ -1,17 +1,12 @@
 package store
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
-	"math"
-
-	"github.com/MalenkiySolovey/solovey-backend/storage/model"
-	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
+	"github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	"github.com/MalenkiySolovey/solovey-backend/users/entitlement"
+	paid "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
+	commerce "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
 	"gorm.io/gorm"
 )
-
-var ErrOrderAlreadyFinalized = errors.New("order already finalized")
 
 type AppliedOrderResult struct {
 	Applied        bool
@@ -19,174 +14,47 @@ type AppliedOrderResult struct {
 	InboundIDs     []uint
 }
 
-func ApplyPaidOrderGrant(db *gorm.DB, orderID uint, chargeID string, raw []byte, now int64, actor string) (AppliedOrderResult, error) {
+func ApplyPaidOrderGrant(db *gorm.DB, orderID uint, chargeID string, _ []byte, now int64, actor string) (AppliedOrderResult, error) {
 	var result AppliedOrderResult
-	if chargeID == "" {
-		return result, fmt.Errorf("payment charge identity is empty")
-	}
-	err := db.Transaction(func(tx *gorm.DB) error {
-		res := tx.Model(&paid.PaymentOrder{}).
-			Where("id = ? AND status = ?", orderID, paid.StatusPending).
-			Updates(map[string]any{
-				"status":             paid.StatusPaid,
-				"paid_at":            now,
-				"provider_charge_id": chargeID,
-			})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected != 1 {
-			return ErrOrderAlreadyFinalized
-		}
-		var order paid.PaymentOrder
-		if err := tx.Where("id = ?", orderID).First(&order).Error; err != nil {
-			return err
-		}
-		// Keep the durable invoice reference; arbitrary confirmation payloads
-		// are neither financial authority nor necessary durable audit evidence.
-		grant, err := grantForOrder(tx, order)
+	err := commerce.SettlePayment(db, sqlite.RunTransaction, orderID, chargeID, now, func(tx *gorm.DB, order paid.PaymentOrder) (commerce.GrantedUsage, error) {
+		renewal, err := entitlement.Renew(tx, order.ClientId, entitlementTerms(order), now, actor)
 		if err != nil {
-			return err
+			return commerce.GrantedUsage{}, err
 		}
-		var client model.Client
-		if err := tx.Where("id = ?", order.ClientId).First(&client).Error; err != nil {
-			return err
-		}
-
-		updates, orderUpdates, err := paid.BuildPaidClientUpdates(client, grant, now)
-		if err != nil {
-			return err
-		}
-		if len(orderUpdates) > 0 {
-			if err := tx.Model(&paid.PaymentOrder{}).Where("id = ?", orderID).
-				Updates(orderUpdates).Error; err != nil {
-				return err
-			}
-		}
-		// A payment may renew quota/expiry; it is not manual access approval.
-		// Evaluate current blockers so a policy edit after the read survives.
-		updates["enable"] = gorm.Expr("CASE WHEN access_disable_reason = '' OR access_disable_reason IN (?, ?) THEN true ELSE false END", model.ClientDisabledQuota, model.ClientDisabledExpired)
-		updates["access_disable_reason"] = gorm.Expr("CASE WHEN access_disable_reason IN (?, ?) THEN '' ELSE access_disable_reason END", model.ClientDisabledQuota, model.ClientDisabledExpired)
-		if err := tx.Model(&model.Client{}).Where("id = ?", client.Id).Updates(updates).Error; err != nil {
-			return err
-		}
-		if err := tx.Create(&model.Changes{
-			DateTime: now,
-			Actor:    actor,
-			Key:      "clients",
-			Action:   "renew",
-			Obj:      JSONString(client.Name),
-		}).Error; err != nil {
-			return err
-		}
-		result.Applied = true
-		result.TelegramUserID = order.TelegramUserId
-		if len(client.Inbounds) > 0 {
-			_ = json.Unmarshal(client.Inbounds, &result.InboundIDs)
-		}
-		return nil
+		result = AppliedOrderResult{Applied: true, TelegramUserID: order.TelegramUserId, InboundIDs: renewal.InboundIDs}
+		return commerce.GrantedUsage{Up: renewal.Usage.Up, Down: renewal.Usage.Down}, nil
 	})
-	return result, err
+	if err != nil {
+		return AppliedOrderResult{}, err
+	}
+	return result, nil
 }
 
 func FinalizeRefundGrant(db *gorm.DB, orderID uint, revoke bool, now int64, actor string) ([]uint, error) {
-	return finalizeRefundGrant(db, orderID, paid.StatusPaid, "", revoke, now, actor)
+	return finalizeRefundGrant(db, orderID, "", revoke, now, actor)
 }
 
 func FinalizeClaimedRefundGrant(db *gorm.DB, orderID uint, token string, now int64, actor string) ([]uint, error) {
 	if token == "" {
-		return nil, ErrRefundInProgress
+		return nil, commerce.ErrRefundInProgress
 	}
-	return finalizeRefundGrant(db, orderID, paid.StatusRefundPending, token, false, now, actor)
+	return finalizeRefundGrant(db, orderID, token, false, now, actor)
 }
 
-func finalizeRefundGrant(db *gorm.DB, orderID uint, status, token string, revoke bool, now int64, actor string) ([]uint, error) {
+func finalizeRefundGrant(db *gorm.DB, orderID uint, claim string, revoke bool, now int64, actor string) ([]uint, error) {
 	var inboundIDs []uint
-	err := db.Transaction(func(tx *gorm.DB) error {
-		query := tx.Model(&paid.PaymentOrder{}).Where("id = ? AND status = ?", orderID, status)
-		if token != "" {
-			query = query.Where("refund_claim = ?", token)
-		}
-		res := query.Updates(map[string]any{"status": paid.StatusRefunded, "refund_claim": "", "refund_claim_until": 0})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected != 1 {
-			return ErrOrderAlreadyFinalized
-		}
-		var order paid.PaymentOrder
-		if err := tx.Where("id = ?", orderID).First(&order).Error; err != nil {
-			return err
-		}
-		if token != "" {
-			revoke = order.RefundRevoke
-		}
-		if !revoke {
-			_, err := grantForOrder(tx, order)
-			return err
-		}
-		grant, err := grantForOrder(tx, order)
-		if err != nil {
-			return err
-		}
-		var client model.Client
-		if err := tx.Where("id = ?", order.ClientId).First(&client).Error; err != nil {
-			return err
-		}
-		restoreLiveUsage := true
-		if grant.AddTrafficBytes > 0 {
-			var newerTrafficOrders int64
-			if err := tx.Model(&paid.PaymentOrder{}).
-				Where("client_id = ? AND id > ? AND status IN ?", order.ClientId, order.Id, []string{paid.StatusPaid, paid.StatusRefundPending}).
-				Where("grant_snapshot = ? AND grant_traffic_bytes > 0", true).
-				Count(&newerTrafficOrders).Error; err != nil {
-				return err
-			}
-			restoreLiveUsage = newerTrafficOrders == 0
-		}
-		updates := paid.BuildRefundClientUpdates(client, order, grant, now, restoreLiveUsage)
-		if len(updates) == 0 {
-			return nil
-		}
-		if err := tx.Model(&model.Client{}).Where("id = ?", client.Id).Updates(updates).Error; err != nil {
-			return err
-		}
-		if err := tx.Create(&model.Changes{
-			DateTime: now,
-			Actor:    actor,
-			Key:      "clients",
-			Action:   "refund",
-			Obj:      JSONString(client.Name),
-		}).Error; err != nil {
-			return err
-		}
-		if len(client.Inbounds) > 0 {
-			_ = json.Unmarshal(client.Inbounds, &inboundIDs)
-		}
-		return nil
+	err := commerce.SettleRefund(db, sqlite.RunTransaction, orderID, claim, revoke, func(tx *gorm.DB, order paid.PaymentOrder, restoreUsage bool) error {
+		var err error
+		inboundIDs, err = entitlement.Revoke(tx, order.ClientId, entitlementTerms(order),
+			entitlement.Usage{Up: order.GrantedUp, Down: order.GrantedDown}, restoreUsage, now, actor)
+		return err
 	})
-	return inboundIDs, err
-}
-
-func ValidateOrderGrant(order paid.PaymentOrder) error {
-	_, err := grantForOrder(nil, order)
-	return err
-}
-
-func grantForOrder(_ *gorm.DB, order paid.PaymentOrder) (paid.Tariff, error) {
-	if order.GrantSnapshot {
-		if order.Amount <= 0 || order.GrantAddDays < 0 || int64(order.GrantAddDays) > math.MaxInt64/86400 || order.GrantTraffic < 0 {
-			return paid.Tariff{}, fmt.Errorf("payment order grant snapshot is invalid")
-		}
-		return paid.Tariff{AddDays: order.GrantAddDays, AddTrafficBytes: order.GrantTraffic}, nil
-	}
-	return paid.Tariff{}, fmt.Errorf("payment order requires manual review: purchase snapshot missing")
-}
-
-func JSONString(s string) json.RawMessage {
-	b, err := json.Marshal(s)
 	if err != nil {
-		return json.RawMessage(`""`)
+		return nil, err
 	}
-	return b
+	return inboundIDs, nil
+}
+
+func entitlementTerms(order paid.PaymentOrder) entitlement.Terms {
+	return entitlement.Terms{Days: order.GrantAddDays, TrafficBytes: order.GrantTraffic}
 }

@@ -11,9 +11,9 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
-	paidprovider "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
-	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
+	"github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
+	paidprovider "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
+	paidstore "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
 	paidsettings "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/settings"
 )
 
@@ -32,10 +32,10 @@ func TestCreateOrderRejectsInvalidTTLBeforePersistence(t *testing.T) {
 
 	client := model.Client{Id: 7, Name: "ttl-test", Inbounds: json.RawMessage("[]")}
 	tariff := paid.Tariff{Id: 11, Name: "Stars", StarsAmount: 25, Enabled: true}
-	_, _, err := newPaymentCoordinator().CreateOrder(
+	_, _, err := newPaymentCoordinator().createOrder(
 		context.Background(),
-		&client,
-		&tariff,
+		client.Id,
+		tariff.Id,
 		paidprovider.ProviderStars,
 		42,
 	)
@@ -90,7 +90,7 @@ func TestApplyPaidOrderIdempotentRenewal(t *testing.T) {
 	}
 
 	ps := newPaymentCoordinator()
-	applied, tgID, err := ps.ApplyPaidOrder(order.Id, "charge-1", nil)
+	applied, tgID, err := ps.applyPaidOrder(db, order.Id, "charge-1")
 	if err != nil {
 		t.Fatalf("ApplyPaidOrder: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestApplyPaidOrderIdempotentRenewal(t *testing.T) {
 	}
 
 	// Second apply must be an idempotent no-op (no double renewal).
-	applied2, _, err := ps.ApplyPaidOrder(order.Id, "charge-1", nil)
+	applied2, _, err := ps.applyPaidOrder(db, order.Id, "charge-1")
 	if err != nil {
 		t.Fatalf("second ApplyPaidOrder: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestApplyPaidOrderRejectsZeroPriceTariff(t *testing.T) {
 	db.Create(&order)
 
 	ps := newPaymentCoordinator()
-	applied, _, err := ps.ApplyPaidOrder(order.Id, "c", nil)
+	applied, _, err := ps.applyPaidOrder(db, order.Id, "c")
 	if err == nil {
 		t.Fatal("expected error for zero-price tariff")
 	}
@@ -251,8 +251,7 @@ func TestOrdersForTgUserScoped(t *testing.T) {
 	db.Create(&paid.PaymentOrder{ClientId: 1, TariffId: 1, Provider: "stars", Amount: 6, Currency: "XTR", Status: paid.StatusPending, TelegramUserId: 100, IdempotencyKey: "b"})
 	db.Create(&paid.PaymentOrder{ClientId: 2, TariffId: 1, Provider: "stars", Amount: 7, Currency: "XTR", Status: paid.StatusPaid, TelegramUserId: 200, IdempotencyKey: "c"})
 
-	ps := newPaymentCoordinator()
-	got, err := ps.OrdersForTgUser(100, 20)
+	got, err := paidstore.OrdersForTelegramUser(db, 100, 20)
 	if err != nil {
 		t.Fatalf("OrdersForTgUser: %v", err)
 	}
@@ -265,7 +264,7 @@ func TestOrdersForTgUserScoped(t *testing.T) {
 		}
 	}
 	// Refundable = paid only.
-	ref, err := ps.RefundableOrdersForTgUser(100, 20)
+	ref, err := paidstore.RefundableOrdersForTelegramUser(db, 100, 20)
 	if err != nil {
 		t.Fatalf("RefundableOrdersForTgUser: %v", err)
 	}
@@ -288,7 +287,7 @@ func TestFinalizeRefundRevokeRollsBackOnce(t *testing.T) {
 	db.Create(&order)
 
 	ps := newPaymentCoordinator()
-	if err := ps.finalizeRefund(order.Id, true); err != nil {
+	if err := ps.finalizeRefund(db, order.Id, "", true); err != nil {
 		t.Fatalf("finalizeRefund: %v", err)
 	}
 	var o paid.PaymentOrder
@@ -310,7 +309,7 @@ func TestFinalizeRefundRevokeRollsBackOnce(t *testing.T) {
 	}
 
 	// Second call must be an idempotent no-op (no double roll-back).
-	if err := ps.finalizeRefund(order.Id, true); !errors.Is(err, errAlreadyApplied) {
+	if err := ps.finalizeRefund(db, order.Id, "", true); !errors.Is(err, errAlreadyApplied) {
 		t.Errorf("second finalizeRefund = %v, want errAlreadyApplied", err)
 	}
 	var c2 model.Client
@@ -334,7 +333,7 @@ func TestFinalizeRefundNoRevokeKeepsClient(t *testing.T) {
 	db.Create(&order)
 
 	ps := newPaymentCoordinator()
-	if err := ps.finalizeRefund(order.Id, false); err != nil {
+	if err := ps.finalizeRefund(db, order.Id, "", false); err != nil {
 		t.Fatalf("finalizeRefund: %v", err)
 	}
 	var c model.Client
@@ -364,7 +363,7 @@ func TestFinalizeRefundFloorsExpiryAndVolume(t *testing.T) {
 	db.Create(&order)
 
 	ps := newPaymentCoordinator()
-	if err := ps.finalizeRefund(order.Id, true); err != nil {
+	if err := ps.finalizeRefund(db, order.Id, "", true); err != nil {
 		t.Fatalf("finalizeRefund: %v", err)
 	}
 	var c model.Client

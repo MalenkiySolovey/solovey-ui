@@ -6,7 +6,8 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
-	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
+	paid "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
+	commerce "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -38,10 +39,10 @@ func TestSetBindingKeepsTelegramAndClientOneToOne(t *testing.T) {
 	if err := db.Create(&clients).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := SetBinding(db, clients[0].Id, 77, 100); err != nil {
+	if err := commerce.SetBinding(db, clients[0].Id, 77, 100); err != nil {
 		t.Fatal(err)
 	}
-	if err := SetBinding(db, clients[1].Id, 77, 200); err != nil {
+	if err := commerce.SetBinding(db, clients[1].Id, 77, 200); err != nil {
 		t.Fatal(err)
 	}
 

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	commerce "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
 	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
 
 	"github.com/gin-gonic/gin"
@@ -194,7 +195,7 @@ func (h *apiHandlers) setBinding(c *gin.Context) {
 		return
 	}
 	if req.TgUserId <= 0 {
-		if err := paidstore.UnbindClient(dbsqlite.DB(), req.ClientId); err != nil {
+		if err := commerce.UnbindClient(dbsqlite.DB(), req.ClientId); err != nil {
 			respFail(c, err.Error())
 			return
 		}
@@ -202,7 +203,7 @@ func (h *apiHandlers) setBinding(c *gin.Context) {
 		respOK(c, nil)
 		return
 	}
-	if err := paidstore.SetBinding(dbsqlite.DB(), req.ClientId, req.TgUserId, time.Now().Unix()); err != nil {
+	if err := commerce.SetBinding(dbsqlite.DB(), req.ClientId, req.TgUserId, time.Now().Unix()); err != nil {
 		respFail(c, err.Error())
 		return
 	}
@@ -214,7 +215,7 @@ func (h *apiHandlers) listTariffs(c *gin.Context) {
 	if !h.requireScope(c, "read", "write") {
 		return
 	}
-	rows, err := paidstore.ListTariffs(dbsqlite.DB())
+	rows, err := commerce.ListTariffs(dbsqlite.DB())
 	if err != nil {
 		respFail(c, err.Error())
 		return
@@ -242,7 +243,7 @@ func (h *apiHandlers) saveTariff(c *gin.Context) {
 		respFail(c, "invalid action")
 		return
 	}
-	if err := paidstore.SaveTariff(dbsqlite.DB(), req.Action, req.Data, time.Now().Unix()); err != nil {
+	if err := commerce.SaveTariff(dbsqlite.DB(), req.Action, req.Data, time.Now().Unix()); err != nil {
 		respFail(c, err.Error())
 		return
 	}

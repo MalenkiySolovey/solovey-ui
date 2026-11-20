@@ -2,14 +2,12 @@ package store
 
 import (
 	"errors"
-	"fmt"
 	"path/filepath"
-	"sync"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
-	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
-	"github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
+	paid "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
+	commerce "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -32,28 +30,6 @@ func concurrentPaidDB(t *testing.T) *gorm.DB {
 		t.Fatal(err)
 	}
 	return db
-}
-
-func TestPersistedProviderIdentityCannotBeReplacedOrShared(t *testing.T) {
-	db := concurrentPaidDB(t)
-	for i := 1; i <= 2; i++ {
-		row := paid.PaymentOrder{ClientId: uint(i), TariffId: 1, Provider: "cryptobot", Status: paid.StatusInvoiceCreating, Amount: 100, Currency: "RUB", GrantSnapshot: true, IdempotencyKey: fmt.Sprint("identity-", i)}
-		if err := db.Create(&row).Error; err != nil {
-			t.Fatal(err)
-		}
-		invoice := &provider.Invoice{ProviderRef: "41", PayURL: "https://pay.example/41"}
-		err := SaveInvoiceResult(db, row.Id, invoice)
-		if i == 1 {
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := SaveInvoiceResult(db, row.Id, &provider.Invoice{ProviderRef: "42", PayURL: "https://pay.example/42"}); err == nil {
-				t.Fatal("immutable invoice replaced")
-			}
-		} else if err == nil {
-			t.Fatal("two orders share one invoice")
-		}
-	}
 }
 
 func TestLegacySnapshotNeverUsesCurrentTariffForGrantOrRefund(t *testing.T) {
@@ -87,7 +63,7 @@ func TestLegacySnapshotNeverUsesCurrentTariffForGrantOrRefund(t *testing.T) {
 	if err := paid.EnsureSchema(db); err != nil {
 		t.Fatal(err)
 	}
-	got, err := GetOrder(db, order.Id)
+	got, err := commerce.GetOrder(db, order.Id)
 	if err != nil || got.Status != paid.StatusManualReview || got.ReviewReason != "legacy_snapshot_missing" || got.GrantSnapshot {
 		t.Fatalf("legacy classification: %#v, %v", got, err)
 	}
@@ -97,89 +73,6 @@ func TestLegacySnapshotNeverUsesCurrentTariffForGrantOrRefund(t *testing.T) {
 	}
 	if unchanged.Volume != 100 || unchanged.Expiry != 1000 {
 		t.Fatal("legacy changed client")
-	}
-}
-
-func TestConcurrentInvoiceIntentHasOneDurableCreator(t *testing.T) {
-	db := concurrentPaidDB(t)
-	start := make(chan struct{})
-	type outcome struct {
-		created bool
-		id      uint
-		err     error
-	}
-	results := make(chan outcome, 8)
-	var ready sync.WaitGroup
-	ready.Add(8)
-	for i := range 8 {
-		go func() {
-			ready.Done()
-			<-start
-			order := &paid.PaymentOrder{ClientId: 1, TariffId: 1, TelegramUserId: 7, Provider: "cryptobot", Amount: 100, Currency: "RUB", GrantSnapshot: true, IdempotencyKey: fmt.Sprint("intent-", i)}
-			got, created, err := CreateInvoiceIntent(db, order)
-			var id uint
-			if got != nil {
-				id = got.Id
-			}
-			results <- outcome{created, id, err}
-		}()
-	}
-	ready.Wait()
-	close(start)
-	winners := 0
-	var id uint
-	for range 8 {
-		r := <-results
-		if r.err != nil {
-			t.Fatal(r.err)
-		}
-		if r.created {
-			winners++
-		}
-		if id == 0 {
-			id = r.id
-		}
-		if r.id != id {
-			t.Fatal("different durable intents")
-		}
-	}
-	if winners != 1 {
-		t.Fatalf("creators=%d", winners)
-	}
-}
-
-func TestManualReviewHoldSurvivesConcurrentInvoiceIntentRetries(t *testing.T) {
-	db := concurrentPaidDB(t)
-	history := paid.PaymentOrder{ClientId: 1, TariffId: 1, TelegramUserId: 7, Provider: "cryptobot", Amount: 100, Currency: "RUB", Status: paid.StatusManualReview, IdempotencyKey: "review-history"}
-	if err := db.Create(&history).Error; err != nil {
-		t.Fatal(err)
-	}
-	start := make(chan struct{})
-	done := make(chan error, 8)
-	var ready sync.WaitGroup
-	ready.Add(8)
-	for i := range 8 {
-		go func() {
-			ready.Done()
-			<-start
-			attempt := &paid.PaymentOrder{ClientId: 1, TariffId: 1, TelegramUserId: 7, Provider: "cryptobot", Amount: 100, Currency: "RUB", GrantSnapshot: true, IdempotencyKey: fmt.Sprint("review-retry-", i)}
-			got, created, err := CreateInvoiceIntent(db, attempt)
-			if err == nil && (created || got == nil || got.Id != history.Id || got.Status != paid.StatusManualReview) {
-				err = errors.New("manual review hold bypassed")
-			}
-			done <- err
-		}()
-	}
-	ready.Wait()
-	close(start)
-	for range 8 {
-		if err := <-done; err != nil {
-			t.Fatal(err)
-		}
-	}
-	var count int64
-	if err := db.Model(&paid.PaymentOrder{}).Count(&count).Error; err != nil || count != 1 {
-		t.Fatal("review retry created new purchase", count, err)
 	}
 }
 
@@ -199,7 +92,7 @@ func TestConcurrentConfirmationsAndFailedCommitGrantOnce(t *testing.T) {
 	if _, err := ApplyPaidOrderGrant(db, order.Id, "cryptobot:41", nil, 1000, "test"); err == nil {
 		t.Fatal("failed commit accepted")
 	}
-	got, _ := GetOrder(db, order.Id)
+	got, _ := commerce.GetOrder(db, order.Id)
 	if got.Status != paid.StatusPending || got.ProviderChargeID != "" {
 		t.Fatal("partial financial state committed")
 	}
@@ -221,7 +114,7 @@ func TestConcurrentConfirmationsAndFailedCommitGrantOnce(t *testing.T) {
 		err := <-done
 		if err == nil {
 			success++
-		} else if !errors.Is(err, ErrOrderAlreadyFinalized) {
+		} else if !errors.Is(err, commerce.ErrOrderAlreadyFinalized) {
 			t.Fatal(err)
 		}
 	}
@@ -231,7 +124,7 @@ func TestConcurrentConfirmationsAndFailedCommitGrantOnce(t *testing.T) {
 	if err := db.First(&client, client.Id).Error; err != nil {
 		t.Fatal(err)
 	}
-	got, _ = GetOrder(db, order.Id)
+	got, _ = commerce.GetOrder(db, order.Id)
 	if client.Volume != 60 || got.ProviderRef != "41" || string(got.ProviderPayload) != `{"ref":"41"}` {
 		t.Fatal("grant or original invoice identity changed")
 	}

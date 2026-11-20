@@ -5,8 +5,9 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
-	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
-	"github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
+	paid "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
+	"github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
+	commerce "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
 )
 
 func TestAdminStoreListsBindingsAndOrders(t *testing.T) {
@@ -15,7 +16,7 @@ func TestAdminStoreListsBindingsAndOrders(t *testing.T) {
 	if err := db.Create(&client).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := SetBinding(db, client.Id, 77, 1000); err != nil {
+	if err := commerce.SetBinding(db, client.Id, 77, 1000); err != nil {
 		t.Fatal(err)
 	}
 	tariff := paid.Tariff{Name: "Month", Price: 10000, Currency: "RUB"}

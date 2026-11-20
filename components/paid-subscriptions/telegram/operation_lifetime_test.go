@@ -16,8 +16,8 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
-	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
-	paidprovider "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
+	paid "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
+	paidprovider "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
 	paidsettings "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/settings"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )
@@ -107,7 +107,7 @@ func TestProviderNetworkIterationsRetainOriginalDatabaseAdmission(t *testing.T) 
 				if kind == "payment_poll" || kind == "payment_reconcile" {
 					PollOnce(ctx, nil)
 				} else if kind == "invoice_create" {
-					if _, _, err := newPaymentCoordinator().CreateOrder(ctx, &model.Client{Id: 1}, &tariff, paidprovider.ProviderCryptoBot, 7); err != nil {
+					if _, _, err := newPaymentCoordinator().createOrder(ctx, 1, tariff.Id, paidprovider.ProviderCryptoBot, 7); err != nil {
 						t.Error(err)
 					}
 				} else if kind == "stars_refund" {
@@ -158,7 +158,7 @@ func TestProviderNetworkIterationsRetainOriginalDatabaseAdmission(t *testing.T) 
 			}
 			PollOnce(ctx, nil)
 			bot.pollIteration(ctx, time.Second)
-			if _, _, err := newPaymentCoordinator().CreateOrder(ctx, &model.Client{Id: 1}, &tariff, paidprovider.ProviderCryptoBot, 7); !errors.Is(err, dbsqlite.ErrMaintenance) {
+			if _, _, err := newPaymentCoordinator().createOrder(ctx, 1, tariff.Id, paidprovider.ProviderCryptoBot, 7); !errors.Is(err, dbsqlite.ErrMaintenance) {
 				t.Fatal("late create crossed maintenance", err)
 			}
 			if _, err := newPaymentCoordinator().refundOrder(ctx, order.Id, false); !errors.Is(err, dbsqlite.ErrMaintenance) {

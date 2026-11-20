@@ -7,14 +7,11 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
-	paidcore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
-	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
-	logger "github.com/MalenkiySolovey/solovey-ui/logger"
+	"github.com/MalenkiySolovey/solovey-component-paid-subscriptions/customerbot"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
@@ -22,129 +19,26 @@ import (
 	"gorm.io/gorm"
 )
 
-// tryAutoRegister creates-and-binds a new trial client for an unknown Telegram
-// user when auto-registration is enabled. Returns true if it handled the
-// interaction. All client data is built server-side; nothing from the message
-// except the (validated) numeric id and a sanitized username is used.
-func (b *Bot) tryAutoRegister(ctx context.Context, chatID int64, from *tgUser, l lang) bool {
-	enabled, err := b.setting.GetPaidSubAutoRegister()
-	if err != nil || !enabled {
-		return false
+// createTrialClient executes the existing Panel client command on behalf of a
+// Paid trial proposal. The customer bot owns eligibility and binding state.
+func (b *Bot) createTrialClient(ctx context.Context, db *gorm.DB, trial customerbot.TrialClient) (uint, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
 	}
-
-	// Per-user /start rate limit (anti-DoS for registration).
-	maxStart, err := b.setting.GetPaidSubStartRateLimitPerMin()
-	if err != nil {
-		logger.Warning("paidsub: read auto-register rate limit: ", err)
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
-		return true
+	if b.runtime == nil {
+		return 0, fmt.Errorf("auto-register runtime unavailable")
 	}
-	if !b.startLimiter.AllowWithLimit(from.ID, maxStart).Allowed {
-		_ = b.sendMessage(ctx, chatID, tr(l, "rate_limited"), nil)
-		return true
-	}
-
-	inbounds, _ := b.setting.GetPaidSubAutoInbounds()
-	if len(inbounds) == 0 {
-		_ = b.sendMessage(ctx, chatID, tr(l, "reg_no_setup"), nil)
-		return true
-	}
-
-	db := dbsqlite.DB()
-
-	// Global cap on auto-registered clients (anti-DoS).
-	maxClients, err := b.setting.GetPaidSubMaxClients()
-	if err != nil || maxClients < 1 {
-		logger.Warning("paidsub: invalid auto-register client cap")
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
-		return true
-	}
-	var cnt int64
-	if err := db.Model(&paidcore.Binding{}).Count(&cnt).Error; err != nil {
-		// Fail closed: if the anti-DoS cap cannot be evaluated, refuse rather
-		// than risk unbounded auto-registration.
-		logger.Warning("paidsub: count bindings for cap failed: ", err)
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
-		return true
-	}
-	if cnt >= int64(maxClients) {
-		_ = b.sendMessage(ctx, chatID, tr(l, "reg_full"), nil)
-		return true
-	}
-
-	name := b.uniqueClientName(db, from.ID)
+	name := b.uniqueClientName(db, trial.TelegramID)
 	config, err := generateClientConfig(name)
 	if err != nil {
-		logger.Warning("paidsub: generate client config: ", err)
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
-		return true
+		return 0, fmt.Errorf("generate client config: %w", err)
 	}
-
-	trialDays, daysErr := b.setting.GetPaidSubTrialDays()
-	trialGB, volumeErr := b.setting.GetPaidSubTrialVolumeGB()
-	if daysErr != nil || volumeErr != nil || trialDays < 0 || trialGB < 0 {
-		logger.Warning("paidsub: invalid auto-register trial limits")
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
-		return true
-	}
-	var expiry int64
-	if trialDays > 0 {
-		expiry = nowUnix() + int64(trialDays)*86400
-	}
-	var volume int64
-	if trialGB > 0 {
-		volume = int64(trialGB) * 1024 * 1024 * 1024
-	}
-
-	inboundsJSON, _ := json.Marshal(inbounds)
-	payload := map[string]any{
-		"enable":   true,
-		"name":     name,
-		"config":   json.RawMessage(config),
-		"inbounds": json.RawMessage(inboundsJSON),
-		"volume":   volume,
-		"expiry":   expiry,
-		"desc":     sanitizeUsername(from.Username),
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
-		return true
-	}
-
 	host, _ := b.setting.GetWebDomain()
-	if b.runtime == nil {
-		logger.Warning("paidsub: auto-register runtime unavailable")
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
-		return true
-	}
 	cfg := service.NewConfigServiceWithRuntime(b.runtime)
-	if _, err := cfg.Save("clients", "new", data, "", "PaidSubBot", host); err != nil {
-		logger.Warning("paidsub: auto-register save failed: ", err)
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
-		return true
-	}
-
-	var created model.Client
-	if err := db.Where("name = ?", name).First(&created).Error; err != nil {
-		logger.Warning("paidsub: auto-register lookup failed: ", err)
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
-		return true
-	}
-	if err := paidstore.SetBinding(db, created.Id, from.ID, nowUnix()); err != nil {
-		logger.Warning("paidsub: auto-register bind failed: ", err)
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
-		return true
-	}
-	_ = (&service.AuditService{Runtime: b.runtime}).Record(service.AuditEvent{
-		Actor:    "PaidSubBot",
-		Event:    "paidsub_registered",
-		Resource: "paidsub",
-		Severity: service.AuditSeverityInfo,
-		Details:  map[string]any{"clientId": created.Id, "tgUserId": from.ID},
-	})
-	_ = b.sendMessage(ctx, chatID, tr(l, "registered"), b.menuKeyboard(l))
-	return true
+	return cfg.ProvisionClient(ctx, service.ClientProvision{
+		Name: name, Config: config, Inbounds: trial.Inbounds,
+		Volume: trial.Volume, Expiry: trial.Expiry, Description: trial.Description,
+	}, "PaidSubBot", host)
 }
 
 // uniqueClientName derives a collision-free name from the Telegram id.
@@ -209,24 +103,4 @@ func randomSSPassword(n int) (string, error) {
 		return "", err
 	}
 	return base64.StdEncoding.EncodeToString(buf), nil
-}
-
-// sanitizeUsername keeps only safe characters for display in the client's desc.
-// It is never used in SQL (parameterized queries everywhere).
-func sanitizeUsername(username string) string {
-	if username == "" {
-		return "telegram"
-	}
-	var sb strings.Builder
-	sb.WriteByte('@')
-	for _, r := range username {
-		if r == '_' || (r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
-			sb.WriteRune(r)
-		}
-	}
-	out := sb.String()
-	if out == "@" {
-		return "telegram"
-	}
-	return out
 }

@@ -41,6 +41,7 @@ func newBot() *Bot {
 func newBotWithRuntime(runtime *service.Runtime) *Bot {
 	bot := newBot()
 	bot.runtime = runtime
+	bot.stats.Runtime = runtime
 	bot.payments = newPaymentCoordinator(runtime)
 	return bot
 }
@@ -201,8 +202,17 @@ func (b *Bot) pollIteration(ctx context.Context, backoff time.Duration) (time.Du
 		return b.classifyError(err, backoff), nextBackoff(backoff, maxBackoff)
 	}
 	maxID := offset
+	handler := b.customerHandler(dbsqlite.DB())
 	for i := range updates {
-		b.handleUpdate(ctx, &updates[i])
+		if ctx.Err() != nil {
+			break
+		}
+		handler.HandleUpdate(ctx, &updates[i])
+		if ctx.Err() != nil {
+			// Redeliver the interrupted update. Durable payment transitions
+			// are idempotent even if cancellation followed a successful commit.
+			break
+		}
 		if updates[i].UpdateID >= maxID {
 			maxID = updates[i].UpdateID + 1
 		}

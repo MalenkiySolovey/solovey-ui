@@ -14,8 +14,9 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
-	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
-	paidprovider "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
+	paid "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
+	paidprovider "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
+	"github.com/MalenkiySolovey/solovey-component-paid-subscriptions/workflow"
 	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
 	paidsettings "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/settings"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -67,7 +68,7 @@ func TestConcurrentCreateRetriesDuringProviderWaitReuseOneInvoice(t *testing.T) 
 	}
 	first := make(chan outcome, 1)
 	go func() {
-		order, invoice, err := newPaymentCoordinator().CreateOrder(ctx, &client, &tariff, paidprovider.ProviderCryptoBot, 7)
+		order, invoice, err := newPaymentCoordinator().createOrder(ctx, client.Id, tariff.Id, paidprovider.ProviderCryptoBot, 7)
 		first <- outcome{order, invoice, err}
 	}()
 	select {
@@ -82,7 +83,7 @@ func TestConcurrentCreateRetriesDuringProviderWaitReuseOneInvoice(t *testing.T) 
 		go func() {
 			ready.Done()
 			<-start
-			order, invoice, err := newPaymentCoordinator().CreateOrder(ctx, &client, &tariff, paidprovider.ProviderCryptoBot, 7)
+			order, invoice, err := newPaymentCoordinator().createOrder(ctx, client.Id, tariff.Id, paidprovider.ProviderCryptoBot, 7)
 			retries <- outcome{order, invoice, err}
 		}()
 	}
@@ -117,7 +118,7 @@ func TestConcurrentCreateRetriesDuringProviderWaitReuseOneInvoice(t *testing.T) 
 	case <-ctx.Done():
 		t.Fatal("original creation did not finish")
 	}
-	order, invoice, err := newPaymentCoordinator().CreateOrder(ctx, &client, &tariff, paidprovider.ProviderCryptoBot, 7)
+	order, invoice, err := newPaymentCoordinator().createOrder(ctx, client.Id, tariff.Id, paidprovider.ProviderCryptoBot, 7)
 	if err != nil || order.Id != id || invoice.ProviderRef != "41" || requests.Load() != 1 {
 		t.Fatal("persisted invoice not reused", err)
 	}
@@ -178,7 +179,7 @@ func TestRemoteInvoicePersistenceFailureReusesOriginalIntent(t *testing.T) {
 	forged.Price = 1
 	forged.AddDays = 99
 	p := newPaymentCoordinator()
-	order, inv, err := p.CreateOrder(context.Background(), &client, &forged, paidprovider.ProviderCryptoBot, 7)
+	order, inv, err := p.createOrder(context.Background(), client.Id, forged.Id, paidprovider.ProviderCryptoBot, 7)
 	if err == nil || inv != nil || order == nil {
 		t.Fatal("unpersisted URL was delivered")
 	}
@@ -191,7 +192,7 @@ func TestRemoteInvoicePersistenceFailureReusesOriginalIntent(t *testing.T) {
 	if err := db.Delete(&tariff).Error; err != nil {
 		t.Fatal(err)
 	}
-	second, inv, err := p.CreateOrder(context.Background(), &client, &forged, paidprovider.ProviderCryptoBot, 7)
+	second, inv, err := p.createOrder(context.Background(), client.Id, forged.Id, paidprovider.ProviderCryptoBot, 7)
 	if err == nil || inv != nil || second.Id != order.Id || requests.Load() != 1 {
 		t.Fatal("retry created a second remote invoice")
 	}
@@ -202,11 +203,11 @@ func TestRemoteInvoicePersistenceFailureReusesOriginalIntent(t *testing.T) {
 		t.Fatal("immutable intent lost")
 	}
 	reconciler := p.providerByKind(paidprovider.ProviderCryptoBot).(paidprovider.ReconciliationProvider)
-	recovered, err := reconciler.Reconcile(context.Background(), []paid.PaymentOrder{*order})
+	recovered, err := reconciler.Reconcile(context.Background(), []paidprovider.Order{workflow.ProviderOrder(*order)})
 	if err != nil || len(recovered) != 1 {
 		t.Fatal("remote success could not be reconciled", err)
 	}
-	result, err := paidstore.RecoverProviderOrder(db, recovered[0], nowUnix(), cryptoBotPollGraceSeconds)
+	result, err := paidstore.RecoverProviderOrder(db, recovered[0], nowUnix(), 24*60*60)
 	if err != nil || !result.Applied {
 		t.Fatal("paid recovery did not commit", result, err)
 	}

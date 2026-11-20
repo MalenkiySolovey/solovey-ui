@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
-	"github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
-	"github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
+	"github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
+	"github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
 )
 
 func TestRefundOrderNonPaidIsNotRefundable(t *testing.T) {
@@ -182,7 +182,7 @@ func TestRefundRestoresUsageCounters(t *testing.T) {
 	db.Create(&order)
 
 	ps := newPaymentCoordinator()
-	if applied, _, err := ps.ApplyPaidOrder(order.Id, "ch:1", nil); err != nil || !applied {
+	if applied, _, err := ps.applyPaidOrder(db, order.Id, "ch:1"); err != nil || !applied {
 		t.Fatalf("ApplyPaidOrder = (%v,%v), want applied", applied, err)
 	}
 	var afterApply model.Client

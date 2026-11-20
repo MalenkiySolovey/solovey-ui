@@ -1,10 +1,10 @@
 {
   "schema": "solovey.backend-source-inputs/v1",
   "module": "github.com/MalenkiySolovey/solovey-backend",
-  "version": "v0.1.2",
-  "sourceCommit": "2f86732f7b83b546a89c0df69470c50cd8459f68",
-  "sourceTree": "2194b26727b500119624b8c0f9bfc0e7bf0f564f",
-  "moduleChecksum": "h1:BOG4jElJPzdDfE0L03ABZnz8UAWtNZyvAtkWmbHjdns=",
+  "version": "v0.1.4",
+  "sourceCommit": "f0a86d32f6a5152195e792d7829caf9512baad5d",
+  "sourceTree": "9eb060708b2ebf8435a347793ed4d776b59d2df5",
+  "moduleChecksum": "h1:iBQDlK2tRuujfjwOqI63+pfbboUkNfIZndU8MpUv630=",
   "goModChecksum": "h1:xTP4fs5T1LnPV/8r8H+Li97MsEFWkpy3T9ZRRJiZ8Ro=",
   "provenanceSHA256": "38fdb3f02cbba5af3554ecdc45658ca63321994e4b85e2516ebe55c6d7bb30b4"
 }
