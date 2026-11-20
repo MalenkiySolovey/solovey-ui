@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	paid "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
-	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
 	"github.com/MalenkiySolovey/solovey-ui/database/backup"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

@@ -8,8 +8,9 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
-	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
-	"github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
+	paid "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
+	"github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
+	commerce "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
 	"gorm.io/gorm"
 )
 
@@ -24,7 +25,7 @@ func TestRefundRacingUncommittedGrantWaitsForCompleteApplication(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A refund arriving before application cannot claim or mutate this order.
-	if _, err := ClaimStarsRefund(db, order.Id, true, "too-early", 1000); !errors.Is(err, ErrRefundInProgress) {
+	if _, err := commerce.ClaimStarsRefund(db, order.Id, true, "too-early", 1000); !errors.Is(err, commerce.ErrRefundInProgress) {
 		t.Fatal("unapplied refund accepted", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -64,7 +65,7 @@ func TestRefundRacingUncommittedGrantWaitsForCompleteApplication(t *testing.T) {
 		t.Fatal("grant barrier not reached")
 	}
 	go func() {
-		_, err := ClaimStarsRefund(db.WithContext(ctx), order.Id, true, "refund-claim", 1000)
+		_, err := commerce.ClaimStarsRefund(db.WithContext(ctx), order.Id, true, "refund-claim", 1000)
 		refundDone <- err
 	}()
 	select {
@@ -74,7 +75,7 @@ func TestRefundRacingUncommittedGrantWaitsForCompleteApplication(t *testing.T) {
 	}
 	// Other connections still see the complete pre-grant state, never the
 	// intermediate paid flag or a refundable charge without its client grant.
-	before, err := GetOrder(db.WithContext(ctx), order.Id)
+	before, err := commerce.GetOrder(db.WithContext(ctx), order.Id)
 	if err != nil || before.Status != paid.StatusPending || before.ProviderChargeID != "" {
 		t.Fatal("uncommitted payment leaked", before, err)
 	}
@@ -92,13 +93,13 @@ func TestRefundRacingUncommittedGrantWaitsForCompleteApplication(t *testing.T) {
 	if _, err := FinalizeClaimedRefundGrant(db, order.Id, "refund-claim", 1000, "test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ApplyPaidOrderGrant(db, order.Id, "tg:charge", nil, 1000, "test"); !errors.Is(err, ErrOrderAlreadyFinalized) {
+	if _, err := ApplyPaidOrderGrant(db, order.Id, "tg:charge", nil, 1000, "test"); !errors.Is(err, commerce.ErrOrderAlreadyFinalized) {
 		t.Fatal("grant repeated", err)
 	}
-	if _, err := FinalizeClaimedRefundGrant(db, order.Id, "refund-claim", 1000, "test"); !errors.Is(err, ErrOrderAlreadyFinalized) {
+	if _, err := FinalizeClaimedRefundGrant(db, order.Id, "refund-claim", 1000, "test"); !errors.Is(err, commerce.ErrOrderAlreadyFinalized) {
 		t.Fatal("refund repeated", err)
 	}
-	got, err := GetOrder(db, order.Id)
+	got, err := commerce.GetOrder(db, order.Id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +153,7 @@ func TestPollConfirmationAndRecoveryRaceApplyOnce(t *testing.T) {
 	applications := 0
 	for range 2 {
 		got := <-done
-		if got.err != nil && !errors.Is(got.err, ErrOrderAlreadyFinalized) {
+		if got.err != nil && !errors.Is(got.err, commerce.ErrOrderAlreadyFinalized) {
 			t.Fatal(got.err)
 		}
 		if got.applied {
@@ -162,7 +163,7 @@ func TestPollConfirmationAndRecoveryRaceApplyOnce(t *testing.T) {
 	if err := db.First(&client, client.Id).Error; err != nil {
 		t.Fatal(err)
 	}
-	got, err := GetOrder(db, order.Id)
+	got, err := commerce.GetOrder(db, order.Id)
 	if err != nil || applications != 1 || got.Status != paid.StatusPaid || got.ProviderChargeID != "cryptobot:41" || client.Volume != 150 {
 		t.Fatal("poll/recovery double or partial grant", applications, got, client.Volume, err)
 	}

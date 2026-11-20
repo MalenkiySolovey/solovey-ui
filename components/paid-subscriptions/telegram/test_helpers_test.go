@@ -5,7 +5,7 @@ package telegram
 import (
 	"testing"
 
-	paidcore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
+	paidcore "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
 	paidtest "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/testutil"
 	"gorm.io/gorm"
 )

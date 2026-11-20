@@ -3,7 +3,7 @@ module github.com/MalenkiySolovey/solovey-ui
 go 1.26.11
 
 require (
-	github.com/MalenkiySolovey/solovey-backend v0.1.2
+	github.com/MalenkiySolovey/solovey-backend v0.1.4
 	github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0
 	github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0
 	github.com/MalenkiySolovey/solovey-component-telegram v0.1.0
@@ -36,6 +36,7 @@ require (
 )
 
 require (
+	github.com/MalenkiySolovey/solovey-component-paid-subscriptions v0.1.4
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/axiomhq/hyperloglog v0.0.0-20240319100328-84253e514e02 // indirect
 	github.com/creack/pty v1.1.24 // indirect

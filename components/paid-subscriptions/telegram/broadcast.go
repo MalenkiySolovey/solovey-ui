@@ -8,7 +8,7 @@ import (
 	"time"
 
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
-	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
+	commerce "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/store"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
@@ -29,7 +29,7 @@ func Broadcast(ctx context.Context, runtime *service.Runtime, text string) (sent
 		return 0, 0, err
 	}
 	defer b.closeIdleConnections()
-	users, err := paidstore.ListTelegramUserIDs(dbsqlite.DB())
+	users, err := commerce.ListTelegramUserIDs(dbsqlite.DB())
 	if err != nil {
 		return 0, 0, err
 	}

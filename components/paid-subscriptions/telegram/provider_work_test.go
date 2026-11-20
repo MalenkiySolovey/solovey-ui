@@ -11,22 +11,22 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
-	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
-	provider "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
+	paid "github.com/MalenkiySolovey/solovey-component-paid-subscriptions"
+	provider "github.com/MalenkiySolovey/solovey-component-paid-subscriptions/provider"
 	paidsettings "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/settings"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
 type workProviderFixture struct {
-	poll      func(context.Context, []paid.PaymentOrder) (provider.PollOutcome, error)
-	reconcile func(context.Context, []paid.PaymentOrder) ([]provider.Reconciliation, error)
+	poll      func(context.Context, []provider.Order) (provider.PollOutcome, error)
+	reconcile func(context.Context, []provider.Order) ([]provider.Reconciliation, error)
 	cancel    func(context.Context, string) (bool, error)
 }
 
-func (f workProviderFixture) Poll(ctx context.Context, rows []paid.PaymentOrder) (provider.PollOutcome, error) {
+func (f workProviderFixture) Poll(ctx context.Context, rows []provider.Order) (provider.PollOutcome, error) {
 	return f.poll(ctx, rows)
 }
-func (f workProviderFixture) Reconcile(ctx context.Context, rows []paid.PaymentOrder) ([]provider.Reconciliation, error) {
+func (f workProviderFixture) Reconcile(ctx context.Context, rows []provider.Order) ([]provider.Reconciliation, error) {
 	if f.reconcile == nil {
 		return nil, nil
 	}
@@ -54,7 +54,7 @@ func TestPollBoundsFairRotationAndOutageCannotExpirePotentiallyPaidOrders(t *tes
 	}
 	seen := make(map[uint]bool)
 	calls := 0
-	fake := workProviderFixture{poll: func(ctx context.Context, rows []paid.PaymentOrder) (provider.PollOutcome, error) {
+	fake := workProviderFixture{poll: func(ctx context.Context, rows []provider.Order) (provider.PollOutcome, error) {
 		calls++
 		if len(rows) > 100 {
 			t.Fatal("unbounded request")
@@ -73,7 +73,7 @@ func TestPollBoundsFairRotationAndOutageCannotExpirePotentiallyPaidOrders(t *tes
 		t.Fatal("outage expired uncertain invoice")
 	}
 	calls = 0
-	fake.poll = func(ctx context.Context, rows []paid.PaymentOrder) (provider.PollOutcome, error) {
+	fake.poll = func(ctx context.Context, rows []provider.Order) (provider.PollOutcome, error) {
 		calls++
 		var result provider.PollOutcome
 		for _, row := range rows {
@@ -111,7 +111,7 @@ func TestCanceledProviderWorkDoesNotAdvanceCursorOrFinancialState(t *testing.T) 
 	order := paid.PaymentOrder{ClientId: 1, TariffId: 1, Provider: "cryptobot", Amount: 100, Currency: "RUB", Status: paid.StatusPending, ProviderRef: "41", IdempotencyKey: "cancelled-work", GrantSnapshot: true}
 	db.Create(&order)
 	ctx, cancel := context.WithCancel(context.Background())
-	fake := workProviderFixture{poll: func(context.Context, []paid.PaymentOrder) (provider.PollOutcome, error) {
+	fake := workProviderFixture{poll: func(context.Context, []provider.Order) (provider.PollOutcome, error) {
 		cancel()
 		return provider.PollOutcome{Paid: []provider.PollResult{{OrderID: order.Id, ProviderChargeID: "cryptobot:41"}}}, nil
 	}}
@@ -137,7 +137,7 @@ func TestCancellationFailureRotatesDurablyWithoutCompletingWork(t *testing.T) {
 		t.Fatal(err)
 	}
 	requests := 0
-	fake := workProviderFixture{poll: func(context.Context, []paid.PaymentOrder) (provider.PollOutcome, error) {
+	fake := workProviderFixture{poll: func(context.Context, []provider.Order) (provider.PollOutcome, error) {
 		return provider.PollOutcome{}, nil
 	}, cancel: func(context.Context, string) (bool, error) {
 		requests++
@@ -191,7 +191,7 @@ func TestFailedPaymentNotificationCannotUndoOrRepeatCommittedGrant(t *testing.T)
 		return nil, errors.New("fixture delivery failure")
 	})
 	t.Cleanup(func() { http.DefaultTransport = previous })
-	fake := workProviderFixture{poll: func(context.Context, []paid.PaymentOrder) (provider.PollOutcome, error) {
+	fake := workProviderFixture{poll: func(context.Context, []provider.Order) (provider.PollOutcome, error) {
 		return provider.PollOutcome{Paid: []provider.PollResult{{OrderID: order.Id, ProviderChargeID: "cryptobot:41"}}}, nil
 	}}
 	for range 2 {

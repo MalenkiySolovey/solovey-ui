@@ -36,20 +36,3 @@ func TestGenerateClientConfig(t *testing.T) {
 		t.Errorf("shadowsocks16 key not 16 bytes b64: len=%d err=%v", len(b), err)
 	}
 }
-
-func TestSanitizeUsername(t *testing.T) {
-	cases := map[string]string{
-		"":          "telegram",
-		"alice":     "@alice",
-		"bad name!": "@badname",
-		"a_b_2024":  "@a_b_2024",
-		"!!!":       "telegram",
-		"Иван":      "telegram", // non-ascii stripped
-		"john.doe":  "@johndoe",
-	}
-	for in, want := range cases {
-		if got := sanitizeUsername(in); got != want {
-			t.Errorf("sanitizeUsername(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
