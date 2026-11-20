@@ -152,6 +152,7 @@ const groups = [...byGroup.values()].sort((a, b) => a.group.localeCompare(b.grou
 const result = {
   generatedAt: new Date().toISOString(),
   root,
+  scope: process.env.NATIVE_SCOPE || undefined,
   summaryPath: path.relative(root, summaryPath).replace(/\\/g, '/'),
   totals,
   baselineMarkers,
@@ -197,6 +198,7 @@ const html = `<!doctype html>
 <body>
   <h1>Solovey UI audit dashboard</h1>
   <p class="meta">Generated at ${escapeHtml(result.generatedAt)}</p>
+  ${result.scope ? `<p class="meta">Qualification scope: ${escapeHtml(result.scope)}${result.scope === 'docs-only' ? ' (Go jobs not selected)' : ''}</p>` : ''}
   <p>Totals: <span class="green">${totals.green} green</span>, <span class="red">${totals.red} red</span>, ${totals.skipped} skipped, ${totals.xfail} XFAIL markers.</p>
   <p class="meta">Baseline marker delta: green ${result.deltaVsBaselineMarkers.green}, red ${result.deltaVsBaselineMarkers.red}, skipped ${result.deltaVsBaselineMarkers.skipped}, XFAIL ${result.deltaVsBaselineMarkers.xfail}.</p>
   <table>

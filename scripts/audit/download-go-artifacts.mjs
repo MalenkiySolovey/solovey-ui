@@ -6,8 +6,9 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
+import { expectedGoArtifacts } from './native-scope.mjs'
 
-export function selectLatestAuditArtifacts(artifacts) {
+export function selectLatestAuditArtifacts(artifacts, expected) {
   const byName = new Map()
   const ids = new Set()
   for (const artifact of artifacts) {
@@ -23,7 +24,8 @@ export function selectLatestAuditArtifacts(artifacts) {
     if (!previous || created > Date.parse(previous.created_at)) byName.set(artifact.name, artifact)
   }
   const selected = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))
-  assert.ok(selected.length > 0, 'audit job artifacts required')
+  if (expected === undefined) assert.ok(selected.length > 0, 'audit job artifacts required')
+  else assert.deepEqual([...byName.keys()].sort(), [...expected].sort(), 'Unexpected or missing audit job artifacts')
   for (const artifact of selected) {
     assert.equal(artifact.expired, false, 'latest audit artifact expired')
     assert.match(artifact.digest, /^sha256:[a-f0-9]{64}$/, 'artifact SHA256 authority required')
@@ -46,9 +48,10 @@ async function downloadArchive(execute, endpoint, options, wait) {
   }
 }
 
-export async function downloadGoAuditArtifacts({ repository, runId, destination, execute = execFileSync, wait = delay }) {
+export async function downloadGoAuditArtifacts({ repository, runId, destination, scope, expected, execute = execFileSync, wait = delay }) {
   assert.match(repository ?? '', /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/)
   assert.match(String(runId ?? ''), /^[1-9][0-9]*$/)
+  assert.ok(Array.isArray(expected), 'Expected audit job artifact names required')
   const api = `repos/${repository}/actions/runs/${runId}/artifacts?per_page=100`
   const options = { maxBuffer: 64 << 20, windowsHide: true }
   const zipOptions = { ...options, timeout: 120_000, stdio: ['ignore', 'pipe', 'pipe'] }
@@ -57,7 +60,7 @@ export async function downloadGoAuditArtifacts({ repository, runId, destination,
   const artifacts = pages.flatMap(page => page.artifacts)
   assert.ok(pages.every(page => page.total_count === artifacts.length), 'complete stable artifact inventory required')
   assert.ok(artifacts.every(artifact => String(artifact.workflow_run.id) === String(runId)), 'same-run artifacts required')
-  const selected = selectLatestAuditArtifacts(artifacts)
+  const selected = selectLatestAuditArtifacts(artifacts, expected)
   const output = path.resolve(destination)
   fs.mkdirSync(output, { recursive: true })
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'go-audit-download-'))
@@ -82,11 +85,13 @@ export async function downloadGoAuditArtifacts({ repository, runId, destination,
   }
   const selectedIds = new Set(selected.map(artifact => artifact.id))
   const summary = artifact => ({ id: artifact.id, name: artifact.name, created_at: artifact.created_at, digest: artifact.digest })
-  const receipt = { repository, runId: String(runId), selection: 'Newest creation time per audit job name; exact REST-ID download and SHA256 verification; prior dashboard excluded', selected: selected.map(summary), superseded: artifacts.filter(artifact => artifact.name.startsWith('audit-go-') && artifact.name !== 'audit-go-dashboard' && !selectedIds.has(artifact.id)).map(summary) }
+  const receipt = { repository, runId: String(runId), scope, selection: 'Newest creation time per expected audit job name; exact REST-ID download and SHA256 verification; prior dashboard excluded', selected: selected.map(summary), superseded: artifacts.filter(artifact => artifact.name.startsWith('audit-go-') && artifact.name !== 'audit-go-dashboard' && !selectedIds.has(artifact.id)).map(summary) }
   fs.writeFileSync(path.join(output, 'audit-artifact-selection.json'), `${JSON.stringify(receipt, null, 2)}\n`)
   return receipt
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  await downloadGoAuditArtifacts({ repository: process.env.GITHUB_REPOSITORY, runId: process.env.GITHUB_RUN_ID, destination: process.argv[2] ?? 'tests/baseline' })
+  const scope = process.env.NATIVE_SCOPE
+  await downloadGoAuditArtifacts({ repository: process.env.GITHUB_REPOSITORY, runId: process.env.GITHUB_RUN_ID,
+    destination: process.argv[2] ?? 'tests/baseline', scope, expected: expectedGoArtifacts(scope, process.env.GITHUB_EVENT_NAME) })
 }
