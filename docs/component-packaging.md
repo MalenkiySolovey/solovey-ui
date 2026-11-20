@@ -59,7 +59,9 @@ The runtime Remove operation does not delete compiled Go code, embedded frontend
 or package-owned pack bytes. Physical omission/deletion is claimed only for an
 actual minimal binary or the generic Linux installer's selected pack file
 operations. Drop Data is a separate explicitly authorized owner operation.
-The update UI cannot disable/remove itself through its own management surface.
+Panel Update is intrinsic and has no pack or installed/enabled lifecycle state.
+Historical `panel-update-ui` metadata is accepted for compatibility; trying to
+change the old ID through the component management API is rejected.
 
 Native systemd deployments explicitly inject `SUI_COMPONENTS_MANAGEMENT=installer`.
 Their pack directory and inventory are one installer-owned generation:
@@ -76,8 +78,9 @@ are not imposed on Docker, Windows or OpenWrt package production.
 Source authority: `install.sh` (`resolve_binary_profile`, component pack
 installation), `scripts/generate-component-imports.mjs`,
 `scripts/openwrt-stage-build.sh`, `.github/workflows/windows.yml`,
-`components/panel-update-ui/service/runtime.go`, and the installstate,
-enabledstate and lifecycle owners under `componenthost/`.
+`composition/componentmanagement/manager.go`, and the installstate,
+enabledstate and lifecycle adapters under `componenthost/`. The manager uses
+the shared `solovey-host` component policy; Backend owns the HTTP boundary.
 
 ## OpenWrt release mapping
 
