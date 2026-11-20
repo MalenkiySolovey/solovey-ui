@@ -5,11 +5,10 @@ package remote
 import (
 	"context"
 	"encoding/json"
-	feature "github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions/domain"
-	"strings"
 	"sync"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	feature "github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions/domain"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	"gorm.io/gorm"
@@ -112,7 +111,7 @@ func checkTempCoreOutboundTags(ctx context.Context, instance *coreruntime.Core, 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	tags = uniqueCheckTags(tags)
+	tags = feature.UniqueCheckTags(tags)
 	if len(tags) == 0 {
 		return coreruntime.CheckOutboundResult{Error: coreruntime.CheckOutboundErrorInvalidRequest}
 	}
@@ -155,22 +154,6 @@ func checkTempCoreOutboundTags(ctx context.Context, instance *coreruntime.Core, 
 		return best
 	}
 	return coreruntime.CheckOutboundResult{Error: "outbound_group_failed"}
-}
-func uniqueCheckTags(tags []string) []string {
-	result := make([]string, 0, len(tags))
-	seen := map[string]struct{}{}
-	for _, tag := range tags {
-		tag = strings.TrimSpace(tag)
-		if tag == "" {
-			continue
-		}
-		if _, ok := seen[tag]; ok {
-			continue
-		}
-		seen[tag] = struct{}{}
-		result = append(result, tag)
-	}
-	return result
 }
 func checkConnectionOutboundConfigs(connection RemoteOutboundConnection, tagMap map[string]string) ([]json.RawMessage, error) {
 	outbound, err := ConnectionOutboundConfig(connection)
