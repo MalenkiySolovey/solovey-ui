@@ -3,8 +3,6 @@
 package importxui
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -23,13 +21,7 @@ func NewOperationID() (string, error) {
 }
 
 func PlanRevision(plan MigrationPlan) (string, error) {
-	plan.Source.Path = "" // an upload's temporary path is not semantic input
-	raw, err := json.Marshal(plan)
-	if err != nil {
-		return "", err
-	}
-	digest := sha256.Sum256(raw)
-	return hex.EncodeToString(digest[:]), nil
+	return plan.Revision()
 }
 
 func (r *Report) startOperation(id string) error {
