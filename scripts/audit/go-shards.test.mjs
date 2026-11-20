@@ -50,6 +50,35 @@ test('only slow suites become four independent runner shards; normal Ubuntu rema
   assert.match(make, /go-test\.mjs \$\(GO_TEST_ARGS\) -race -count=1 -p 1 -timeout 30m -- \.\/\.\.\./)
 })
 
+test('only statement coverage is scoped away from PRs; Go audit and required checks remain', () => {
+  for (const event of ['pull_request', 'push', 'schedule', 'workflow_dispatch']) {
+    assert.ok(Object.hasOwn(workflow.on, event), event)
+  }
+  assert.equal(workflow.on.pull_request, null)
+  assert.deepEqual(workflow.on.push.branches, ['main'])
+  assert.equal(jobs.coverage.name, 'coverage (ubuntu-latest)')
+  assert.equal(jobs.coverage.if, "github.event_name != 'pull_request'")
+  for (const id of ['build', 'vet', 'test-go', ...shards, 'lint-go', 'staticcheck', 'gosec', 'govulncheck']) {
+    assert.equal(jobs[id].if, undefined, id)
+    assert.equal(jobs[id]['continue-on-error'], undefined, id)
+  }
+  for (const id of ['build', 'gosec', 'govulncheck']) {
+    assert.deepEqual(jobs[id].strategy.matrix.os, ['ubuntu-latest', 'windows-latest'], id)
+  }
+  assert.equal(jobs.dashboard.if, 'always()')
+})
+
+test('Go audit build publishes the pinned full frontend without installing npm dependencies', () => {
+  const commands = jobs.build.steps.flatMap(step => step.run ? step.run.trim().split(/\r?\n/).map(line => line.trim()) : [])
+  const build = commands.indexOf('SOLOVEY_UI_PROFILE=full node scripts/frontend.mjs build')
+  assert.ok(build >= 0)
+  assert.deepEqual(commands.slice(build + 1, build + 3), [
+    'node scripts/frontend-assets.mjs publish --dist .artifacts/frontend-dist --destination web/html',
+    'make audit:build PS="${MAKE_PS}"',
+  ])
+  assert.ok(!commands.some(command => /(?:scripts\/frontend\.mjs install|npm (?:ci|install))\b/.test(command)))
+})
+
 test('legacy gates always run and only all-success passes, including cancellation and missing results', () => {
   for (const [id, name, dependency] of gates) {
     const gate = jobs[id]
@@ -98,6 +127,30 @@ test('artifact and evidence names are unique; dashboard waits for all shards and
   assert.deepEqual(dashboard.permissions, { contents: 'read', actions: 'read' })
   const upload = dashboard.steps.find(step => step.uses?.startsWith('actions/upload-artifact@'))
   assert.ok(upload.with.path.includes('tests/baseline/audit-artifact-selection.json'))
+})
+
+test('dashboard only admits the intentional PR coverage skip', () => {
+  const step = jobs.dashboard.steps.at(-1)
+  assert.equal(step.name, 'Require expected audit job results')
+  assert.equal(step.if, 'always()')
+  assert.equal(step.env.AUDIT_NEEDS, '${{ toJSON(needs) }}')
+  function check(event, job, result, expectedStatus) {
+    const needs = Object.fromEntries(jobs.dashboard.needs.map(name => [name, { result: 'success' }]))
+    if (event === 'pull_request') needs.coverage.result = 'skipped'
+    if (job) needs[job].result = result
+    const actual = spawnSync(bash, ['-c', step.run], {
+      encoding: 'utf8',
+      env: { ...process.env, AUDIT_NEEDS: JSON.stringify(needs), GITHUB_EVENT_NAME: event },
+    })
+    assert.equal(actual.status, expectedStatus, actual.stderr || actual.error?.message)
+    if (expectedStatus) assert.ok(actual.stderr.includes(`${job}: expected`))
+  }
+  check('pull_request', null, null, 0)
+  check('push', null, null, 0)
+  check('pull_request', 'govulncheck', 'skipped', 1)
+  check('pull_request', 'gosec', 'failure', 1)
+  check('pull_request', 'test-go-race-windows', 'cancelled', 1)
+  check('schedule', 'coverage', 'skipped', 1)
 })
 
 test('rerun artifacts follow creation time even when the older failure has a larger numeric ID', () => {
