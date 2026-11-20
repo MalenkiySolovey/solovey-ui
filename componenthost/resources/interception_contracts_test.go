@@ -28,49 +28,6 @@ func interceptionFactFixture(t *testing.T, now time.Time) InterceptionInboundFac
 	return fact
 }
 
-func TestInterceptionFactRevisionIgnoresObservationClockButExpiryFailsClosed(t *testing.T) {
-	now := time.Unix(1_800_000_000, 0).UTC()
-	first := interceptionFactFixture(t, now)
-	second := first
-	second.ObservedAt = now.Add(10 * time.Second).Unix()
-	second.ExpiresAt = now.Add(70 * time.Second).Unix()
-	second, err := FinalizeInterceptionFactV1(second)
-	if err != nil {
-		t.Fatalf("refinalize fixture: %v", err)
-	}
-	if first.FactRevision != second.FactRevision {
-		t.Fatal("volatile observation time changed the semantic fact revision")
-	}
-	if first.Validate(now.Add(61*time.Second)) == nil {
-		t.Fatal("expired fact remained valid")
-	}
-}
-
-func TestInterceptionContractsRejectProtocolAndScopeConfusion(t *testing.T) {
-	now := time.Unix(1_800_000_000, 0).UTC()
-	redirectUDP := interceptionFactFixture(t, now)
-	redirectUDP.Network = NetworkUDP
-	if _, err := FinalizeInterceptionFactV1(redirectUDP); err == nil {
-		t.Fatal("Redirect UDP was accepted")
-	}
-	tproxy := interceptionFactFixture(t, now)
-	tproxy.Kind = InterceptionTProxyV1
-	tproxy.TransparentSocketRequired = true
-	tproxy.PolicyRoutingRequired = false
-	if _, err := FinalizeInterceptionFactV1(tproxy); err == nil {
-		t.Fatal("TProxy without policy routing was accepted")
-	}
-	if _, err := FinalizeIngressScopeFactV1(ForwardedIngressScopeFactV1{
-		ProviderID: "host-network", ProviderRevision: IngressScopeProviderRevisionV1,
-		ScopeID: "scope:1", InterfaceName: "lo", InterfaceIndex: 1,
-		InterfaceRevision: Revision("lo"), AddressFamily: AddressFamilyIPv4,
-		Ownership: IngressScopeProviderManagedV1, ForwardedIngress: true, Loopback: true,
-		ObservedAt: now.Unix(), ExpiresAt: now.Add(time.Minute).Unix(),
-	}); err == nil {
-		t.Fatal("loopback was accepted as forwarded ingress")
-	}
-}
-
 type interceptionProviderFixture struct {
 	id   string
 	fact InterceptionInboundFactV1

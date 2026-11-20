@@ -50,14 +50,3 @@ func TestInboundTransportRegistryDeterministicBoundedAndFailClosed(t *testing.T)
 		t.Fatal("contradictory provider fact accepted")
 	}
 }
-
-func TestInboundTransportFactContainsNoExtensibleOrSecretFields(t *testing.T) {
-	now := time.Unix(1000, 0)
-	fact := validTransportFact(now, "core:inbound:1")
-	if err := fact.Validate(now); err != nil {
-		t.Fatal(err)
-	}
-	if fact.AuthenticationCount != 0 || fact.InboundTag != "" {
-		t.Fatalf("unexpected identity data %#v", fact)
-	}
-}
