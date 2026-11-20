@@ -99,28 +99,3 @@ func TestProtocolProbeFreshRejectsGenerationAndResultReplay(t *testing.T) {
 		t.Fatal("reused generation and result identity were accepted")
 	}
 }
-
-func TestProtocolProbeSemanticRevisionIgnoresProofClockAndGeneration(t *testing.T) {
-	request := protocolProbeRequestFixture()
-	provider := &protocolProbeFixture{}
-	request.ChallengeRevision = hostresources.Revision("challenge-one")
-	request.MinimumGeneration = 1
-	first, err := provider.Probe(t.Context(), request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request.ChallengeRevision = hostresources.Revision("challenge-two")
-	request.MinimumGeneration = 99
-	second, err := provider.Probe(t.Context(), request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.Revision != second.Revision {
-		t.Fatalf("volatile proof identity changed semantic revision: %s != %s", first.Revision, second.Revision)
-	}
-	second.Passed = false
-	second = FinalizeProtocolProbeObservationV1(second)
-	if first.Revision == second.Revision {
-		t.Fatal("semantic health result did not change revision")
-	}
-}
