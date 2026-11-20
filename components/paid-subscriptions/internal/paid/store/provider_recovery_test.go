@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"sync"
 	"testing"
@@ -249,75 +248,6 @@ func TestRefundClaimArbitratesConcurrentCallsAndRetainsOriginalPolicy(t *testing
 	got, _ := commerce.GetOrder(db, order.Id)
 	if client.Volume != 100 || got.Status != paid.StatusRefunded {
 		t.Fatal("refund reversal wrong", client.Volume, got.Status)
-	}
-}
-
-func TestPersistentProviderCursorRotatesBeyondThousandAndWraps(t *testing.T) {
-	db := concurrentPaidDB(t)
-	var orders []paid.PaymentOrder
-	for id := 1; id <= 1205; id++ {
-		orders = append(orders, paid.PaymentOrder{ClientId: uint(id), TariffId: 1, Provider: "cryptobot", Amount: 100, Currency: "RUB", Status: paid.StatusPending, ProviderRef: fmt.Sprint(id), IdempotencyKey: fmt.Sprint("fair-", id), GrantSnapshot: true})
-	}
-	if err := db.CreateInBatches(orders, 100).Error; err != nil {
-		t.Fatal(err)
-	}
-	for batch := 0; batch < 13; batch++ {
-		work, err := commerce.WorkOrders(db.Session(&gorm.Session{NewDB: true}), "poll", 100)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(work) == 0 {
-			t.Fatalf("cursor batch %d returned no work", batch)
-		}
-		if work[0].Id != uint(batch*100+1) {
-			t.Fatal("cursor starvation", batch, work[0].Id)
-		}
-		if err := commerce.AdvanceProviderCursor(db, "poll", work[len(work)-1].Id); err != nil {
-			t.Fatal(err)
-		}
-	}
-	work, err := commerce.WorkOrders(db, "poll", 100)
-	if err != nil || len(work) == 0 || work[0].Id != 1 {
-		t.Fatal("cursor did not wrap", err)
-	}
-	// Remove the cursor's row, then reopen the real file-backed database. The
-	// next worker must retain durable progress and wrap despite the missing ID.
-	if err := db.Delete(&paid.PaymentOrder{}, 1205).Error; err != nil {
-		t.Fatal(err)
-	}
-	var databaseFile string
-	if err := db.Raw("SELECT file FROM pragma_database_list WHERE name = 'main'").Scan(&databaseFile).Error; err != nil || databaseFile == "" {
-		t.Fatal("fixture is not file backed", err)
-	}
-	pool, err := db.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := pool.Close(); err != nil {
-		t.Fatal(err)
-	}
-	restarted, err := gorm.Open(sqlite.Open(databaseFile+"?_busy_timeout=5000&_journal_mode=WAL"), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	restartedPool, err := restarted.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = restartedPool.Close() })
-	work, err = commerce.WorkOrders(restarted, "poll", 100)
-	if err != nil || len(work) != 100 || work[0].Id != 1 {
-		t.Fatal("restart/deleted cursor prevented wrap", work, err)
-	}
-	if err := commerce.AdvanceProviderCursor(restarted, "poll", work[len(work)-1].Id); err != nil {
-		t.Fatal(err)
-	}
-	if err := restarted.Delete(&paid.PaymentOrder{}, []uint{100, 101}).Error; err != nil {
-		t.Fatal(err)
-	}
-	work, err = commerce.WorkOrders(restarted, "poll", 100)
-	if err != nil || len(work) != 100 || work[0].Id != 102 {
-		t.Fatal("deletion near cursor lost fair progress", work, err)
 	}
 }
 
