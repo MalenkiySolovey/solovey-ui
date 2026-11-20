@@ -75,7 +75,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_commit || format('refs/tags/{0}', inputs.tag) }}
           submodules: recursive
@@ -94,11 +94,11 @@ jobs:
           node scripts/release-oci.mjs "$RELEASE_TAG_INPUT" "$(git rev-parse HEAD)" "$CORE_PROVIDER" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Log in to GHCR
         if: inputs.preflight_only == false
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -133,7 +133,7 @@ jobs:
       - name: Preflight Docker image
         if: inputs.preflight_only == true
         id: preflight
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: Dockerfile
@@ -168,7 +168,7 @@ jobs:
           sha256sum "$(basename "$OCI_CANDIDATE")" > "$(basename "$OCI_CANDIDATE").sha256"
       - name: Retain private OCI candidate
         if: inputs.preflight_only == true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: solovey-ui-docker-${{ matrix.platform_name }}${{ steps.source.outputs.artifact_suffix }}
           path: |
@@ -180,7 +180,7 @@ jobs:
       - name: Build and push Docker image by digest
         if: inputs.preflight_only == false
         id: build
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: Dockerfile
@@ -214,7 +214,7 @@ jobs:
 
       - name: Upload image digest
         if: inputs.preflight_only == false
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: docker-digest-${{ matrix.platform_name }}${{ steps.source.outputs.artifact_suffix }}
           path: ${{ runner.temp }}/digests/*
@@ -228,7 +228,7 @@ jobs:
     if: inputs.preflight_only == false
     steps:
       - name: Check out immutable release source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_commit || format('refs/tags/{0}', inputs.tag) }}
 
@@ -239,10 +239,10 @@ jobs:
           node scripts/release-oci.mjs "$RELEASE_TAG_INPUT" "$(git rev-parse HEAD)" "$CORE_PROVIDER" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -262,12 +262,12 @@ jobs:
         run: echo "name=${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
 
       - name: Download amd64 image digest
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: docker-digest-amd64${{ steps.source.outputs.artifact_suffix }}
           path: ${{ runner.temp }}/digests
       - name: Download arm64 image digest
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: docker-digest-arm64${{ steps.source.outputs.artifact_suffix }}
           path: ${{ runner.temp }}/digests
