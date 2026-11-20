@@ -132,9 +132,13 @@ chooses the smallest binary profile that can satisfy the selected component set.
 
 ### Component Catalog
 
+In current source builds, Panel Update is built into the panel, including
+Core/minimal. The legacy `panel-update-ui` ID is recognized for upgrades and
+backups, not as an optional component. Published `v2026.5.1` still uses the
+legacy optional pack.
+
 | Component ID | Purpose | Typical use |
 |---|---|---|
-| `panel-update-ui` | Web interface for checking panel/component updates, applying updates, enabling or disabling components, and removing optional components. | Manage updates from the panel instead of using only the CLI. |
 | `remote-outbound-subscriptions` | External outbound subscriptions, normalized profile data, groups, conversion policies, delay checks, bulk groups, and synchronization into outbounds. | Pull remote proxy lists and convert selected entries into sing-box outbounds. |
 | `import-xui` | Migration tools for compatible panel databases, including preview, conflict handling, and selective import. | Move existing panel data into Solovey UI with review before applying changes. |
 | `paid-subscriptions` | Paid client subscription records, tariffs, payment orders, bindings, and administration UI. | Sell or manage paid access to client subscriptions. |
@@ -384,9 +388,13 @@ bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/m
 
 ### Каталог компонентов
 
+В сборках из текущих исходников обновление встроено в панель, включая
+Core/minimal. Старый ID `panel-update-ui` распознаётся при обновлении и
+восстановлении резервных копий, но не является дополнительным компонентом.
+В опубликованной `v2026.5.1` по-прежнему используется старый пакет.
+
 | Идентификатор компонента | Назначение | Когда использовать |
 |---|---|---|
-| `panel-update-ui` | Веб-интерфейс для проверки обновлений панели и компонентов, применения обновлений, включения или отключения компонентов и удаления дополнительных компонентов. | Управлять обновлениями из панели, а не только через командную строку. |
 | `remote-outbound-subscriptions` | Внешние подписки исходящих подключений, нормализованные данные профиля, группы, правила преобразования, проверки задержки, массовые группы и синхронизация с исходящими подключениями. | Загружать удалённые списки прокси и преобразовывать выбранные записи в исходящие подключения sing-box. |
 | `import-xui` | Инструменты миграции совместимых баз данных панелей, включая предварительный просмотр, обработку конфликтов и выборочный импорт. | Переносить существующие данные панели в Solovey UI с проверкой перед применением изменений. |
 | `paid-subscriptions` | Записи платных клиентских подписок, тарифы, платёжные заказы, привязки и интерфейс администрирования. | Продавать или управлять платным доступом к клиентским подпискам. |

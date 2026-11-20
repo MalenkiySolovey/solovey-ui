@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {execFileSync} from 'node:child_process'
 import {readFrontendPin,resolveFrontendSource} from './frontend-artifacts.mjs'
+import {readSourceLock} from './component-source-inputs.mjs'
 const root=path.resolve(import.meta.dirname,'..')
 function implicitGoFrontendCaller(text) {
  const code=text.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g,'')
@@ -29,6 +30,12 @@ test('Product has one immutable external Frontend pin and no second editable sou
   assert.ok(!tracked.some(name=>name.startsWith(prefix)),`Product retains editable Frontend source for pinned ${id}`)
  }
  assert.ok(!tracked.includes('frontend/components/sources.lock.json'))
+})
+
+test('Product has no editable UI for pinned component owners',()=>{
+ const {sources}=readSourceLock(root)
+ const duplicates=sources.flatMap(({id})=>tracked.filter(name=>name.startsWith(`components/${id}/frontend/`)))
+ assert.deepEqual(duplicates,[],'editable Product UI shadows a pinned component owner')
 })
 
 test('Go source caller ratchet rejects literal and filepath.Join references to retired Product source',()=>{

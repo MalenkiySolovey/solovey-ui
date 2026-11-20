@@ -1,15 +1,10 @@
 //go:build !minimal
 
 // Package importxui imports a compatible panel SQLite database into the active s-ui
-// database.
+// database using the pinned Import source module and the existing destination
+// resource owners.
 //
-// The importer reads the source database through a read-only SQLite handle,
-// maps supported compatible panel inbounds, WireGuard endpoints, Reality TLS settings
-// and clients into s-ui models, and applies all destination mutations in one
-// transaction. Dry-run mode executes the same mapping path and rolls the
-// transaction back after building the report.
-//
-// Source dialect handling is isolated in the source subpackage, while mapping
-// owns source-to-destination transformations. This package owns planning,
-// transactional application, rollback and destination mutations.
+// The module owns read-only source access, dialect mapping and preview types.
+// This adapter supplies destination facts and coordinates transactional apply,
+// dry-run and rollback using the Backend database lifecycle.
 package importxui
