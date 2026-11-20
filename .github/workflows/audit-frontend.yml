@@ -17,22 +17,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  fe-install:
-    name: fe-install
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
-        with:
-          node-version-file: .node-version
-          cache: npm
-          cache-dependency-path: deploy/dependencies/solovey-frontend.json
-      - name: npm ci
-        run: node scripts/frontend.mjs install
   fe-lint:
     name: fe-lint
     runs-on: ubuntu-latest
-    needs: fe-install
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
@@ -56,7 +43,6 @@ jobs:
   fe-build:
     name: fe-build
     runs-on: ubuntu-latest
-    needs: fe-install
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Set up component source resolver
@@ -71,9 +57,6 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version-file: .node-version
-          cache: npm
-          cache-dependency-path: deploy/dependencies/solovey-frontend.json
-      - run: node scripts/frontend.mjs install
       - name: make audit:fe-build
         run: make audit:fe-build PS="pwsh -NoProfile -ExecutionPolicy Bypass"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -90,7 +73,6 @@ jobs:
   fe-vitest:
     name: fe-vitest
     runs-on: ubuntu-latest
-    needs: fe-install
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Set up component source resolver
@@ -123,7 +105,6 @@ jobs:
   fe-e2e:
     name: fe-e2e
     runs-on: ubuntu-24.04
-    needs: fe-install
     continue-on-error: true
     timeout-minutes: 25
     steps:
@@ -166,7 +147,6 @@ jobs:
   accessibility:
     name: accessibility
     runs-on: ubuntu-24.04
-    needs: fe-install
     continue-on-error: true
     timeout-minutes: 25
     steps:
