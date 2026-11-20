@@ -78,7 +78,7 @@ func catalogSnapshot() (host.CatalogSnapshot, error) {
 		Observe: func(id string, installed, available bool) host.LifecycleObservation {
 			return host.LifecycleObservation(state.LifecycleForComponent(id, installed, available))
 		},
-		LockedID: "panel-update-ui", LockedReason: "Panel Update is built in",
+		LockedID: installstate.FormerPanelUpdateID, LockedReason: "Panel Update is built in",
 	}
 	if !installstate.RuntimeMutable() {
 		result.PackageLockReason = installstate.ErrPackageManaged.Error()

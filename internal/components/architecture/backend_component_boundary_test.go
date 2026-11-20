@@ -33,9 +33,9 @@ func TestComponentHTTPAndActionOwnersHaveIndependentTransitiveClosure(t *testing
 	}
 }
 
-func TestComponentHTTPUsesOneBackendOwnerAndNarrowSettingsCommand(t *testing.T) {
+func TestRetiredPanelUpdateComponentDoesNotReturn(t *testing.T) {
 	root := moduleRoot(t)
-	for _, retired := range []string{"components/panel-update-ui/api", "components/panel-update-ui/service", "componenthost/actions"} {
+	for _, retired := range []string{"components/panel-update-ui", "componenthost/actions"} {
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(retired))); err == nil {
 			entries, readErr := os.ReadDir(filepath.Join(root, filepath.FromSlash(retired)))
 			if readErr != nil || len(entries) > 0 {
@@ -44,18 +44,5 @@ func TestComponentHTTPUsesOneBackendOwnerAndNarrowSettingsCommand(t *testing.T) 
 		} else if !os.IsNotExist(err) {
 			t.Fatal(err)
 		}
-	}
-	component := filepath.Join(root, "components", "panel-update-ui", "component.go")
-	for _, imported := range fileImports(t, component) {
-		if imported == modulePath+"/service" {
-			t.Fatal("Panel Update HTTP still imports the broad Panel service")
-		}
-	}
-	data, err := os.ReadFile(component)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(data), "host.Runtime") {
-		t.Fatal("Panel Update route composition still consumes Runtime")
 	}
 }

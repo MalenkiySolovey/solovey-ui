@@ -3,6 +3,7 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { componentSourceRoot, prepareComponentSources } from '../component-source-inputs.mjs'
+import { historicalPanelUpdateID } from '../component-frontend-manifest.mjs'
 import { frontendSourceDirectory, frontendFixtureDirectory } from '../frontend-source.mjs'
 
 const require = createRequire(path.join(await frontendFixtureDirectory(), 'package.json'))
@@ -56,8 +57,8 @@ export function inspectFrontendPolicy(root) {
   }
   visit(path.join(frontendSourceDirectory, 'src'), frontendSourceDirectory, 'frontend')
   for (const entry of fs.readdirSync(path.join(root, 'components'), { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue
-    const owner = entry.name === 'panel-update-ui' ? path.join(frontendSourceDirectory, 'components/panel-update-ui') : componentSourceRoot(entry.name, root)
+    if (!entry.isDirectory() || entry.name === historicalPanelUpdateID) continue
+    const owner = componentSourceRoot(entry.name, root)
     const frontend = path.join(owner, 'frontend')
     if (entry.isDirectory() && fs.existsSync(frontend)) visit(frontend, owner, 'components/' + entry.name)
   }

@@ -16,7 +16,7 @@ func (s *SettingService) settingsManager(auditFallback ...bool) settingsmanager.
 		StoredSecret: StoredSecretMarker,
 		Hooks: settingsmanager.Hooks{
 			ValidateAll: s.validateAll,
-			CanSaveKey:  enabledstate.IsSettingKey,
+			CanSaveKey:  enabledstate.IsMutableSettingKey,
 			NormalizePath: func(key string, value string) (string, bool, error) {
 				if !settingsvalidation.IsPathSetting(key) {
 					return value, false, nil

@@ -5,9 +5,12 @@ import path from 'node:path'
 import assert from 'node:assert/strict'
 import {fileURLToPath} from 'node:url'
 import {productRoot, digest, safeSourcePath, frontendDigest, readSourceLock, prepareComponentSources, componentSourceRoot, regularSourceTree} from './component-source-inputs.mjs'
-import {readComponentFrontendEntries} from './component-frontend-manifest.mjs'
-import {buildInputSchema, frontendAPIFiles, frontendProjectionFiles, readFrontendBuildInputs} from './frontend-source.mjs'
+import {historicalPanelUpdateID, readComponentFrontendEntries} from './component-frontend-manifest.mjs'
+import {readFrontendPin, unpackFrontendArchive} from './frontend-artifacts.mjs'
+import {buildInputSchema, frontendAPIFiles, frontendProjectionFiles, readFrontendBuildInputs, validateFrontendBuildInputs} from './frontend-source.mjs'
 import {frontendSourceDirectory} from './frontend-source.mjs'
+
+const historicalPanelManifestSHA256 = 'e5d37046dbae72dd57a4a547fcfe199a13fcaf2f50027ee2fd8a2d96cabc2c6a'
 
 function localFrontendFiles(directory, manifestFilename = path.join(directory, 'component.json')) {
   assert.ok(fs.lstatSync(directory).isDirectory() && !fs.lstatSync(directory).isSymbolicLink(), 'unsafe frontend source root')
@@ -36,9 +39,33 @@ function localFrontendFiles(directory, manifestFilename = path.join(directory, '
   return frontendProjectionFiles(files)
 }
 
+function projectHistoricalPanelInput(root, candidate, pin) {
+  const {manifestSHA256, archiveSHA256, sourceLockDigest} = pin.input
+  const filename = path.join(root, 'tests/fixtures/frontend-build-inputs', manifestSHA256 + '.json.gz')
+  const stat = fs.lstatSync(filename)
+  assert.ok(stat.isFile() && !stat.isSymbolicLink() && stat.size <= 32 * 1024 * 1024, 'unsafe historical Frontend input archive')
+  const files = unpackFrontendArchive(fs.readFileSync(filename), archiveSHA256, 'inputs')
+  const bytes = files.get('manifest.json')
+  assert.ok(bytes && digest(bytes) === manifestSHA256, 'historical Frontend input manifest differs')
+  const manifest = validateFrontendBuildInputs(JSON.parse(bytes))
+  assert.equal(manifest.sourceLockDigest, sourceLockDigest, 'historical Frontend source authority differs')
+  const component = manifest.components.find(item => item.id === historicalPanelUpdateID)
+  assert.ok(component, 'historical Panel Update input is missing')
+  const prefix = 'components/' + historicalPanelUpdateID + '/'
+  for (const [name, hash] of Object.entries(component.files)) {
+    const bytes = files.get(prefix + name)
+    assert.ok(bytes && digest(bytes) === hash, 'historical Panel Update bytes differ: ' + name)
+    const target = path.join(candidate, prefix, name)
+    fs.mkdirSync(path.dirname(target), {recursive: true})
+    fs.writeFileSync(target, bytes, {flag: 'wx'})
+  }
+  return component
+}
+
 export function projectFrontendBuildInputs(root = productRoot, options = {}) {
   const sourceLock = readSourceLock(root), catalog = readComponentFrontendEntries(path.join(root, 'components'))
   const frontendRoot = fs.realpathSync.native(options.frontendRoot || frontendSourceDirectory)
+  const pin = fs.existsSync(path.join(root, 'deploy/dependencies/solovey-frontend.json')) ? readFrontendPin(root) : null
   const target = path.resolve(options.directory || path.join(root, '.artifacts/frontend-inputs')), lock = target + '.lock'
   const publicationParent = path.dirname(target)
   fs.mkdirSync(publicationParent, {recursive: true})
@@ -54,7 +81,7 @@ export function projectFrontendBuildInputs(root = productRoot, options = {}) {
     const components = []
     for (const [id, entries] of Object.entries(catalog)) {
       assert.deepEqual(entries, ['frontend/index.ts'], 'unsupported frontend composition')
-      const directory = id === 'panel-update-ui' ? options.panelRoot || path.join(frontendRoot, 'components/panel-update-ui') : componentSourceRoot(id, root, frontendRoot), external = sourceLock.sources.find(source => source.id === id)
+      const directory = componentSourceRoot(id, root, frontendRoot), external = sourceLock.sources.find(source => source.id === id)
       const manifestFilename = path.join(root, 'components', id, 'component.json')
       // Canonical prepare verifies the complete module Git tree. Its stage is
       // the accepted file subset; componentSourceRoot rechecks those bytes.
@@ -66,10 +93,17 @@ export function projectFrontendBuildInputs(root = productRoot, options = {}) {
       }
       components.push({id, inputTree: regularSourceTree(destination), manifestSHA256: files['component.json'], frontendSHA256: frontendDigest(files), files})
     }
+    // Reproduce the publisher's original input tuple. The pinned Frontend
+    // validator still verifies every byte, but does not expose the old slot.
+    if (pin?.input.manifestSHA256 === historicalPanelManifestSHA256) {
+      components.push(projectHistoricalPanelInput(root, candidate, pin))
+      components.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+    }
     const manifest = {schema: buildInputSchema, sourceLock, sourceLockDigest: digest(JSON.stringify(sourceLock)), frontendFiles: Object.fromEntries(frontendAPIFiles.map(name => [name, digest(fs.readFileSync(path.join(frontendRoot, name)))])), components}
     const bytes = JSON.stringify(manifest, null, 2) + '\n', manifestSHA256 = digest(bytes)
+    if (pin) assert.equal(manifestSHA256, pin.input.manifestSHA256, 'Product Frontend input tuple drift')
     fs.writeFileSync(path.join(candidate, 'manifest.json'), bytes)
-    readFrontendBuildInputs(frontendRoot, manifestSHA256, candidate)
+    const validated = readFrontendBuildInputs(frontendRoot, manifestSHA256, candidate)
     if (existing) { fs.renameSync(target, previous); preserved = true }
     try { fs.renameSync(candidate, target) }
     catch (error) {
@@ -80,7 +114,7 @@ export function projectFrontendBuildInputs(root = productRoot, options = {}) {
       throw error
     }
     preserved = false
-    return {schema: buildInputSchema, directory: target, manifestSHA256, sourceLockDigest: manifest.sourceLockDigest, components: components.map(component => component.id)}
+    return {schema: buildInputSchema, directory: target, manifestSHA256, sourceLockDigest: manifest.sourceLockDigest, components: validated.entries.map(component => component.id)}
   } finally {
     // Only this invocation's checked temporary child is disposable.
     if (temporary) {
