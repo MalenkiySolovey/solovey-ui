@@ -1,4 +1,4 @@
 //go:build !minimal
 
-// Package observability owns in-memory metric history, aggregation, and sampling.
+// Package observability binds the independent history owner to Panel services.
 package observability

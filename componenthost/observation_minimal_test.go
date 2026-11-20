@@ -8,7 +8,7 @@ import (
 )
 
 func TestMinimalProfileDoesNotBindOptionalObservationPorts(t *testing.T) {
-	d := (APIDeps{}).WithObservationOwners()
+	d := APIDeps{}
 	for _, port := range []string{manifest.PortObservationHistory, manifest.PortAuditHistory} {
 		if _, err := d.BindAPI(manifest.HostAPI{Version: manifest.HostAPIV1, API: []string{port}}); err == nil {
 			t.Fatalf("minimal profile admitted optional port %s", port)

@@ -2,4 +2,9 @@
 
 package app
 
-// The minimal profile intentionally imports no optional in-process components.
+import "github.com/MalenkiySolovey/solovey-ui/componenthost"
+
+// WithSelectedObservationOwners adds no optional owners in the minimal profile.
+func WithSelectedObservationOwners(owners componenthost.APIDeps) componenthost.APIDeps {
+	return owners
+}
