@@ -262,6 +262,12 @@ func TestZapretOutboundNamespace(t *testing.T) {
 		t.Fatalf("verified checkpoint did not survive journal reopen: %v", err)
 	}
 	t.Log("CHANGE_COMMITTED: Planner receipt, attested Unix broker Apply, packet verification and reopened checkpoint agree")
+	beforeCapless := zapretCounters(t, nft("", "-j", "list", "table", "inet", planner.ZapretProbeTable))
+	qualifyZapretProtectPath(t, ctx, directA, directB, plan.SocketMark(), endpoints[0].address, endpoints[1].address)
+	afterCapless := zapretCounters(t, nft("", "-j", "list", "table", "inet", planner.ZapretProbeTable))
+	if afterCapless["tcp_captured"] <= beforeCapless["tcp_captured"] || afterCapless["udp_captured"]-beforeCapless["udp_captured"] != 1 {
+		t.Fatal("the capless Direct TCP/UDP traffic was not observed at the bounded queue")
+	}
 	// Model replacement of a different table, not a global ruleset flush.
 	nft("delete table inet fixture_other\ncreate table inet fixture_other\nadd counter inet fixture_other reloaded\n", "-f", "-")
 	other = nft("", "list", "table", "inet", "fixture_other")
