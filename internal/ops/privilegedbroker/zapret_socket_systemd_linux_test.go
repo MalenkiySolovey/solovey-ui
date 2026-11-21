@@ -12,9 +12,53 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
 	"github.com/sagernet/sing/common/control"
 	"golang.org/x/sys/unix"
 )
+
+func TestSystemdZapretBrokerGuardCapabilities(t *testing.T) {
+	pins := os.Getenv("SOLOVEY_TEST_ZAPRET_GUARD_PATH")
+	if pins == "" {
+		t.Skip("requires the disposable systemd guard runner")
+	}
+	withBPF := os.Getenv("SOLOVEY_TEST_ZAPRET_CAP_BPF") == "1"
+	mask := "00000000000830db"
+	if withBPF {
+		mask = "00000080000830db"
+	}
+	insistZapretServiceIsolation(t, 0, mask)
+	iface, err := net.InterfaceByName("zproof0")
+	if err != nil || iface.Flags&net.FlagUp != 0 {
+		t.Fatalf("disposable egress must exist and be down: %v", err)
+	}
+	cookie, err := socketNetNSCookie(openZapretServiceSocket(t, unix.SOCK_STREAM))
+	if err != nil {
+		t.Fatal(err)
+	}
+	guard, err := nftables.CreateZapretNativeGuard(testZapretSocketPlan(t, cookie, int32(iface.Index)), pins)
+	if !withBPF {
+		if err == nil {
+			_ = guard.AbortUnadmitted()
+			t.Fatal("the base unit unexpectedly acquired Netfilter BPF authority")
+		}
+		if !errors.Is(err, unix.EPERM) && !errors.Is(err, unix.EACCES) {
+			t.Fatalf("cannot isolate the capability requirement from other setup failures: %v", err)
+		}
+		t.Logf("BASE_SYSTEMD_BROKER_BPF=DENIED: %v", err)
+	} else {
+		if err != nil {
+			t.Fatalf("scoped CAP_BPF profile cannot load and pin the guard: %v", err)
+		}
+		if err := guard.AbortUnadmitted(); err != nil {
+			t.Fatal(err)
+		}
+		t.Log("SCOPED_SYSTEMD_BROKER_BPF=PASS; CAP_SYS_ADMIN_ABSENT=PASS")
+	}
+	if entries, err := os.ReadDir(pins); err != nil || len(entries) != 0 {
+		t.Fatalf("guard probe left pins: %v (%v)", entries, err)
+	}
+}
 
 // The namespace has no usable egress. This proof exercises the real
 // transport and attestor, not the installed Panel or a live firewall fence.
@@ -83,7 +127,7 @@ func TestSystemdZapretSocketBroker(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() {
-		done <- srv.ServeZapretSockets(ctx, listener, grant, func(_ context.Context, got ZapretSocketGrant, _ int, admit func() error) error {
+		done <- srv.serveZapretSockets(ctx, listener, grant, func(_ context.Context, got ZapretSocketGrant, _ int, admit func() error) error {
 			if got.Generation != grant.Generation || got.Scope.PlanRevision() != scope.PlanRevision() {
 				return errors.New("test grant changed")
 			}

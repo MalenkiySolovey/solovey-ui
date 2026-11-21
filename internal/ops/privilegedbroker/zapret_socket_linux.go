@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-host/network/intent"
+	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
 	"github.com/MalenkiySolovey/solovey-ui/network/planner"
 	"golang.org/x/sys/unix"
 	"golang.org/x/time/rate"
@@ -27,17 +28,34 @@ type ZapretSocketGrant struct {
 	Expires      time.Time
 }
 
-// ZapretSocketFence must hold the current-generation fence until admit returns.
+// zapretSocketFence must hold the current-generation fence until admit returns.
 // Before admit it proves the live allocations and enrolls this descriptor in
 // the independent, persistent kernel guard. Enrollment must last until the
 // socket dies, even if marking or the ACK fails or the broker exits. Revocation
 // disables traffic for enrolled sockets, not just new admissions.
-type ZapretSocketFence func(ctx context.Context, grant ZapretSocketGrant, fd int, admit func() error) error
+type zapretSocketFence func(ctx context.Context, grant ZapretSocketGrant, fd int, admit func() error) error
 
 // ServeZapretSockets serves a separate, generation-specific, root-owned Unix
 // stream listener. Only the trusted adapter may create it and publish the path
-// to the existing Outbounds owner. This does not change the framed listener.
-func (s *Server) ServeZapretSockets(ctx context.Context, listener *net.UnixListener, grant ZapretSocketGrant, fence ZapretSocketFence) error {
+// to the existing Outbounds owner. The observer is broker-local and must
+// obtain fresh Planner facts, including the routing and mark-writer facts.
+// This does not change the framed listener.
+func (s *Server) ServeZapretSockets(ctx context.Context, listener *net.UnixListener, grant ZapretSocketGrant,
+	path *nftables.ZapretNativePath, observe func(context.Context) (planner.Facts, error),
+) (failure error) {
+	if path == nil || observe == nil || path.Generation() != grant.Generation {
+		if listener != nil {
+			_ = listener.Close()
+		}
+		return errZapretSocket
+	}
+	defer func() { failure = errors.Join(failure, path.Close()) }()
+	return s.serveZapretSockets(ctx, listener, grant, func(ctx context.Context, expected ZapretSocketGrant, fd int, admit func() error) error {
+		return path.WithSocket(ctx, observe, expected.Scope, expected.Generation, fd, admit)
+	})
+}
+
+func (s *Server) serveZapretSockets(ctx context.Context, listener *net.UnixListener, grant ZapretSocketGrant, fence zapretSocketFence) error {
 	if listener == nil {
 		return errZapretSocket
 	}
@@ -81,7 +99,7 @@ func (s *Server) ServeZapretSockets(ctx context.Context, listener *net.UnixListe
 	}
 }
 
-func (s *Server) serveZapretSocket(ctx context.Context, conn *net.UnixConn, grant ZapretSocketGrant, fence ZapretSocketFence) {
+func (s *Server) serveZapretSocket(ctx context.Context, conn *net.UnixConn, grant ZapretSocketGrant, fence zapretSocketFence) {
 	defer conn.Close()
 	started := time.Now()
 	event := AuditEvent{Verb: auditZapretSocket, PeerRole: RolePanel, ResultClass: "denied_peer", Phase: AuditPhaseInitialAttestation}

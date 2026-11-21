@@ -141,6 +141,15 @@ func TestZapretSocketScopeOnlyUnboundOwnedTCP(t *testing.T) {
 
 func testZapretSocketScope(t *testing.T, cookie uint64, ifindex int32) planner.ZapretSocketScope {
 	t.Helper()
+	scope, err := testZapretSocketPlan(t, cookie, ifindex).SocketScope()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return scope
+}
+
+func testZapretSocketPlan(t *testing.T, cookie uint64, ifindex int32) planner.ZapretPlan {
+	t.Helper()
 	revision := strings.Repeat("a", 64)
 	plan, err := planner.CompileZapret(intent.ZapretPacketPathIntent{
 		Schema: intent.ZapretPacketPathSchema, HostRef: hostref.Local(), Owner: intent.ZapretOwner,
@@ -160,9 +169,5 @@ func testZapretSocketScope(t *testing.T, cookie uint64, ifindex int32) planner.Z
 	if err != nil {
 		t.Fatal(err)
 	}
-	scope, err := plan.SocketScope()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return scope
+	return plan
 }

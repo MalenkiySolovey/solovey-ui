@@ -32,10 +32,16 @@ const (
 type ZapretNativeGuard struct {
 	mu                        sync.Mutex
 	device, deadline, sockets *ebpf.Map
-	hooks                     []link.Link
+	hooks                     []zapretGuardPin
 	ifindex                   uint32
 	namespace                 uint64
-	revoked, closed           bool
+	revoked, closed, enrolled bool
+}
+
+type zapretGuardPin struct {
+	link.Link
+	path string
+	id   link.ID
 }
 
 // CreateZapretNativeGuard requires an empty, root-owned generation directory
@@ -66,13 +72,9 @@ func CreateZapretNativeGuard(plan planner.ZapretPlan, pinDir string) (_ *ZapretN
 		return nil, fmt.Errorf("Zapret egress guard requires kernel BTF: %w", err)
 	}
 	g := &ZapretNativeGuard{ifindex: uint32(scope.Egress().IfIndex), namespace: namespace}
-	var pins []string
 	defer func() {
 		if failure != nil {
-			for _, pin := range pins {
-				failure = errors.Join(failure, os.Remove(pin))
-			}
-			failure = errors.Join(failure, g.Close())
+			failure = errors.Join(failure, g.AbortUnadmitted())
 		}
 	}()
 	g.device, err = ebpf.NewMap(&ebpf.MapSpec{Name: "sui_zapret_dev", Type: ebpf.DevMap, KeySize: 4, ValueSize: 4, MaxEntries: 1})
@@ -109,12 +111,17 @@ func CreateZapretNativeGuard(plan planner.ZapretPlan, pinDir string) (_ *ZapretN
 		if err != nil {
 			return nil, fmt.Errorf("attach Zapret %s POSTROUTING guard: %w", family.pin, err)
 		}
-		g.hooks = append(g.hooks, hook)
+		info, err := hook.Info()
+		if err != nil || info.ID == 0 {
+			_ = hook.Close()
+			return nil, errors.Join(errors.New("observe new Zapret guard identity"), err)
+		}
 		pin := filepath.Join(pinDir, family.pin)
 		if err := hook.Pin(pin); err != nil {
+			_ = hook.Close()
 			return nil, fmt.Errorf("pin Zapret guard: %w", err)
 		}
-		pins = append(pins, pin)
+		g.hooks = append(g.hooks, zapretGuardPin{hook, pin, info.ID})
 	}
 	return g, nil
 }
@@ -196,6 +203,7 @@ func (g *ZapretNativeGuard) EnrollSocket(fd int) error {
 	if err := g.sockets.Update(cookie, uint32(1), ebpf.UpdateNoExist); err != nil {
 		return fmt.Errorf("enroll Zapret socket: %w", err)
 	}
+	g.enrolled = true
 	return nil
 }
 
@@ -222,6 +230,49 @@ func (g *ZapretNativeGuard) Close() error {
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	return g.closeLocked()
+}
+
+// AbortUnadmitted rolls back a failed apply before any FD was enrolled. Once
+// enrollment happened, even a lost ACK can leave a marked socket in Panel.
+// Retirement must then keep the deny hooks pinned until guarded recovery.
+func (g *ZapretNativeGuard) AbortUnadmitted() error {
+	if g == nil {
+		return nil
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.enrolled {
+		return errors.New("Zapret guard may still protect admitted sockets")
+	}
+	if g.closed {
+		return errors.New("cannot abort a closed Zapret guard without live pin identity")
+	}
+	var err error
+	if g.deadline != nil {
+		err = g.revokeLocked()
+	}
+	for _, hook := range g.hooks {
+		current, loadErr := link.LoadPinnedLink(hook.path, nil)
+		if errors.Is(loadErr, os.ErrNotExist) {
+			continue
+		}
+		if loadErr != nil {
+			err = errors.Join(err, loadErr)
+			continue
+		}
+		info, infoErr := current.Info()
+		_ = current.Close()
+		if infoErr != nil || info.ID != hook.id {
+			err = errors.Join(err, errors.New("Zapret guard pin changed ownership"), infoErr)
+			continue
+		}
+		err = errors.Join(err, hook.Unpin())
+	}
+	return errors.Join(err, g.closeLocked())
+}
+
+func (g *ZapretNativeGuard) closeLocked() error {
 	if g.closed {
 		return nil
 	}

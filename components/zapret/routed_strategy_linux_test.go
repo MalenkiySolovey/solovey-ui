@@ -26,6 +26,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-host/network/intent"
 	hostoutbounds "github.com/MalenkiySolovey/solovey-host/outbounds"
 	platform "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/processevidence"
 	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
 	"github.com/MalenkiySolovey/solovey-ui/network/planner"
 	"golang.org/x/sys/unix"
@@ -126,21 +127,17 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := planner.CompileZapret(resolved.Intent, planner.Facts{
+	facts := planner.Facts{
 		HostRef: hostref.Local(), Revision: revision, CapabilityRevision: revision, InventoryComplete: true,
 		Capability: platform.PlatformFact{Availability: platform.Available, Backend: planner.ZapretInstalledBackend},
 		Zapret: &planner.ZapretFacts{OutboundRef: resolved.Intent.OutboundRef, OutboundRevision: revision, Provider: "sing-box",
 			DirectSocket: true, SocketMark: true, NFQueue: true, ConntrackAccounting: true, EgressGuard: true,
 			InstalledEgress: &planner.ZapretEgress{NamespaceCookie: cookie, IfIndex: int32(dev.Index), IPv4: true, RouteRevision: revision}},
-	})
+	}
+	plan, err := planner.CompileZapret(resolved.Intent, facts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	guard, err := nftables.CreateZapretNativeGuard(plan, pins)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer guard.Close()
 	argv, err := resolved.Strategy.Compile(engine, plan.Queue(), plan.QueueMark(), plan.LoopMark())
 	if err != nil {
 		t.Fatal(err)
@@ -168,23 +165,35 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 			t.Fatal("pinned engine did not bind the isolated queue")
 		}
 	}
-	table, err := nftables.CreateZapretOwnedTable(ctx, plan)
+	identity, err := processevidence.Observe(consumer.Process.Pid)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer table.Close()
-	if err := table.Verify(ctx); err != nil {
+	path, err := nftables.PrepareZapretNativePath(ctx, plan, facts, pins, identity)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := guard.Renew(10 * time.Second); err != nil {
+	defer path.Close()
+	scope, err := plan.SocketScope()
+	if err != nil {
 		t.Fatal(err)
+	}
+	if err := path.Renew(ctx, facts, 10*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	observeFixture := func(context.Context) (planner.Facts, error) { return facts, nil }
+	if err := path.WithSocket(ctx, observeFixture, scope, strings.Repeat("f", 64), -1, func() error {
+		t.Fatal("stale path accessed the mark action")
+		return nil
+	}); err == nil {
+		t.Fatal("stale generation was not rejected")
 	}
 	dialer := net.Dialer{Control: func(_, _ string, raw syscall.RawConn) error {
 		var admission error
 		err := raw.Control(func(socket uintptr) {
-			if admission = guard.EnrollSocket(int(socket)); admission == nil {
-				admission = unix.SetsockoptInt(int(socket), unix.SOL_SOCKET, unix.SO_MARK, int(plan.SocketMark()))
-			}
+			admission = path.WithSocket(ctx, observeFixture, scope, path.Generation(), int(socket), func() error {
+				return unix.SetsockoptInt(int(socket), unix.SOL_SOCKET, unix.SO_MARK, int(plan.SocketMark()))
+			})
 		})
 		return errors.Join(err, admission)
 	}}
@@ -220,11 +229,11 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 			t.Fatalf("%s: received %d data segments, want %d", flow.name, len(sizes), flow.packets)
 		}
 	}
-	if err := guard.Renew(30 * time.Millisecond); err != nil {
+	if err := path.Renew(ctx, facts, 30*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(40 * time.Millisecond)
-	if err := guard.Renew(time.Second); err == nil {
+	if err := path.Renew(ctx, facts, time.Second); err == nil {
 		t.Fatal("expired egress generation reopened")
 	}
 }

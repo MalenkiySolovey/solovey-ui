@@ -78,18 +78,6 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	a := testGuardUDPSocket(t)
 	b := testGuardUDPSocket(t)
 	plan := testGuardPlan(t, a, iface.Index, port)
-	guard, err := CreateZapretNativeGuard(plan, pins)
-	if err != nil {
-		var verifier *ebpf.VerifierError
-		if errors.As(err, &verifier) {
-			t.Logf("kernel verifier: %+v", verifier)
-		}
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = guard.Close() })
-	if err := unix.SetsockoptInt(a, unix.SOL_SOCKET, unix.SO_MARK, int(plan.SocketMark())); err != nil {
-		t.Fatal(err)
-	}
 	var engineLog bytes.Buffer
 	proc := exec.CommandContext(t.Context(), filepath.Join(engine, "nfqws2"), fmt.Sprintf("--qnum=%d", plan.Queue()), "--filter-udp=*")
 	proc.Stdout, proc.Stderr = &engineLog, &engineLog
@@ -133,14 +121,36 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	remove := "delete table inet " + planner.ZapretInstalledTable + "\n"
 	nft("create table inet " + planner.ZapretInstalledTable + " { comment \"foreign reservation\"; }\n")
 	reservedBefore := run("", "nft", "list", "table", "inet", planner.ZapretInstalledTable)
+	staged, err := CreateZapretNativeGuard(plan, pins)
+	if err != nil {
+		var verifier *ebpf.VerifierError
+		if errors.As(err, &verifier) {
+			t.Logf("kernel verifier: %+v", verifier)
+		}
+		t.Fatal(err)
+	}
 	if collision, err := CreateZapretOwnedTable(t.Context(), plan); err == nil {
 		_ = collision.Close()
 		t.Fatal("claimed a table that was already owned by someone else")
+	}
+	if err := staged.AbortUnadmitted(); err != nil {
+		t.Fatal(err)
+	}
+	if entries, err := os.ReadDir(pins); err != nil || len(entries) != 0 {
+		t.Fatalf("failed apply left Zapret pins behind: %v (%v)", entries, err)
 	}
 	if reservedAfter := run("", "nft", "list", "table", "inet", planner.ZapretInstalledTable); reservedBefore != reservedAfter {
 		t.Fatal("failed create changed a foreign table with the reserved name")
 	}
 	nft(remove)
+	guard, err := CreateZapretNativeGuard(plan, pins)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = guard.Close() })
+	if err := unix.SetsockoptInt(a, unix.SOL_SOCKET, unix.SO_MARK, int(plan.SocketMark())); err != nil {
+		t.Fatal(err)
+	}
 	stopTable := startZapretTableOwner(t, iface.Index, port)
 	otherPort := exec.CommandContext(t.Context(), "nft", "-f", "-")
 	otherPort.Stdin = strings.NewReader(remove)
@@ -166,6 +176,9 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	check(a, peer, "socket mark is not admission", false)
 	if err := guard.EnrollSocket(a); err != nil {
 		t.Fatal(err)
+	}
+	if err := guard.AbortUnadmitted(); err == nil {
+		t.Fatal("an admitted socket lost its containment during rollback")
 	}
 	if err := guard.EnrollSocket(a); err == nil {
 		t.Fatal("a socket cookie was admitted twice")
@@ -241,6 +254,7 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	}
 	t.Log("veth wire: only the enrolled A socket delivered; B unchanged; table/queue/route loss, inherited marks and ifindex reuse denied; closed hooks remained pinned")
 	t.Log("NFT_OWNER_SIGKILL=PASS; QUEUE_STILL_BOUND=PASS; OLD_MARKED_SOCKET_BLOCKED=PASS; FOREIGN_RULESET_UNCHANGED=PASS")
+	t.Log("FAILED_APPLY_OWNED_PINS_REMOVED=PASS; FOREIGN_RESERVED_NAME_UNCHANGED=PASS; ADMITTED_GUARD_ROLLBACK_DENIED=PASS")
 	t.Log("queue ownership: descriptor/netlink identity proven for the live consumer; mismatched revision and dead consumer denied")
 }
 
