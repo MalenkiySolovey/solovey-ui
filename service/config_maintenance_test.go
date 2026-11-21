@@ -14,6 +14,7 @@ import (
 	corebox "github.com/MalenkiySolovey/solovey-ui/core/box"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	"github.com/sagernet/sing-box/log"
 )
 
@@ -23,6 +24,32 @@ func maintenanceFixture(t *testing.T) (*ConfigService, *coreruntime.Core) {
 	core := coreruntime.NewCore()
 	t.Cleanup(func() { _ = core.Stop() })
 	return NewConfigServiceWithRuntime(NewRuntime(core)), core
+}
+
+func TestUnqualifiedZapretStartUsesCoreRetryCooldown(t *testing.T) {
+	s, core := maintenanceFixture(t)
+	const options = `{"zapret":{"outboundRef":"direct-a","enabled":true,"strategyRef":"unavailable"}}`
+	row := model.Outbound{Tag: "direct-a", Type: "direct", Options: json.RawMessage(options)}
+	if err := dbsqlite.DB().Create(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := s.StartCore(); !errors.Is(err, outbounds.ErrZapretPacketPathUnqualified) || core.IsRunning() {
+		t.Fatalf("first start must report the blocked binding without starting Core: %v", err)
+	}
+	if err := s.StartCore(); err != nil || core.IsRunning() {
+		t.Fatalf("automatic retry must respect cooldown: %v", err)
+	}
+	var stored model.Outbound
+	if err := dbsqlite.DB().First(&stored, row.Id).Error; err != nil || string(stored.Options) != options {
+		t.Fatalf("start changed the saved binding: %v", err)
+	}
+	stored.Options = json.RawMessage(strings.Replace(options, `"enabled":true`, `"enabled":false`, 1))
+	if err := dbsqlite.DB().Save(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RestartCore(); err != nil || !core.IsRunning() || s.Runtime.startCooldownActive() {
+		t.Fatalf("operator restart must start the repaired candidate and clear cooldown: %v", err)
+	}
 }
 
 func TestMaintenancePersistsAcrossLifecycleSaveResetAndRestoreInitialization(t *testing.T) {
