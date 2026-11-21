@@ -8,7 +8,7 @@ on:
       - 'components/sources.lock.json'
       - 'network/planner/**'
       - 'network/nftables/zapret_probe.go'
-      - 'core/runtime/zapret_namespace_linux_test.go'
+      - 'scripts/generate-component-imports.mjs'
       - 'internal/entities/outbounds/**'
       - 'go.mod'
       - 'go.sum'
@@ -39,7 +39,9 @@ jobs:
         with:
           node-version-file: .node-version
       - name: Verify bounded planner and canonical Outbound rejection
-        run: go test -count=1 ./network/planner ./network/nftables ./internal/entities/outbounds
+        run: |
+          go test -count=1 ./network/planner ./network/nftables ./internal/entities/outbounds ./components/zapret
+          go test -count=1 -run '^TestComponentImportsStayBehindCompositionPackages$' ./internal/components/architecture
       - name: Build the exact component engine and namespace fixture
         shell: bash
         run: |
@@ -48,7 +50,7 @@ jobs:
           sudo apt-get install --no-install-recommends -y nftables libcap-dev libnetfilter-queue-dev libnfnetlink-dev libmnl-dev liblua5.4-dev zlib1g-dev
           node scripts/component-source-inputs.mjs prepare
           bash .component-sources/zapret/scripts/build-nfqws2.sh "$RUNNER_TEMP/zapret-engine"
-          go test -c -tags zapretproof -o "$RUNNER_TEMP/zapret-proof" ./core/runtime
+          go test -c -tags zapretproof -o "$RUNNER_TEMP/zapret-proof" ./components/zapret
       - name: Exercise only loopback inside a disposable network namespace
         shell: bash
         run: |

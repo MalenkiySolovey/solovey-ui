@@ -1,6 +1,6 @@
-//go:build linux && zapretproof
+//go:build linux && zapretproof && !minimal
 
-package runtime
+package zapret
 
 import (
 	"bytes"
@@ -23,6 +23,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-host/hostref"
 	"github.com/MalenkiySolovey/solovey-host/network/intent"
 	"github.com/MalenkiySolovey/solovey-host/outbounds"
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	platform "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
 	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
 	"github.com/MalenkiySolovey/solovey-ui/network/planner"
@@ -170,7 +171,7 @@ func TestZapretOutboundNamespace(t *testing.T) {
 	nft(candidate, "-f", "-")
 	defer func() { _, _ = run("", "delete", "table", "inet", planner.ZapretProbeTable) }()
 
-	core := NewCore()
+	core := coreruntime.NewCore()
 	configuration := fmt.Sprintf(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct-a","routing_mark":"0x%x"},{"type":"direct","tag":"direct-b"}],"route":{"final":"direct-b"}}`, plan.SocketMark())
 	if err := core.Start([]byte(configuration)); err != nil {
 		t.Fatal(err)
@@ -180,11 +181,7 @@ func TestZapretOutboundNamespace(t *testing.T) {
 		if name == "unmarked" {
 			return (&net.Dialer{}).DialContext(ctx, network, address)
 		}
-		outbound, ok := core.instance.Outbound().Outbound(name)
-		if !ok {
-			t.Fatalf("missing configured Direct %s", name)
-		}
-		return outbound.DialContext(ctx, network, M.ParseSocksaddr(address))
+		return core.DialOutbound(ctx, name, network, M.ParseSocksaddr(address))
 	}
 	for _, target := range endpoints {
 		for _, name := range []string{"direct-a", "direct-b", "unmarked"} {

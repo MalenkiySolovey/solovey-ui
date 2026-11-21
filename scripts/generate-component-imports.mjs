@@ -2,13 +2,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { prepareComponentSources } from './component-source-inputs.mjs'
+import { headlessSource, prepareComponentSources } from './component-source-inputs.mjs'
 import { prepareBackendSource } from './backend-source-inputs.mjs'
 import { historicalPanelUpdateID } from './component-frontend-manifest.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 prepareBackendSource(repoRoot)
-prepareComponentSources(repoRoot)
+const sourceInputs = prepareComponentSources(repoRoot)
 
 const args = process.argv.slice(2)
 
@@ -107,8 +107,13 @@ const brokerImports = selected
     manifest.brokerEntries.map((entry) => `\t_ "${modulePath}/components/${manifest.dirName}/${entry}"`),
   )
 
-const importBlock = imports.length > 0
-  ? `import (\n${imports.join('\n')}\n)\n\n`
+// OpenWrt package helpers see only shipped owners. Unpackaged headless
+// descriptors belong to Full Panel composition, not package recovery.
+const headlessIDs = new Set(sourceInputs.sources.filter(headlessSource).map(source => source.id))
+const packageImports = inProcess.filter(manifest => !headlessIDs.has(manifest.id))
+  .map(manifest => `\t_ "${modulePath}/components/${manifest.dirName}"`)
+const importBlock = packageImports.length > 0
+  ? `import (\n${packageImports.join('\n')}\n)\n\n`
   : ''
 
 // Only the selected Panel profile links the concrete history adapter.
