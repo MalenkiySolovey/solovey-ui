@@ -37,6 +37,15 @@ import (
 // installed Panel or privileged broker lifecycle. Socket admission below is
 // fixture-owned; the only destination is another disposable namespace.
 func TestZapretRoutedStrategyWire(t *testing.T) {
+	testZapretRoutedStrategyWire(t, false)
+}
+
+func TestZapretRoutedPublicationFailure(t *testing.T) {
+	testZapretRoutedStrategyWire(t, true)
+}
+
+func testZapretRoutedStrategyWire(t *testing.T, failPublication bool) {
+	t.Helper()
 	parent, engine, pins := os.Getenv("SOLOVEY_TEST_PARENT_NETNS"), os.Getenv("SOLOVEY_TEST_ENGINE_ROOT"), os.Getenv("SOLOVEY_TEST_GUARD_ROOT")
 	current, currentErr := os.Readlink("/proc/self/ns/net")
 	initial, initialErr := os.Readlink("/proc/1/ns/net")
@@ -346,15 +355,43 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 	if err := path.Renew(ctx, observeFixture, 10*time.Second); err != nil {
 		t.Fatal(err)
 	}
-	// Both sockets stay open and the owner does not revoke the kernel lease
-	// or remove the live table. A renewal cannot outlast the grant.
-	select {
-	case <-path.Lifetime().Done():
-	case <-ctx.Done():
-		t.Fatal("generation did not expire in the routed fixture")
+	server := &privilegedbroker.Server{Journal: j, BootID: bootID}
+	publishWithWrongPeer := func() error {
+		// Reject at the journal gate before touching the installed socket root.
+		return server.ServeZapretSockets(ctx, scope, strings.Repeat("b", 64), path, observeFixture, func(context.Context, string) error {
+			t.Fatal("listener with the wrong journal peer was published")
+			return nil
+		})
 	}
-	if !errors.Is(path.Lifetime().Err(), context.DeadlineExceeded) || path.AdmissionReady(scope, path.Generation()) {
-		t.Fatal("generation did not close admission at its grant deadline")
+	if failPublication {
+		if err := publishWithWrongPeer(); err == nil || !errors.Is(path.Lifetime().Err(), context.Canceled) || path.AdmissionReady(scope, path.Generation()) {
+			t.Fatalf("publication failure left a live generation: %v", err)
+		}
+		assertPinCount(2) // Old sockets still require the independent deny hooks.
+		cmd := exec.CommandContext(ctx, "nft", "list", "tables")
+		if listing, err := cmd.CombinedOutput(); err != nil || bytes.Contains(listing, []byte(planner.ZapretInstalledTable)) {
+			t.Fatalf("publication failure did not release the owned table: %v\n%s", err, listing)
+		}
+		if _, err := nftables.ObserveZapretQueueOwner(plan, identity); err != nil {
+			t.Fatalf("publication test did not keep the engine and queue live: %v", err)
+		}
+	} else {
+		if !path.ClaimSocketPublication(scope) {
+			t.Fatal("first publisher could not claim the ready generation")
+		}
+		if err := publishWithWrongPeer(); err == nil || path.Lifetime().Err() != nil || !path.AdmissionReady(scope, path.Generation()) {
+			t.Fatalf("a second publisher retired the claimed generation: %v", err)
+		}
+		// Both sockets stay open and the owner does not revoke the kernel lease
+		// or remove the live table. A renewal cannot outlast the grant.
+		select {
+		case <-path.Lifetime().Done():
+		case <-ctx.Done():
+			t.Fatal("generation did not expire in the routed fixture")
+		}
+		if !errors.Is(path.Lifetime().Err(), context.DeadlineExceeded) || path.AdmissionReady(scope, path.Generation()) {
+			t.Fatal("generation did not close admission at its grant deadline")
+		}
 	}
 	for _, flow := range []struct {
 		stream
@@ -366,13 +403,17 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 		var marker [1]byte
 		n, readErr := flow.receiver.Read(marker[:])
 		if flow.allowed && (sendErr != nil || readErr != nil || n != 1 || marker[0] != 0x61) {
-			t.Fatalf("grant expiry affected the unmarked socket: sent %v, read %d (%v)", sendErr, n, readErr)
+			t.Fatalf("closed admission affected the unmarked socket: sent %v, read %d (%v)", sendErr, n, readErr)
 		}
 		if !flow.allowed && (n != 0 || !errors.Is(readErr, os.ErrDeadlineExceeded)) {
-			t.Fatalf("old marked socket was not blocked at grant expiry: read %d (%v)", n, readErr)
+			t.Fatalf("old marked socket was not blocked after admission closed: read %d (%v)", n, readErr)
 		}
 	}
-	t.Log("ZAPRET_GRANT_DEADLINE=PASS (already-issued A denied; existing B unaffected)")
+	if failPublication {
+		t.Log("ZAPRET_PUBLICATION_ROLLBACK=PASS (owned table removed, deny hooks kept, existing A blocked and B unaffected)")
+	} else {
+		t.Log("ZAPRET_SINGLE_PUBLISHER=PASS; ZAPRET_GRANT_DEADLINE=PASS (already-issued A denied; existing B unaffected)")
+	}
 	if err := path.Renew(ctx, observeFixture, time.Second); err == nil {
 		t.Fatal("expired egress generation reopened")
 	}

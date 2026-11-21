@@ -19,21 +19,22 @@ import (
 // denies all protected packets. Construction does not authorize advertising
 // a listener or reusing a durable receipt from a previous process.
 type ZapretNativePath struct {
-	mu               sync.Mutex
-	plan             planner.ZapretPlan
-	engine           processevidence.Fact
-	sockets          zapretEngineSockets
-	guard            *ZapretNativeGuard
-	table            *ZapretOwnedTable
-	generation       string
-	lifetime         context.Context
-	cancel           context.CancelFunc
-	grantDeadline    uint64
-	commitFirstLease func(context.Context) error
-	committed        bool
-	mayHaveLeased    bool
-	closed           bool
-	closeErr         error
+	mu                 sync.Mutex
+	plan               planner.ZapretPlan
+	engine             processevidence.Fact
+	sockets            zapretEngineSockets
+	guard              *ZapretNativeGuard
+	table              *ZapretOwnedTable
+	generation         string
+	lifetime           context.Context
+	cancel             context.CancelFunc
+	grantDeadline      uint64
+	commitFirstLease   func(context.Context) error
+	committed          bool
+	mayHaveLeased      bool
+	publicationClaimed bool
+	closed             bool
+	closeErr           error
 }
 
 // ZapretPathCheckpoint identifies the owned resources for recovery. It is not
@@ -175,6 +176,18 @@ func (p *ZapretNativePath) AdmissionReady(scope planner.ZapretSocketScope, gener
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.admits(scope, generation) && p.guard.leaseActive()
+}
+
+// ClaimSocketPublication transfers retirement responsibility to the sole
+// listener owner. A losing publisher must not close the live generation.
+func (p *ZapretNativePath) ClaimSocketPublication(scope planner.ZapretSocketScope) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.publicationClaimed || !p.admits(scope, p.generation) || !p.guard.leaseActive() {
+		return false
+	}
+	p.publicationClaimed = true
+	return true
 }
 
 func (p *ZapretNativePath) admits(scope planner.ZapretSocketScope, generation string) bool {

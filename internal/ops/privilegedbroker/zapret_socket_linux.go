@@ -38,12 +38,17 @@ type zapretSocketFence func(ctx context.Context, grant ZapretSocketGrant, fd int
 // ServeZapretSockets creates and publishes a root-owned socket after the
 // committed generation is ready. The generation supplies the grant expiry.
 // publish runs before accept and must not dial the socket. observe is broker-local
-// and supplies fresh Planner facts. The caller retains ownership if binding fails.
+// and supplies fresh Planner facts. Once publication is claimed, this call retires
+// the generation on any exit, including failure before the listener is bound.
 func (s *Server) ServeZapretSockets(ctx context.Context, scope planner.ZapretSocketScope, peerRevision string,
 	path *nftables.ZapretNativePath, observe func(context.Context) (planner.Facts, error), publish func(context.Context, string) error,
 ) (failure error) {
-	if s == nil || path == nil || observe == nil || publish == nil || !path.AdmissionReady(scope, path.Generation()) {
+	if s == nil || path == nil || observe == nil || publish == nil || !path.ClaimSocketPublication(scope) {
 		return errZapretSocket
+	}
+	defer func() { failure = errors.Join(failure, path.Close()) }()
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	expires, ok := path.Lifetime().Deadline()
 	if !ok || !time.Now().Before(expires) {
@@ -66,7 +71,6 @@ func (s *Server) ServeZapretSockets(ctx context.Context, scope planner.ZapretSoc
 	if err != nil {
 		return err
 	}
-	defer func() { failure = errors.Join(failure, path.Close()) }()
 	return s.serveZapretSockets(ctx, endpoint, grant, func(ctx context.Context, expected ZapretSocketGrant, fd int, admit func() error) error {
 		return path.WithSocket(ctx, observe, expected.Scope, expected.Generation, fd, admit)
 	}, func(ctx context.Context, name string) error {

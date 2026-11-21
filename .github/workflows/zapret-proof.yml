@@ -128,4 +128,5 @@ jobs:
           exercise "$RUNNER_TEMP/zapret-egress-proof" TestZapretLinuxGatewaySnapshot || guard_result=$?
           exercise "$RUNNER_TEMP/zapret-egress-proof" TestZapretNativeGuardRoutedEgress || guard_result=$?
           exercise "$RUNNER_TEMP/zapret-proof" TestZapretRoutedStrategyWire
+          exercise "$RUNNER_TEMP/zapret-proof" TestZapretRoutedPublicationFailure
           test "$guard_result" -eq 0
