@@ -10,6 +10,7 @@ on:
       - 'network/nftables/zapret_*.go'
       - 'network/nftables/nft_backend.go'
       - 'internal/ops/privilegedbroker/zapret_socket*'
+      - 'internal/ops/privilegedbroker/zapret_packet_hooks_linux_test.go'
       - 'tests/installer/zapret-socket-runtime.sh'
       - 'deploy/systemd/solovey-ui-native-hardened.service'
       - 'deploy/systemd/solovey-privileged-broker.service'

@@ -16,9 +16,10 @@ wrong="$prefix-other.service"
 broker="$prefix-broker.service"
 base_guard="$prefix-bpf-base.service"
 scoped_guard="$prefix-bpf-scoped.service"
+packet_hooks="$prefix-packet-hooks.service"
 cleanup() {
-  "${privileged[@]}" journalctl -u "$panel" -u "$wrong" -u "$broker" -u "$base_guard" -u "$scoped_guard" --no-pager -o cat || true
-  "${privileged[@]}" systemctl stop "$panel" "$wrong" "$broker" "$base_guard" "$scoped_guard" 2>/dev/null || true
+  "${privileged[@]}" journalctl -u "$panel" -u "$wrong" -u "$broker" -u "$base_guard" -u "$scoped_guard" -u "$packet_hooks" --no-pager -o cat || true
+  "${privileged[@]}" systemctl stop "$panel" "$wrong" "$broker" "$base_guard" "$scoped_guard" "$packet_hooks" 2>/dev/null || true
   "${privileged[@]}" ip netns delete "$prefix" 2>/dev/null || true
   "${privileged[@]}" umount "$root/pins" 2>/dev/null || true
   "${privileged[@]}" rm -f -- "$root/socket/admit.sock" "$root/peer.test"
@@ -45,7 +46,7 @@ run_profile() {
     line=${line%$'\r'}
     case "$line" in
       CapabilityBoundingSet=*|AmbientCapabilities=*)
-        if [[ $name == "$scoped_guard" ]]; then line+=' CAP_BPF'; fi
+        if [[ $name == "$scoped_guard" || $name == "$packet_hooks" ]]; then line+=' CAP_BPF'; fi
         properties+=(--property="$line");;
       NoNewPrivileges=*|PrivateTmp=*|PrivateDevices=*|Protect*=*|Restrict*=*|LockPersonality=*|MemoryDenyWriteExecute=*|SystemCallArchitectures=*|UMask=*)
         properties+=(--property="$line");;
@@ -87,3 +88,18 @@ run_profile "$scoped_guard" solovey-privileged-broker 0 TestSystemdZapretBrokerG
   --property=ReadWritePaths="$root/pins" --setenv="SOLOVEY_TEST_ZAPRET_GUARD_PATH=$root/pins" \
   --setenv=SOLOVEY_TEST_ZAPRET_CAP_BPF=1
 wait_profile "$scoped_guard"
+
+"${privileged[@]}" ip netns exec "$prefix" sysctl -qw net.ipv6.conf.all.disable_ipv6=1
+"${privileged[@]}" ip -n "$prefix" link add zprobe2 type veth peer name zprobe3
+"${privileged[@]}" ip -n "$prefix" link set zproof1 address 02:00:00:08:00:01
+for iface in zproof0 zproof1 zprobe2 zprobe3; do
+  "${privileged[@]}" ip -n "$prefix" link set "$iface" up
+done
+"${privileged[@]}" ip -n "$prefix" addr add 192.0.2.2/24 dev zproof0
+"${privileged[@]}" ip -n "$prefix" route add 198.51.100.25/32 dev zproof0
+"${privileged[@]}" ip -n "$prefix" neigh add 198.51.100.25 lladdr 02:00:00:08:00:01 nud permanent dev zproof0
+"${privileged[@]}" ip netns exec "$prefix" tc qdisc add dev zproof0 clsact
+"${privileged[@]}" ip netns exec "$prefix" tc filter add dev zproof0 egress protocol ip pref 10 matchall action mirred egress redirect dev zprobe2
+run_profile "$packet_hooks" solovey-privileged-broker 0 TestSystemdZapretPacketHookCandidates \
+  --property=ReadWritePaths="$root/pins" --setenv="SOLOVEY_TEST_ZAPRET_PACKET_HOOKS=$root/pins"
+wait_profile "$packet_hooks"
