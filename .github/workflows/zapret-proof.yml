@@ -98,15 +98,27 @@ jobs:
           test "$GITHUB_ACTIONS" = true
           mountpoint="$RUNNER_TEMP/zapret-bpffs"
           mkdir -m 0700 "$mountpoint"
+          # nfqws2 loads Lua after dropping its UID. The runner's home is not
+          # a traverseable installed-artifact root for that user.
+          engine="$(sudo mktemp -d /usr/local/lib/solovey-zapret-r8b1.XXXXXXXX)"
+          trap 'sudo rm -f -- "$engine/nfqws2" "$engine/LICENSE.upstream" "$engine/source.json" "$engine/nfqueue-policy.c" "$engine/SHA256SUMS" "$engine/lua/zapret-lib.lua" "$engine/lua/zapret-antidpi.lua"; sudo rmdir -- "$engine/lua" "$engine"' EXIT
+          sudo install -d -m 0755 "$engine/lua"
+          sudo install -m 0755 "$RUNNER_TEMP/zapret-engine/nfqws2" "$engine/nfqws2"
+          sudo install -m 0644 "$RUNNER_TEMP/zapret-engine/"{LICENSE.upstream,source.json,nfqueue-policy.c,SHA256SUMS} "$engine/"
+          sudo install -m 0644 "$RUNNER_TEMP/zapret-engine/lua/"{zapret-lib.lua,zapret-antidpi.lua} "$engine/lua/"
+          sudo chmod 0755 "$engine"
+          (cd -- "$engine" && sha256sum --check --strict SHA256SUMS)
           exercise() {
             sudo unshare --mount --propagation private --net -- env \
               SOLOVEY_TEST_PARENT_NETNS="$(readlink /proc/self/ns/net)" \
-              SOLOVEY_TEST_ENGINE_ROOT="$RUNNER_TEMP/zapret-engine" \
+              SOLOVEY_TEST_ENGINE_ROOT="$engine" \
               SOLOVEY_TEST_GUARD_ROOT="$mountpoint" bash -euc '
                 mount -t bpf bpf -o mode=0700 "$SOLOVEY_TEST_GUARD_ROOT"
                 sysctl -w net.netfilter.nf_conntrack_acct=1
                 exec "$1" -test.run "^$2$" -test.v -test.timeout=45s
               ' _ "$1" "$2" | tee -a "$GITHUB_STEP_SUMMARY"
           }
-          exercise "$RUNNER_TEMP/zapret-egress-proof" TestZapretNativeGuardRoutedEgress
+          guard_result=0
+          exercise "$RUNNER_TEMP/zapret-egress-proof" TestZapretNativeGuardRoutedEgress || guard_result=$?
           exercise "$RUNNER_TEMP/zapret-proof" TestZapretRoutedStrategyWire
+          test "$guard_result" -eq 0

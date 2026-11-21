@@ -1,3 +1,5 @@
+//go:build linux && !minimal
+
 package privilegedbroker
 
 import (

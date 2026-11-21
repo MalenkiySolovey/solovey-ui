@@ -1,3 +1,5 @@
+//go:build linux && !minimal
+
 package nftables
 
 import (
@@ -18,6 +20,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-host/hostref"
 	"github.com/MalenkiySolovey/solovey-host/network/intent"
 	platform "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/processevidence"
 	"github.com/MalenkiySolovey/solovey-ui/network/planner"
 	"github.com/cilium/ebpf"
 	"golang.org/x/sys/unix"
@@ -111,6 +114,19 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	if !queueReady {
 		t.Fatal("reproducibly built NFQUEUE consumer never became ready")
 	}
+	engineIdentity, err := processevidence.Observe(proc.Process.Pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := ObserveZapretQueueOwner(plan, engineIdentity)
+	if err != nil || owner.Queue != plan.Queue() || owner.ProcessRevision != engineIdentity.Revision || owner.SocketInode == 0 {
+		t.Fatalf("pinned consumer identity not proven: %+v (%v)", owner, err)
+	}
+	wrong := engineIdentity
+	wrong.Revision = strings.Repeat("f", 64)
+	if _, err := ObserveZapretQueueOwner(plan, wrong); err == nil {
+		t.Fatal("queue proof accepted a different engine identity revision")
+	}
 	rules, err := RenderInstalledZapret(plan)
 	if err != nil {
 		t.Fatal(err)
@@ -160,6 +176,9 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	route("r8ba")
 	check(a, peer, "restored egress", true)
 	stopEngine()
+	if _, err := ObserveZapretQueueOwner(plan, engineIdentity); err == nil {
+		t.Fatal("queue proof accepted a dead engine")
+	}
 	check(a, peer, "lost consumer", false)
 	check(b, peer, "lost consumer B", true)
 	// Model packet permission without the nft table, to directly challenge
@@ -194,6 +213,7 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 		t.Fatal("pre-existing firewall was changed")
 	}
 	t.Log("veth wire: only the enrolled A socket delivered; B unchanged; table/queue/route loss, inherited marks and ifindex reuse denied; closed hooks remained pinned")
+	t.Log("queue ownership: descriptor/netlink identity proven for the live consumer; mismatched revision and dead consumer denied")
 }
 
 func probeNamespaceForGuard(parent string) (string, error) {
