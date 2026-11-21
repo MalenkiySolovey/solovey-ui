@@ -85,3 +85,39 @@ func TestCompileZapretFailsClosedForUnsupportedPathAndCollision(t *testing.T) {
 		})
 	}
 }
+
+func TestZapretDriftChecksAllAllocationsBeforeAllowingRepair(t *testing.T) {
+	request, facts := zapretFixture()
+	zapret, err := CompileZapret(request, facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := zapret.Plan()
+	var actual []Allocation
+	for _, resource := range plan.Resources() {
+		actual = append(actual, Allocation{Ownership: resource, Proven: true})
+	}
+	if drift := Compare(plan, plan.Revision(), true, actual); len(drift) != 0 {
+		t.Fatalf("complete allocations reported drift: %#v", drift)
+	}
+	if drift := Compare(plan, plan.Revision(), true, actual[:1]); len(drift) != 3 {
+		t.Fatalf("a matching table hid queue or mark loss: %#v", drift)
+	}
+	queue := actual[1]
+	queue.Kind = "foreign-queue"
+	drift := Compare(plan, plan.Revision(), true, []Allocation{actual[0], queue})
+	if len(drift) != 3 || drift[0].Kind != Unknown || drift[1].Kind != Missing || drift[2].Kind != Missing {
+		t.Fatalf("foreign queue was not distinguished from missing marks: %#v", drift)
+	}
+	for _, entry := range drift {
+		if entry.Repairable {
+			t.Fatalf("ambiguous allocation still permits partial repair: %#v", drift)
+		}
+	}
+	if drift := Compare(plan, plan.Revision(), true, append(actual, actual[1])); len(drift) != 1 || drift[0].Kind != Unknown || drift[0].Repairable {
+		t.Fatalf("duplicate queue observation admitted: %#v", drift)
+	}
+	if drift := Compare(plan, hash("previous generation"), true, actual); len(drift) != 1 || drift[0].Kind != Stale || drift[0].Repairable {
+		t.Fatalf("a late sample can influence a newer generation: %#v", drift)
+	}
+}

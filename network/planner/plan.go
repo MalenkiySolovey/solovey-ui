@@ -237,10 +237,26 @@ type Drift = canonical.Drift
 // plan cannot change the current generation's status or authorize repair.
 func Compare(plan Plan, observationPlanRevision string, available bool, actual []Allocation) []Drift {
 	ref := plan.intent.ResourceRef
-	if !digest(plan.revision) || !available || len(actual) > 8192 {
+	if !digest(plan.revision) || len(plan.resources) == 0 || !available || len(actual) > 8192 {
 		return []Drift{{Kind: DependencyUnavailable, ResourceRef: ref}}
 	}
-	return CompareResource(plan.resources[0], observationPlanRevision, available, actual)
+	if observationPlanRevision != plan.revision {
+		return []Drift{{Kind: Stale, ResourceRef: ref}}
+	}
+	var result []Drift
+	blocked := false
+	for _, expected := range plan.resources {
+		for _, drift := range CompareResource(expected, observationPlanRevision, available, actual) {
+			blocked = blocked || !drift.Repairable
+			result = append(result, drift)
+		}
+	}
+	if blocked {
+		for i := range result {
+			result[i].Repairable = false
+		}
+	}
+	return result
 }
 
 // CompareResource is also used for existing durable owner seals. The caller
@@ -254,26 +270,33 @@ func CompareResource(expected Ownership, observationPlanRevision string, availab
 	if observationPlanRevision != expected.PlanRevision {
 		return []Drift{{Kind: Stale, ResourceRef: ref}}
 	}
-	found := false
-	for _, allocation := range actual {
+	matched := -1
+	var unexpected *Drift
+	for i, allocation := range actual {
 		if allocation.Allocation != expected.Allocation {
 			if strings.HasPrefix(allocation.Allocation, expected.Allocation+":") && allocation.Proven && allocation.HostRef == expected.HostRef && allocation.Owner == expected.Owner {
-				return []Drift{{Kind: UnexpectedManagedResource, ResourceRef: allocation.ResourceRef}}
+				if unexpected == nil || allocation.ResourceRef < unexpected.ResourceRef {
+					unexpected = &Drift{Kind: UnexpectedManagedResource, ResourceRef: allocation.ResourceRef}
+				}
 			}
 			continue
 		}
-		if !allocation.Proven || allocation.HostRef != expected.HostRef || allocation.Owner != expected.Owner || allocation.ResourceRef != ref {
+		if matched >= 0 || !allocation.Proven || allocation.HostRef != expected.HostRef || allocation.Owner != expected.Owner ||
+			allocation.ResourceRef != ref || allocation.Kind != expected.Kind || allocation.Purpose != expected.Purpose {
 			return []Drift{{Kind: Unknown, ResourceRef: ref}}
 		}
-		if allocation.PlanRevision != expected.PlanRevision || allocation.IdentityMismatch {
-			return []Drift{{Kind: Mismatch, ResourceRef: ref, Repairable: true}}
-		}
-		found = true
+		matched = i
 	}
-	if found {
-		return nil
+	if unexpected != nil {
+		return []Drift{*unexpected}
 	}
-	return []Drift{{Kind: Missing, ResourceRef: ref, Repairable: true}}
+	if matched < 0 {
+		return []Drift{{Kind: Missing, ResourceRef: ref, Repairable: true}}
+	}
+	if allocation := actual[matched]; allocation.PlanRevision != expected.PlanRevision || allocation.IdentityMismatch {
+		return []Drift{{Kind: Mismatch, ResourceRef: ref, Repairable: true}}
+	}
+	return nil
 }
 
 func canonicalIntent(value Intent) Intent {
