@@ -10,6 +10,9 @@ on:
       - 'network/nftables/zapret_*.go'
       - 'network/nftables/nft_backend.go'
       - 'internal/ops/privilegedbroker/zapret_socket*'
+      - 'tests/installer/zapret-socket-runtime.sh'
+      - 'deploy/systemd/solovey-ui-native-hardened.service'
+      - 'deploy/systemd/solovey-privileged-broker.service'
       - 'scripts/generate-component-imports.mjs'
       - 'scripts/component-source-inputs.mjs'
       - 'internal/entities/outbounds/**'
@@ -49,6 +52,9 @@ jobs:
           go test -count=1 -run '^TestZapretSocket' ./internal/ops/privilegedbroker
           go test -count=1 -run '^TestComponentImportsStayBehindCompositionPackages$' ./internal/components/architecture
           go test -count=1 -run '^TestPreservationExecutableContainsInstalledDurableOwners$' ./cmd/solovey-openwrt-lifecycle ./cmd/solovey-openwrt-preservation
+      - name: Prove the pinned provider handoff under separate systemd profiles
+        shell: bash
+        run: bash tests/installer/zapret-socket-runtime.sh | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Build the exact component engine and namespace fixture
         id: zapret-engine
         shell: bash

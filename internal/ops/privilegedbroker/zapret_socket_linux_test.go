@@ -111,11 +111,11 @@ func TestZapretSocketScopeOnlyUnboundOwnedTCP(t *testing.T) {
 		t.Fatal(err)
 	}
 	peer := PeerIdentity{UID: uint32(os.Geteuid()), GID: uint32(os.Getegid())}
-	scope := testZapretSocketScope(t, cookie)
+	scope := testZapretSocketScope(t, cookie, 2)
 	if err := checkZapretSocket(tcp, peer, scope); err != nil {
 		t.Fatalf("an unbound owner-created TCP socket was refused: %v", err)
 	}
-	if err := checkZapretSocket(tcp, peer, testZapretSocketScope(t, cookie+1)); err == nil {
+	if err := checkZapretSocket(tcp, peer, testZapretSocketScope(t, cookie+1, 2)); err == nil {
 		t.Fatal("accepted another namespace cookie")
 	}
 	if err := checkZapretSocket(open(unix.SOCK_DGRAM), peer, scope); err == nil {
@@ -139,7 +139,7 @@ func TestZapretSocketScopeOnlyUnboundOwnedTCP(t *testing.T) {
 	}
 }
 
-func testZapretSocketScope(t *testing.T, cookie uint64) planner.ZapretSocketScope {
+func testZapretSocketScope(t *testing.T, cookie uint64, ifindex int32) planner.ZapretSocketScope {
 	t.Helper()
 	revision := strings.Repeat("a", 64)
 	plan, err := planner.CompileZapret(intent.ZapretPacketPathIntent{
@@ -154,7 +154,7 @@ func testZapretSocketScope(t *testing.T, cookie uint64) planner.ZapretSocketScop
 		Zapret: &planner.ZapretFacts{
 			OutboundRef: "direct-a", OutboundRevision: revision, Provider: "sing-box",
 			DirectSocket: true, SocketMark: true, NFQueue: true, ConntrackAccounting: true, EgressGuard: true,
-			InstalledEgress: &planner.ZapretEgress{NamespaceCookie: cookie, IfIndex: 2, IPv4: true, RouteRevision: revision},
+			InstalledEgress: &planner.ZapretEgress{NamespaceCookie: cookie, IfIndex: ifindex, IPv4: true, RouteRevision: revision},
 		},
 	})
 	if err != nil {
