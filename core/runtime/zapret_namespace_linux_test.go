@@ -72,7 +72,7 @@ func TestZapretOutboundNamespace(t *testing.T) {
 	if tables := nft("", "list", "tables"); len(bytes.TrimSpace(tables)) != 0 {
 		t.Fatal("namespace already owns firewall resources")
 	}
-	nft("table inet fixture_other { counter untouched {} }\n", "-f", "-")
+	nft("table inet fixture_other {\n counter untouched {}\n}\n", "-f", "-")
 	other := nft("", "list", "table", "inet", "fixture_other")
 
 	type endpoint struct {
