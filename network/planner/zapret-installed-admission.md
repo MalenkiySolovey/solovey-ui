@@ -22,6 +22,12 @@ socket protocol authenticates the Panel process, not an untrusted Outbound
 tag supplied on the wire. Only the Outbounds owner may project this listener
 as Direct A's `protect_path`, and only after the generation is committed.
 
+The create-only nftables batch makes its table nonpersistent and owned by the
+broker's private netlink port. The port is never transferred or reused after
+retirement. The kernel detaches this table on port close, including abrupt
+owner exit. Creation, verification and rollback never claim or delete a table
+based on the name alone.
+
 An independent pinned IPv4/IPv6 BPF hook checks postrouting device identity,
 packet admission bits and the enrolled socket cookie for original traffic.
 Generated output needs its own firewall pass bit. An allocation is not a grant:
@@ -34,8 +40,9 @@ Netfilter BPF load and a private writable bpffs directory under the installed
 unit; the base unit has neither an explicit `CAP_BPF` nor a scoped bpffs write
 path. Do not add capabilities to Panel. The root generation owner must make
 partial apply and restart reconcile durable, reject stale socket admissions,
-and preserve a matching deny guard for surviving marked sockets. A lease
-bounds exposure after abrupt owner loss; it does not prove immediate revoke.
+and preserve a matching deny guard for surviving marked sockets. On owner
+loss the nftables port closes independently of the guard's lease. Production
+reconcile must not reinstall pass-bit rules for a still-leased old generation.
 The hook sees the routed interface at `POSTROUTING`, not a later redirect or
 a changed next hop on the same link. Neither is an admitted installed path
 until its exact kernel constraint and rollback are qualified.

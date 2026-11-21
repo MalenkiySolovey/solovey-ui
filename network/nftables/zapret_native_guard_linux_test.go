@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -127,13 +128,25 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	if _, err := ObserveZapretQueueOwner(plan, wrong); err == nil {
 		t.Fatal("queue proof accepted a different engine identity revision")
 	}
-	rules, err := RenderInstalledZapret(plan)
-	if err != nil {
-		t.Fatal(err)
-	}
 	nft(foreign)
 	foreignBefore := run("", "nft", "list", "table", "inet", "r8b1_foreign")
-	nft(rules)
+	remove := "delete table inet " + planner.ZapretInstalledTable + "\n"
+	nft("create table inet " + planner.ZapretInstalledTable + " { comment \"foreign reservation\"; }\n")
+	reservedBefore := run("", "nft", "list", "table", "inet", planner.ZapretInstalledTable)
+	if collision, err := CreateZapretOwnedTable(t.Context(), plan); err == nil {
+		_ = collision.Close()
+		t.Fatal("claimed a table that was already owned by someone else")
+	}
+	if reservedAfter := run("", "nft", "list", "table", "inet", planner.ZapretInstalledTable); reservedBefore != reservedAfter {
+		t.Fatal("failed create changed a foreign table with the reserved name")
+	}
+	nft(remove)
+	stopTable := startZapretTableOwner(t, iface.Index, port)
+	otherPort := exec.CommandContext(t.Context(), "nft", "-f", "-")
+	otherPort.Stdin = strings.NewReader(remove)
+	if out, err := otherPort.CombinedOutput(); err == nil {
+		t.Fatalf("another netlink port deleted the owned table: %s", out)
+	}
 	peer := testGuardReceiver(t, "r8bap")
 	check := func(sock, receiver int, title string, want bool) {
 		t.Helper()
@@ -164,26 +177,40 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 		t.Fatal(err)
 	}
 	check(staleSocket, peer, "different socket with the same mark", false)
-	remove := "delete table inet " + planner.ZapretInstalledTable + "\n"
-	nft(remove)
-	check(a, peer, "table gone", false)
-	check(b, peer, "table gone B", true)
-	nft(rules)
 	alternate := testGuardReceiver(t, "r8bbp")
 	route("r8bb")
 	check(a, alternate, "alternate route A", false)
 	check(b, alternate, "alternate route B", true)
 	route("r8ba")
 	check(a, peer, "restored egress", true)
+	stopTable() // Deliberately SIGKILL: no deferred cleanup and no lease wait.
+	list := exec.CommandContext(t.Context(), "nft", "list", "table", "inet", planner.ZapretInstalledTable)
+	if out, err := list.CombinedOutput(); err == nil {
+		t.Fatalf("kernel retained orphaned table after owner death: %s", out)
+	}
+	check(a, peer, "old marked socket after table owner SIGKILL", false)
+	check(b, peer, "unmarked after table owner SIGKILL", true)
+	if _, err := ObserveZapretQueueOwner(plan, engineIdentity); err != nil {
+		t.Fatalf("owner-death test did not keep the queue alive: %v", err)
+	}
 	stopEngine()
 	if _, err := ObserveZapretQueueOwner(plan, engineIdentity); err == nil {
 		t.Fatal("queue proof accepted a dead engine")
 	}
+	// Recreate only for the no-bypass test with an absent queue. This does
+	// not adopt any old sockets or model authorized production recovery.
+	table, err := CreateZapretOwnedTable(t.Context(), plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
 	check(a, peer, "lost consumer", false)
 	check(b, peer, "lost consumer B", true)
 	// Model packet permission without the nft table, to directly challenge
 	// the kernel reference rather than just testing nft's oif comparison.
-	nft(remove)
+	if err := table.Close(); err != nil {
+		t.Fatal(err)
+	}
 	raw := testGuardUDPSocket(t)
 	if err := unix.SetsockoptInt(raw, unix.SOL_SOCKET, unix.SO_MARK, int(plan.LoopMark()|plan.QueueMark())); err != nil {
 		t.Fatal(err)
@@ -213,7 +240,68 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 		t.Fatal("pre-existing firewall was changed")
 	}
 	t.Log("veth wire: only the enrolled A socket delivered; B unchanged; table/queue/route loss, inherited marks and ifindex reuse denied; closed hooks remained pinned")
+	t.Log("NFT_OWNER_SIGKILL=PASS; QUEUE_STILL_BOUND=PASS; OLD_MARKED_SOCKET_BLOCKED=PASS; FOREIGN_RULESET_UNCHANGED=PASS")
 	t.Log("queue ownership: descriptor/netlink identity proven for the live consumer; mismatched revision and dead consumer denied")
+}
+
+func startZapretTableOwner(t *testing.T, ifindex int, port uint16) func() {
+	t.Helper()
+	ready, publish, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ready.Close()
+	defer publish.Close()
+	var logs bytes.Buffer
+	keeper := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestZapretTableOwnerProcess$", "-test.v", "-test.timeout=30s")
+	keeper.Env = append(os.Environ(), "SOLOVEY_TEST_ZAPRET_TABLE_OWNER="+strconv.Itoa(ifindex)+":"+strconv.Itoa(int(port)))
+	keeper.ExtraFiles = []*os.File{publish}
+	keeper.Stdout, keeper.Stderr = &logs, &logs
+	if err := keeper.Start(); err != nil {
+		t.Fatal(err)
+	}
+	stop := syncProcessCleanup(t, keeper, &logs)
+	_ = publish.Close()
+	if err := ready.SetReadDeadline(time.Now().Add(4 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	var signal [1]byte
+	if _, err := io.ReadFull(ready, signal[:]); err != nil || signal[0] != 1 {
+		t.Fatalf("owner process did not verify its kernel table: %v", err)
+	}
+	return stop
+}
+
+func TestZapretTableOwnerProcess(t *testing.T) {
+	indexText, portText, ok := strings.Cut(os.Getenv("SOLOVEY_TEST_ZAPRET_TABLE_OWNER"), ":")
+	if !ok {
+		t.Skip("only runs inside the disposable egress fixture")
+	}
+	current, selfErr := os.Readlink("/proc/self/ns/net")
+	init, initErr := os.Readlink("/proc/1/ns/net")
+	parent := os.Getenv("SOLOVEY_TEST_PARENT_NETNS")
+	iface, linkErr := net.InterfaceByName("r8ba")
+	index, indexErr := strconv.Atoi(indexText)
+	port, portErr := strconv.ParseUint(portText, 10, 16)
+	if os.Geteuid() != 0 || selfErr != nil || initErr != nil || !strings.HasPrefix(parent, "net:[") || current == parent || current == init ||
+		linkErr != nil || indexErr != nil || portErr != nil || iface.Index != index || port != 4443 {
+		t.Fatal("refusing to open an owned table outside the disposable egress fixture")
+	}
+	plan := testGuardPlan(t, testGuardUDPSocket(t), index, uint16(port))
+	table, err := CreateZapretOwnedTable(t.Context(), plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
+	if err := table.Verify(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	ready := os.NewFile(3, "owned-table-ready")
+	if _, err := ready.Write([]byte{1}); err != nil {
+		t.Fatal(err)
+	}
+	_ = ready.Close()
+	select {}
 }
 
 func probeNamespaceForGuard(parent string) (string, error) {

@@ -168,12 +168,14 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 			t.Fatal("pinned engine did not bind the isolated queue")
 		}
 	}
-	rules, err := nftables.RenderInstalledZapret(plan)
+	table, err := nftables.CreateZapretOwnedTable(ctx, plan)
 	if err != nil {
 		t.Fatal(err)
 	}
-	run(rules, "nft", "-c", "-f", "-")
-	run(rules, "nft", "-f", "-")
+	defer table.Close()
+	if err := table.Verify(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if err := guard.Renew(10 * time.Second); err != nil {
 		t.Fatal(err)
 	}
