@@ -16,6 +16,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/supervisor"
 	"github.com/gin-gonic/gin"
 )
@@ -42,6 +43,14 @@ func TestNativeInventoryServiceUIDMigrationAndRoutes(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = host.Stop(context.Background()) })
+		components, err := state.Components()
+		if err != nil {
+			t.Fatal(err)
+		}
+		index := slices.IndexFunc(components, func(item state.Component) bool { return item.ID == "zapret" })
+		if index < 0 || !components[index].AvailableInBinary || components[index].Enabled || components[index].Active {
+			t.Fatal("the Full binary must register Zapret without activating its lifecycle")
+		}
 		gin.SetMode(gin.TestMode)
 		router := gin.New()
 		(&APIHandler{ApiService: newComposedApiService()}).initRouter(router.Group("/api"))
@@ -75,7 +84,7 @@ func TestNativeInventoryServiceUIDMigrationAndRoutes(t *testing.T) {
 		ids = append(ids, item.Manifest.ID)
 	}
 	slices.Sort(ids)
-	want := []string{"fallback-html", "import-xui", "observability-extra", "paid-subscriptions", "remote-outbound-subscriptions", "server-protection", "telegram"}
+	want := []string{"fallback-html", "import-xui", "observability-extra", "paid-subscriptions", "remote-outbound-subscriptions", "server-protection", "telegram", "zapret"}
 	if !slices.Equal(ids, want) {
 		t.Fatalf("active Full registry = %v, want %v", ids, want)
 	}

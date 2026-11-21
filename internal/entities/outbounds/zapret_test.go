@@ -1,6 +1,7 @@
 package outbounds
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -53,11 +54,21 @@ func TestUnavailableZapretStopsBatchBeforeAnyLiveRemoval(t *testing.T) {
 	if err := db.Create(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := ValidateStored(db); err != nil {
+		t.Fatalf("unavailable dependency is not a malformed stored attachment: %v", err)
+	}
+	if projected, err := GetAllConfig(db); !errors.Is(err, ErrZapretPacketPathUnqualified) || projected != nil {
+		t.Fatalf("full projection discarded an unresolved attachment: %s, %v", projected, err)
+	}
 	core := &fakeOutboundCore{running: true}
 	if err := Restart(db, []uint{rows[0].Id, rows[1].Id}, core); !errors.Is(err, ErrZapretPacketPathUnqualified) || len(core.calls) != 0 {
 		t.Fatalf("unqualified binding crossed the runtime boundary: %v, calls=%q", err, core.calls)
 	}
 	if err := requireExplicitZapretChange(rows[1], model.Outbound{Tag: "direct-a", Type: "direct"}); !errors.Is(err, errZapretChangeRequired) {
 		t.Fatalf("ordinary edit could silently drop the saved binding: %v", err)
+	}
+	var saved model.Outbound
+	if err := db.First(&saved, rows[1].Id).Error; err != nil || !bytes.Equal(saved.Options, rows[1].Options) {
+		t.Fatalf("runtime rejection modified stored desired options: %v", err)
 	}
 }

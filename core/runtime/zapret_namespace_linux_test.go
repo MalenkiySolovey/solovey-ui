@@ -176,20 +176,20 @@ func TestZapretOutboundNamespace(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer core.Stop()
+	dial := func(ctx context.Context, name, network, address string) (net.Conn, error) {
+		if name == "unmarked" {
+			return (&net.Dialer{}).DialContext(ctx, network, address)
+		}
+		outbound, ok := core.instance.Outbound().Outbound(name)
+		if !ok {
+			t.Fatalf("missing configured Direct %s", name)
+		}
+		return outbound.DialContext(ctx, network, M.ParseSocksaddr(address))
+	}
 	for _, target := range endpoints {
 		for _, name := range []string{"direct-a", "direct-b", "unmarked"} {
 			before := zapretCounters(t, nft("", "-j", "list", "table", "inet", planner.ZapretProbeTable))
-			var conn net.Conn
-			var err error
-			if name == "unmarked" {
-				conn, err = (&net.Dialer{}).DialContext(ctx, string(target.proto), target.address)
-			} else {
-				outbound, ok := core.instance.Outbound().Outbound(name)
-				if !ok {
-					t.Fatalf("missing configured Direct %s", name)
-				}
-				conn, err = outbound.DialContext(ctx, string(target.proto), M.ParseSocksaddr(target.address))
-			}
+			conn, err := dial(ctx, name, string(target.proto), target.address)
 			zapretRoundTrip(t, conn, err)
 			after := zapretCounters(t, nft("", "-j", "list", "table", "inet", planner.ZapretProbeTable))
 			seenKey, captureKey := string(target.proto)+"_seen", string(target.proto)+"_captured"
@@ -200,16 +200,34 @@ func TestZapretOutboundNamespace(t *testing.T) {
 			}
 		}
 	}
-	if err := core.Stop(); err != nil {
-		t.Fatal(err)
-	}
-	nft("", "delete", "table", "inet", planner.ZapretProbeTable)
 	if err := cmd.Process.Signal(os.Interrupt); err != nil {
 		t.Fatal(err)
 	}
 	err = cmd.Wait()
 	stopped = true
-	if err != nil || ready() || strings.Contains(string(nft("", "list", "tables")), planner.ZapretProbeTable) ||
+	if err != nil || ready() {
+		t.Fatalf("engine did not release its queue: %v", err)
+	}
+	// Loss of the queue consumer must not turn the admitted outbound into
+	// plain Direct, nor interrupt the unmarked outbound to the same peer.
+	blockedCtx, cancelBlocked := context.WithTimeout(ctx, 750*time.Millisecond)
+	target := endpoints[0] // TCP/IPv4
+	conn, err := dial(blockedCtx, "direct-a", "tcp", target.address)
+	cancelBlocked()
+	if conn != nil {
+		_ = conn.Close()
+	}
+	if err == nil {
+		t.Fatal("engine loss silently downgraded A to plain Direct")
+	}
+	conn, err = dial(ctx, "direct-b", "tcp", target.address)
+	zapretRoundTrip(t, conn, err)
+	t.Log("QUEUE_LOSS_FAIL_CLOSED: Direct A did not connect; Direct B echoed")
+	if err := core.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	nft("", "delete", "table", "inet", planner.ZapretProbeTable)
+	if strings.Contains(string(nft("", "list", "tables")), planner.ZapretProbeTable) ||
 		!bytes.Equal(other, nft("", "list", "table", "inet", "fixture_other")) {
 		t.Fatalf("stop did not release the exact probe resources: %v", err)
 	}
