@@ -443,7 +443,11 @@ func TestZapretTableOwnerProcess(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer guard.AbortUnleased()
+		t.Cleanup(func() {
+			if err := guard.AbortUnleased(); err != nil {
+				t.Errorf("abort unleased guard: %v", err)
+			}
+		})
 		ids, err = guard.verifiedLinks()
 		if err != nil {
 			t.Fatal(err)
