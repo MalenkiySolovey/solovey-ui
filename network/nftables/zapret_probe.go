@@ -103,7 +103,7 @@ func NewZapretProbe(plan planner.ZapretPlan, parentNamespace string) (*ZapretPro
 		_ = executor.binary.Close()
 		return nil, errors.New("trusted tc executable not available")
 	}
-	return &ZapretProbe{executor: executor, guard: zapretGuard{binary: tc}, plan: plan,
+	return &ZapretProbe{executor: executor, guard: zapretGuard{binary: tc, mark: plan.SocketMark(), mask: plan.QueueMark()}, plan: plan,
 		parent: parentNamespace, namespace: current, candidate: []byte(candidate)}, nil
 }
 
@@ -268,7 +268,7 @@ func (p *ZapretProbe) Apply(ctx context.Context, validated ZapretProbeValidation
 	if err != nil {
 		return ZapretProbeSeal{}, err
 	}
-	guard, err := p.guard.install(ctx, p.plan.SocketMark(), p.plan.QueueMark())
+	guard, err := p.guard.install(ctx)
 	if err != nil {
 		return ZapretProbeSeal{}, errors.Join(ErrZapretProbeRecovery, err)
 	}

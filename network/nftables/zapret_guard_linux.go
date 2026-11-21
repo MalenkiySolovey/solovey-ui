@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/executableobject"
 )
@@ -17,19 +18,11 @@ import (
 // socket mark until the matching nft queue rule issues their pass bit.
 // This adapter admits a fresh loopback interface, not a live shared qdisc.
 type zapretGuard struct {
-	binary *executableobject.Object
+	binary     *executableobject.Object
+	mark, mask uint32
 }
 
-type tcObject struct {
-	Kind    string
-	Options struct {
-		Actions []struct {
-			Cookie        string
-			Kind          string
-			ControlAction struct{ Type string } `json:"control_action"`
-		}
-	}
-}
+type tcObject struct{ Kind string }
 
 func (g zapretGuard) run(ctx context.Context, args ...string) ([]byte, error) {
 	out, stderr, err := runNetworkTool(ctx, g.binary, "tc", nil, args...)
@@ -78,29 +71,47 @@ func (g zapretGuard) snapshot(ctx context.Context) (digest, cookie string, err e
 	if objects, err := tcObjects(ingress); err != nil || len(objects) != 0 {
 		return "", "", errors.New("refusing a nonempty ingress attachment")
 	}
-	egress, err := g.run(ctx, "-j", "-d", "filter", "show", "dev", "lo", "egress")
+	// iproute2 6.1 emits bare handle text inside the fw filter's JSON.
+	// Use the bounded, non-statistical text listing for this filter only.
+	egress, err := g.run(ctx, "-d", "filter", "show", "dev", "lo", "egress")
 	if err != nil {
 		return "", "", err
 	}
-	objects, err = tcObjects(egress)
-	if err != nil || len(objects) > 2 {
-		return "", "", errors.New("unexpected egress filter inventory")
-	}
-	for _, filter := range objects {
-		if filter.Kind != "fw" {
-			return "", "", errors.New("unexpected egress filter")
-		}
-		if actions := filter.Options.Actions; len(actions) != 0 {
-			if len(actions) != 1 || actions[0].Kind != "gact" || actions[0].ControlAction.Type != "drop" || cookie != "" {
-				return "", "", errors.New("unexpected action on the guard filter")
-			}
-			cookie = actions[0].Cookie
-		}
-	}
-	return sha256Hex(append(qdiscs, egress...)), cookie, nil
+	cookie, err = g.observeFilter(string(egress))
+	return sha256Hex(append(qdiscs, egress...)), cookie, err
 }
 
-func (g zapretGuard) install(ctx context.Context, mark, mask uint32) (string, error) {
+func (g zapretGuard) observeFilter(output string) (string, error) {
+	if strings.TrimSpace(output) == "" {
+		return "", nil // an existing but empty clsact still has no ownership
+	}
+	const header = "filter protocol all pref 1 fw chain 0"
+	expected := fmt.Sprintf("%s handle 0x%x/0x%x", header, g.mark, g.mask)
+	var cookie string
+	var heads, filters, actions int
+	for line := range strings.SplitSeq(output, "\n") {
+		line = strings.Join(strings.Fields(line), " ")
+		switch {
+		case line == header:
+			heads++
+		case line == expected:
+			filters++
+		case line == "action order 1: gact action drop":
+			actions++
+		case strings.HasPrefix(line, "cookie ") && cookie == "":
+			cookie = strings.TrimPrefix(line, "cookie ")
+		case line == "", line == "random type none pass val 0", strings.HasPrefix(line, "index "):
+		default:
+			return "", fmt.Errorf("unrecognized egress guard object: %q", line)
+		}
+	}
+	if generation, err := hex.DecodeString(cookie); err != nil || len(generation) != 16 || heads > 1 || filters != 1 || actions != 1 {
+		return "", fmt.Errorf("incomplete egress guard observation: %q", output)
+	}
+	return cookie, nil
+}
+
+func (g zapretGuard) install(ctx context.Context) (string, error) {
 	var generation [16]byte
 	if _, err := rand.Read(generation[:]); err != nil {
 		return "", err
@@ -110,7 +121,7 @@ func (g zapretGuard) install(ctx context.Context, mark, mask uint32) (string, er
 		return "", err
 	}
 	if _, err := g.run(ctx, "filter", "add", "dev", "lo", "egress", "protocol", "all", "pref", "1",
-		"handle", fmt.Sprintf("0x%x/0x%x", mark, mask), "fw", "action", "drop", "cookie", cookie); err != nil {
+		"handle", fmt.Sprintf("0x%x/0x%x", g.mark, g.mask), "fw", "action", "drop", "cookie", cookie); err != nil {
 		return "", err
 	}
 	digest, current, err := g.snapshot(ctx)
