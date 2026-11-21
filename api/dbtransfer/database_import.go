@@ -45,7 +45,7 @@ func (a *Handler) ImportDb(c *gin.Context) {
 		return
 	}
 	defer prepared.Close()
-	rehearsal, err := backup.Rehearse(c.Request.Context(), prepared.MultipartFile())
+	rehearsal, err := backup.RehearseOperatorRestore(c.Request.Context(), prepared.MultipartFile())
 	if err != nil || !rehearsal.Possible {
 		if err == nil {
 			err = errors.New("restore rehearsal rejected: " + strings.Join(rehearsal.ReasonCodes, ","))
@@ -120,7 +120,7 @@ func (a *Handler) RehearseDb(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": "restore_rehearsal_fields_invalid", "obj": nil})
 		return
 	}
-	rehearsal, err := backup.Rehearse(c.Request.Context(), prepared.MultipartFile())
+	rehearsal, err := backup.RehearseOperatorRestore(c.Request.Context(), prepared.MultipartFile())
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "msg": "restore_rehearsal_failed", "obj": rehearsal})
 		return

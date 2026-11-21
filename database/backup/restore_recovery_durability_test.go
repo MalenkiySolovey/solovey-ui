@@ -15,7 +15,7 @@ import (
 func TestPreRestoreRecoveryPublicationIsDurableAndReopenableAcrossSuccessiveSnapshots(t *testing.T) {
 	initRestoreRecoveryPublicationDB(t)
 	root := filepath.Join(t.TempDir(), "recovery", "restore")
-	digest, err := backupRestorer().PreserveRecovery(context.Background(), root)
+	digest, err := backupRestorer(runtimeReady).PreserveRecovery(context.Background(), root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func TestPreRestoreRecoveryPublicationIsDurableAndReopenableAcrossSuccessiveSnap
 	if bytes, err := canonical.VerifyRecovery(context.Background(), path, digest); err != nil || bytes <= 0 {
 		t.Fatalf("strict recovery reopen bytes=%d err=%v", bytes, err)
 	}
-	again, err := backupRestorer().PreserveRecovery(context.Background(), root)
+	again, err := backupRestorer(runtimeReady).PreserveRecovery(context.Background(), root)
 	if err != nil {
 		t.Fatal(err)
 	}

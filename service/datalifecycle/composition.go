@@ -115,10 +115,10 @@ func (backupOwner) PrepareExport(ctx context.Context, exclude string) (string, f
 	return dbbackup.PrepareExportContext(ctx, exclude)
 }
 func (backupOwner) Rehearse(ctx context.Context, source io.ReadSeeker) (dbbackup.RestoreRehearsal, error) {
-	return dbbackup.Rehearse(ctx, source)
+	return dbbackup.RehearseOperatorRestore(ctx, source)
 }
 func (backupOwner) RestoreWithRecoveryRoot(ctx context.Context, source io.ReadSeeker, root string) (dbbackup.RestoreExecutionResult, error) {
-	return dbbackup.RestoreContextDetailedWithRecoveryRoot(ctx, source, root)
+	return dbbackup.RestoreOperatorDetailed(ctx, source, root)
 }
 func (backupOwner) CompletePendingRestore(ctx context.Context) (bool, bool, error) {
 	return dbbackup.CompletePendingRestore(ctx)

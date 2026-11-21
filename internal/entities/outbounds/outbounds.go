@@ -70,6 +70,10 @@ func GetAll(db *gorm.DB) (*[]map[string]interface{}, error) {
 }
 
 func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
+	return getAllConfig(db, false)
+}
+
+func getAllConfig(db *gorm.DB, heldRestoreValidation bool) ([]json.RawMessage, error) {
 	if err := validateTransportReferences(db); err != nil {
 		return nil, err
 	}
@@ -86,7 +90,7 @@ func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 	}
 	failoverRejectSupportAdded := false
 	for _, outbound := range rows {
-		native, err := projectZapretOutbound(*outbound)
+		native, err := projectZapretOptions(*outbound, heldRestoreValidation)
 		if err != nil {
 			return nil, err
 		}
