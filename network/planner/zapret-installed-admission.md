@@ -89,9 +89,13 @@ would require `CAP_SYS_ADMIN`). It does not detach any pin or adopt old pass
 bits. Occupied, legacy and potentially leased generations still need guarded
 recovery.
 
-Production activation remains closed. Before wiring it, the broker must prove
-Netfilter BPF load and a private writable bpffs directory under the installed
-unit. On the disposable systemd runner the base unit could not create the
+Production activation remains closed. The experimental Linux socket publisher,
+generation journal writer and BPF egress guard require the `zapretproof` build
+tag used by the isolated qualification workflow. Normal broker builds omit
+them; an enabled binding still rejects runtime projection before Core starts.
+The current BPF design would require loading the guard and owning a private
+writable bpffs directory under the installed unit. On the disposable systemd
+runner the base unit could not create the
 device map; adding only `CAP_BPF` in a test unit left `sk_buff` reads denied by
 the kernel verifier (which requested `CAP_PERFMON` or `CAP_SYS_ADMIN`). The
 installed units and Panel capabilities remain unchanged. The owner must make
@@ -113,3 +117,9 @@ Panel process before socket creation; the installed profile forbids that.
 `protect_path` receives an existing socket and returns an acknowledgment,
 not a replacement socket from the broker. A veth peer that returns to
 shared host routing would also leave the late egress problem unresolved.
+
+Neither candidate qualifies on the current installed profile. The missing
+prerequisite is an enforceable owner of the protected path through the last
+egress decision, including exclusive queue and mark authority. Operators and
+the narrow broker are trusted; if co-resident networking services can modify
+these resources, observing their current state is not admission evidence.

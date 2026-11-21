@@ -47,9 +47,16 @@ jobs:
         with:
           node-version-file: .node-version
       - name: Verify bounded planner and canonical Outbound rejection
+        shell: bash
         run: |
-          go test -count=1 ./network/planner ./network/nftables ./internal/entities/outbounds ./components/zapret
-          go test -count=1 -run '^TestZapretSocket' ./internal/ops/privilegedbroker
+          go test -count=1 ./internal/entities/outbounds ./components/zapret
+          go test -tags zapretproof -count=1 ./network/planner ./network/nftables ./internal/ops/privilegedbroker
+          node scripts/generate-component-imports.mjs --profile full
+          go list -deps ./cmd/solovey-privileged-broker >"$RUNNER_TEMP/zapret-installed-broker-deps"
+          if grep -Eq '^github\.com/cilium/ebpf(/|$)' "$RUNNER_TEMP/zapret-installed-broker-deps"; then
+            echo 'The ordinary broker must not include the unqualified Zapret BPF path.' >&2
+            exit 1
+          fi
           go test -count=1 -run '^TestComponentImportsStayBehindCompositionPackages$' ./internal/components/architecture
           go test -count=1 -run '^TestPreservationExecutableContainsInstalledDurableOwners$' ./cmd/solovey-openwrt-lifecycle ./cmd/solovey-openwrt-preservation
       - name: Prove provider handoff and probe the installed broker BPF boundary
@@ -65,7 +72,7 @@ jobs:
           node scripts/component-source-inputs.mjs prepare
           bash .component-sources/zapret/scripts/build-nfqws2.sh "$RUNNER_TEMP/zapret-engine"
           go test -c -tags zapretproof -o "$RUNNER_TEMP/zapret-proof" ./components/zapret
-          go test -c -o "$RUNNER_TEMP/zapret-egress-proof" ./network/nftables
+          go test -c -tags zapretproof -o "$RUNNER_TEMP/zapret-egress-proof" ./network/nftables
       - name: Exercise only loopback inside a disposable network namespace
         shell: bash
         run: |

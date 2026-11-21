@@ -31,7 +31,7 @@ cleanup() {
   rmdir -- "$build"
 }
 trap cleanup EXIT
-go test -c -o "$build/peer.test" ./internal/ops/privilegedbroker
+go test -c -tags zapretproof -o "$build/peer.test" ./internal/ops/privilegedbroker
 "${privileged[@]}" chmod 0755 "$root"
 "${privileged[@]}" chown 0:65534 "$socket_root"
 "${privileged[@]}" chmod 0750 "$socket_root"

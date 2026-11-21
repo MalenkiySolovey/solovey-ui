@@ -1,4 +1,4 @@
-//go:build linux && !minimal
+//go:build linux && !minimal && zapretproof
 
 package privilegedbroker
 
@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
+	"github.com/sagernet/sing-box/common/listener"
 	"github.com/sagernet/sing/common/control"
 	"golang.org/x/sys/unix"
 )
@@ -212,6 +213,18 @@ func TestSystemdZapretSocketProvider(t *testing.T) {
 		t.Skip("integration client only")
 	}
 	insistZapretServiceIsolation(t, 65534, "0000000000000000")
+	if os.Getenv("SOLOVEY_TEST_ZAPRET_WRONG_UNIT") != "1" {
+		// Both pinned Direct dialers enter the target namespace with this
+		// helper before creating a socket. Even re-entering the service's own
+		// readable namespace is denied by the installed profile.
+		entered, err := listener.ListenNetworkNamespace(t.Context(), "/proc/self/ns/net", func() (bool, error) {
+			return true, nil
+		})
+		if entered || !errors.Is(err, unix.EPERM) || !strings.Contains(err.Error(), "set netns") {
+			t.Fatalf("capless provider namespace switch: entered=%t, error=%v", entered, err)
+		}
+		t.Log("SYSTEMD_CAPLESS_PROVIDER_SETNS=DENIED_BEFORE_SOCKET_CREATION")
+	}
 	generation := os.Getenv("SOLOVEY_TEST_ZAPRET_GENERATION")
 	if !digestPattern.MatchString(generation) {
 		t.Fatal("missing fixture generation")

@@ -1,4 +1,4 @@
-//go:build linux && !minimal
+//go:build linux && !minimal && zapretproof
 
 package planner
 
