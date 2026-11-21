@@ -119,6 +119,12 @@ func bindStandaloneSocket(role Role, socketPath string, socketGID uint32) (*stan
 	if err != nil {
 		return nil, fmt.Errorf("bind standalone broker socket: %w", err)
 	}
+	return claimBoundBrokerSocket(role, listener, socketPath, socketGID)
+}
+
+func claimBoundBrokerSocket(role Role, listener *net.UnixListener, socketPath string, socketGID uint32) (*standaloneSocket, error) {
+	// Check inode ownership before unlinking, even on a partial setup failure.
+	listener.SetUnlinkOnClose(false)
 	boundIdentity, identityErr := inspectBoundStandaloneSocket(socketPath)
 	if identityErr != nil {
 		_ = listener.Close()
@@ -203,6 +209,9 @@ func (s *standaloneSocket) close() error {
 		return nil
 	}
 	closeErr := s.listener.Close()
+	if errors.Is(closeErr, net.ErrClosed) {
+		closeErr = nil
+	}
 	removeErr := removeOwnedStandalonePath(s.path, s.identity)
 	return errors.Join(closeErr, removeErr)
 }

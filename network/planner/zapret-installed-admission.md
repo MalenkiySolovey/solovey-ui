@@ -12,6 +12,11 @@ connect without a provider bump. Use a separate root-owned, generation-specific
 Unix stream in the broker. The general framed transport continues to reject
 `SCM_RIGHTS`. The new stream permits one FD and one command. Denial is EOF,
 not a status byte, because the pinned provider accepts any one-byte reply.
+For the same reason the broker chooses the path in a root-owned, non-writable
+directory, never accepts an endpoint supplied by Panel, and never rebinds a
+stale generation path. It enables `SO_PASSCRED` before bind. The production
+unit does not provision or grant write access to the separate Zapret socket
+directory while activation remains unqualified.
 
 The listener must match an attested non-root systemd Panel process to a
 broker-local generation grant: manifest and process revisions, writer

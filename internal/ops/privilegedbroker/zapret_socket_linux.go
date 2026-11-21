@@ -35,55 +35,67 @@ type ZapretSocketGrant struct {
 // disables traffic for enrolled sockets, not just new admissions.
 type zapretSocketFence func(ctx context.Context, grant ZapretSocketGrant, fd int, admit func() error) error
 
-// ServeZapretSockets serves a separate, generation-specific, root-owned Unix
-// stream listener. Only the trusted adapter may create it and publish the path
-// to the existing Outbounds owner. The observer is broker-local and must
-// obtain fresh Planner facts, including the routing and mark-writer facts.
-// This does not change the framed listener.
-func (s *Server) ServeZapretSockets(ctx context.Context, listener *net.UnixListener, grant ZapretSocketGrant,
-	path *nftables.ZapretNativePath, observe func(context.Context) (planner.Facts, error),
+// ServeZapretSockets creates and publishes a root-owned socket after the
+// committed generation is ready. publish runs before accept and must not dial
+// the socket. observe is broker-local and supplies fresh Planner facts. The
+// caller retains generation ownership if binding fails.
+func (s *Server) ServeZapretSockets(ctx context.Context, grant ZapretSocketGrant,
+	path *nftables.ZapretNativePath, observe func(context.Context) (planner.Facts, error), publish func(context.Context, string) error,
 ) (failure error) {
-	if s == nil || path == nil || observe == nil || !path.AdmissionReady(grant.Scope, grant.Generation) {
-		if listener != nil {
-			_ = listener.Close()
-		}
+	if s == nil || path == nil || observe == nil || publish == nil || !time.Now().Before(grant.Expires) || !path.AdmissionReady(grant.Scope, grant.Generation) {
 		return errZapretSocket
 	}
 	journal, ok := s.Journal.(*FileJournal)
 	if !ok || journal == nil || journal.bootID != s.BootID || journal.checkZapretPath(grant) != nil {
-		if listener != nil {
-			_ = listener.Close()
-		}
 		return errZapretSocket
 	}
-	defer func() { failure = errors.Join(failure, path.Close()) }()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stop := context.AfterFunc(path.Lifetime(), cancel)
 	defer stop()
-	return s.serveZapretSockets(ctx, listener, grant, func(ctx context.Context, expected ZapretSocketGrant, fd int, admit func() error) error {
+	gid, err := lookupBrokerGroup()
+	if err != nil {
+		return err
+	}
+	endpoint, err := bindZapretSocket(ctx, zapretSocketRoot, gid, grant.Generation)
+	if err != nil {
+		return err
+	}
+	defer func() { failure = errors.Join(failure, path.Close()) }()
+	return s.serveZapretSockets(ctx, endpoint, grant, func(ctx context.Context, expected ZapretSocketGrant, fd int, admit func() error) error {
 		return path.WithSocket(ctx, observe, expected.Scope, expected.Generation, fd, admit)
+	}, func(ctx context.Context, name string) error {
+		if !path.AdmissionReady(grant.Scope, grant.Generation) || journal.checkZapretPath(grant) != nil {
+			return errZapretSocket
+		}
+		return publish(ctx, name)
 	})
 }
 
-func (s *Server) serveZapretSockets(ctx context.Context, listener *net.UnixListener, grant ZapretSocketGrant, fence zapretSocketFence) error {
-	if listener == nil {
+func (s *Server) serveZapretSockets(ctx context.Context, endpoint *standaloneSocket, grant ZapretSocketGrant, fence zapretSocketFence,
+	publish func(context.Context, string) error,
+) (failure error) {
+	if endpoint == nil {
 		return errZapretSocket
 	}
-	defer listener.Close()
-	if s == nil || fence == nil || !grant.Scope.Valid() || !digestPattern.MatchString(grant.Generation) ||
+	defer func() { failure = errors.Join(failure, endpoint.close()) }()
+	if s == nil || fence == nil || publish == nil || !grant.Scope.Valid() || !digestPattern.MatchString(grant.Generation) ||
 		!digestPattern.MatchString(grant.PeerRevision) || !time.Now().Before(grant.Expires) {
 		return errZapretSocket
 	}
-	if err := preparePeerListener(listener); err != nil {
-		return err
-	}
+	listener := endpoint.listener
 	ctx, cancel := context.WithDeadline(ctx, grant.Expires)
 	var workers sync.WaitGroup
 	defer workers.Wait()
 	defer cancel()
 	stop := context.AfterFunc(ctx, func() { _ = listener.Close() })
 	defer stop()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := publish(ctx, endpoint.path); err != nil {
+		return err
+	}
 	rateLimit := rate.NewLimiter(64, 16)
 	active := make(chan struct{}, 4)
 	for {

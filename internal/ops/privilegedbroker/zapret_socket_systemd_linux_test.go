@@ -70,9 +70,9 @@ func TestSystemdZapretBrokerGuardCapabilities(t *testing.T) {
 // The namespace has no usable egress. This proof exercises the real
 // transport and attestor, not the installed Panel or a live firewall fence.
 func TestSystemdZapretSocketBroker(t *testing.T) {
-	path := os.Getenv("SOLOVEY_TEST_ZAPRET_SOCKET")
+	root := os.Getenv("SOLOVEY_TEST_ZAPRET_SOCKET_ROOT")
 	unit := os.Getenv("SOLOVEY_TEST_ZAPRET_PEER_UNIT")
-	if path == "" || unit == "" {
+	if root == "" || unit == "" {
 		t.Skip("requires the disposable systemd socket runner")
 	}
 	insistZapretServiceIsolation(t, 0, "00000000000830db")
@@ -115,30 +115,27 @@ func TestSystemdZapretSocketBroker(t *testing.T) {
 		t.Fatal(err)
 	}
 	scope := testZapretSocketScope(t, cookie, int32(iface.Index))
-	grant := ZapretSocketGrant{Scope: scope, Generation: strings.Repeat("2", 64), PeerRevision: peer.Revision, Expires: time.Now().Add(25 * time.Second)}
+	grant := ZapretSocketGrant{Scope: scope, Generation: os.Getenv("SOLOVEY_TEST_ZAPRET_GENERATION"), PeerRevision: peer.Revision, Expires: time.Now().Add(25 * time.Second)}
 	events := make(chan AuditEvent, 8)
 	srv.Audit = func(event AuditEvent) { events <- event }
-	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	proveZapretSocketBeforeAccept(t, ctx, root)
+	endpoint, err := bindZapretSocket(ctx, root, 65534, grant.Generation)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
-	if err := preparePeerListener(listener); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chown(path, 0, 65534); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(path, 0o660); err != nil {
-		t.Fatal(err)
-	}
+	t.Cleanup(func() { _ = endpoint.close() })
 	done := make(chan error, 1)
 	go func() {
-		done <- srv.serveZapretSockets(ctx, listener, grant, func(_ context.Context, got ZapretSocketGrant, _ int, admit func() error) error {
+		done <- srv.serveZapretSockets(ctx, endpoint, grant, func(_ context.Context, got ZapretSocketGrant, _ int, admit func() error) error {
 			if got.Generation != grant.Generation || got.Scope.PlanRevision() != scope.PlanRevision() {
 				return errors.New("test grant changed")
 			}
 			return admit()
+		}, func(_ context.Context, published string) error {
+			if published != zapretSocketPath(root, grant.Generation) {
+				return errors.New("unexpected provider endpoint")
+			}
+			return nil
 		})
 	}()
 	want := map[string]int{"success": 1, "denied_peer": 1, "denied_validation_failed": 2}
@@ -160,15 +157,66 @@ func TestSystemdZapretSocketBroker(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
+	if _, err := os.Lstat(endpoint.path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("retired endpoint still exists: %v", err)
+	}
+	t.Log("ZAPRET_GENERATION_SOCKET=PASS; EARLY_CREDENTIALS_AND_STALE_PATH_REFUSAL=PASS")
 	t.Log("SYSTEMD_CAPLESS_PROVIDER_SOCKET_HANDOFF=PASS; WRONG_UNIT_WRONG_PROTOCOL_AND_MARKED_REPLAY=DENIED")
 }
 
+func proveZapretSocketBeforeAccept(t *testing.T, ctx context.Context, root string) {
+	t.Helper()
+	generation := strings.Repeat("3", 64)
+	endpoint, err := bindZapretSocket(ctx, root, 65534, generation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer endpoint.close()
+	client, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: endpoint.path, Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	fd := openZapretServiceSocket(t, unix.SOCK_STREAM)
+	if _, _, err := client.WriteMsgUnix([]byte{1}, unix.UnixRights(fd), nil); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := endpoint.listener.AcceptUnix()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+	writer, got, err := readZapretSocket(conn)
+	if got >= 0 {
+		_ = unix.Close(got)
+	}
+	if err != nil || writer != (WriterCredentials{PID: os.Getpid(), UID: 0, GID: 0}) {
+		t.Fatalf("credentials queued before accept were not captured: %+v, %v", writer, err)
+	}
+	if err := endpoint.listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if other, err := bindZapretSocket(ctx, root, 65534, generation); err == nil {
+		_ = other.close()
+		t.Fatal("rebound a previous generation's stale endpoint")
+	}
+	if got, err := inspectStandaloneSocket(endpoint.path, 65534); err != nil || got != endpoint.identity {
+		t.Fatalf("rebind altered the stale endpoint: %+v, %v", got, err)
+	}
+}
+
 func TestSystemdZapretSocketProvider(t *testing.T) {
-	path := os.Getenv("SOLOVEY_TEST_ZAPRET_SOCKET")
-	if path == "" || os.Getenv("SOLOVEY_TEST_ZAPRET_PEER_UNIT") != "" {
+	root := os.Getenv("SOLOVEY_TEST_ZAPRET_SOCKET_ROOT")
+	if root == "" || os.Getenv("SOLOVEY_TEST_ZAPRET_PEER_UNIT") != "" {
 		t.Skip("integration client only")
 	}
 	insistZapretServiceIsolation(t, 65534, "0000000000000000")
+	generation := os.Getenv("SOLOVEY_TEST_ZAPRET_GENERATION")
+	if !digestPattern.MatchString(generation) {
+		t.Fatal("missing fixture generation")
+	}
+	path := zapretSocketPath(root, generation)
 	deadline := time.Now().Add(15 * time.Second)
 	for {
 		info, err := os.Lstat(path)
@@ -179,6 +227,9 @@ func TestSystemdZapretSocketProvider(t *testing.T) {
 			t.Fatal("broker socket not ready")
 		}
 		time.Sleep(25 * time.Millisecond)
+	}
+	if err := os.Remove(path); !errors.Is(err, unix.EACCES) && !errors.Is(err, unix.EPERM) && !errors.Is(err, unix.EROFS) {
+		t.Fatalf("capless service could not prove the endpoint is nonreplaceable: %v", err)
 	}
 	protect := func(fd int) error {
 		// The duplicate is the same kernel socket. os.File owns only the copy.
