@@ -11,9 +11,12 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
 
-// This record is local to the privileged owner, not a framed broker verb.
-const zapretPathCommit Verb = "zapret.egress.commit"
-const zapretPathResource = "zapret-native-egress"
+// These records are local to the privileged owner, not framed broker verbs.
+const (
+	zapretPathCommit   Verb = "zapret.egress.commit"
+	zapretPathRetire   Verb = "zapret.egress.retire"
+	zapretPathResource      = "zapret-native-egress"
+)
 
 // CommitZapretPath verifies the staged generation and retains its checkpoint
 // in the existing file journal. peerRevision comes from the broker's attested
@@ -41,14 +44,50 @@ func (j *FileJournal) recordZapretPath(ctx context.Context, checkpoint nftables.
 	if retained || sequence == 0 {
 		return Failure(CodeRecoveryRequired, "previous Zapret egress generation requires guarded recovery")
 	}
-	payload, digest, err := MarshalPayload(checkpoint)
+	return j.writeZapretPathRecord(checkpoint, zapretPathCommit, "zapret-commit-", checkpoint.Generation, peerRevision, sequence,
+		CompletionPolicy{RetainUntilRelease: true})
+}
+
+// RetireZapretBeforeAdmission releases a retained checkpoint only when its
+// live owner can prove it never enrolled a socket and cleanly retired the
+// kernel resources. Any admitted or ambiguous generation still needs drain.
+func (j *FileJournal) RetireZapretBeforeAdmission(ctx context.Context, path *nftables.ZapretNativePath, peerRevision string) error {
+	if j == nil || path == nil || !digestPattern.MatchString(peerRevision) {
+		return errZapretSocket
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	j.mu.Lock()
+	retained, exists := j.liveCompleted[completedMutationKey(zapretPathResource, zapretPathCommit, zapretPathResource)]
+	sequence := j.fences[zapretPathResource] + 1
+	j.mu.Unlock()
+	generation := path.Generation()
+	var checkpoint nftables.ZapretPathCheckpoint
+	if !exists || sequence == 0 || retained.Receipt == nil || retained.Receipt.BrokerBootID != j.bootID ||
+		retained.Receipt.PeerRevision != peerRevision || decodeStrict(retained.Payload, &checkpoint) != nil || checkpoint.Generation != generation {
+		return Failure(CodeRecoveryRequired, "live Zapret generation does not match the retained receipt")
+	}
+	if err := path.AbortUnadmitted(generation); err != nil {
+		return errors.Join(Failure(CodeRecoveryRequired, "Zapret generation requires guarded recovery"), err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	retirement := struct{ Generation, CommitReceipt string }{generation, retained.Receipt.ReceiptDigest}
+	return j.writeZapretPathRecord(retirement, zapretPathRetire, "zapret-retire-", generation, peerRevision, sequence,
+		CompletionPolicy{ReleasesVerb: zapretPathCommit})
+}
+
+func (j *FileJournal) writeZapretPathRecord(value any, verb Verb, prefix, generation, peerRevision string, sequence uint64, policy CompletionPolicy) error {
+	payload, digest, err := MarshalPayload(value)
 	if err != nil {
 		return err
 	}
 	now := time.Now().UTC()
 	request := Request{ProtocolVersion: ProtocolVersion, CapabilityRevision: CapabilityRevision, BootID: j.bootID,
-		Role: RolePanel, Verb: zapretPathCommit, RequestID: checkpoint.Generation, OperationID: zapretPathResource,
-		IdempotencyKey: "zapret-commit-" + checkpoint.Generation, Fence: Fence{Resource: zapretPathResource, Sequence: sequence, Token: checkpoint.Generation},
+		Role: RolePanel, Verb: verb, RequestID: generation, OperationID: zapretPathResource,
+		IdempotencyKey: prefix + generation, Fence: Fence{Resource: zapretPathResource, Sequence: sequence, Token: generation},
 		DeadlineAt: now.Add(30 * time.Second).UnixMilli(), Payload: payload, PayloadDigest: digest}
 	requestDigest := Digest(append(canonicalRequestAuthority(request), request.Payload...))
 	replay, active, err := j.Begin(request, PeerIdentity{Revision: peerRevision}, requestDigest, now)
@@ -60,7 +99,7 @@ func (j *FileJournal) recordZapretPath(ctx context.Context, checkpoint nftables.
 	}
 	response := successResponse(request)
 	response.Payload, response.PayloadDigest = payload, digest
-	_, err = j.Commit(request, active, response, CompletionPolicy{RetainUntilRelease: true}, time.Now().UTC())
+	_, err = j.Commit(request, active, response, policy, time.Now().UTC())
 	return err
 }
 

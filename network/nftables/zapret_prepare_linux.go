@@ -30,6 +30,7 @@ type ZapretNativePath struct {
 	committed  bool
 	enrolled   bool
 	closed     bool
+	closeErr   error
 }
 
 // ZapretPathCheckpoint identifies the owned resources for recovery. It is not
@@ -226,9 +227,24 @@ func (p *ZapretNativePath) Close() error {
 	return p.closeLocked()
 }
 
+// AbortUnadmitted proves the live owner never enrolled a socket and retires
+// that exact committed generation under the socket-admission fence. A
+// reopened owner cannot make this claim from a journal receipt alone.
+func (p *ZapretNativePath) AbortUnadmitted(generation string) error {
+	if p == nil {
+		return errors.New("path for Zapret is unavailable")
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.committed || generation != p.generation || p.enrolled {
+		return errors.New("path for Zapret is not a committed, unadmitted generation")
+	}
+	return p.closeLocked()
+}
+
 func (p *ZapretNativePath) closeLocked() error {
 	if p.closed {
-		return nil
+		return p.closeErr
 	}
 	p.closed = true
 	if p.cancel != nil {
@@ -248,5 +264,6 @@ func (p *ZapretNativePath) closeLocked() error {
 			guardErr = p.guard.AbortUnadmitted()
 		}
 	}
-	return errors.Join(revokeErr, tableErr, guardErr)
+	p.closeErr = errors.Join(revokeErr, tableErr, guardErr)
+	return p.closeErr
 }

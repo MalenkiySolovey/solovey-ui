@@ -195,13 +195,33 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 	if err := failed.Commit(ctx, observeFixture, func(nftables.ZapretPathCheckpoint) error { return writeFailure }); !errors.Is(err, writeFailure) || failed.Lifetime().Err() == nil || failed.AdmissionReady(scope, failed.Generation()) {
 		t.Fatalf("commit failure did not retire the exact staged path: %v", err)
 	}
-	path := prepare() // A failed commit must release its own unadmitted table and pins.
-	j, err := privilegedbroker.OpenFileJournal(filepath.Join(t.TempDir(), "solovey-ui-broker"), "fixture-boot")
+	idle := prepare() // A failed commit must release its own unadmitted table and pins.
+	journalDir := filepath.Join(t.TempDir(), "solovey-ui-broker")
+	j, err := privilegedbroker.OpenFileJournal(journalDir, "fixture-boot")
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := j.CommitZapretPath(ctx, idle, observeFixture, revision); err != nil {
+		t.Fatal(err)
+	}
+	if err := j.RetireZapretBeforeAdmission(ctx, idle, strings.Repeat("b", 64)); err == nil || idle.Lifetime().Err() != nil {
+		t.Fatal("unrelated peer authority retired the idle generation")
+	}
+	if err := j.RetireZapretBeforeAdmission(ctx, idle, revision); err != nil || idle.Lifetime().Err() == nil || idle.AdmissionReady(scope, idle.Generation()) {
+		t.Fatalf("unadmitted generation did not retire cleanly: %v", err)
+	}
+	// Reopening the journal must still permit a fresh generation after a
+	// verified release. The new apply must not reuse the old table or pins.
+	j, err = privilegedbroker.OpenFileJournal(journalDir, "fixture-boot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := prepare()
 	if err := j.CommitZapretPath(ctx, path, observeFixture, revision); err != nil {
 		t.Fatal(err)
+	}
+	if err := j.RetireZapretBeforeAdmission(ctx, idle, revision); err == nil || path.Lifetime().Err() != nil {
+		t.Fatal("stale retirement cleared the replacement generation")
 	}
 	if path.AdmissionReady(scope, path.Generation()) {
 		t.Fatal("durable record became an admission grant before the first lease")
@@ -260,6 +280,10 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 			t.Fatalf("%s: received %d data segments, want %d", flow.name, len(sizes), flow.packets)
 		}
 	}
+	if err := j.RetireZapretBeforeAdmission(ctx, path, revision); err == nil || path.Lifetime().Err() != nil {
+		t.Fatal("retirement released a checkpoint after socket enrollment")
+	}
+	t.Log("ZAPRET_IDLE_RETIRE_REOPEN=PASS; STALE_AND_ADMITTED_RELEASE=DENIED")
 	if err := path.Renew(ctx, facts, 30*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
