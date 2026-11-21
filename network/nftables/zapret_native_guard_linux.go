@@ -21,7 +21,6 @@ import (
 )
 
 const (
-	zapretPostrouting   = 4
 	zapretGuardPriority = math.MaxInt32 - 1
 	zapretSocketLimit   = 1 << 16
 )
@@ -50,13 +49,13 @@ type zapretGuardPin struct {
 func CreateZapretNativeGuard(plan planner.ZapretPlan, pinDir string) (_ *ZapretNativeGuard, failure error) {
 	scope, err := plan.SocketScope()
 	if err != nil || plan.RawPassMark() == 0 {
-		return nil, errors.New("Zapret guard requires an installed Planner allocation")
+		return nil, errors.New("guard for Zapret requires an installed Planner allocation")
 	}
 	if err := checkZapretPinDirectory(pinDir); err != nil {
 		return nil, err
 	}
 	if strconv.IntSize != 64 {
-		return nil, errors.New("Zapret BPF guard requires a 64-bit Linux kernel and broker")
+		return nil, errors.New("BPF guard for Zapret requires a 64-bit Linux kernel and broker")
 	}
 	probe, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)
 	if err != nil {
@@ -65,11 +64,11 @@ func CreateZapretNativeGuard(plan planner.ZapretPlan, pinDir string) (_ *ZapretN
 	namespace, err := unix.GetsockoptUint64(probe, unix.SOL_SOCKET, unix.SO_NETNS_COOKIE)
 	_ = unix.Close(probe)
 	if err != nil || namespace != scope.Egress().NamespaceCookie {
-		return nil, errors.New("Zapret guard is not in the planned network namespace")
+		return nil, errors.New("guard for Zapret is not in the planned network namespace")
 	}
 	layout, err := observeZapretKernelLayout()
 	if err != nil {
-		return nil, fmt.Errorf("Zapret egress guard requires kernel BTF: %w", err)
+		return nil, fmt.Errorf("egress guard for Zapret requires kernel BTF: %w", err)
 	}
 	g := &ZapretNativeGuard{ifindex: uint32(scope.Egress().IfIndex), namespace: namespace}
 	defer func() {
@@ -98,15 +97,15 @@ func CreateZapretNativeGuard(plan planner.ZapretPlan, pinDir string) (_ *ZapretN
 	}
 	for _, family := range []struct {
 		pin string
-		num uint32
+		num link.NetfilterProtocolFamily
 		use bool
-	}{{"ipv4", unix.NFPROTO_IPV4, scope.Egress().IPv4}, {"ipv6", unix.NFPROTO_IPV6, scope.Egress().IPv6}} {
+	}{{"ipv4", link.NetfilterProtoIPv4, scope.Egress().IPv4}, {"ipv6", link.NetfilterProtoIPv6, scope.Egress().IPv6}} {
 		program, err := ebpf.NewProgram(&ebpf.ProgramSpec{Name: "sui_zapret_out", Type: ebpf.Netfilter, AttachType: ebpf.AttachNetfilter,
 			License: "GPL", Instructions: zapretGuardProgram(plan, layout, g.device.FD(), g.deadline.FD(), g.sockets.FD(), family.use)})
 		if err != nil {
 			return nil, fmt.Errorf("load Zapret %s egress guard: %w", family.pin, err)
 		}
-		hook, err := link.AttachNetfilter(link.NetfilterOptions{Program: program, ProtocolFamily: family.num, HookNumber: zapretPostrouting, Priority: zapretGuardPriority})
+		hook, err := link.AttachNetfilter(link.NetfilterOptions{Program: program, ProtocolFamily: family.num, Hook: link.NetfilterInetPostRouting, Priority: zapretGuardPriority})
 		_ = program.Close()
 		if err != nil {
 			return nil, fmt.Errorf("attach Zapret %s POSTROUTING guard: %w", family.pin, err)
@@ -129,12 +128,12 @@ func CreateZapretNativeGuard(plan planner.ZapretPlan, pinDir string) (_ *ZapretN
 func checkZapretPinDirectory(path string) error {
 	info, err := os.Lstat(path)
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path || err != nil || !info.IsDir() || info.Mode().Perm() != 0o700 {
-		return errors.New("Zapret guard requires a private bpffs generation directory")
+		return errors.New("guard for Zapret requires a private bpffs generation directory")
 	}
 	var stat unix.Stat_t
 	var fs unix.Statfs_t
 	if err := unix.Lstat(path, &stat); err != nil || stat.Uid != 0 || unix.Statfs(path, &fs) != nil || fs.Type != unix.BPF_FS_MAGIC {
-		return errors.New("Zapret guard generation directory is not root-owned bpffs")
+		return errors.New("guard directory for Zapret is not root-owned bpffs")
 	}
 	entries, err := os.ReadDir(path)
 	if err != nil || len(entries) != 0 {
@@ -153,11 +152,11 @@ func (g *ZapretNativeGuard) Renew(lifetime time.Duration) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.closed || g.revoked || g.deadline == nil {
-		return errors.New("Zapret egress guard was retired")
+		return errors.New("egress guard for Zapret was retired")
 	}
 	var ifindex uint32
 	if err := g.device.Lookup(uint32(0), &ifindex); err != nil || ifindex != g.ifindex {
-		return errors.Join(errors.New("Zapret egress device was removed or replaced"), g.revokeLocked())
+		return errors.Join(errors.New("egress device for Zapret was removed or replaced"), g.revokeLocked())
 	}
 	var now unix.Timespec
 	if err := unix.ClockGettime(unix.CLOCK_MONOTONIC, &now); err != nil {
@@ -168,7 +167,7 @@ func (g *ZapretNativeGuard) Renew(lifetime time.Duration) error {
 		return errors.Join(err, g.revokeLocked())
 	}
 	if previous != 0 && previous <= uint64(now.Nano()) {
-		return errors.Join(errors.New("Zapret egress guard lease expired"), g.revokeLocked())
+		return errors.Join(errors.New("egress guard lease for Zapret expired"), g.revokeLocked())
 	}
 	if err := g.deadline.Put(uint32(0), uint64(now.Nano()+int64(lifetime))); err != nil {
 		return errors.Join(err, g.revokeLocked())
@@ -180,25 +179,25 @@ func (g *ZapretNativeGuard) Renew(lifetime time.Duration) error {
 // attest and validate the socket, enroll it and then mark it under that fence.
 func (g *ZapretNativeGuard) EnrollSocket(fd int) error {
 	if g == nil {
-		return errors.New("Zapret egress guard is unavailable")
+		return errors.New("egress guard for Zapret is unavailable")
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.closed || g.revoked || g.sockets == nil {
-		return errors.New("Zapret egress guard was retired")
+		return errors.New("egress guard for Zapret was retired")
 	}
 	var now unix.Timespec
 	var deadline uint64
 	if unix.ClockGettime(unix.CLOCK_MONOTONIC, &now) != nil || g.deadline.Lookup(uint32(0), &deadline) != nil || deadline <= uint64(now.Nano()) {
-		return errors.New("Zapret egress guard has no live lease")
+		return errors.New("egress guard for Zapret has no live lease")
 	}
 	namespace, err := unix.GetsockoptUint64(fd, unix.SOL_SOCKET, unix.SO_NETNS_COOKIE)
 	if err != nil || namespace != g.namespace {
-		return errors.New("Zapret socket is not in the guarded namespace")
+		return errors.New("socket for Zapret is not in the guarded namespace")
 	}
 	cookie, err := unix.GetsockoptUint64(fd, unix.SOL_SOCKET, unix.SO_COOKIE)
 	if err != nil || cookie == 0 {
-		return errors.New("Zapret socket has no kernel cookie")
+		return errors.New("socket for Zapret has no kernel cookie")
 	}
 	if err := g.sockets.Update(cookie, uint32(1), ebpf.UpdateNoExist); err != nil {
 		return fmt.Errorf("enroll Zapret socket: %w", err)
@@ -209,7 +208,7 @@ func (g *ZapretNativeGuard) EnrollSocket(fd int) error {
 
 func (g *ZapretNativeGuard) Revoke() error {
 	if g == nil {
-		return errors.New("Zapret egress guard is unavailable")
+		return errors.New("egress guard for Zapret is unavailable")
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -219,7 +218,7 @@ func (g *ZapretNativeGuard) Revoke() error {
 func (g *ZapretNativeGuard) revokeLocked() error {
 	g.revoked = true
 	if g.closed || g.deadline == nil {
-		return errors.New("Zapret egress guard is unavailable")
+		return errors.New("egress guard for Zapret is unavailable")
 	}
 	return g.deadline.Put(uint32(0), uint64(0))
 }
@@ -243,7 +242,7 @@ func (g *ZapretNativeGuard) AbortUnadmitted() error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.enrolled {
-		return errors.New("Zapret guard may still protect admitted sockets")
+		return errors.New("guard for Zapret may still protect admitted sockets")
 	}
 	if g.closed {
 		return errors.New("cannot abort a closed Zapret guard without live pin identity")
@@ -264,7 +263,7 @@ func (g *ZapretNativeGuard) AbortUnadmitted() error {
 		info, infoErr := current.Info()
 		_ = current.Close()
 		if infoErr != nil || info.ID != hook.id {
-			err = errors.Join(err, errors.New("Zapret guard pin changed ownership"), infoErr)
+			err = errors.Join(err, errors.New("guard pin for Zapret changed ownership"), infoErr)
 			continue
 		}
 		err = errors.Join(err, hook.Unpin())

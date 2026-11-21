@@ -111,7 +111,7 @@ func (p *ZapretNativePath) WithSocket(ctx context.Context, observe func(context.
 
 func (p *ZapretNativePath) verify(ctx context.Context, current planner.Facts) error {
 	if p.closed || p.guard == nil || p.table == nil {
-		return errors.New("Zapret native path is unavailable")
+		return errors.New("native path for Zapret is unavailable")
 	}
 	if err := planner.CheckCurrent(p.plan.Plan(), current); err != nil {
 		return err
@@ -121,7 +121,7 @@ func (p *ZapretNativePath) verify(ctx context.Context, current planner.Facts) er
 	}
 	queue, err := ObserveZapretQueueOwner(p.plan, p.engine)
 	if err != nil || queue != p.queue {
-		return errors.Join(errors.New("Zapret queue ownership drift"), err)
+		return errors.Join(errors.New("queue ownership for Zapret changed"), err)
 	}
 	return ctx.Err()
 }

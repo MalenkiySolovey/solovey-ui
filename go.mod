@@ -9,7 +9,7 @@ require (
 	github.com/MalenkiySolovey/solovey-component-telegram v0.1.0
 	github.com/MalenkiySolovey/solovey-contracts v1.0.1
 	github.com/MalenkiySolovey/solovey-host v0.12.1
-	github.com/cilium/ebpf v0.16.0
+	github.com/cilium/ebpf v0.22.0
 	github.com/coder/websocket v1.8.14
 	github.com/gin-contrib/gzip v1.2.6
 	github.com/gin-contrib/sessions v1.1.0

@@ -75,7 +75,7 @@ func CreateZapretOwnedTable(ctx context.Context, plan planner.ZapretPlan) (_ *Za
 	if err := raw.Control(func(fd uintptr) {
 		cookie, cookieErr = unix.GetsockoptUint64(int(fd), unix.SOL_SOCKET, unix.SO_NETNS_COOKIE)
 	}); err != nil || cookieErr != nil || cookie != scope.Egress().NamespaceCookie {
-		return nil, errors.New("Zapret table port is not in the planned network namespace")
+		return nil, errors.New("table port for Zapret is not in the planned network namespace")
 	}
 	sent, err := conn.SendMessages(batch)
 	if err != nil {
@@ -98,7 +98,7 @@ func (t *ZapretOwnedTable) Verify(ctx context.Context) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.conn == nil || t.handle == 0 {
-		return errors.New("Zapret table owner has retired")
+		return errors.New("table owner for Zapret has retired")
 	}
 	if err := t.setDeadline(ctx); err != nil {
 		return err
@@ -108,7 +108,7 @@ func (t *ZapretOwnedTable) Verify(ctx context.Context) error {
 		return err
 	}
 	if handle != t.handle {
-		return errors.New("Zapret table generation changed")
+		return errors.New("table generation for Zapret changed")
 	}
 	return ctx.Err()
 }
@@ -178,7 +178,7 @@ func (t *ZapretOwnedTable) observe() (uint64, error) {
 	// port cannot edit any owned chains or rules, regardless of their names.
 	if attrs.Err() != nil || name != planner.ZapretInstalledTable || flags != nftTableFlagOwner ||
 		owner == 0 || owner != t.port || handle == 0 || use != 1 || !bytes.Equal(comment, t.comment) {
-		return 0, errors.New("Zapret table has no exact live owner and plan identity")
+		return 0, errors.New("table for Zapret has no exact live owner and plan identity")
 	}
 	return handle, nil
 }

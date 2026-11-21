@@ -324,7 +324,7 @@ func probeNamespaceForGuard(parent string) (string, error) {
 	links, linkErr := net.Interfaces()
 	if !strings.HasPrefix(parent, "net:[") || err != nil || initErr != nil || ns == parent || ns == initNS || os.Geteuid() != 0 ||
 		linkErr != nil || len(links) != 1 || links[0].Name != "lo" {
-		return "", errors.New("Zapret egress test requires a fresh, disposable network namespace")
+		return "", errors.New("egress test for Zapret requires a fresh, disposable network namespace")
 	}
 	return ns, nil
 }

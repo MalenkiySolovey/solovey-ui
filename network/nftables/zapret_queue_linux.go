@@ -33,7 +33,7 @@ func ObserveZapretQueueOwner(plan planner.ZapretPlan, expected processevidence.F
 	scope, err := plan.SocketScope()
 	if err != nil || expected.PID <= 1 || !validSHA256(expected.Revision) || !validSHA256(expected.ExeDigest) ||
 		expected.ExecutableDeleted || expected.ExeUID != 0 || expected.ExeMode&0o022 != 0 {
-		return ZapretQueueOwner{}, errors.New("Zapret queue has no trusted engine identity")
+		return ZapretQueueOwner{}, errors.New("queue for Zapret has no trusted engine identity")
 	}
 	pidfd, err := unix.PidfdOpen(expected.PID, 0)
 	if err != nil {
@@ -42,7 +42,7 @@ func ObserveZapretQueueOwner(plan planner.ZapretPlan, expected processevidence.F
 	defer unix.Close(pidfd)
 	process, err := processevidence.Observe(expected.PID)
 	if err != nil || process.Revision != expected.Revision || !zapretPidfdAlive(pidfd) {
-		return ZapretQueueOwner{}, errors.New("Zapret engine process generation changed")
+		return ZapretQueueOwner{}, errors.New("process generation for the Zapret engine changed")
 	}
 	port, inode, err := observeZapretQueueBinding(plan.Queue())
 	if err != nil {
@@ -66,15 +66,15 @@ func ObserveZapretQueueOwner(plan planner.ZapretPlan, expected processevidence.F
 		}
 		afterPort, afterInode, err := observeZapretQueueBinding(plan.Queue())
 		if err != nil || afterPort != port || afterInode != inode || !zapretPidfdAlive(pidfd) {
-			return ZapretQueueOwner{}, errors.New("Zapret queue binding changed during observation")
+			return ZapretQueueOwner{}, errors.New("queue binding for Zapret changed during observation")
 		}
 		afterProcess, err := processevidence.Observe(expected.PID)
 		if err != nil || afterProcess.Revision != process.Revision || !zapretPidfdAlive(pidfd) {
-			return ZapretQueueOwner{}, errors.New("Zapret engine process changed during queue observation")
+			return ZapretQueueOwner{}, errors.New("process for the Zapret engine changed during queue observation")
 		}
 		return ZapretQueueOwner{plan.Queue(), port, inode, process.Revision}, nil
 	}
-	return ZapretQueueOwner{}, errors.New("Zapret queue does not belong to the authenticated engine")
+	return ZapretQueueOwner{}, errors.New("queue for Zapret does not belong to the authenticated engine")
 }
 
 func zapretPidfdAlive(fd int) bool {
@@ -125,12 +125,12 @@ func observeZapretQueueBinding(queue uint16) (uint32, uint64, error) {
 func readZapretQueueInventory(path string) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return "", fmt.Errorf("Zapret queue inventory unavailable: %w", err)
+		return "", fmt.Errorf("read queue inventory for Zapret: %w", err)
 	}
 	defer file.Close()
 	data, err := io.ReadAll(io.LimitReader(file, zapretQueueInventoryLimit+1))
 	if err != nil || len(data) > zapretQueueInventoryLimit {
-		return "", errors.New("Zapret queue inventory exceeded its bound or could not be read")
+		return "", errors.New("queue inventory for Zapret exceeded its bound or could not be read")
 	}
 	return string(data), nil
 }
@@ -144,17 +144,17 @@ func zapretQueuePort(inventory string, queue uint16) (uint32, error) {
 			continue
 		}
 		if len(fields) != 9 || fields[3] != "2" || port != 0 {
-			return 0, errors.New("Zapret queue owner or packet copy mode is ambiguous")
+			return 0, errors.New("queue owner or packet copy mode for Zapret is ambiguous")
 		}
 		value, err := strconv.ParseUint(fields[1], 10, 32)
 		copyRange, rangeErr := strconv.ParseUint(fields[4], 10, 32)
 		if err != nil || value == 0 || rangeErr != nil || copyRange == 0 {
-			return 0, errors.New("Zapret queue has no valid packet consumer")
+			return 0, errors.New("queue for Zapret has no valid packet consumer")
 		}
 		port = uint32(value)
 	}
 	if port == 0 {
-		return 0, errors.New("Zapret queue is not bound")
+		return 0, errors.New("queue for Zapret is not bound")
 	}
 	return port, nil
 }
@@ -169,16 +169,16 @@ func zapretQueueSocketInode(inventory string, port uint32) (uint64, error) {
 			continue
 		}
 		if len(fields) != 10 || inode != 0 {
-			return 0, errors.New("Zapret netlink socket binding is ambiguous")
+			return 0, errors.New("netlink socket binding for Zapret is ambiguous")
 		}
 		value, err := strconv.ParseUint(fields[9], 10, 64)
 		if err != nil || value == 0 {
-			return 0, errors.New("Zapret netlink socket inode is invalid")
+			return 0, errors.New("netlink socket inode for Zapret is invalid")
 		}
 		inode = value
 	}
 	if inode == 0 {
-		return 0, errors.New("Zapret netlink socket binding is missing")
+		return 0, errors.New("netlink socket binding for Zapret is missing")
 	}
 	return inode, nil
 }

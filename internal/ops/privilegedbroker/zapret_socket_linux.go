@@ -16,7 +16,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-var errZapretSocket = errors.New("Zapret socket admission denied")
+var errZapretSocket = errors.New("socket admission for Zapret denied")
 
 // ZapretSocketGrant is supplied by the broker's trusted generation owner,
 // never decoded from a Panel request. Generation identifies one live install

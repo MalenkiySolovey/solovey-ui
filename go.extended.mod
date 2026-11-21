@@ -11,7 +11,7 @@ require (
 	github.com/MalenkiySolovey/solovey-contracts v1.0.1
 	github.com/MalenkiySolovey/solovey-host v0.12.1
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cilium/ebpf v0.16.0
+	github.com/cilium/ebpf v0.22.0
 	github.com/coder/websocket v1.8.14
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/gin-contrib/gzip v1.2.6
