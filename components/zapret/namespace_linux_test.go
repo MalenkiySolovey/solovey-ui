@@ -303,9 +303,6 @@ func TestZapretOutboundNamespace(t *testing.T) {
 	conn, err = dial(ctx, "direct-b", "tcp", target.address)
 	zapretRoundTrip(t, conn, err)
 	t.Log("QUEUE_LOSS_FAIL_CLOSED: Direct A did not connect; Direct B echoed")
-	if err := core.Stop(); err != nil {
-		t.Fatal(err)
-	}
 	nft("", "add", "counter", "inet", planner.ZapretProbeTable, "intervening")
 	changed := nft("", "list", "table", "inet", planner.ZapretProbeTable)
 	if err := change.call(ctx, zapretRollback, 5); !probeBrokerFailure(err, broker.CodeRecoveryRequired) ||
@@ -323,6 +320,18 @@ func TestZapretOutboundNamespace(t *testing.T) {
 	}
 	if err := probe.VerifyCurrent(ctx, checkpoint); err == nil {
 		t.Fatal("the retired checkpoint still authorizes the missing table")
+	}
+	// Verifier-only reproducer: leave the already projected Direct alive while
+	// its queue and table are gone. Detecting stale state does not block I/O.
+	conn, err = dial(ctx, "direct-a", "tcp", target.address)
+	if err == nil {
+		zapretRoundTrip(t, conn, nil)
+		t.Log("INSTALLED_ACTIVATION_BLOCKER: projected Direct A echoed after its handoff rule disappeared")
+	} else {
+		t.Logf("HANDOFF_RULE_LOSS: Direct A failed without the table: %v", err)
+	}
+	if err := core.Stop(); err != nil {
+		t.Fatal(err)
 	}
 	t.Log("PACKET_PATH_PROVEN: TCP/UDP IPv4/IPv6, failed apply atomic, stop scoped, no external traffic")
 }
