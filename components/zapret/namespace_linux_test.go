@@ -222,12 +222,45 @@ func TestZapretOutboundNamespace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Two local UDP inbounds reach the very same peer. Only the first
+	// matches a Routing rule; the other uses the ordinary Direct default.
+	var ingress [2]net.PacketConn
+	var ingressPorts [2]int
+	for index := range ingress {
+		ingress[index], err = net.ListenPacket("udp4", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ingress[index].Close()
+		ingressPorts[index] = ingress[index].LocalAddr().(*net.UDPAddr).Port
+	}
+	for _, listener := range ingress {
+		if err := listener.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	udpPeerPort := endpoints[1].port
 	core := coreruntime.NewCore()
-	configuration := fmt.Sprintf(`{"log":{"disabled":true},"outbounds":[%s,%s],"route":{"final":"direct-b"}}`, directA, directB)
+	configuration := fmt.Sprintf(`{"log":{"disabled":true},"outbounds":[%s,%s],"inbounds":[
+		{"type":"direct","tag":"routed-a","network":"udp","listen":"127.0.0.1","listen_port":%d,"override_address":"127.0.0.1","override_port":%d},
+		{"type":"direct","tag":"routed-default","network":"udp","listen":"127.0.0.1","listen_port":%d,"override_address":"127.0.0.1","override_port":%d}],
+		"route":{"rules":[{"inbound":["routed-a"],"action":"route","outbound":"direct-a"}],"final":"direct-b"}}`,
+		directA, directB, ingressPorts[0], udpPeerPort, ingressPorts[1], udpPeerPort)
 	if err := core.Start([]byte(configuration)); err != nil {
 		t.Fatal(err)
 	}
 	defer core.Stop()
+	for index, port := range ingressPorts {
+		before := zapretCounters(t, nft("", "-j", "list", "table", "inet", planner.ZapretProbeTable))
+		conn, err := (&net.Dialer{}).DialContext(ctx, "udp4", fmt.Sprintf("127.0.0.1:%d", port))
+		zapretRoundTrip(t, conn, err)
+		after := zapretCounters(t, nft("", "-j", "list", "table", "inet", planner.ZapretProbeTable))
+		seen, captured := after["udp_seen"]-before["udp_seen"], after["udp_captured"]-before["udp_captured"]
+		if want := uint64(1 - index); captured != want || seen != 1 {
+			t.Fatalf("Routing path %d: captured/observed %d/%d, want %d/1", index, captured, seen, want)
+		}
+	}
+	t.Log("ROUTING_OUTBOUND_PROVEN: rule-selected A 1/1, default B 0/1 at the same IPv4 UDP peer")
 	dial := func(ctx context.Context, name, network, address string) (net.Conn, error) {
 		if name == "unmarked" {
 			return (&net.Dialer{}).DialContext(ctx, network, address)
