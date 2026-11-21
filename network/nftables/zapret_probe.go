@@ -177,6 +177,18 @@ func (p *ZapretProbe) snapshot(ctx context.Context) (zapretProbeSnapshot, error)
 			if json.Unmarshal(raw, &data) != nil {
 				return zapretProbeSnapshot{}, errors.New("unrecognized nft object")
 			}
+			// Some nft versions emit named counter values in JSON even with
+			// --stateless. They are observations, not part of the table identity.
+			if kind == "counter" {
+				var counter map[string]json.RawMessage
+				if json.Unmarshal(raw, &counter) != nil {
+					return zapretProbeSnapshot{}, errors.New("unrecognized nft counter")
+				}
+				delete(counter, "packets")
+				delete(counter, "bytes")
+				wrapper[kind], _ = json.Marshal(counter)
+				item, _ = json.Marshal(wrapper)
+			}
 			if data.Family != "inet" || data.Table != planner.ZapretProbeTable && !(kind == "table" && data.Name == planner.ZapretProbeTable) {
 				other = append(other, item)
 				continue
@@ -259,8 +271,11 @@ func (p *ZapretProbe) Verify(ctx context.Context, seal ZapretProbeSeal) error {
 	if err != nil {
 		return err
 	}
-	if current.table != seal.TableDigest || current.marker != probeComment(p.plan) || current.baseline != seal.BeforeDigest {
-		return errors.New("Zapret probe ruleset changed before verification")
+	if current.table != seal.TableDigest || current.marker != probeComment(p.plan) {
+		return errors.New("Zapret probe table changed before verification")
+	}
+	if current.baseline != seal.BeforeDigest {
+		return errors.New("unrelated rules changed before Zapret probe verification")
 	}
 	if peer, err := p.QueuePeer(); err != nil || peer != seal.QueuePeer {
 		return ErrZapretProbeQueue
