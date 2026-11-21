@@ -18,6 +18,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/supervisor"
+	_ "github.com/MalenkiySolovey/solovey-ui/components/zapret"
 	"github.com/gin-gonic/gin"
 )
 
