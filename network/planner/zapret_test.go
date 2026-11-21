@@ -22,7 +22,7 @@ func zapretFixture() (intent.ZapretPacketPathIntent, Facts) {
 		Capability:        platform.PlatformFact{Availability: platform.Available, Backend: ZapretNamespaceBackend, Reason: "isolated"},
 		InventoryComplete: true,
 		Zapret: &ZapretFacts{OutboundRef: "direct-a", OutboundRevision: hash("outbound"), Provider: "sing-box",
-			DirectSocket: true, SocketMark: true, NFQueue: true, ConntrackAccounting: true},
+			DirectSocket: true, SocketMark: true, NFQueue: true, ConntrackAccounting: true, EgressGuard: true},
 	}
 	return value, facts
 }
@@ -34,13 +34,17 @@ func TestCompileZapretAllocatesFreshBoundedResources(t *testing.T) {
 		t.Fatal(err)
 	}
 	second, err := CompileZapret(request, facts)
-	if err != nil || first.Queue() != second.Queue() || first.SocketMark() != second.SocketMark() || first.LoopMark() != second.LoopMark() {
+	if err != nil || first.Queue() != second.Queue() || first.SocketMark() != second.SocketMark() || first.LoopMark() != second.LoopMark() || first.QueueMark() != second.QueueMark() {
 		t.Fatalf("allocation is not deterministic: first=%#v second=%#v err=%v", first, second, err)
 	}
 	if first.Queue() == 0 || first.SocketMark() == 0 || first.LoopMark() == 0 || first.SocketMark() == first.LoopMark() {
 		t.Fatalf("invalid allocation: queue=%d mark=%x loop=%x", first.Queue(), first.SocketMark(), first.LoopMark())
 	}
-	if len(first.Plan().Resources()) != 4 {
+	pass := first.QueueMark() ^ first.SocketMark()
+	if pass == 0 || pass&(pass-1) != 0 || first.QueueMark()&first.SocketMark() == 0 || first.QueueMark()&first.LoopMark() != 0 {
+		t.Fatalf("invalid packet admission mark: socket=%x queue=%x loop=%x", first.SocketMark(), first.QueueMark(), first.LoopMark())
+	}
+	if len(first.Plan().Resources()) != 6 {
 		t.Fatalf("unexpected owned resources: %#v", first.Plan().Resources())
 	}
 	accepted, err := Accept(first.Plan(), facts, hash("candidate"))
@@ -61,8 +65,12 @@ func TestCompileZapretFailsClosedForUnsupportedPathAndCollision(t *testing.T) {
 	for name, edit := range map[string]func(*intent.ZapretPacketPathIntent, *Facts){
 		"tun auto redirect": func(_ *intent.ZapretPacketPathIntent, f *Facts) { f.Zapret.TUNAutoRedirect = true },
 		"no accounting":     func(_ *intent.ZapretPacketPathIntent, f *Facts) { f.Zapret.ConntrackAccounting = false },
+		"no guard":          func(_ *intent.ZapretPacketPathIntent, f *Facts) { f.Zapret.EgressGuard = false },
 		"mark collision":    func(_ *intent.ZapretPacketPathIntent, f *Facts) { f.Zapret.ConfiguredSocketMark = 1 },
-		"no free marks":     func(_ *intent.ZapretPacketPathIntent, f *Facts) { f.Zapret.ReservedMarkBits = ^uint32(1) },
+		"only two marks":    func(_ *intent.ZapretPacketPathIntent, f *Facts) { f.Zapret.ReservedMarkBits = ^uint32(3) },
+		"foreign guard": func(_ *intent.ZapretPacketPathIntent, f *Facts) {
+			f.Allocations = []Allocation{{Ownership: Ownership{Allocation: ZapretProbeGuard}}}
+		},
 		"foreign table": func(_ *intent.ZapretPacketPathIntent, f *Facts) {
 			f.Allocations = []Allocation{{Ownership: Ownership{Allocation: "inet:solovey_zapret_probe"}}}
 		},
@@ -100,13 +108,13 @@ func TestZapretDriftChecksAllAllocationsBeforeAllowingRepair(t *testing.T) {
 	if drift := Compare(plan, plan.Revision(), true, actual); len(drift) != 0 {
 		t.Fatalf("complete allocations reported drift: %#v", drift)
 	}
-	if drift := Compare(plan, plan.Revision(), true, actual[:1]); len(drift) != 3 {
+	if drift := Compare(plan, plan.Revision(), true, actual[:1]); len(drift) != 5 {
 		t.Fatalf("a matching table hid queue or mark loss: %#v", drift)
 	}
 	queue := actual[1]
 	queue.Kind = "foreign-queue"
 	drift := Compare(plan, plan.Revision(), true, []Allocation{actual[0], queue})
-	if len(drift) != 3 || drift[0].Kind != Unknown || drift[1].Kind != Missing || drift[2].Kind != Missing {
+	if len(drift) != 5 || drift[0].Kind != Unknown || drift[1].Kind != Missing || drift[4].Kind != Missing {
 		t.Fatalf("foreign queue was not distinguished from missing marks: %#v", drift)
 	}
 	for _, entry := range drift {

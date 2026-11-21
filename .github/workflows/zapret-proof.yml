@@ -7,7 +7,8 @@ on:
       - 'components/zapret/**'
       - 'components/sources.lock.json'
       - 'network/planner/**'
-      - 'network/nftables/zapret_probe.go'
+      - 'network/nftables/zapret_*.go'
+      - 'network/nftables/nft_backend.go'
       - 'scripts/generate-component-imports.mjs'
       - 'internal/entities/outbounds/**'
       - 'go.mod'
@@ -61,6 +62,9 @@ jobs:
           sudo modprobe nf_conntrack || true
           sudo modprobe nfnetlink_queue || true
           sudo modprobe nft_queue || true
+          sudo modprobe sch_ingress || true
+          sudo modprobe cls_fw || true
+          sudo modprobe act_gact || true
           if ! sudo unshare --net -- test -r /proc/net/netfilter/nfnetlink_queue; then
             echo 'PACKET_PATH_NOT_YET_PROVEN: runner cannot create a disposable network namespace with Linux NFQUEUE' | tee -a "$GITHUB_STEP_SUMMARY"
             echo 'Needed: a disposable Linux runner with CAP_SYS_ADMIN, CAP_NET_ADMIN, nfnetlink_queue, nft_queue and conntrack accounting.' >> "$GITHUB_STEP_SUMMARY"
