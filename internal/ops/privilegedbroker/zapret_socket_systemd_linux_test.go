@@ -39,7 +39,7 @@ func TestSystemdZapretBrokerGuardCapabilities(t *testing.T) {
 	guard, err := nftables.CreateZapretNativeGuard(testZapretSocketPlan(t, cookie, int32(iface.Index)), pins)
 	if !withBPF {
 		if err == nil {
-			_ = guard.AbortUnadmitted()
+			_ = guard.AbortUnleased()
 			t.Fatal("the base unit unexpectedly acquired Netfilter BPF authority")
 		}
 		if !errors.Is(err, unix.EPERM) && !errors.Is(err, unix.EACCES) {
@@ -48,7 +48,7 @@ func TestSystemdZapretBrokerGuardCapabilities(t *testing.T) {
 		t.Logf("BASE_SYSTEMD_BROKER_BPF=DENIED: %v", err)
 	} else {
 		if err == nil {
-			if err := guard.AbortUnadmitted(); err != nil {
+			if err := guard.AbortUnleased(); err != nil {
 				t.Fatal(err)
 			}
 			t.Log("SCOPED_SYSTEMD_BROKER_BPF=LOAD_SUPPORTED_ONLY; CAP_SYS_ADMIN_ABSENT=PASS")

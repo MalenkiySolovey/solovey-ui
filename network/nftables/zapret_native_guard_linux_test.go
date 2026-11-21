@@ -162,7 +162,7 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 		_ = collision.Close()
 		t.Fatal("claimed a table that was already owned by someone else")
 	}
-	if err := staged.AbortUnadmitted(); err != nil {
+	if err := staged.AbortUnleased(); err != nil {
 		t.Fatal(err)
 	}
 	if entries, err := os.ReadDir(pins); err != nil || len(entries) != 0 {
@@ -214,7 +214,7 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	if err := guard.EnrollSocket(a); err != nil {
 		t.Fatal(err)
 	}
-	if err := guard.AbortUnadmitted(); err == nil {
+	if err := guard.AbortUnleased(); err == nil {
 		t.Fatal("an admitted socket lost its containment during rollback")
 	}
 	if err := guard.EnrollSocket(a); err == nil {
@@ -417,7 +417,7 @@ func TestZapretTableOwnerProcess(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer guard.AbortUnadmitted()
+		defer guard.AbortUnleased()
 		ids, err = guard.verifiedLinks()
 		if err != nil {
 			t.Fatal(err)

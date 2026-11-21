@@ -190,7 +190,7 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 	}
 	failed := prepare()
 	assertPinCount(0)
-	if err := failed.Renew(ctx, facts, time.Second); err == nil || failed.AdmissionReady(scope, failed.Generation()) {
+	if err := failed.Renew(ctx, observeFixture, time.Second); err == nil || failed.AdmissionReady(scope, failed.Generation()) {
 		t.Fatal("uncommitted generation opened a lease or became ready")
 	}
 	if err := failed.WithSocket(ctx, observeFixture, scope, failed.Generation(), -1, func() error {
@@ -200,19 +200,40 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 		t.Fatal("uncommitted generation did not reject admission")
 	}
 	writeFailure := errors.New("injected commit failure")
-	if err := failed.Commit(ctx, observeFixture, func(cp nftables.ZapretPathCheckpoint) error {
+	if err := failed.Commit(ctx, observeFixture, func(_ context.Context, cp nftables.ZapretPathCheckpoint) error {
 		assertPinCount(0)
 		if cp.GuardLinks[0] == 0 || cp.GuardLinks[1] == 0 || cp.GuardLinks[0] == cp.GuardLinks[1] {
 			t.Fatalf("staged links have no exact kernel identities: %v", cp.GuardLinks)
 		}
 		return writeFailure
+	}, func(context.Context, nftables.ZapretPathCheckpoint) error {
+		t.Fatal("failed commit attempted to authorize a lease")
+		return nil
 	}); !errors.Is(err, writeFailure) || failed.Lifetime().Err() == nil || failed.AdmissionReady(scope, failed.Generation()) {
 		t.Fatalf("commit failure did not retire the exact staged path: %v", err)
 	}
 	assertPinCount(0)
+	failedLease := prepare()
+	if err := failedLease.Commit(ctx, observeFixture, func(context.Context, nftables.ZapretPathCheckpoint) error { return nil },
+		func(context.Context, nftables.ZapretPathCheckpoint) error {
+			assertPinCount(2)
+			return writeFailure
+		}); err != nil {
+		t.Fatal(err)
+	}
+	if err := failedLease.Renew(ctx, observeFixture, time.Second); !errors.Is(err, writeFailure) ||
+		failedLease.AdmissionReady(scope, failedLease.Generation()) || failedLease.Lifetime().Err() == nil {
+		t.Fatalf("first-lease write failure did not prevent admission: %v", err)
+	}
+	assertPinCount(0)
 	idle := prepare() // A failed commit must release its own unadmitted table and pins.
 	journalDir := filepath.Join(t.TempDir(), "solovey-ui-broker")
-	j, err := privilegedbroker.OpenFileJournal(journalDir, "fixture-boot")
+	boot, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bootID := strings.TrimSpace(string(boot))
+	j, err := privilegedbroker.OpenFileJournal(journalDir, bootID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,35 +241,50 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertPinCount(2)
-	if err := j.RetireZapretBeforeAdmission(ctx, idle, strings.Repeat("b", 64)); err == nil || idle.Lifetime().Err() != nil {
+	if err := j.RetireZapretUnleased(ctx, idle, strings.Repeat("b", 64)); err == nil || idle.Lifetime().Err() != nil {
 		t.Fatal("unrelated peer authority retired the idle generation")
 	}
-	if err := j.RetireZapretBeforeAdmission(ctx, idle, revision); err != nil || idle.Lifetime().Err() == nil || idle.AdmissionReady(scope, idle.Generation()) {
+	if err := j.RetireZapretUnleased(ctx, idle, revision); err != nil || idle.Lifetime().Err() == nil || idle.AdmissionReady(scope, idle.Generation()) {
 		t.Fatalf("unadmitted generation did not retire cleanly: %v", err)
 	}
 	assertPinCount(0)
-	// Reopening the journal must still permit a fresh generation after a
-	// verified release. The new apply must not reuse the old table or pins.
-	j, err = privilegedbroker.OpenFileJournal(journalDir, "fixture-boot")
+	// Leave the prepared receipt behind, but close the real kernel owner
+	// without recording a retirement. Reopen in the same boot and require a
+	// fresh table and fresh links rather than adoption of the old resources.
+	orphan := prepare()
+	if err := j.CommitZapretPath(ctx, orphan, observeFixture, revision); err != nil {
+		t.Fatal(err)
+	}
+	assertPinCount(2)
+	if err := orphan.Close(); err != nil {
+		t.Fatal(err)
+	}
+	assertPinCount(0)
+	j, err = privilegedbroker.OpenFileJournal(journalDir, bootID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	path := prepare()
 	if err := j.CommitZapretPath(ctx, path, observeFixture, revision); err != nil {
-		t.Fatal(err)
+		t.Fatalf("unleased receipt without live resources blocked same-boot replacement: %v", err)
 	}
-	if err := j.RetireZapretBeforeAdmission(ctx, idle, revision); err == nil || path.Lifetime().Err() != nil {
+	t.Log("ZAPRET_UNLEASED_SAME_BOOT_REOPEN=PASS")
+	if err := j.RetireZapretUnleased(ctx, orphan, revision); err == nil || path.Lifetime().Err() != nil {
 		t.Fatal("stale retirement cleared the replacement generation")
 	}
 	if path.AdmissionReady(scope, path.Generation()) {
 		t.Fatal("durable record became an admission grant before the first lease")
 	}
-	if err := path.Renew(ctx, facts, 10*time.Second); err != nil {
+	if err := path.Renew(ctx, observeFixture, 10*time.Second); err != nil {
 		t.Fatal(err)
 	}
 	if !path.AdmissionReady(scope, path.Generation()) {
 		t.Fatal("committed and leased generation is not ready")
 	}
+	if err := j.RetireZapretUnleased(ctx, path, revision); err == nil || path.Lifetime().Err() != nil {
+		t.Fatal("first kernel lease permitted retirement before Panel socket admission")
+	}
+	t.Log("ZAPRET_FIRST_LEASE_BEFORE_ADMISSION_FENCE=PASS")
 	t.Log("ZAPRET_COMMIT_GATE=PASS (uncommitted admission denied, failed commit retired, journal then lease)")
 	t.Log("ZAPRET_PIN_AFTER_DURABLE_COMMIT=PASS")
 	if err := path.WithSocket(ctx, observeFixture, scope, strings.Repeat("f", 64), -1, func() error {
@@ -298,15 +334,15 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 			t.Fatalf("%s: received %d data segments, want %d", flow.name, len(sizes), flow.packets)
 		}
 	}
-	if err := j.RetireZapretBeforeAdmission(ctx, path, revision); err == nil || path.Lifetime().Err() != nil {
+	if err := j.RetireZapretUnleased(ctx, path, revision); err == nil || path.Lifetime().Err() != nil {
 		t.Fatal("retirement released a checkpoint after socket enrollment")
 	}
 	t.Log("ZAPRET_IDLE_RETIRE_REOPEN=PASS; STALE_AND_ADMITTED_RELEASE=DENIED")
-	if err := path.Renew(ctx, facts, 30*time.Millisecond); err != nil {
+	if err := path.Renew(ctx, observeFixture, 30*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(40 * time.Millisecond)
-	if err := path.Renew(ctx, facts, time.Second); err == nil {
+	if err := path.Renew(ctx, observeFixture, time.Second); err == nil {
 		t.Fatal("expired egress generation reopened")
 	}
 	if path.Lifetime().Err() == nil {

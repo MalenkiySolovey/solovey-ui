@@ -57,11 +57,21 @@ block unrelated broker actions. Before that write the deny hooks live only on
 the broker's descriptors, so an early crash leaves no durable pins. After the
 write the same links are pinned and verified again before the first lease. A
 failed write retires the path even if a record can subsequently be read.
-Publication requires both the exact receipt and a lease held by the live path.
-A new generation can replace a prior-boot receipt only after verifying the
-current kernel boot ID. In the same boot broker restart does not adopt old pins
-or pass bits. Only the live owner can release a verified idle generation; after
-socket admission, same-boot replacement still needs a verified drain.
+Before setting the first kernel lease, the live path atomically replaces the
+prepared receipt with a retained `may_have_leased` receipt under the same
+fence. The lease can enable engine raw output before a Panel FD is marked, so
+even a generation with no enrolled Panel sockets must keep its deny hooks once
+this transition succeeds. A failed journal write cannot open the lease; a
+visible but ambiguously synced transition still fences replacement.
+Publication requires this receipt and a lease held by the live path.
+
+A prior-boot receipt can be replaced only after verifying the current kernel
+boot ID. In the same boot, the live owner can retire its own unleased path. A
+reopened owner can replace a prepared receipt only in the same network
+namespace, after the create-only table succeeds and Linux confirms that both
+recorded links no longer exist. This covers the window before pinning and an
+already closed preparation. It never removes old pins or adopts old pass bits.
+Pinned, legacy and potentially leased generations still require guarded drain.
 
 Production activation remains closed. Before wiring it, the broker must prove
 Netfilter BPF load and a private writable bpffs directory under the installed

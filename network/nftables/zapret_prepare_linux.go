@@ -18,19 +18,20 @@ import (
 // denies all protected packets. Construction does not authorize advertising
 // a listener or reusing a durable receipt from a previous process.
 type ZapretNativePath struct {
-	mu         sync.Mutex
-	plan       planner.ZapretPlan
-	engine     processevidence.Fact
-	sockets    zapretEngineSockets
-	guard      *ZapretNativeGuard
-	table      *ZapretOwnedTable
-	generation string
-	lifetime   context.Context
-	cancel     context.CancelFunc
-	committed  bool
-	enrolled   bool
-	closed     bool
-	closeErr   error
+	mu               sync.Mutex
+	plan             planner.ZapretPlan
+	engine           processevidence.Fact
+	sockets          zapretEngineSockets
+	guard            *ZapretNativeGuard
+	table            *ZapretOwnedTable
+	generation       string
+	lifetime         context.Context
+	cancel           context.CancelFunc
+	commitFirstLease func(context.Context) error
+	committed        bool
+	mayHaveLeased    bool
+	closed           bool
+	closeErr         error
 }
 
 // ZapretPathCheckpoint identifies the owned resources for recovery. It is not
@@ -91,11 +92,12 @@ func (p *ZapretNativePath) Lifetime() context.Context { return p.lifetime }
 
 // Commit records the verified generation through the owning broker journal.
 // A failed write or changed observation retires the path, even if the write
-// left a complete-looking record on disk. No lease exists during the write.
-func (p *ZapretNativePath) Commit(ctx context.Context, observe func(context.Context) (planner.Facts, error), record func(ZapretPathCheckpoint) error) error {
+// left a complete-looking record on disk. The firstLease callback persists the
+// irreversible transition before the first kernel lease under this same fence.
+func (p *ZapretNativePath) Commit(ctx context.Context, observe func(context.Context) (planner.Facts, error), record, firstLease func(context.Context, ZapretPathCheckpoint) error) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.closed || p.committed || observe == nil || record == nil {
+	if p.closed || p.committed || observe == nil || record == nil || firstLease == nil {
 		return errors.New("path for Zapret cannot be committed")
 	}
 	verify := func() error {
@@ -119,7 +121,7 @@ func (p *ZapretNativePath) Commit(ctx context.Context, observe func(context.Cont
 	checkpoint := ZapretPathCheckpoint{Generation: p.generation, PlanRevision: scope.PlanRevision(), Egress: scope.Egress(),
 		SocketMark: p.plan.SocketMark(), QueueMark: p.plan.QueueMark(), LoopMark: p.plan.LoopMark(), FinalRouteBit: p.plan.FinalRouteBit(),
 		TablePort: p.table.port, TableHandle: p.table.handle, GuardLinks: ids, QueueOwner: p.sockets.queue, RawSocketCookies: p.sockets.raw}
-	if err := record(checkpoint); err != nil {
+	if err := record(ctx, checkpoint); err != nil {
 		return errors.Join(err, p.closeLocked())
 	}
 	if err := p.guard.pinLinks(); err != nil {
@@ -128,6 +130,7 @@ func (p *ZapretNativePath) Commit(ctx context.Context, observe func(context.Cont
 	if err := verify(); err != nil {
 		return errors.Join(err, p.closeLocked())
 	}
+	p.commitFirstLease = func(ctx context.Context) error { return firstLease(ctx, checkpoint) }
 	p.committed = true
 	return nil
 }
@@ -141,20 +144,40 @@ func (p *ZapretNativePath) AdmissionReady(scope planner.ZapretSocketScope, gener
 }
 
 func (p *ZapretNativePath) admits(scope planner.ZapretSocketScope, generation string) bool {
-	return !p.closed && p.committed && scope.Valid() && scope.PlanRevision() == p.plan.Plan().Revision() && generation == p.generation
+	return !p.closed && p.committed && p.mayHaveLeased && scope.Valid() && scope.PlanRevision() == p.plan.Plan().Revision() && generation == p.generation
 }
 
 // Renew requires a committed generation whose fresh route/allocation
 // observation confirms the before-image. The observer may exclude only this
 // exact path's verified live allocations.
-func (p *ZapretNativePath) Renew(ctx context.Context, current planner.Facts, lifetime time.Duration) error {
+func (p *ZapretNativePath) Renew(ctx context.Context, observe func(context.Context) (planner.Facts, error), lifetime time.Duration) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if !p.committed {
+	if !p.committed || observe == nil {
 		return errors.New("path for Zapret has no committed generation")
 	}
-	if err := p.verify(ctx, current); err != nil {
+	verify := func() error {
+		facts, err := observe(ctx)
+		if err != nil {
+			return err
+		}
+		return p.verify(ctx, facts)
+	}
+	if err := verify(); err != nil {
 		return errors.Join(err, p.closeLocked())
+	}
+	if p.commitFirstLease != nil {
+		// The lease also authorizes engine raw output, so the record must
+		// precede it even when no Panel socket has been enrolled.
+		if err := p.commitFirstLease(ctx); err != nil {
+			return errors.Join(err, p.closeLocked())
+		}
+		p.mayHaveLeased = true
+		p.commitFirstLease = nil
+		// The fsync can outlast the observations used before it.
+		if err := verify(); err != nil {
+			return errors.Join(err, p.closeLocked())
+		}
 	}
 	if err := p.guard.Renew(lifetime); err != nil {
 		return errors.Join(err, p.closeLocked())
@@ -181,7 +204,6 @@ func (p *ZapretNativePath) WithSocket(ctx context.Context, observe func(context.
 	if err := p.guard.EnrollSocket(fd); err != nil {
 		return err
 	}
-	p.enrolled = true
 	return action()
 }
 
@@ -230,17 +252,15 @@ func (p *ZapretNativePath) Close() error {
 	return p.closeLocked()
 }
 
-// AbortUnadmitted proves the live owner never enrolled a socket and retires
-// that exact committed generation under the socket-admission fence. A
-// reopened owner cannot make this claim from a journal receipt alone.
-func (p *ZapretNativePath) AbortUnadmitted(generation string) error {
+// AbortUnleased retires the exact live generation before any kernel lease.
+func (p *ZapretNativePath) AbortUnleased(generation string) error {
 	if p == nil {
 		return errors.New("path for Zapret is unavailable")
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if !p.committed || generation != p.generation || p.enrolled {
-		return errors.New("path for Zapret is not a committed, unadmitted generation")
+	if !p.committed || generation != p.generation || p.mayHaveLeased {
+		return errors.New("path for Zapret is not a committed, unleased generation")
 	}
 	return p.closeLocked()
 }
@@ -261,10 +281,10 @@ func (p *ZapretNativePath) closeLocked() error {
 		tableErr = p.table.Close()
 	}
 	if p.guard != nil {
-		if p.enrolled {
-			guardErr = p.guard.Close() // Pinned deny survives old issued FDs.
+		if p.mayHaveLeased {
+			guardErr = p.guard.Close() // Keep deny hooks for raw and admitted socket output.
 		} else {
-			guardErr = p.guard.AbortUnadmitted()
+			guardErr = p.guard.AbortUnleased()
 		}
 	}
 	p.closeErr = errors.Join(revokeErr, tableErr, guardErr)

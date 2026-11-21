@@ -34,12 +34,26 @@ func TestZapretSocketCommitJournal(t *testing.T) {
 	if err := journal.recordZapretPath(t.Context(), checkpoint, grant.PeerRevision); err != nil {
 		t.Fatal(err)
 	}
+	if err := journal.checkZapretPath(grant); err == nil {
+		t.Fatal("prepared record is not first-lease authority")
+	}
+	wrongCheckpoint := checkpoint
+	wrongCheckpoint.GuardLinks[0]++
+	if err := journal.recordFirstZapretLease(t.Context(), wrongCheckpoint, grant.PeerRevision); publicCode(err) != CodeRecoveryRequired {
+		t.Fatalf("mismatched guard was authorized: %v", err)
+	}
+	if err := journal.recordFirstZapretLease(t.Context(), checkpoint, grant.PeerRevision); err != nil {
+		t.Fatal(err)
+	}
 	reopened, err := openTestJournal(root, "boot-one")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := reopened.checkZapretPath(grant); err != nil {
 		t.Fatalf("reopened journal did not retain exact authority: %v", err)
+	}
+	if err := reopened.recordFirstZapretLease(t.Context(), checkpoint, grant.PeerRevision); publicCode(err) != CodeRecoveryRequired {
+		t.Fatalf("an already potential lease was authorized again: %v", err)
 	}
 	newGeneration := grant
 	newGeneration.Generation = Digest([]byte("next-generation"))
@@ -98,6 +112,51 @@ func TestZapretSocketCommitJournal(t *testing.T) {
 			}
 		})
 	}
+	t.Run("interrupted first lease", func(t *testing.T) {
+		for _, fault := range []string{"short-write", "directory-sync"} {
+			t.Run(fault, func(t *testing.T) {
+				boot, err := currentBootID()
+				if err != nil {
+					t.Fatal(err)
+				}
+				root := testJournalRoot(t)
+				journal, err := openTestJournal(root, boot)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := journal.recordZapretPath(t.Context(), checkpoint, grant.PeerRevision); err != nil {
+					t.Fatal(err)
+				}
+				want := error(io.ErrShortWrite)
+				if fault == "short-write" {
+					journal.fs = journalFilesystemWithFileFault(journal.fs, journal.path, fault)
+				} else {
+					want = errors.New("injected lease directory sync failure")
+					journal.fs.syncDirectory = func(string) error { return want }
+				}
+				if err := journal.recordFirstZapretLease(t.Context(), checkpoint, grant.PeerRevision); !errors.Is(err, want) {
+					t.Fatalf("journal acknowledged a failed first-lease write: %v", err)
+				}
+				reopened, err := openTestJournal(root, boot)
+				if err != nil {
+					t.Fatal(err)
+				}
+				record, valid := readZapretPath(reopened.liveCompleted[zapretPathKey()])
+				expected := zapretPathPrepared
+				if fault == "directory-sync" {
+					expected = zapretPathMayLease // Visible does not imply the adapter started a lease.
+					other := checkpoint
+					other.Generation = Digest([]byte("replacement after failed first-lease sync"))
+					if err := reopened.recordZapretPath(t.Context(), other, grant.PeerRevision); publicCode(err) != CodeRecoveryRequired {
+						t.Fatalf("ambiguous first lease did not fence replacement: %v", err)
+					}
+				}
+				if !valid || record.State != expected || len(reopened.Unresolved()) != 0 {
+					t.Fatalf("interrupted lease left an invalid or blocking journal: %+v", record)
+				}
+			})
+		}
+	})
 
 	t.Run("only verified kernel boot change allows replacement", func(t *testing.T) {
 		boot, err := currentBootID()
@@ -132,6 +191,9 @@ func TestZapretSocketCommitJournal(t *testing.T) {
 		if err := current.recordZapretPath(t.Context(), checkpoint, newPeer.PeerRevision); err != nil {
 			t.Fatalf("verified new boot could not replace stale checkpoint: %v", err)
 		}
+		if err := current.recordFirstZapretLease(t.Context(), checkpoint, newPeer.PeerRevision); err != nil {
+			t.Fatal(err)
+		}
 		current, err = openTestJournal(root, boot)
 		if err != nil {
 			t.Fatal(err)
@@ -145,6 +207,29 @@ func TestZapretSocketCommitJournal(t *testing.T) {
 		different.Generation = Digest([]byte("replacement-in-same-boot"))
 		if err := current.recordZapretPath(t.Context(), different, grant.PeerRevision); publicCode(err) != CodeRecoveryRequired {
 			t.Fatalf("same-boot broker restart or peer change bypassed recovery: %v", err)
+		}
+	})
+
+	t.Run("legacy record has no proof of never leasing", func(t *testing.T) {
+		boot, err := currentBootID()
+		if err != nil {
+			t.Fatal(err)
+		}
+		journal, err := openTestJournal(testJournalRoot(t), boot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		legacy := checkpoint
+		legacy.Generation = grant.Generation
+		if err := journal.writeZapretPathRecordLocked(t.Context(), legacy, zapretPathCommit, "zapret-commit-", legacy.Generation, grant.PeerRevision,
+			CompletionPolicy{RetainUntilRelease: true}); err != nil {
+			t.Fatal(err)
+		}
+		if err := journal.checkZapretPath(grant); err == nil {
+			t.Fatal("legacy checkpoint was treated as a current grant")
+		}
+		if err := journal.recordZapretPath(t.Context(), checkpoint, grant.PeerRevision); publicCode(err) != CodeRecoveryRequired {
+			t.Fatalf("legacy checkpoint did not fence same-boot replacement: %v", err)
 		}
 	})
 }

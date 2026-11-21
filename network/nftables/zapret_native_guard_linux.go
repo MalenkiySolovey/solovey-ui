@@ -35,7 +35,7 @@ type ZapretNativeGuard struct {
 	ifindex                   uint32
 	namespace                 uint64
 	pinned                    bool
-	revoked, closed, enrolled bool
+	revoked, closed, leased   bool
 }
 
 type zapretGuardPin struct {
@@ -58,7 +58,7 @@ func createZapretNativeGuard(plan planner.ZapretPlan, pinDir string, raw [2]uint
 		return nil, err
 	}
 	if err := g.pinLinks(); err != nil {
-		return nil, errors.Join(err, g.AbortUnadmitted())
+		return nil, errors.Join(err, g.AbortUnleased())
 	}
 	return g, nil
 }
@@ -92,7 +92,7 @@ func stageZapretNativeGuard(plan planner.ZapretPlan, pinDir string, raw [2]uint6
 	g := &ZapretNativeGuard{ifindex: uint32(scope.Egress().IfIndex), namespace: namespace}
 	defer func() {
 		if failure != nil {
-			failure = errors.Join(failure, g.AbortUnadmitted())
+			failure = errors.Join(failure, g.AbortUnleased())
 		}
 	}()
 	g.device, err = ebpf.NewMap(&ebpf.MapSpec{Name: "sui_zapret_dev", Type: ebpf.DevMap, KeySize: 4, ValueSize: 4, MaxEntries: 1})
@@ -186,6 +186,26 @@ func (g *ZapretNativeGuard) verifiedLinks() (ids [2]uint32, err error) {
 	return ids, nil
 }
 
+// ZapretGuardLinksGone proves the old kernel links do not exist in this
+// boot. Missing pin names are not enough, and permission errors are not
+// evidence of absence. This does not detach, adopt or change any link.
+func ZapretGuardLinksGone(ids [2]uint32) bool {
+	if ids[0] == 0 || ids[1] == 0 || ids[0] == ids[1] {
+		return false
+	}
+	for _, id := range ids {
+		hook, err := link.NewFromID(link.ID(id))
+		if err == nil {
+			_ = hook.Close()
+			return false
+		}
+		if !errors.Is(err, unix.ENOENT) {
+			return false
+		}
+	}
+	return true
+}
+
 func (g *ZapretNativeGuard) leaseActive() bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -239,6 +259,7 @@ func (g *ZapretNativeGuard) Renew(lifetime time.Duration) error {
 	if previous != 0 && previous <= uint64(now.Nano()) {
 		return errors.Join(errors.New("egress guard lease for Zapret expired"), g.revokeLocked())
 	}
+	g.leased = true // Raw output may be authorized even before socket enrollment.
 	if err := g.deadline.Put(uint32(0), uint64(now.Nano()+int64(lifetime))); err != nil {
 		return errors.Join(err, g.revokeLocked())
 	}
@@ -272,7 +293,6 @@ func (g *ZapretNativeGuard) EnrollSocket(fd int) error {
 	if err := g.sockets.Update(cookie, uint32(1), ebpf.UpdateNoExist); err != nil {
 		return fmt.Errorf("enroll Zapret socket: %w", err)
 	}
-	g.enrolled = true
 	return nil
 }
 
@@ -302,17 +322,16 @@ func (g *ZapretNativeGuard) Close() error {
 	return g.closeLocked()
 }
 
-// AbortUnadmitted rolls back a failed apply before any FD was enrolled. Once
-// enrollment happened, even a lost ACK can leave a marked socket in Panel.
-// Retirement must then keep the deny hooks pinned until guarded recovery.
-func (g *ZapretNativeGuard) AbortUnadmitted() error {
+// AbortUnleased rolls back a failed apply only before any lease could enable
+// either raw output or socket admission. Later retirement keeps pins intact.
+func (g *ZapretNativeGuard) AbortUnleased() error {
 	if g == nil {
 		return nil
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if g.enrolled {
-		return errors.New("guard for Zapret may still protect admitted sockets")
+	if g.leased {
+		return errors.New("guard for Zapret may still protect leased traffic")
 	}
 	if g.closed {
 		return errors.New("cannot abort a closed Zapret guard without live pin identity")

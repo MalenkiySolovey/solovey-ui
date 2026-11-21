@@ -21,6 +21,30 @@ const (
 
 var zapretKernelBootID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
+type zapretPathState string
+
+const (
+	zapretPathPrepared zapretPathState = "prepared"
+	zapretPathMayLease zapretPathState = "may_have_leased"
+)
+
+type zapretPathRecord struct {
+	nftables.ZapretPathCheckpoint
+	State zapretPathState `json:"state,omitempty"`
+}
+
+func zapretPathKey() string {
+	return completedMutationKey(zapretPathResource, zapretPathCommit, zapretPathResource)
+}
+
+func readZapretPath(row journalRow) (zapretPathRecord, bool) {
+	var record zapretPathRecord
+	valid := row.Receipt != nil && row.Response != nil && row.Response.OK && validateJournalRow(row) == nil &&
+		decodeStrict(row.Payload, &record) == nil && record.Generation == row.Receipt.RequestID &&
+		digestPattern.MatchString(record.Generation) && digestPattern.MatchString(record.PlanRevision)
+	return record, valid
+}
+
 // CommitZapretPath verifies the staged generation and retains its checkpoint
 // in the existing file journal. peerRevision comes from the broker's attested
 // Panel identity, never from an Outbound or framed request.
@@ -28,8 +52,10 @@ func (j *FileJournal) CommitZapretPath(ctx context.Context, path *nftables.Zapre
 	if j == nil || path == nil {
 		return errZapretSocket
 	}
-	return path.Commit(ctx, observe, func(checkpoint nftables.ZapretPathCheckpoint) error {
+	return path.Commit(ctx, observe, func(ctx context.Context, checkpoint nftables.ZapretPathCheckpoint) error {
 		return j.recordZapretPath(ctx, checkpoint, peerRevision)
+	}, func(ctx context.Context, checkpoint nftables.ZapretPathCheckpoint) error {
+		return j.recordFirstZapretLease(ctx, checkpoint, peerRevision)
 	})
 }
 
@@ -42,43 +68,64 @@ func (j *FileJournal) recordZapretPath(ctx context.Context, checkpoint nftables.
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	if prior, retained := j.liveCompleted[completedMutationKey(zapretPathResource, zapretPathCommit, zapretPathResource)]; retained {
+	if prior, retained := j.liveCompleted[zapretPathKey()]; retained {
 		// This broker's boot ID is read from procfs at native startup. A
 		// different kernel boot destroys the old sockets, tables and BPF
 		// links. A broker restart or Panel revision change does not.
 		boot, err := currentBootID()
-		var old nftables.ZapretPathCheckpoint
-		if err != nil || boot != j.bootID || !zapretKernelBootID.MatchString(boot) || prior.Receipt == nil ||
-			!zapretKernelBootID.MatchString(prior.Receipt.BrokerBootID) || prior.Receipt.BrokerBootID == boot ||
-			decodeStrict(prior.Payload, &old) != nil || old.Generation != prior.Receipt.RequestID || old.Generation == checkpoint.Generation {
+		old, valid := readZapretPath(prior)
+		if err != nil || boot != j.bootID || !zapretKernelBootID.MatchString(boot) || !valid ||
+			!zapretKernelBootID.MatchString(prior.Receipt.BrokerBootID) || old.Generation == checkpoint.Generation {
 			return Failure(CodeRecoveryRequired, "previous Zapret egress generation requires guarded recovery")
 		}
+		if prior.Receipt.BrokerBootID == boot && (old.State != zapretPathPrepared || old.Egress.NamespaceCookie == 0 ||
+			old.Egress.NamespaceCookie != checkpoint.Egress.NamespaceCookie || !nftables.ZapretGuardLinksGone(old.GuardLinks)) {
+			return Failure(CodeRecoveryRequired, "previous Zapret egress generation requires guarded recovery")
+		}
+		// In the same boot, the new path's create-only table already proved
+		// the old owner table is gone from this namespace. The old prepared
+		// links must also be gone; we never detach an old generation here.
 	}
-	return j.writeZapretPathRecordLocked(ctx, checkpoint, zapretPathCommit, "zapret-commit-", checkpoint.Generation, peerRevision,
+	return j.writeZapretPathRecordLocked(ctx, zapretPathRecord{checkpoint, zapretPathPrepared}, zapretPathCommit, "zapret-commit-", checkpoint.Generation, peerRevision,
 		CompletionPolicy{RetainUntilRelease: true})
 }
 
-// RetireZapretBeforeAdmission releases a retained checkpoint only when its
-// live owner can prove it never enrolled a socket and cleanly retired the
-// kernel resources. Any admitted or ambiguous generation still needs drain.
-func (j *FileJournal) RetireZapretBeforeAdmission(ctx context.Context, path *nftables.ZapretNativePath, peerRevision string) error {
+// recordFirstZapretLease replaces the retained prepared record atomically.
+// It is called under the live path lock, before the guard can pass packets.
+func (j *FileJournal) recordFirstZapretLease(ctx context.Context, checkpoint nftables.ZapretPathCheckpoint, peerRevision string) error {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	retained := j.liveCompleted[zapretPathKey()]
+	record, valid := readZapretPath(retained)
+	if !valid || record.State != zapretPathPrepared || record.ZapretPathCheckpoint != checkpoint ||
+		retained.Receipt.BrokerBootID != j.bootID || retained.Receipt.PeerRevision != peerRevision {
+		return Failure(CodeRecoveryRequired, "first Zapret lease does not match the prepared generation")
+	}
+	record.State = zapretPathMayLease
+	return j.writeZapretPathRecordLocked(ctx, record, zapretPathCommit, "zapret-lease-", checkpoint.Generation, peerRevision,
+		CompletionPolicy{RetainUntilRelease: true})
+}
+
+// RetireZapretUnleased releases a retained checkpoint only when its live
+// owner can prove it never opened a lease and cleanly retired its resources.
+func (j *FileJournal) RetireZapretUnleased(ctx context.Context, path *nftables.ZapretNativePath, peerRevision string) error {
 	if j == nil || path == nil || !digestPattern.MatchString(peerRevision) {
 		return errZapretSocket
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	key := completedMutationKey(zapretPathResource, zapretPathCommit, zapretPathResource)
+	key := zapretPathKey()
 	j.mu.Lock()
-	retained, exists := j.liveCompleted[key]
+	retained := j.liveCompleted[key]
 	j.mu.Unlock()
 	generation := path.Generation()
-	var checkpoint nftables.ZapretPathCheckpoint
-	if !exists || retained.Receipt == nil || retained.Receipt.BrokerBootID != j.bootID ||
-		retained.Receipt.PeerRevision != peerRevision || decodeStrict(retained.Payload, &checkpoint) != nil || checkpoint.Generation != generation {
+	record, valid := readZapretPath(retained)
+	if !valid || record.State != zapretPathPrepared || retained.Receipt.BrokerBootID != j.bootID ||
+		retained.Receipt.PeerRevision != peerRevision || record.Generation != generation {
 		return Failure(CodeRecoveryRequired, "live Zapret generation does not match the retained receipt")
 	}
-	if err := path.AbortUnadmitted(generation); err != nil {
+	if err := path.AbortUnleased(generation); err != nil {
 		return errors.Join(Failure(CodeRecoveryRequired, "Zapret generation requires guarded recovery"), err)
 	}
 	j.mu.Lock()
@@ -91,9 +138,8 @@ func (j *FileJournal) RetireZapretBeforeAdmission(ctx context.Context, path *nft
 		CompletionPolicy{ReleasesVerb: zapretPathCommit})
 }
 
-// Stage and retirement run before the journal append and are already fail
-// closed. One complete row avoids leaving an active mutation that would
-// block unrelated broker actions after an interrupted checkpoint write.
+// Use one complete row per transition so an interrupted write does not
+// leave an active mutation that blocks unrelated broker operations.
 func (j *FileJournal) writeZapretPathRecordLocked(ctx context.Context, value any, verb Verb, prefix, generation, peerRevision string, policy CompletionPolicy) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -123,12 +169,12 @@ func (j *FileJournal) writeZapretPathRecordLocked(ctx context.Context, value any
 }
 
 func (j *FileJournal) checkZapretPath(grant ZapretSocketGrant) error {
-	response, err := j.CompletedMutation(zapretPathResource, zapretPathCommit, zapretPathResource)
-	if err != nil || response.Receipt == nil || response.Receipt.BrokerBootID != j.bootID || response.Receipt.PeerRevision != grant.PeerRevision {
-		return errors.Join(errZapretSocket, err)
-	}
-	var checkpoint nftables.ZapretPathCheckpoint
-	if err := decodeStrict(response.Payload, &checkpoint); err != nil || checkpoint.Generation != grant.Generation ||
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	retained := j.liveCompleted[zapretPathKey()]
+	checkpoint, valid := readZapretPath(retained)
+	if !valid || checkpoint.State != zapretPathMayLease || retained.Receipt.BrokerBootID != j.bootID ||
+		retained.Receipt.PeerRevision != grant.PeerRevision || checkpoint.Generation != grant.Generation ||
 		checkpoint.PlanRevision != grant.Scope.PlanRevision() || checkpoint.SocketMark != grant.Scope.Mark() || checkpoint.Egress != grant.Scope.Egress() {
 		return errZapretSocket
 	}
