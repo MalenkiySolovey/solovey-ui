@@ -68,10 +68,13 @@ Publication requires this receipt and a lease held by the live path.
 A prior-boot receipt can be replaced only after verifying the current kernel
 boot ID. In the same boot, the live owner can retire its own unleased path. A
 reopened owner can replace a prepared receipt only in the same network
-namespace, after the create-only table succeeds and Linux confirms that both
-recorded links no longer exist. This covers the window before pinning and an
-already closed preparation. It never removes old pins or adopts old pass bits.
-Pinned, legacy and potentially leased generations still require guarded drain.
+namespace after registering a fresh create-only table and both fresh BPF hooks
+at the exact slots recorded in the receipt. The kernel refuses a duplicate
+BPF hook priority in that family/hook, even before pinning. This proves the
+old hooks are no longer registered without opening global BPF IDs (which
+would require `CAP_SYS_ADMIN`). It does not detach any pin or adopt old pass
+bits. Occupied, legacy and potentially leased generations still need guarded
+recovery.
 
 Production activation remains closed. Before wiring it, the broker must prove
 Netfilter BPF load and a private writable bpffs directory under the installed

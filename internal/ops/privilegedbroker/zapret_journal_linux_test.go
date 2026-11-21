@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
+	"github.com/MalenkiySolovey/solovey-ui/network/planner"
+	"golang.org/x/sys/unix"
 )
 
 func TestZapretSocketCommitJournal(t *testing.T) {
@@ -207,6 +209,41 @@ func TestZapretSocketCommitJournal(t *testing.T) {
 		different.Generation = Digest([]byte("replacement-in-same-boot"))
 		if err := current.recordZapretPath(t.Context(), different, grant.PeerRevision); publicCode(err) != CodeRecoveryRequired {
 			t.Fatalf("same-boot broker restart or peer change bypassed recovery: %v", err)
+		}
+	})
+
+	t.Run("same-boot replacement requires the exact registration", func(t *testing.T) {
+		boot, err := currentBootID()
+		if err != nil {
+			t.Fatal(err)
+		}
+		next := checkpoint
+		next.TableName = planner.ZapretInstalledTable
+		next.GuardSlots = [2]nftables.ZapretGuardSlot{
+			{Family: unix.NFPROTO_IPV4, Hook: unix.NF_INET_POST_ROUTING, Priority: 12},
+			{Family: unix.NFPROTO_IPV6, Hook: unix.NF_INET_POST_ROUTING, Priority: 12},
+		}
+		for name, change := range map[string]func(*nftables.ZapretPathCheckpoint){
+			"unknown slots": func(c *nftables.ZapretPathCheckpoint) { clear(c.GuardSlots[:]) },
+			"other table":   func(c *nftables.ZapretPathCheckpoint) { c.TableName = "old-table" },
+			"other netns":   func(c *nftables.ZapretPathCheckpoint) { c.Egress.NamespaceCookie++ },
+			"other hook":    func(c *nftables.ZapretPathCheckpoint) { c.GuardSlots[1].Priority++ },
+		} {
+			t.Run(name, func(t *testing.T) {
+				journal, err := openTestJournal(testJournalRoot(t), boot)
+				if err != nil {
+					t.Fatal(err)
+				}
+				old := next
+				old.Generation, old.GuardLinks = grant.Generation, [2]uint32{7, 9}
+				change(&old)
+				if err := journal.recordZapretPath(t.Context(), old, grant.PeerRevision); err != nil {
+					t.Fatal(err)
+				}
+				if err := journal.recordZapretPath(t.Context(), next, grant.PeerRevision); publicCode(err) != CodeRecoveryRequired {
+					t.Fatalf("changed registration did not fence a new generation: %v", err)
+				}
+			})
 		}
 	})
 

@@ -32,6 +32,7 @@ type ZapretNativeGuard struct {
 	mu                        sync.Mutex
 	device, deadline, sockets *ebpf.Map
 	hooks                     []zapretGuardPin
+	slots                     [2]ZapretGuardSlot
 	ifindex                   uint32
 	namespace                 uint64
 	pinned                    bool
@@ -44,6 +45,12 @@ type zapretGuardPin struct {
 	id      link.ID
 	program ebpf.ProgramID
 	pinned  bool
+}
+
+// ZapretGuardSlot identifies a BPF registration in one network namespace.
+type ZapretGuardSlot struct {
+	Family, Hook uint32
+	Priority     int32
 }
 
 // CreateZapretNativeGuard is the deny-generator guard used by capability
@@ -134,6 +141,12 @@ func stageZapretNativeGuard(plan planner.ZapretPlan, pinDir string, raw [2]uint6
 			_ = hook.Close()
 			return nil, errors.Join(errors.New("observe new Zapret guard identity"), err)
 		}
+		slot := info.Netfilter()
+		if slot == nil || slot.ProtocolFamily != family.num || slot.Hook != link.NetfilterInetPostRouting || slot.Priority != zapretGuardPriority || slot.Flags != 0 {
+			_ = hook.Close()
+			return nil, errors.New("unexpected kernel hook registration for Zapret")
+		}
+		g.slots[i] = ZapretGuardSlot{uint32(slot.ProtocolFamily), uint32(slot.Hook), slot.Priority}
 		g.hooks = append(g.hooks, zapretGuardPin{Link: hook, path: filepath.Join(pinDir, family.pin), id: info.ID, program: info.Program})
 	}
 	return g, nil
@@ -184,26 +197,6 @@ func (g *ZapretNativeGuard) verifiedLinks() (ids [2]uint32, err error) {
 		ids[i] = uint32(info.ID)
 	}
 	return ids, nil
-}
-
-// ZapretGuardLinksGone proves the old kernel links do not exist in this
-// boot. Missing pin names are not enough, and permission errors are not
-// evidence of absence. This does not detach, adopt or change any link.
-func ZapretGuardLinksGone(ids [2]uint32) bool {
-	if ids[0] == 0 || ids[1] == 0 || ids[0] == ids[1] {
-		return false
-	}
-	for _, id := range ids {
-		hook, err := link.NewFromID(link.ID(id))
-		if err == nil {
-			_ = hook.Close()
-			return false
-		}
-		if !errors.Is(err, unix.ENOENT) {
-			return false
-		}
-	}
-	return true
 }
 
 func (g *ZapretNativeGuard) leaseActive() bool {

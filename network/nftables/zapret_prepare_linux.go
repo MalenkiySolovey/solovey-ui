@@ -42,9 +42,23 @@ type ZapretPathCheckpoint struct {
 	SocketMark, QueueMark, LoopMark uint32
 	FinalRouteBit, TablePort        uint32
 	TableHandle                     uint64
+	TableName                       string
 	GuardLinks                      [2]uint32
+	GuardSlots                      [2]ZapretGuardSlot
 	QueueOwner                      ZapretQueueOwner
 	RawSocketCookies                [2]uint64
+}
+
+// ExcludesPriorRegistration compares two owner-generated checkpoints. A
+// fresh create-only table and both fresh BPF attachments at the same slots
+// prove the previous registration is absent. Linux rejects an occupied
+// BPF hook priority (nf_hook_entries_grow), including FD-only attachments.
+func (c ZapretPathCheckpoint) ExcludesPriorRegistration(old ZapretPathCheckpoint) bool {
+	return c.Egress.NamespaceCookie != 0 && c.Egress.NamespaceCookie == old.Egress.NamespaceCookie &&
+		c.TableName == planner.ZapretInstalledTable && c.TableName == old.TableName &&
+		c.GuardSlots[0].Family != 0 && c.GuardSlots[1].Family != 0 && c.GuardSlots == old.GuardSlots &&
+		c.GuardLinks[0] != 0 && c.GuardLinks[1] != 0 && old.GuardLinks[0] != 0 && old.GuardLinks[1] != 0 &&
+		c.GuardLinks[0] != old.GuardLinks[0] && c.GuardLinks[1] != old.GuardLinks[1]
 }
 
 // PrepareZapretNativePath stages the exact Planner allocation. The caller is
@@ -120,7 +134,8 @@ func (p *ZapretNativePath) Commit(ctx context.Context, observe func(context.Cont
 	}
 	checkpoint := ZapretPathCheckpoint{Generation: p.generation, PlanRevision: scope.PlanRevision(), Egress: scope.Egress(),
 		SocketMark: p.plan.SocketMark(), QueueMark: p.plan.QueueMark(), LoopMark: p.plan.LoopMark(), FinalRouteBit: p.plan.FinalRouteBit(),
-		TablePort: p.table.port, TableHandle: p.table.handle, GuardLinks: ids, QueueOwner: p.sockets.queue, RawSocketCookies: p.sockets.raw}
+		TablePort: p.table.port, TableHandle: p.table.handle, TableName: planner.ZapretInstalledTable, GuardLinks: ids, GuardSlots: p.guard.slots,
+		QueueOwner: p.sockets.queue, RawSocketCookies: p.sockets.raw}
 	if err := record(ctx, checkpoint); err != nil {
 		return errors.Join(err, p.closeLocked())
 	}

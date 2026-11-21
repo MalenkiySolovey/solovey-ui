@@ -78,13 +78,11 @@ func (j *FileJournal) recordZapretPath(ctx context.Context, checkpoint nftables.
 			!zapretKernelBootID.MatchString(prior.Receipt.BrokerBootID) || old.Generation == checkpoint.Generation {
 			return Failure(CodeRecoveryRequired, "previous Zapret egress generation requires guarded recovery")
 		}
-		if prior.Receipt.BrokerBootID == boot && (old.State != zapretPathPrepared || old.Egress.NamespaceCookie == 0 ||
-			old.Egress.NamespaceCookie != checkpoint.Egress.NamespaceCookie || !nftables.ZapretGuardLinksGone(old.GuardLinks)) {
+		if prior.Receipt.BrokerBootID == boot && (old.State != zapretPathPrepared || !checkpoint.ExcludesPriorRegistration(old.ZapretPathCheckpoint)) {
 			return Failure(CodeRecoveryRequired, "previous Zapret egress generation requires guarded recovery")
 		}
-		// In the same boot, the new path's create-only table already proved
-		// the old owner table is gone from this namespace. The old prepared
-		// links must also be gone; we never detach an old generation here.
+		// In the same boot, only a newly verified registration at the same
+		// exclusive table and hook slots can replace a prepared generation.
 	}
 	return j.writeZapretPathRecordLocked(ctx, zapretPathRecord{checkpoint, zapretPathPrepared}, zapretPathCommit, "zapret-commit-", checkpoint.Generation, peerRevision,
 		CompletionPolicy{RetainUntilRelease: true})

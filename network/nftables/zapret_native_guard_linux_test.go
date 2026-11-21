@@ -23,6 +23,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/processevidence"
 	"github.com/MalenkiySolovey/solovey-ui/network/planner"
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/asm"
 	ebpflink "github.com/cilium/ebpf/link"
 	"golang.org/x/sys/unix"
 )
@@ -130,6 +131,7 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	if entries, err := os.ReadDir(pins); err != nil || len(entries) != 0 {
 		t.Fatalf("staged guard created persistent pins: %v (%v)", entries, err)
 	}
+	assertZapretExclusiveHookSlots(t)
 	stopStage()
 	for _, id := range stageLinks {
 		for deadline := time.Now().Add(time.Second); ; time.Sleep(10 * time.Millisecond) {
@@ -360,6 +362,30 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	t.Log("NFT_OWNER_SIGKILL=PASS; QUEUE_STILL_BOUND=PASS; OLD_MARKED_SOCKET_BLOCKED=PASS; FOREIGN_RULESET_UNCHANGED=PASS")
 	t.Log("FAILED_APPLY_OWNED_PINS_REMOVED=PASS; FOREIGN_RESERVED_NAME_UNCHANGED=PASS; ADMITTED_GUARD_ROLLBACK_DENIED=PASS")
 	t.Log("queue ownership: descriptor/netlink identity proven for the live consumer; mismatched revision and dead consumer denied")
+}
+
+func assertZapretExclusiveHookSlots(t *testing.T) {
+	t.Helper()
+	// Never operates outside TestZapretNativeGuardRoutedEgress's private
+	// network namespace. An unrelated program must not share an owned slot.
+	program, err := ebpf.NewProgram(&ebpf.ProgramSpec{Name: "sui_slot_probe", Type: ebpf.Netfilter, AttachType: ebpf.AttachNetfilter,
+		License: "GPL", Instructions: asm.Instructions{asm.Mov.Imm(asm.R0, 1), asm.Return()}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer program.Close()
+	for _, family := range []ebpflink.NetfilterProtocolFamily{ebpflink.NetfilterProtoIPv4, ebpflink.NetfilterProtoIPv6} {
+		hook, err := ebpflink.AttachNetfilter(ebpflink.NetfilterOptions{Program: program, ProtocolFamily: family,
+			Hook: ebpflink.NetfilterInetPostRouting, Priority: zapretGuardPriority})
+		if err == nil {
+			_ = hook.Close()
+			t.Fatalf("kernel allowed a second BPF hook at the owned priority in family %d", family)
+		}
+		if !errors.Is(err, unix.EBUSY) {
+			t.Fatalf("kernel did not confirm an occupied BPF hook slot in family %d: %v", family, err)
+		}
+	}
+	t.Log("ZAPRET_EXCLUSIVE_POSTROUTING_SLOTS=PASS (IPv4 and IPv6)")
 }
 
 func startZapretTableOwner(t *testing.T, ifindex int, port uint16, stageGuard bool) (func(), [2]uint32) {
