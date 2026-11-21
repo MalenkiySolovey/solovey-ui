@@ -125,6 +125,7 @@ jobs:
               ' _ "$1" "$2" | tee -a "$GITHUB_STEP_SUMMARY"
           }
           guard_result=0
+          exercise "$RUNNER_TEMP/zapret-egress-proof" TestZapretLinuxGatewaySnapshot || guard_result=$?
           exercise "$RUNNER_TEMP/zapret-egress-proof" TestZapretNativeGuardRoutedEgress || guard_result=$?
           exercise "$RUNNER_TEMP/zapret-proof" TestZapretRoutedStrategyWire
           test "$guard_result" -eq 0

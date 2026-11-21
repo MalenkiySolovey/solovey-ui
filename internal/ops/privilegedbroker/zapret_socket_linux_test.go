@@ -4,6 +4,7 @@ package privilegedbroker
 
 import (
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -163,7 +164,7 @@ func testZapretSocketPlan(t *testing.T, cookie uint64, ifindex int32) planner.Za
 		Zapret: &planner.ZapretFacts{
 			OutboundRef: "direct-a", OutboundRevision: revision, Provider: "sing-box",
 			DirectSocket: true, SocketMark: true, NFQueue: true, ConntrackAccounting: true, EgressGuard: true,
-			InstalledEgress: &planner.ZapretEgress{NamespaceCookie: cookie, IfIndex: ifindex, IPv4: true, RouteRevision: revision},
+			InstalledEgress: &planner.ZapretEgress{NamespaceCookie: cookie, IfIndex: ifindex, IPv4Gateway: netip.MustParseAddr("192.0.2.1"), RouteRevision: revision},
 		},
 	})
 	if err != nil {

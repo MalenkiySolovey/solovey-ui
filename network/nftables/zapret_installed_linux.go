@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -26,6 +27,7 @@ const (
 	nftTableFlagOwner = 2 // Deliberately excludes NFT_TABLE_F_PERSIST.
 	nftChainAccept    = 1 // NF_ACCEPT
 	zapretOutput      = "local_output"
+	zapretPostRouting = "verify_route"
 	zapretNFTTimeout  = 2 * time.Second
 )
 
@@ -177,7 +179,7 @@ func (t *ZapretOwnedTable) observe() (uint64, error) {
 	// This port cannot be used to modify a successful create. A different
 	// port cannot edit any owned chains or rules, regardless of their names.
 	if attrs.Err() != nil || name != planner.ZapretInstalledTable || flags != nftTableFlagOwner ||
-		owner == 0 || owner != t.port || handle == 0 || use != 1 || !bytes.Equal(comment, t.comment) {
+		owner == 0 || owner != t.port || handle == 0 || use != 2 || !bytes.Equal(comment, t.comment) {
 		return 0, errors.New("table for Zapret has no exact live owner and plan identity")
 	}
 	return handle, nil
@@ -228,18 +230,23 @@ func zapretOwnedBatch(plan planner.ZapretPlan, comment []byte) ([]netlink.Messag
 		zapretNftUint32(unix.NFTA_TABLE_FLAGS, nftTableFlagOwner), netlink.Attribute{Type: nftTableUserData, Data: comment}); err != nil {
 		return nil, err
 	}
-	hook, err := netlink.MarshalAttributes([]netlink.Attribute{
-		zapretNftUint32(unix.NFTA_HOOK_HOOKNUM, unix.NF_INET_LOCAL_OUT), zapretNftUint32(unix.NFTA_HOOK_PRIORITY, 150),
-	})
-	if err != nil {
-		return nil, err
+	for _, chain := range []struct {
+		name           string
+		hook, priority uint32
+	}{{zapretOutput, unix.NF_INET_LOCAL_OUT, 150}, {zapretPostRouting, unix.NF_INET_POST_ROUTING, zapretGuardPriority - 1}} {
+		hook, err := netlink.MarshalAttributes([]netlink.Attribute{
+			zapretNftUint32(unix.NFTA_HOOK_HOOKNUM, chain.hook), zapretNftUint32(unix.NFTA_HOOK_PRIORITY, chain.priority),
+		})
+		if err != nil {
+			return nil, err
+		}
+		if err := add(unix.NFT_MSG_NEWCHAIN, netlink.Excl, zapretNftString(unix.NFTA_CHAIN_TABLE, planner.ZapretInstalledTable),
+			zapretNftString(unix.NFTA_CHAIN_NAME, chain.name), zapretNftString(unix.NFTA_CHAIN_TYPE, "filter"),
+			zapretNftUint32(unix.NFTA_CHAIN_POLICY, nftChainAccept), netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_CHAIN_HOOK, Data: hook}); err != nil {
+			return nil, err
+		}
 	}
-	if err := add(unix.NFT_MSG_NEWCHAIN, netlink.Excl, zapretNftString(unix.NFTA_CHAIN_TABLE, planner.ZapretInstalledTable),
-		zapretNftString(unix.NFTA_CHAIN_NAME, zapretOutput), zapretNftString(unix.NFTA_CHAIN_TYPE, "filter"),
-		zapretNftUint32(unix.NFTA_CHAIN_POLICY, nftChainAccept), netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_CHAIN_HOOK, Data: hook}); err != nil {
-		return nil, err
-	}
-	addRule := func(expressions []expr.Any) error {
+	addRule := func(chain string, expressions []expr.Any) error {
 		attrs := make([]netlink.Attribute, 0, len(expressions))
 		for _, value := range expressions {
 			encoded, err := expr.Marshal(unix.NFPROTO_INET, value)
@@ -253,7 +260,7 @@ func zapretOwnedBatch(plan planner.ZapretPlan, comment []byte) ([]netlink.Messag
 			return err
 		}
 		return add(unix.NFT_MSG_NEWRULE, netlink.Append, zapretNftString(unix.NFTA_RULE_TABLE, planner.ZapretInstalledTable),
-			zapretNftString(unix.NFTA_RULE_CHAIN, zapretOutput), netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_RULE_EXPRESSIONS, Data: data})
+			zapretNftString(unix.NFTA_RULE_CHAIN, chain), netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_RULE_EXPRESSIONS, Data: data})
 	}
 	const reg = unix.NFT_REG_1
 	meta := func(key uint32) expr.Any { return &expr.Meta{Key: expr.MetaKey(key), Register: reg} }
@@ -263,47 +270,59 @@ func zapretOwnedBatch(plan planner.ZapretPlan, comment []byte) ([]netlink.Messag
 		return []expr.Any{&expr.Immediate{Register: reg, Data: u32(value)}, &expr.Meta{Key: expr.MetaKeyMARK, SourceRegister: true, Register: reg}}
 	}
 	egress := scope.Egress()
-	path := []expr.Any{meta(unix.NFT_META_OIF), eq(u32(uint32(egress.IfIndex)))}
-	if egress.IPv4 != egress.IPv6 {
-		family := byte(unix.NFPROTO_IPV4)
-		if egress.IPv6 {
-			family = unix.NFPROTO_IPV6
-		}
-		path = append(path, meta(unix.NFT_META_NFPROTO), eq([]byte{family}))
-	}
 	packet := plan.PacketScope()
-	for _, protocol := range packet.Protocols {
-		l4, ports := byte(unix.IPPROTO_TCP), packet.TCPPorts
-		if protocol == intent.PacketProtocolUDP {
-			l4, ports = unix.IPPROTO_UDP, packet.UDPPorts
+	generated := []uint32{plan.LoopMark(), plan.LoopMark() | plan.QueueMark()}
+	for _, route := range []struct {
+		family  byte
+		gateway netip.Addr
+		key     expr.RtKey
+	}{{unix.NFPROTO_IPV4, egress.IPv4Gateway, expr.RtNexthop4}, {unix.NFPROTO_IPV6, egress.IPv6Gateway, expr.RtNexthop6}} {
+		if !route.gateway.IsValid() {
+			continue
 		}
-		for _, port := range ports {
-			match := append([]expr.Any(nil), path...)
-			match = append(match, meta(unix.NFT_META_L4PROTO), eq([]byte{l4}),
-				&expr.Payload{DestRegister: reg, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2},
-				eq(binary.BigEndian.AppendUint16(nil, port)))
-			original := append([]expr.Any(nil), match...)
-			original = append(original, &expr.Ct{Key: expr.CtKeyDIRECTION, Register: reg}, eq([]byte{0}),
-				meta(unix.NFT_META_MARK), eq(u32(plan.SocketMark())))
-			original = append(original, setMark(plan.QueueMark())...)
-			if err := addRule(append(original, &expr.Queue{Num: plan.Queue(), Total: 1})); err != nil {
-				return nil, err
+		path := []expr.Any{meta(unix.NFT_META_NFPROTO), eq([]byte{route.family}),
+			meta(unix.NFT_META_OIF), eq(u32(uint32(egress.IfIndex))),
+			&expr.Rt{Key: route.key, Register: reg}, eq(route.gateway.AsSlice())}
+		for _, protocol := range packet.Protocols {
+			l4, ports := byte(unix.IPPROTO_TCP), packet.TCPPorts
+			if protocol == intent.PacketProtocolUDP {
+				l4, ports = unix.IPPROTO_UDP, packet.UDPPorts
 			}
-			for _, generated := range []uint32{plan.LoopMark(), plan.LoopMark() | plan.QueueMark()} {
-				raw := append([]expr.Any(nil), match...)
-				raw = append(raw, meta(unix.NFT_META_MARK), eq(u32(generated)))
-				raw = append(raw, setMark(generated|plan.RawPassMark())...)
-				if err := addRule(append(raw, &expr.Verdict{Kind: expr.VerdictAccept})); err != nil {
+			for _, port := range ports {
+				match := append(append([]expr.Any(nil), path...), meta(unix.NFT_META_L4PROTO), eq([]byte{l4}),
+					&expr.Payload{DestRegister: reg, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2},
+					eq(binary.BigEndian.AppendUint16(nil, port)))
+				original := append(append([]expr.Any(nil), match...), &expr.Ct{Key: expr.CtKeyDIRECTION, Register: reg}, eq([]byte{0}),
+					meta(unix.NFT_META_MARK), eq(u32(plan.SocketMark())))
+				original = append(original, setMark(plan.QueueMark())...)
+				if err := addRule(zapretOutput, append(original, &expr.Queue{Num: plan.Queue(), Total: 1})); err != nil {
 					return nil, err
+				}
+				for _, mark := range generated {
+					raw := append(append([]expr.Any(nil), match...), meta(unix.NFT_META_MARK), eq(u32(mark)))
+					raw = append(raw, setMark(mark|plan.RawPassMark())...)
+					if err := addRule(zapretOutput, append(raw, &expr.Verdict{Kind: expr.VerdictAccept})); err != nil {
+						return nil, err
+					}
 				}
 			}
 		}
+		// A later route-type OUTPUT chain can cause a second lookup after
+		// NFQUEUE reinjection. Require the actual route again in POSTROUTING.
+		for _, mark := range []uint32{plan.QueueMark(), generated[0] | plan.RawPassMark(), generated[1] | plan.RawPassMark()} {
+			match := append(append([]expr.Any(nil), path...), meta(unix.NFT_META_MARK), eq(u32(mark)), &expr.Verdict{Kind: expr.VerdictAccept})
+			if err := addRule(zapretPostRouting, match); err != nil {
+				return nil, err
+			}
+		}
 	}
-	if err := addRule([]expr.Any{meta(unix.NFT_META_MARK),
-		&expr.Bitwise{SourceRegister: reg, DestRegister: reg, Len: 4, Mask: u32(plan.SocketMark() | plan.LoopMark()), Xor: u32(0)},
-		&expr.Cmp{Op: expr.CmpOpNeq, Register: reg, Data: u32(0)}, &expr.Verdict{Kind: expr.VerdictDrop},
-	}); err != nil {
-		return nil, err
+	for _, chain := range []string{zapretOutput, zapretPostRouting} {
+		if err := addRule(chain, []expr.Any{meta(unix.NFT_META_MARK),
+			&expr.Bitwise{SourceRegister: reg, DestRegister: reg, Len: 4, Mask: u32(plan.QueueMark() | plan.LoopMark() | plan.RawPassMark()), Xor: u32(0)},
+			&expr.Cmp{Op: expr.CmpOpNeq, Register: reg, Data: u32(0)}, &expr.Verdict{Kind: expr.VerdictDrop},
+		}); err != nil {
+			return nil, err
+		}
 	}
 	return append(batch, begin(unix.NFNL_MSG_BATCH_END)), nil
 }

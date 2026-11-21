@@ -71,13 +71,15 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 		}
 	}
 	const tx, rx = "r8b1tx", "r8b1rx"
-	const senderIP, receiverIP = "192.0.2.1", "192.0.2.2"
+	const senderIP, gatewayIP, receiverIP = "192.0.2.1", "192.0.2.2", "198.51.100.2"
 	run("", "ip", "link", "add", tx, "type", "veth", "peer", "name", rx)
 	run("", "ip", "link", "set", rx, "netns", pid)
 	run("", "ip", "addr", "add", senderIP+"/30", "dev", tx)
 	run("", "ip", "link", "set", tx, "up")
-	run("", "nsenter", "-t", pid, "-n", "--", "ip", "addr", "add", receiverIP+"/30", "dev", rx)
+	run("", "nsenter", "-t", pid, "-n", "--", "ip", "addr", "add", gatewayIP+"/30", "dev", rx)
+	run("", "nsenter", "-t", pid, "-n", "--", "ip", "addr", "add", receiverIP+"/32", "dev", rx)
 	run("", "nsenter", "-t", pid, "-n", "--", "ip", "link", "set", rx, "up")
+	run("", "ip", "-4", "route", "replace", "default", "via", gatewayIP, "dev", tx)
 	run("", "nsenter", "-t", pid, "-n", "--", "ethtool", "-K", rx, "gro", "off")
 	dev, err := net.InterfaceByName(tx)
 	if err != nil {
@@ -118,12 +120,7 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cookie, err := unix.GetsockoptUint64(fd, unix.SOL_SOCKET, unix.SO_NETNS_COOKIE)
-	_ = unix.Close(fd)
+	egress, err := planner.ObserveZapretLinuxEgress(ctx, int32(dev.Index), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +129,7 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 		Capability: platform.PlatformFact{Availability: platform.Available, Backend: planner.ZapretInstalledBackend},
 		Zapret: &planner.ZapretFacts{OutboundRef: resolved.Intent.OutboundRef, OutboundRevision: revision, Provider: "sing-box",
 			DirectSocket: true, SocketMark: true, NFQueue: true, ConntrackAccounting: true, EgressGuard: true,
-			InstalledEgress: &planner.ZapretEgress{NamespaceCookie: cookie, IfIndex: int32(dev.Index), IPv4: true, RouteRevision: revision}},
+			InstalledEgress: &egress},
 	}
 	plan, err := planner.CompileZapret(resolved.Intent, facts)
 	if err != nil {

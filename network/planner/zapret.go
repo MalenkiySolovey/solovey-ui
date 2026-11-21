@@ -2,6 +2,7 @@ package planner
 
 import (
 	"fmt"
+	"net/netip"
 	"slices"
 	"strconv"
 
@@ -35,12 +36,20 @@ type ZapretFacts struct {
 type ZapretEgress struct {
 	NamespaceCookie uint64
 	IfIndex         int32
-	IPv4, IPv6      bool
-	RouteRevision   string
+	// A zero address means that family has no admitted gateway in table main.
+	IPv4Gateway, IPv6Gateway netip.Addr
+	RouteRevision            string
 }
 
 func (e ZapretEgress) valid() bool {
-	return e.NamespaceCookie != 0 && e.IfIndex > 0 && (e.IPv4 || e.IPv6) && digest(e.RouteRevision)
+	return e.NamespaceCookie != 0 && e.IfIndex > 0 && digest(e.RouteRevision) &&
+		(e.IPv4Gateway.IsValid() || e.IPv6Gateway.IsValid()) &&
+		(!e.IPv4Gateway.IsValid() || e.IPv4Gateway.Is4() && zapretGateway(e.IPv4Gateway)) &&
+		(!e.IPv6Gateway.IsValid() || e.IPv6Gateway.Is6() && !e.IPv6Gateway.Is4In6() && zapretGateway(e.IPv6Gateway))
+}
+
+func zapretGateway(addr netip.Addr) bool {
+	return addr.Zone() == "" && (addr.IsGlobalUnicast() || addr.IsLinkLocalUnicast())
 }
 
 type ZapretPlan struct {

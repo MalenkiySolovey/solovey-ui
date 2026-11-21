@@ -38,6 +38,9 @@ func PrepareZapretNativePath(ctx context.Context, plan planner.ZapretPlan, befor
 	if err := planner.CheckCurrent(plan.Plan(), before); err != nil {
 		return nil, err
 	}
+	if err := verifyZapretRoute(ctx, plan); err != nil {
+		return nil, err
+	}
 	queue, err := ObserveZapretQueueOwner(plan, engine)
 	if err != nil {
 		return nil, err
@@ -116,6 +119,9 @@ func (p *ZapretNativePath) verify(ctx context.Context, current planner.Facts) er
 	if err := planner.CheckCurrent(p.plan.Plan(), current); err != nil {
 		return err
 	}
+	if err := verifyZapretRoute(ctx, p.plan); err != nil {
+		return err
+	}
 	if err := p.table.Verify(ctx); err != nil {
 		return err
 	}
@@ -124,6 +130,22 @@ func (p *ZapretNativePath) verify(ctx context.Context, current planner.Facts) er
 		return errors.Join(errors.New("queue ownership for Zapret changed"), err)
 	}
 	return ctx.Err()
+}
+
+func verifyZapretRoute(ctx context.Context, plan planner.ZapretPlan) error {
+	scope, err := plan.SocketScope()
+	if err != nil {
+		return err
+	}
+	approved := scope.Egress()
+	current, err := planner.ObserveZapretLinuxEgress(ctx, approved.IfIndex, approved.IPv4Gateway.IsValid(), approved.IPv6Gateway.IsValid())
+	if err != nil {
+		return err
+	}
+	if current != approved {
+		return errors.New("kernel gateway or route revision for Zapret changed")
+	}
+	return nil
 }
 
 func (p *ZapretNativePath) Close() error {

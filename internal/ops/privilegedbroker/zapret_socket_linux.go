@@ -274,11 +274,11 @@ func checkZapretSocket(fd int, peer PeerIdentity, scope planner.ZapretSocketScop
 	egress := scope.Egress()
 	switch addr := address.(type) {
 	case *unix.SockaddrInet4:
-		if !egress.IPv4 || addr.Port != 0 || addr.Addr != [4]byte{} {
+		if !egress.IPv4Gateway.IsValid() || addr.Port != 0 || addr.Addr != [4]byte{} {
 			return errZapretSocket
 		}
 	case *unix.SockaddrInet6:
-		if !egress.IPv6 || addr.Port != 0 || addr.Addr != [16]byte{} || addr.ZoneId != 0 {
+		if !egress.IPv6Gateway.IsValid() || addr.Port != 0 || addr.Addr != [16]byte{} || addr.ZoneId != 0 {
 			return errZapretSocket
 		}
 	default:

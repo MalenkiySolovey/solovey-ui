@@ -99,7 +99,7 @@ func CreateZapretNativeGuard(plan planner.ZapretPlan, pinDir string) (_ *ZapretN
 		pin string
 		num link.NetfilterProtocolFamily
 		use bool
-	}{{"ipv4", link.NetfilterProtoIPv4, scope.Egress().IPv4}, {"ipv6", link.NetfilterProtoIPv6, scope.Egress().IPv6}} {
+	}{{"ipv4", link.NetfilterProtoIPv4, scope.Egress().IPv4Gateway.IsValid()}, {"ipv6", link.NetfilterProtoIPv6, scope.Egress().IPv6Gateway.IsValid()}} {
 		program, err := ebpf.NewProgram(&ebpf.ProgramSpec{Name: "sui_zapret_out", Type: ebpf.Netfilter, AttachType: ebpf.AttachNetfilter,
 			License: "GPL", Instructions: zapretGuardProgram(plan, layout, g.device.FD(), g.deadline.FD(), g.sockets.FD(), family.use)})
 		if err != nil {

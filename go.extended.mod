@@ -168,7 +168,7 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20250317134145-8bc96cf8fc35 // indirect
 	github.com/mattn/go-isatty v0.0.23 // indirect
 	github.com/mdlayher/netlink v1.11.2
-	github.com/mdlayher/socket v0.6.0 // indirect
+	github.com/mdlayher/socket v0.6.0
 	github.com/metacubex/utls v1.8.7 // indirect
 	github.com/mholt/acmez/v3 v3.1.6 // indirect
 	github.com/miekg/dns v1.1.72

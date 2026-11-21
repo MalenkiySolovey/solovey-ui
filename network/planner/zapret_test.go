@@ -2,6 +2,7 @@ package planner
 
 import (
 	"errors"
+	"net/netip"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-host/hostref"
@@ -72,7 +73,7 @@ func TestInstalledZapretScopeBindsEgressAndRejectsProbe(t *testing.T) {
 	facts.Capability.Backend = ZapretInstalledBackend
 	_, err = CompileZapret(request, facts)
 	requireReason(t, err, CapabilityUnavailable)
-	facts.Zapret.InstalledEgress = &ZapretEgress{NamespaceCookie: 11, IfIndex: 2, IPv4: true, RouteRevision: hash("egress")}
+	facts.Zapret.InstalledEgress = &ZapretEgress{NamespaceCookie: 11, IfIndex: 2, IPv4Gateway: netip.MustParseAddr("192.0.2.1"), RouteRevision: hash("egress")}
 	plan, err := CompileZapret(request, facts)
 	if err != nil {
 		t.Fatal(err)
@@ -89,8 +90,14 @@ func TestInstalledZapretScopeBindsEgressAndRejectsProbe(t *testing.T) {
 	}
 	requireReason(t, CheckCurrent(plan.Plan(), facts), StalePlan)
 	facts.Zapret.InstalledEgress.IfIndex = 2
+	facts.Zapret.InstalledEgress.IPv4Gateway = netip.MustParseAddr("192.0.2.2")
+	requireReason(t, CheckCurrent(plan.Plan(), facts), StalePlan)
+	facts.Zapret.InstalledEgress.IPv4Gateway = netip.MustParseAddr("192.0.2.1")
 	facts.Zapret.InstalledEgress.RouteRevision = hash("new route, same link")
 	requireReason(t, CheckCurrent(plan.Plan(), facts), StalePlan)
+	facts.Zapret.InstalledEgress.IPv4Gateway = netip.MustParseAddr("::ffff:192.0.2.1")
+	_, err = CompileZapret(request, facts)
+	requireReason(t, err, CapabilityUnavailable)
 }
 
 func TestCompileZapretFailsClosedForUnsupportedPathAndCollision(t *testing.T) {

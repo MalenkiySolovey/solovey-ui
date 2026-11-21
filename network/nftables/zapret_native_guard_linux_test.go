@@ -16,7 +16,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unsafe"
 
 	"github.com/MalenkiySolovey/solovey-host/hostref"
 	"github.com/MalenkiySolovey/solovey-host/network/intent"
@@ -37,7 +36,8 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	if _, err := probeNamespaceForGuard(parent); err != nil {
 		t.Fatal(err)
 	}
-	const dst, port = "198.51.100.1", 4443
+	const port = 4443
+	const firstGateway, secondGateway, alternateGateway = "192.0.2.1", "192.0.2.3", "192.0.2.17"
 	const foreign = "add table inet r8b1_foreign\nadd chain inet r8b1_foreign output { type filter hook output priority 0; policy accept; }\n"
 	run := func(input, tool string, args ...string) string {
 		t.Helper()
@@ -51,33 +51,39 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	}
 	ip := func(args ...string) { t.Helper(); run("", "ip", args...) }
 	nft := func(input string) { t.Helper(); run(input, "nft", "-f", "-") }
-	route := func(device string) { t.Helper(); ip("-4", "route", "replace", dst+"/32", "dev", device) }
-	link := func(device, peer, addr string, index int) {
+	route := func(device, gateway string) {
+		t.Helper()
+		ip("-4", "route", "replace", "default", "via", gateway, "dev", device)
+	}
+	link := func(device, peer, addr, gateway string, index int) {
 		t.Helper()
 		args := []string{"link", "add", "name", device}
 		if index != 0 {
 			args = append(args, "index", strconv.Itoa(index))
 		}
 		ip(append(args, "type", "veth", "peer", "name", peer)...)
-		ip("-4", "addr", "add", addr+"/32", "dev", device)
+		ip("-4", "addr", "add", addr+"/29", "dev", device)
 		ip("link", "set", device, "up")
 		ip("link", "set", peer, "up")
 		linkPeer, err := net.InterfaceByName(peer)
 		if err != nil {
 			t.Fatal(err)
 		}
-		ip("-4", "neigh", "replace", dst, "lladdr", linkPeer.HardwareAddr.String(), "nud", "permanent", "dev", device)
+		ip("-4", "neigh", "replace", gateway, "lladdr", linkPeer.HardwareAddr.String(), "nud", "permanent", "dev", device)
+		if gateway == firstGateway {
+			ip("-4", "neigh", "replace", secondGateway, "lladdr", linkPeer.HardwareAddr.String(), "nud", "permanent", "dev", device)
+		}
 	}
-	link("r8ba", "r8bap", "192.0.2.2", 0)
-	link("r8bb", "r8bbp", "192.0.2.3", 0)
-	route("r8ba")
+	link("r8ba", "r8bap", "192.0.2.2", firstGateway, 0)
+	link("r8bb", "r8bbp", "192.0.2.18", alternateGateway, 0)
+	route("r8ba", firstGateway)
 	iface, err := net.InterfaceByName("r8ba")
 	if err != nil {
 		t.Fatal(err)
 	}
 	a := testGuardUDPSocket(t)
 	b := testGuardUDPSocket(t)
-	plan := testGuardPlan(t, a, iface.Index, port)
+	plan := testGuardPlan(t, iface.Index, port)
 	var engineLog bytes.Buffer
 	proc := exec.CommandContext(t.Context(), filepath.Join(engine, "nfqws2"), fmt.Sprintf("--qnum=%d", plan.Queue()), "--filter-udp=*")
 	proc.Stdout, proc.Stderr = &engineLog, &engineLog
@@ -151,6 +157,10 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	if err := unix.SetsockoptInt(a, unix.SOL_SOCKET, unix.SO_MARK, int(plan.SocketMark())); err != nil {
 		t.Fatal(err)
 	}
+	destination := &unix.SockaddrInet4{Port: port, Addr: [4]byte{198, 51, 100, 1}}
+	if err := unix.Connect(a, destination); err != nil {
+		t.Fatal(err)
+	}
 	stopTable := startZapretTableOwner(t, iface.Index, port)
 	otherPort := exec.CommandContext(t.Context(), "nft", "-f", "-")
 	otherPort.Stdin = strings.NewReader(remove)
@@ -161,7 +171,11 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	check := func(sock, receiver int, title string, want bool) {
 		t.Helper()
 		marker := []byte("r8b1:" + title)
-		err := unix.Sendto(sock, marker, unix.MSG_DONTWAIT, &unix.SockaddrInet4{Port: port, Addr: [4]byte{198, 51, 100, 1}})
+		var dest unix.Sockaddr = destination
+		if sock == a {
+			dest = nil // Use the original connected socket's cached route.
+		}
+		err := unix.Sendto(sock, marker, unix.MSG_DONTWAIT, dest)
 		if err != nil && want {
 			t.Fatalf("send %s: %v", title, err)
 		}
@@ -191,10 +205,31 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	}
 	check(staleSocket, peer, "different socket with the same mark", false)
 	alternate := testGuardReceiver(t, "r8bbp")
-	route("r8bb")
+	route("r8ba", secondGateway)
+	if err := verifyZapretRoute(t.Context(), plan); err == nil {
+		t.Fatal("same-link gateway change did not invalidate the plan")
+	}
+	check(a, peer, "changed gateway on same link A", false)
+	check(b, peer, "changed gateway on same link B", true)
+	route("r8ba", firstGateway)
+	if err := verifyZapretRoute(t.Context(), plan); err != nil {
+		t.Fatalf("original gateway snapshot was not restored: %v", err)
+	}
+	const lateRoute = "r8b1_late_route"
+	ip("-4", "route", "add", "198.51.100.2/32", "via", secondGateway, "dev", "r8ba")
+	nft(fmt.Sprintf("add table ip %[1]s\nadd chain ip %[1]s output { type route hook output priority 160; policy accept; }\nadd rule ip %[1]s output meta mark 0x%[2]x counter ip daddr set 198.51.100.2\n", lateRoute, plan.QueueMark()))
+	check(a, peer, "new gateway after NFQUEUE reinjection A", false)
+	check(b, peer, "new gateway after NFQUEUE reinjection B", true)
+	if listing := run("", "nft", "list", "chain", "ip", lateRoute, "output"); !strings.Contains(listing, "packets 1 bytes") {
+		t.Fatalf("marked A did not reach the later routing chain: %s", listing)
+	}
+	nft("delete table ip " + lateRoute + "\n")
+	ip("-4", "route", "del", "198.51.100.2/32")
+	t.Log("SAME_LINK_GATEWAY_CHANGE=BLOCKED; REROUTE_AFTER_NFQUEUE=BLOCKED; UNMARKED_CONTROL=PASS")
+	route("r8bb", alternateGateway)
 	check(a, alternate, "alternate route A", false)
 	check(b, alternate, "alternate route B", true)
-	route("r8ba")
+	route("r8ba", firstGateway)
 	check(a, peer, "restored egress", true)
 	stopTable() // Deliberately SIGKILL: no deferred cleanup and no lease wait.
 	list := exec.CommandContext(t.Context(), "nft", "list", "table", "inet", planner.ZapretInstalledTable)
@@ -234,8 +269,8 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	}
 	check(raw, peer, "control with permission", true)
 	ip("link", "del", "r8ba")
-	link("r8ba", "r8bap", "192.0.2.2", iface.Index)
-	route("r8ba")
+	link("r8ba", "r8bap", "192.0.2.2", firstGateway, iface.Index)
+	route("r8ba", firstGateway)
 	replaced := testGuardReceiver(t, "r8bap")
 	check(raw, replaced, "recreated ifindex with an otherwise valid mark", false)
 	check(b, replaced, "recreated ifindex B", true)
@@ -301,7 +336,7 @@ func TestZapretTableOwnerProcess(t *testing.T) {
 		linkErr != nil || indexErr != nil || portErr != nil || iface.Index != index || port != 4443 {
 		t.Fatal("refusing to open an owned table outside the disposable egress fixture")
 	}
-	plan := testGuardPlan(t, testGuardUDPSocket(t), index, uint16(port))
+	plan := testGuardPlan(t, index, uint16(port))
 	table, err := CreateZapretOwnedTable(t.Context(), plan)
 	if err != nil {
 		t.Fatal(err)
@@ -394,14 +429,11 @@ func testGuardPacket(t *testing.T, fd int, marker []byte) bool {
 	return false
 }
 
-func testGuardPlan(t *testing.T, fd, ifindex int, port uint16) planner.ZapretPlan {
+func testGuardPlan(t *testing.T, ifindex int, port uint16) planner.ZapretPlan {
 	t.Helper()
-	var cookie uint64
-	length := uint32(8)
-	_, _, errno := unix.Syscall6(unix.SYS_GETSOCKOPT, uintptr(fd), unix.SOL_SOCKET, unix.SO_NETNS_COOKIE,
-		uintptr(unsafe.Pointer(&cookie)), uintptr(unsafe.Pointer(&length)), 0)
-	if errno != 0 || length != 8 || cookie == 0 {
-		t.Fatalf("observe fixture socket namespace: %v", errno)
+	egress, err := planner.ObserveZapretLinuxEgress(t.Context(), int32(ifindex), true, false)
+	if err != nil {
+		t.Fatal(err)
 	}
 	revision := strings.Repeat("a", 64)
 	plan, err := planner.CompileZapret(intent.ZapretPacketPathIntent{
@@ -416,7 +448,7 @@ func testGuardPlan(t *testing.T, fd, ifindex int, port uint16) planner.ZapretPla
 		Zapret: &planner.ZapretFacts{
 			OutboundRef: "direct-a", OutboundRevision: revision, Provider: "sing-box",
 			DirectSocket: true, SocketMark: true, NFQueue: true, ConntrackAccounting: true, EgressGuard: true,
-			InstalledEgress: &planner.ZapretEgress{NamespaceCookie: cookie, IfIndex: int32(ifindex), IPv4: true, RouteRevision: revision},
+			InstalledEgress: &egress,
 		},
 	})
 	if err != nil {

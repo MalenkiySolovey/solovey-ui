@@ -30,10 +30,20 @@ based on the name alone.
 
 An independent pinned IPv4/IPv6 BPF hook checks postrouting device identity,
 packet admission bits and the enrolled socket cookie for original traffic.
-Generated output needs its own firewall pass bit. An allocation is not a grant:
-the adapter must observe the actual routing policy and exclude mark writers,
-then check the NFQUEUE netlink descriptor against the authenticated `nfqws2`
-process. Route revision is a control-plane input, not a kernel route proof.
+Generated output needs its own firewall pass bit. For each enabled family,
+the Planner snapshots one unicast gateway on the selected ifindex in table
+`main` using a bounded kernel dump. No default, multiple defaults, ECMP and
+opaque next-hop objects are unsupported. Stage, renew and socket admission
+re-read that snapshot rather than relying on the caller's route revision. The
+owned table compares each protected packet's actual device and next hop before
+queueing and again after routing; this also covers a route-type `OUTPUT`
+lookup after NFQUEUE reinjection. A different next hop on the same link does
+not match. This path is gateway-scoped, not general LAN or policy routing.
+
+An allocation is not a grant. The adapter checks the NFQUEUE netlink
+descriptor against the authenticated `nfqws2` process. It still needs a
+complete account of routing policy and mark owners, including masked uses and
+foreign writers. An unchanged gateway snapshot does not establish those facts.
 
 Production activation remains closed. Before wiring it, the broker must prove
 Netfilter BPF load and a private writable bpffs directory under the installed
@@ -45,6 +55,7 @@ partial apply and restart reconcile durable, reject stale socket admissions,
 and preserve a matching deny guard for surviving marked sockets. On owner
 loss the nftables port closes independently of the guard's lease. Production
 reconcile must not reinstall pass-bit rules for a still-leased old generation.
-The hook sees the routed interface at `POSTROUTING`, not a later redirect or
-a changed next hop on the same link. Neither is an admitted installed path
-until its exact kernel constraint and rollback are qualified.
+The hooks see the routed device and L3 next hop at `POSTROUTING`, not a
+subsequent device redirect or L2 rewrite. Neither later mutation is an
+admitted installed path. The installed privilege, final egress and recovery
+gates must pass before publication of a socket admission listener.
