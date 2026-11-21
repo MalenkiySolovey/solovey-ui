@@ -66,9 +66,13 @@ jobs:
             echo 'Needed: a disposable Linux runner with CAP_SYS_ADMIN, CAP_NET_ADMIN, nfnetlink_queue, nft_queue and conntrack accounting.' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          sudo unshare --net -- env SOLOVEY_TEST_PARENT_NETNS="$(readlink /proc/self/ns/net)" \
-            SOLOVEY_TEST_ENGINE_ROOT="$RUNNER_TEMP/zapret-engine" PATH=/usr/sbin:/usr/bin:/sbin:/bin \
-            bash -euc '
+          sudo chown root:root "$RUNNER_TEMP/zapret-proof"
+          unit="solovey-zapret-proof-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.service"
+          sudo systemd-run --quiet --wait --pipe --collect --unit="$unit" \
+            --setenv="SOLOVEY_TEST_PARENT_NETNS=$(readlink /proc/self/ns/net)" \
+            --setenv="SOLOVEY_TEST_ENGINE_ROOT=$RUNNER_TEMP/zapret-engine" \
+            --setenv="SOLOVEY_TEST_BROKER_UNIT=$unit" \
+            /usr/bin/unshare --net -- /bin/bash -euc '
               test "$(readlink /proc/self/ns/net)" != "$SOLOVEY_TEST_PARENT_NETNS"
               test "$(readlink /proc/self/ns/net)" != "$(readlink /proc/1/ns/net)"
               sysctl -w net.netfilter.nf_conntrack_acct=1

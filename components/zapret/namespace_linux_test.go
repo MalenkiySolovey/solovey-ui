@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -26,9 +27,11 @@ import (
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	platform "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/processevidence"
 	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
 	"github.com/MalenkiySolovey/solovey-ui/network/planner"
 	M "github.com/sagernet/sing/common/metadata"
+	"golang.org/x/sys/unix"
 )
 
 type zapretFixtureSource struct{ value strategy.Strategy }
@@ -139,10 +142,9 @@ func TestZapretOutboundNamespace(t *testing.T) {
 		t.Fatalf("exact Planner candidate validation failed: %v", err)
 	}
 	journalRoot := filepath.Join(t.TempDir(), "solovey-ui-broker")
-	boot := digest("broker namespace " + current)
-	change := newZapretProbeChange(t, probe, accepted, facts, journalRoot, boot, plan.Plan().Revision())
-	if rejected := change.call(ctx, zapretApply, 1); rejected.OK || rejected.Code != broker.CodeValidation {
-		t.Fatalf("Apply admitted without a queue consumer: %+v", rejected)
+	change := newZapretProbeChange(t, ctx, probe, accepted, facts, journalRoot, plan.Plan().Revision())
+	if err := change.call(ctx, zapretApply, 1); !probeBrokerFailure(err, broker.CodeValidation) {
+		t.Fatalf("Apply admitted without a queue consumer: %v", err)
 	}
 	if tables := string(nft("", "list", "tables")); strings.Contains(tables, planner.ZapretProbeTable) {
 		t.Fatal("queue-less Apply altered the namespace")
@@ -185,8 +187,8 @@ func TestZapretOutboundNamespace(t *testing.T) {
 	// Both axes must hold: a live queue alone cannot authorize the plan if
 	// the ruleset changed after Validate. Protect even unrelated resources.
 	nft("", "add", "counter", "inet", "fixture_other", "intervening")
-	if rejected := change.call(ctx, zapretApply, 2); rejected.OK || rejected.Code != broker.CodeValidation {
-		t.Fatalf("Apply admitted a stale before-image: %+v", rejected)
+	if err := change.call(ctx, zapretApply, 2); !probeBrokerFailure(err, broker.CodeValidation) {
+		t.Fatalf("Apply admitted a stale before-image: %v", err)
 	}
 	if tables := string(nft("", "list", "tables")); strings.Contains(tables, planner.ZapretProbeTable) {
 		t.Fatal("stale Apply created the probe table")
@@ -223,12 +225,28 @@ func TestZapretOutboundNamespace(t *testing.T) {
 	committed := change.require(t, ctx, zapretCommit, 4)
 	// Reopen the actual on-disk owner journal, rather than reusing an
 	// in-memory Apply result as either checkpoint or compensation authority.
-	change = newZapretProbeChange(t, probe, accepted, facts, journalRoot, boot, plan.Plan().Revision())
+	change.stop()
+	change = newZapretProbeChange(t, ctx, probe, accepted, facts, journalRoot, plan.Plan().Revision())
 	checkpoint, receipt, err := change.load(zapretCommit)
-	if err != nil || receipt.ReceiptDigest != committed.Receipt.ReceiptDigest || probe.Verify(ctx, checkpoint) != nil {
+	if err != nil || receipt.ReceiptDigest != committed.ReceiptDigest || probe.Verify(ctx, checkpoint) != nil {
 		t.Fatalf("verified checkpoint did not survive journal reopen: %v", err)
 	}
-	t.Log("CHANGE_COMMITTED: Planner receipt, broker Apply, packet verification and reopened checkpoint agree")
+	t.Log("CHANGE_COMMITTED: Planner receipt, attested Unix broker Apply, packet verification and reopened checkpoint agree")
+	// Model replacement of a different table, not a global ruleset flush.
+	nft("delete table inet fixture_other\ncreate table inet fixture_other\nadd counter inet fixture_other reloaded\n", "-f", "-")
+	other = nft("", "list", "table", "inet", "fixture_other")
+	if err := probe.VerifyCurrent(ctx, checkpoint); err != nil {
+		t.Fatalf("unrelated table replacement invalidated the exact owned generation: %v", err)
+	}
+	reloadTarget := endpoints[1] // UDP/IPv4; a new, short flow.
+	beforeReload := zapretCounters(t, nft("", "-j", "list", "table", "inet", planner.ZapretProbeTable))
+	conn, err := dial(ctx, "direct-a", "udp", reloadTarget.address)
+	zapretRoundTrip(t, conn, err)
+	afterReload := zapretCounters(t, nft("", "-j", "list", "table", "inet", planner.ZapretProbeTable))
+	if afterReload["udp_captured"]-beforeReload["udp_captured"] != 1 {
+		t.Fatal("unrelated table replacement disturbed the admitted path")
+	}
+	t.Log("FOREIGN_TABLE_RELOAD_SCOPED: the exact Zapret table still queued Direct A after independent table replacement")
 	if err := cmd.Process.Signal(os.Interrupt); err != nil {
 		t.Fatal(err)
 	}
@@ -237,14 +255,14 @@ func TestZapretOutboundNamespace(t *testing.T) {
 	if err != nil || ready() {
 		t.Fatalf("engine did not release its queue: %v", err)
 	}
-	if err := probe.Verify(ctx, checkpoint); !errors.Is(err, nftables.ErrZapretProbeQueue) {
+	if err := probe.VerifyCurrent(ctx, checkpoint); !errors.Is(err, nftables.ErrZapretProbeQueue) {
 		t.Fatalf("checkpoint appeared healthy after queue loss: %v", err)
 	}
 	// Loss of the queue consumer must not turn the admitted outbound into
 	// plain Direct, nor interrupt the unmarked outbound to the same peer.
 	blockedCtx, cancelBlocked := context.WithTimeout(ctx, 750*time.Millisecond)
 	target := endpoints[0] // TCP/IPv4
-	conn, err := dial(blockedCtx, "direct-a", "tcp", target.address)
+	conn, err = dial(blockedCtx, "direct-a", "tcp", target.address)
 	cancelBlocked()
 	if conn != nil {
 		_ = conn.Close()
@@ -260,9 +278,9 @@ func TestZapretOutboundNamespace(t *testing.T) {
 	}
 	nft("", "add", "counter", "inet", planner.ZapretProbeTable, "intervening")
 	changed := nft("", "list", "table", "inet", planner.ZapretProbeTable)
-	if rejected := change.call(ctx, zapretRollback, 5); rejected.OK || rejected.Code != broker.CodeRecoveryRequired ||
+	if err := change.call(ctx, zapretRollback, 5); !probeBrokerFailure(err, broker.CodeRecoveryRequired) ||
 		!bytes.Equal(changed, nft("", "list", "table", "inet", planner.ZapretProbeTable)) {
-		t.Fatalf("rollback removed or changed an unproven table generation: %+v", rejected)
+		t.Fatalf("rollback removed or changed an unproven table generation: %v", err)
 	}
 	nft("", "delete", "counter", "inet", planner.ZapretProbeTable, "intervening")
 	change.require(t, ctx, zapretRollback, 6)
@@ -285,7 +303,8 @@ const (
 )
 
 type zapretProbeChange struct {
-	server   *broker.Server
+	client   *broker.Client
+	stop     func()
 	journal  *broker.FileJournal
 	revision string
 }
@@ -294,8 +313,28 @@ type zapretProbePayload struct {
 	PlanRevision string `json:"planRevision"`
 }
 
-func newZapretProbeChange(t *testing.T, probe *nftables.ZapretProbe, accepted nftables.ZapretProbeValidation, facts planner.Facts, root, boot, revision string) zapretProbeChange {
+func newZapretProbeChange(t *testing.T, ctx context.Context, probe *nftables.ZapretProbe, accepted nftables.ZapretProbeValidation, facts planner.Facts, root, revision string) zapretProbeChange {
 	t.Helper()
+	unit := os.Getenv("SOLOVEY_TEST_BROKER_UNIT")
+	bootID, bootErr := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	self, err := processevidence.Observe(os.Getpid())
+	if err != nil || bootErr != nil || unit == "" {
+		t.Fatalf("qualification broker requires its systemd and executable identity: %v %v", err, bootErr)
+	}
+	manifest, err := broker.FinalizeManifest(broker.Manifest{Schema: broker.ManifestSchemaSystemd, Clients: []broker.ClientManifest{{
+		Name: "zapret-qualification", UID: uint32(self.UID), GID: uint32(self.GID), Executable: self.Executable,
+		ExecutableDigest: self.ExeDigest, Device: self.ExeDevice, Inode: self.ExeInode,
+		CgroupUnit: unit, CgroupPolicy: broker.CgroupRequired, CgroupAuthorityRevision: broker.CgroupAuthorityRevisionV1,
+		Roles: []broker.Role{broker.RolePanel},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attestor, err := broker.NewManifestAttestor(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	boot := strings.TrimSpace(string(bootID))
 	journal, err := broker.OpenFileJournal(root, boot)
 	if err != nil {
 		t.Fatal(err)
@@ -343,13 +382,53 @@ func newZapretProbeChange(t *testing.T, probe *nftables.ZapretProbe, accepted nf
 			t.Fatal(err)
 		}
 	}
-	// This isolated fixture exercises the closed dispatch, mutation fence and
-	// on-disk journal. Transport and installed peer attestation are not used.
-	change.server, err = broker.NewServer(registry, journal, broker.ManifestAttestor{}, boot)
+	server, err := broker.NewServer(registry, journal, attestor, boot)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The fixture uses a private socket, never the installed broker's path.
+	path := filepath.Join(t.TempDir(), "probe.sock")
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	serveCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(serveCtx, listener, broker.RolePanel) }()
+	change.stop = sync.OnceFunc(func() {
+		cancel()
+		_ = listener.Close()
+		if err := <-done; err != nil {
+			t.Errorf("qualification broker listener: %v", err)
+		}
+		server.ShutdownConnections()
+		server.WaitConnections()
+	})
+	t.Cleanup(change.stop)
+	change.client = broker.NewClient(broker.RolePanel)
+	change.client.SocketPath = path
+	change.client.Verify = verifyZapretProbeListener
 	return change
+}
+
+func verifyZapretProbeListener(conn net.Conn, _ string) error {
+	socket, ok := conn.(*net.UnixConn)
+	if !ok {
+		return errors.New("qualification socket is not Unix")
+	}
+	raw, err := socket.SyscallConn()
+	if err != nil {
+		return err
+	}
+	var cred *unix.Ucred
+	var credErr error
+	if err := raw.Control(func(fd uintptr) { cred, credErr = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED) }); err != nil {
+		return err
+	}
+	if credErr != nil || cred == nil || cred.Uid != 0 || cred.Pid != int32(os.Getpid()) {
+		return errors.New("qualification listener process does not match")
+	}
+	return nil
 }
 
 func (change zapretProbeChange) load(verb broker.Verb) (nftables.ZapretProbeSeal, *broker.Receipt, error) {
@@ -362,22 +441,30 @@ func (change zapretProbeChange) load(verb broker.Verb) (nftables.ZapretProbeSeal
 	return seal, response.Receipt, err
 }
 
-func (change zapretProbeChange) call(ctx context.Context, verb broker.Verb, sequence uint64) broker.Response {
-	raw, digest, _ := broker.MarshalPayload(zapretProbePayload{PlanRevision: change.revision})
-	key := fmt.Sprintf("probe-%d", sequence)
-	return change.server.Handle(ctx, broker.Request{ProtocolVersion: broker.ProtocolVersion, CapabilityRevision: broker.CapabilityRevision,
-		BootID: change.server.BootID, Role: broker.RolePanel, Verb: verb, RequestID: key, OperationID: zapretChangeID,
-		IdempotencyKey: key, DeadlineAt: time.Now().Add(10 * time.Second).UnixMilli(), Payload: raw, PayloadDigest: digest,
-		Fence: broker.Fence{Resource: zapretFence, Sequence: sequence, Token: change.revision}}, broker.PeerIdentity{Revision: change.revision})
+func (change zapretProbeChange) invoke(ctx context.Context, verb broker.Verb, sequence uint64) (*broker.Receipt, error) {
+	return change.client.Invoke(ctx, broker.Call{Verb: verb, OperationID: zapretChangeID,
+		IdempotencyKey: fmt.Sprintf("probe-%d", sequence), Timeout: 10 * time.Second,
+		Payload: zapretProbePayload{PlanRevision: change.revision},
+		Fence:   broker.Fence{Resource: zapretFence, Sequence: sequence, Token: change.revision}}, nil)
 }
 
-func (change zapretProbeChange) require(t *testing.T, ctx context.Context, verb broker.Verb, sequence uint64) broker.Response {
+func (change zapretProbeChange) call(ctx context.Context, verb broker.Verb, sequence uint64) error {
+	_, err := change.invoke(ctx, verb, sequence)
+	return err
+}
+
+func (change zapretProbeChange) require(t *testing.T, ctx context.Context, verb broker.Verb, sequence uint64) *broker.Receipt {
 	t.Helper()
-	result := change.call(ctx, verb, sequence)
-	if !result.OK || result.Receipt == nil || result.Receipt.Outcome != "succeeded" || result.Replay {
-		t.Fatalf("%s did not commit its exact broker receipt: %+v", verb, result)
+	receipt, err := change.invoke(ctx, verb, sequence)
+	if err != nil || receipt == nil || receipt.Outcome != "succeeded" || receipt.Verb != verb || receipt.FenceSequence != sequence {
+		t.Fatalf("%s did not commit its exact broker receipt: %+v (%v)", verb, receipt, err)
 	}
-	return result
+	return receipt
+}
+
+func probeBrokerFailure(err error, code broker.ErrorCode) bool {
+	var public *broker.PublicError
+	return errors.As(err, &public) && public.Code == code
 }
 
 func zapretEcho(t *testing.T, network, addr string) (string, uint16) {

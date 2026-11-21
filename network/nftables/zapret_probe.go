@@ -264,6 +264,16 @@ func (p *ZapretProbe) verifySeal(seal ZapretProbeSeal) error {
 }
 
 func (p *ZapretProbe) Verify(ctx context.Context, seal ZapretProbeSeal) error {
+	return p.verify(ctx, seal, true)
+}
+
+// VerifyCurrent observes the committed owned generation without treating later
+// independent ruleset changes as damage to this table. It grants no repair authority.
+func (p *ZapretProbe) VerifyCurrent(ctx context.Context, seal ZapretProbeSeal) error {
+	return p.verify(ctx, seal, false)
+}
+
+func (p *ZapretProbe) verify(ctx context.Context, seal ZapretProbeSeal, checkBeforeImage bool) error {
 	if err := p.verifySeal(seal); err != nil {
 		return err
 	}
@@ -274,7 +284,7 @@ func (p *ZapretProbe) Verify(ctx context.Context, seal ZapretProbeSeal) error {
 	if current.table != seal.TableDigest || current.marker != probeComment(p.plan) {
 		return errors.New("Zapret probe table changed before verification")
 	}
-	if current.baseline != seal.BeforeDigest {
+	if checkBeforeImage && current.baseline != seal.BeforeDigest {
 		return errors.New("unrelated rules changed before Zapret probe verification")
 	}
 	if peer, err := p.QueuePeer(); err != nil || peer != seal.QueuePeer {
