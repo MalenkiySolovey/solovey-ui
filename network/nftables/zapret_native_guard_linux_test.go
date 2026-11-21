@@ -200,6 +200,34 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	}
 	check(a, peer, "active A", true)
 	check(b, peer, "active B", true)
+	queueSequence := func() string {
+		t.Helper()
+		listing, err := readZapretQueueInventory(buffer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for row := range strings.SplitSeq(listing, "\n") {
+			fields := strings.Fields(row)
+			if len(fields) == 9 && fields[0] == strconv.Itoa(int(plan.Queue())) {
+				return fields[7]
+			}
+		}
+		t.Fatal("missing packet sequence for the live queue")
+		return ""
+	}
+	const outputInjection = "r8b1_forged_socket_mark"
+	nft(fmt.Sprintf("add table ip %[1]s\nadd chain ip %[1]s output { type filter hook output priority 140; policy accept; }\nadd rule ip %[1]s output ip daddr 198.51.100.1 udp dport %[2]d meta mark 0 counter meta mark set 0x%[3]x\n",
+		outputInjection, port, plan.SocketMark()))
+	sequence := queueSequence()
+	check(b, peer, "foreign packet with a forged skb-only mark", false)
+	if listing := run("", "nft", "list", "chain", "ip", outputInjection, "output"); !strings.Contains(listing, "packets 1 bytes") {
+		t.Fatalf("skb-only mark was not injected by the fixture: %s", listing)
+	}
+	if after := queueSequence(); after != sequence {
+		t.Fatalf("NFQUEUE captured the unmarked socket: packet sequence %s changed to %s", sequence, after)
+	}
+	nft("delete table ip " + outputInjection + "\n")
+	check(b, peer, "unmarked control after removing forged skb mark", true)
 	forgedRaw := testGuardUDPSocket(t)
 	if err := unix.SetsockoptInt(forgedRaw, unix.SOL_SOCKET, unix.SO_MARK, int(plan.LoopMark()|plan.QueueMark())); err != nil {
 		t.Fatal(err)
@@ -306,7 +334,7 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 		t.Fatal("pre-existing firewall was changed")
 	}
 	t.Log("veth wire: only the enrolled A socket delivered; B unchanged; table/queue/route loss and ifindex reuse denied; closed hooks remained pinned")
-	t.Log("FINAL_ROUTE_BIT_REQUIRED=PASS; FOREIGN_GENERATOR_MARK_DENIED=PASS")
+	t.Log("FINAL_ROUTE_BIT_REQUIRED=PASS; FOREIGN_GENERATOR_MARK_DENIED=PASS; SKB_ONLY_MARK_NOT_QUEUED=PASS")
 	t.Log("NFT_OWNER_SIGKILL=PASS; QUEUE_STILL_BOUND=PASS; OLD_MARKED_SOCKET_BLOCKED=PASS; FOREIGN_RULESET_UNCHANGED=PASS")
 	t.Log("FAILED_APPLY_OWNED_PINS_REMOVED=PASS; FOREIGN_RESERVED_NAME_UNCHANGED=PASS; ADMITTED_GUARD_ROLLBACK_DENIED=PASS")
 	t.Log("queue ownership: descriptor/netlink identity proven for the live consumer; mismatched revision and dead consumer denied")

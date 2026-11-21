@@ -95,7 +95,7 @@ func (p *ZapretNativePath) Commit(ctx context.Context, observe func(context.Cont
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.closed || p.committed || observe == nil || record == nil {
-		return errors.New("Zapret path cannot be committed")
+		return errors.New("path for Zapret cannot be committed")
 	}
 	verify := func() error {
 		facts, err := observe(ctx)
@@ -147,7 +147,7 @@ func (p *ZapretNativePath) Renew(ctx context.Context, current planner.Facts, lif
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if !p.committed {
-		return errors.New("Zapret path has no committed generation")
+		return errors.New("path for Zapret has no committed generation")
 	}
 	if err := p.verify(ctx, current); err != nil {
 		return errors.Join(err, p.closeLocked())

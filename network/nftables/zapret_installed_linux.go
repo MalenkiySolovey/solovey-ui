@@ -264,6 +264,7 @@ func zapretOwnedBatch(plan planner.ZapretPlan, comment []byte) ([]netlink.Messag
 	}
 	const reg = unix.NFT_REG_1
 	meta := func(key uint32) expr.Any { return &expr.Meta{Key: expr.MetaKey(key), Register: reg} }
+	socketMark := &expr.Socket{Key: expr.SocketKeyMark, Register: reg}
 	eq := func(data []byte) expr.Any { return &expr.Cmp{Op: expr.CmpOpEq, Register: reg, Data: data} }
 	u32 := func(value uint32) []byte { return binary.NativeEndian.AppendUint32(nil, value) }
 	setMark := func(value uint32) []expr.Any {
@@ -292,14 +293,15 @@ func zapretOwnedBatch(plan planner.ZapretPlan, comment []byte) ([]netlink.Messag
 				match := append(append([]expr.Any(nil), path...), meta(unix.NFT_META_L4PROTO), eq([]byte{l4}),
 					&expr.Payload{DestRegister: reg, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2},
 					eq(binary.BigEndian.AppendUint16(nil, port)))
+				// A foreign packet-only mark cannot put another socket in our queue.
 				original := append(append([]expr.Any(nil), match...), &expr.Ct{Key: expr.CtKeyDIRECTION, Register: reg}, eq([]byte{0}),
-					meta(unix.NFT_META_MARK), eq(u32(plan.SocketMark())))
+					meta(unix.NFT_META_MARK), eq(u32(plan.SocketMark())), socketMark, eq(u32(plan.SocketMark())))
 				original = append(original, setMark(plan.QueueMark())...)
 				if err := addRule(zapretOutput, append(original, &expr.Queue{Num: plan.Queue(), Total: 1})); err != nil {
 					return nil, err
 				}
 				for _, mark := range generated {
-					raw := append(append([]expr.Any(nil), match...), meta(unix.NFT_META_MARK), eq(u32(mark)))
+					raw := append(append([]expr.Any(nil), match...), meta(unix.NFT_META_MARK), eq(u32(mark)), socketMark, eq(u32(mark)))
 					raw = append(raw, setMark(plan.RawOutputMark())...)
 					if err := addRule(zapretOutput, append(raw, &expr.Verdict{Kind: expr.VerdictAccept})); err != nil {
 						return nil, err
