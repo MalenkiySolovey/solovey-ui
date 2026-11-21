@@ -1,81 +1,52 @@
-name: Zapret namespace qualification
+name: R8A frozen Linux restore qualification
 
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/zapret-proof.yml'
-      - 'components/zapret/**'
-      - 'components/sources.lock.json'
-      - 'network/planner/**'
-      - 'network/nftables/zapret_probe.go'
-      - 'scripts/generate-component-imports.mjs'
-      - 'internal/entities/outbounds/**'
-      - 'go.mod'
-      - 'go.sum'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
-  GOWORK: 'off'
+  CGO_ENABLED: '1'
   GOTOOLCHAIN: local
+  GOWORK: 'off'
   GOFLAGS: -mod=readonly
 
 jobs:
-  zapret-namespace:
-    name: Zapret namespace qualification
+  restore:
+    name: Linux CGO restore (${{ matrix.change }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - change: held restore PR head
+            sha: 84b32a01653c06cfef95fe1baee451d58a0d7fd9
+            tree: 4af78ef5abe9545ef495f0473d40a69cb339b36a
+          - change: combined Product tree
+            sha: 80808d22ba00c66e55ae078136a2d1260598fed2
+            tree: a566dbbd106d21ef3a0076b3f1c1f6bef19488e5
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
+          ref: ${{ matrix.sha }}
           persist-credentials: false
+      - name: Verify pinned code under test
+        env:
+          EXACT_SHA: ${{ matrix.sha }}
+          EXACT_TREE: ${{ matrix.tree }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXACT_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$EXACT_TREE"
+          printf 'Testing commit %s tree %s\n' "$EXACT_SHA" "$EXACT_TREE"
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version-file: .node-version
-      - name: Verify bounded planner and canonical Outbound rejection
-        run: |
-          go test -count=1 ./network/planner ./network/nftables ./internal/entities/outbounds ./components/zapret
-          go test -count=1 -run '^TestComponentImportsStayBehindCompositionPackages$' ./internal/components/architecture
-          go test -count=1 -run '^TestPreservationExecutableContainsInstalledDurableOwners$' ./cmd/solovey-openwrt-lifecycle ./cmd/solovey-openwrt-preservation
-      - name: Build the exact component engine and namespace fixture
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y nftables libcap-dev libnetfilter-queue-dev libnfnetlink-dev libmnl-dev liblua5.4-dev zlib1g-dev
-          node scripts/component-source-inputs.mjs prepare
-          bash .component-sources/zapret/scripts/build-nfqws2.sh "$RUNNER_TEMP/zapret-engine"
-          go test -c -tags zapretproof -o "$RUNNER_TEMP/zapret-proof" ./components/zapret
-      - name: Exercise only loopback inside a disposable network namespace
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Any modules loaded here belong to this disposable GitHub VM.
-          test "$GITHUB_ACTIONS" = true
-          sudo modprobe nf_conntrack || true
-          sudo modprobe nfnetlink_queue || true
-          sudo modprobe nft_queue || true
-          if ! sudo unshare --net -- test -r /proc/net/netfilter/nfnetlink_queue; then
-            echo 'PACKET_PATH_NOT_YET_PROVEN: runner cannot create a disposable network namespace with Linux NFQUEUE' | tee -a "$GITHUB_STEP_SUMMARY"
-            echo 'Needed: a disposable Linux runner with CAP_SYS_ADMIN, CAP_NET_ADMIN, nfnetlink_queue, nft_queue and conntrack accounting.' >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          sudo chown root:root "$RUNNER_TEMP/zapret-proof"
-          unit="solovey-zapret-proof-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.service"
-          sudo systemd-run --quiet --wait --pipe --collect --unit="$unit" \
-            --setenv="SOLOVEY_TEST_PARENT_NETNS=$(readlink /proc/self/ns/net)" \
-            --setenv="SOLOVEY_TEST_ENGINE_ROOT=$RUNNER_TEMP/zapret-engine" \
-            --setenv="SOLOVEY_TEST_BROKER_UNIT=$unit" \
-            /usr/bin/unshare --net -- /bin/bash -euc '
-              test "$(readlink /proc/self/ns/net)" != "$SOLOVEY_TEST_PARENT_NETNS"
-              test "$(readlink /proc/self/ns/net)" != "$(readlink /proc/1/ns/net)"
-              sysctl -w net.netfilter.nf_conntrack_acct=1
-              ip link set lo up
-              exec "$1" -test.run "^TestZapretOutboundNamespace$" -test.v -test.timeout=60s
-            ' _ "$RUNNER_TEMP/zapret-proof" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Verify held import and ordinary restore using SQLite
+        run: >-
+          go test -race -p 2 -count=1 -timeout=5m -v
+          -run '^TestIntegration(BackupEnvelopeRestorePreservesBackupTableCounts|RestoreRetainsUnresolvedZapretOnlyWithDeliberateCoreHold)$'
+          ./database/backup
