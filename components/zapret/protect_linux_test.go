@@ -18,6 +18,8 @@ import (
 	"time"
 
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
+	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/processevidence"
 	M "github.com/sagernet/sing/common/metadata"
 	"golang.org/x/sys/unix"
 )
@@ -76,6 +78,23 @@ func qualifyZapretProtectPath(t *testing.T, ctx context.Context, directA, direct
 	if err != nil {
 		t.Fatal(err)
 	}
+	self, err := processevidence.Observe(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := broker.FinalizeManifest(broker.Manifest{Schema: broker.ManifestSchemaSystemd, Clients: []broker.ClientManifest{{
+		Name: "zapret-proof-core", UID: zapretProbeUID, GID: zapretProbeUID, Executable: self.Executable,
+		ExecutableDigest: self.ExeDigest, Device: self.ExeDevice, Inode: self.ExeInode,
+		CgroupUnit: os.Getenv("SOLOVEY_TEST_BROKER_UNIT"), CgroupPolicy: broker.CgroupRequired,
+		CgroupAuthorityRevision: broker.CgroupAuthorityRevisionV1, Roles: []broker.Role{broker.RolePanel},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	attestor, err := broker.NewManifestAttestor(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
 	run := func() (*exec.Cmd, *bytes.Buffer) {
 		t.Helper()
 		data, err := json.Marshal(input)
@@ -96,7 +115,7 @@ func qualifyZapretProtectPath(t *testing.T, ctx context.Context, directA, direct
 	cmd, output := run()
 	var protectErr error
 	for _, proto := range []int{unix.IPPROTO_TCP, unix.IPPROTO_UDP} {
-		if protectErr = markZapretProbeSocket(listener, cmd.Process.Pid, proto, mark); protectErr != nil {
+		if protectErr = markZapretProbeSocket(ctx, attestor, listener, cmd.Process.Pid, proto, mark); protectErr != nil {
 			_ = cmd.Process.Kill()
 			break
 		}
@@ -113,10 +132,11 @@ func qualifyZapretProtectPath(t *testing.T, ctx context.Context, directA, direct
 		t.Fatalf("Direct did not fail closed without protect_path: %v\n%s", err, output)
 	}
 	t.Log("CAPLESS_DIRECT_PROVEN: the pinned Direct dialer used protected TCP/UDP sockets without Panel capabilities; missing helper blocked A")
+	t.Log("CAPLESS_PEER_ATTESTED: fixture receiver reused the broker executable/cgroup, pidfd and writer checks before acknowledging the socket")
 }
 
-func markZapretProbeSocket(listener *net.UnixListener, pid, protocol int, mark uint32) error {
-	deadline := time.Now().Add(2 * time.Second)
+func markZapretProbeSocket(ctx context.Context, attestor broker.ManifestAttestor, listener *net.UnixListener, pid, protocol int, mark uint32) error {
+	deadline := time.Now().Add(4 * time.Second)
 	if err := listener.SetDeadline(deadline); err != nil {
 		return err
 	}
@@ -128,18 +148,24 @@ func markZapretProbeSocket(listener *net.UnixListener, pid, protocol int, mark u
 	if err := conn.SetDeadline(deadline); err != nil {
 		return err
 	}
+	peer, err := attestor.Attest(ctx, conn, broker.RolePanel)
+	if err != nil {
+		return fmt.Errorf("protect_path connector attestation: %w", err)
+	}
+	defer attestor.ClosePeer(peer)
+	if peer.PID != pid {
+		return errors.New("protect_path connector is not the launched peer")
+	}
 	raw, err := conn.SyscallConn()
 	if err != nil {
 		return err
 	}
-	var peer *unix.Ucred
 	var netns uint64
-	var peerErr, netnsErr error
+	var netnsErr error
 	if err := raw.Control(func(fd uintptr) {
-		peer, peerErr = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
 		netns, netnsErr = unix.GetsockoptUint64(int(fd), unix.SOL_SOCKET, unix.SO_NETNS_COOKIE)
-	}); err != nil || peerErr != nil || peer == nil || peer.Pid != int32(pid) || peer.Uid != zapretProbeUID || peer.Gid != zapretProbeUID || netnsErr != nil || netns == 0 {
-		return errors.New("protect_path connector identity is not the launched peer")
+	}); err != nil || netnsErr != nil || netns == 0 {
+		return errors.New("protect_path connector namespace is unavailable")
 	}
 	var data [2]byte
 	control := make([]byte, unix.CmsgSpace(unix.SizeofUcred)+unix.CmsgSpace(4*4))
@@ -161,8 +187,11 @@ func markZapretProbeSocket(listener *net.UnixListener, pid, protocol int, mark u
 		}
 	}
 	if err != nil || parseErr != nil || n != 1 || data[0] != 1 || flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 ||
-		len(messages) != 2 || len(sockets) != 1 || writer == nil || *writer != *peer {
+		len(messages) != 2 || len(sockets) != 1 || writer == nil {
 		return errors.New("protect_path did not send one socket")
+	}
+	if err := attestor.VerifyWriter(ctx, peer, broker.WriterCredentials{PID: int(writer.Pid), UID: writer.Uid, GID: writer.Gid}); err != nil {
+		return err
 	}
 	fd := sockets[0]
 	var stat unix.Stat_t
@@ -186,6 +215,9 @@ func markZapretProbeSocket(listener *net.UnixListener, pid, protocol int, mark u
 	}
 	if existing, err := unix.GetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_MARK); err != nil || existing != 0 {
 		return errors.New("protect_path would replace an existing mark")
+	}
+	if err := attestor.Recheck(ctx, peer, broker.RolePanel); err != nil {
+		return err
 	}
 	if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_MARK, int(mark)); err != nil {
 		return err
