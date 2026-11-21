@@ -149,6 +149,9 @@ func (s *ConfigService) startCoreLockedContext(ctx context.Context, force bool) 
 	logger.Info("starting core")
 	rawConfig, bindings, err := s.coreCandidateContext(ctx)
 	if err != nil {
+		if ctx.Err() == nil {
+			runtime.markCoreStartFailed()
+		}
 		return err
 	}
 	err = coreInstance.StartWithBindings(rawConfig, bindings)
