@@ -69,6 +69,11 @@ even a generation with no enrolled Panel sockets must keep its deny hooks once
 this transition succeeds. A failed journal write cannot open the lease; a
 visible but ambiguously synced transition still fences replacement.
 Publication requires this receipt and a lease held by the live path.
+The publisher also holds the matching broker manifest authority lease.
+Rotation cancels that lease and retires the path even while publication or
+a socket handler is still draining. Retirement revokes the kernel lease and
+closes the owned nftables port, but keeps the deny hooks for issued sockets.
+The broker does not install the next manifest until the old owner drains.
 The grant's fixed monotonic deadline also caps every kernel lease. Both
 marked socket and engine raw output expire without waiting for the broker to
 close its listener or the owner port.
@@ -100,3 +105,11 @@ and TCX proof used a synthetic pass bit, with the TCX program first in its
 chain. It did not prove real generator output, stable hook precedence or
 containment after link loss. The installed privilege, final egress and
 recovery gates must pass before publication of a socket admission listener.
+
+An exclusive egress namespace is not a drop-in option. At the pinned
+Official `8b914e4be510` and Extended `493b451cdac6` revisions, Direct creates
+its own sockets. The provider's `netns` option calls `setns` from the
+Panel process before socket creation; the installed profile forbids that.
+`protect_path` receives an existing socket and returns an acknowledgment,
+not a replacement socket from the broker. A veth peer that returns to
+shared host routing would also leave the late egress problem unresolved.

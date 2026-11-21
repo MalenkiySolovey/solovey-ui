@@ -37,14 +37,18 @@ import (
 // installed Panel or privileged broker lifecycle. Socket admission below is
 // fixture-owned; the only destination is another disposable namespace.
 func TestZapretRoutedStrategyWire(t *testing.T) {
-	testZapretRoutedStrategyWire(t, false)
+	testZapretRoutedStrategyWire(t, "expiry")
 }
 
 func TestZapretRoutedPublicationFailure(t *testing.T) {
-	testZapretRoutedStrategyWire(t, true)
+	testZapretRoutedStrategyWire(t, "publication failure")
 }
 
-func testZapretRoutedStrategyWire(t *testing.T, failPublication bool) {
+func TestZapretRoutedAuthorityRotation(t *testing.T) {
+	testZapretRoutedStrategyWire(t, "authority rotation")
+}
+
+func testZapretRoutedStrategyWire(t *testing.T, fault string) {
 	t.Helper()
 	parent, engine, pins := os.Getenv("SOLOVEY_TEST_PARENT_NETNS"), os.Getenv("SOLOVEY_TEST_ENGINE_ROOT"), os.Getenv("SOLOVEY_TEST_GUARD_ROOT")
 	current, currentErr := os.Readlink("/proc/self/ns/net")
@@ -358,24 +362,20 @@ func testZapretRoutedStrategyWire(t *testing.T, failPublication bool) {
 	server := &privilegedbroker.Server{Journal: j, BootID: bootID}
 	publishWithWrongPeer := func() error {
 		// Reject at the journal gate before touching the installed socket root.
-		return server.ServeZapretSockets(ctx, scope, strings.Repeat("b", 64), path, observeFixture, func(context.Context, string) error {
+		wrong := privilegedbroker.PeerIdentity{BootID: bootID, Revision: strings.Repeat("b", 64)}
+		return server.ServeZapretSockets(ctx, scope, wrong, path, observeFixture, func(context.Context, string) error {
 			t.Fatal("listener with the wrong journal peer was published")
 			return nil
 		})
 	}
-	if failPublication {
+	switch fault {
+	case "publication failure":
 		if err := publishWithWrongPeer(); err == nil || !errors.Is(path.Lifetime().Err(), context.Canceled) || path.AdmissionReady(scope, path.Generation()) {
 			t.Fatalf("publication failure left a live generation: %v", err)
 		}
-		assertPinCount(2) // Old sockets still require the independent deny hooks.
-		cmd := exec.CommandContext(ctx, "nft", "list", "tables")
-		if listing, err := cmd.CombinedOutput(); err != nil || bytes.Contains(listing, []byte(planner.ZapretInstalledTable)) {
-			t.Fatalf("publication failure did not release the owned table: %v\n%s", err, listing)
-		}
-		if _, err := nftables.ObserveZapretQueueOwner(plan, identity); err != nil {
-			t.Fatalf("publication test did not keep the engine and queue live: %v", err)
-		}
-	} else {
+	case "authority rotation":
+		rotateZapretAuthority(t, ctx, j, bootID, revision, scope, path, observeFixture)
+	case "expiry":
 		if !path.ClaimSocketPublication(scope) {
 			t.Fatal("first publisher could not claim the ready generation")
 		}
@@ -391,6 +391,18 @@ func testZapretRoutedStrategyWire(t *testing.T, failPublication bool) {
 		}
 		if !errors.Is(path.Lifetime().Err(), context.DeadlineExceeded) || path.AdmissionReady(scope, path.Generation()) {
 			t.Fatal("generation did not close admission at its grant deadline")
+		}
+	default:
+		t.Fatalf("unknown fault %q", fault)
+	}
+	if fault != "expiry" {
+		assertPinCount(2) // Old sockets still require the independent deny hooks.
+		cmd := exec.CommandContext(ctx, "nft", "list", "tables")
+		if listing, err := cmd.CombinedOutput(); err != nil || bytes.Contains(listing, []byte(planner.ZapretInstalledTable)) {
+			t.Fatalf("%s did not release the owned table: %v\n%s", fault, err, listing)
+		}
+		if _, err := nftables.ObserveZapretQueueOwner(plan, identity); err != nil {
+			t.Fatalf("%s did not keep the engine and queue live: %v", fault, err)
 		}
 	}
 	for _, flow := range []struct {
@@ -409,9 +421,12 @@ func testZapretRoutedStrategyWire(t *testing.T, failPublication bool) {
 			t.Fatalf("old marked socket was not blocked after admission closed: read %d (%v)", n, readErr)
 		}
 	}
-	if failPublication {
+	switch fault {
+	case "publication failure":
 		t.Log("ZAPRET_PUBLICATION_ROLLBACK=PASS (owned table removed, deny hooks kept, existing A blocked and B unaffected)")
-	} else {
+	case "authority rotation":
+		t.Log("ZAPRET_AUTHORITY_ROTATION=PASS (old grant revoked before publication drained, existing A blocked and B unaffected)")
+	case "expiry":
 		t.Log("ZAPRET_SINGLE_PUBLISHER=PASS; ZAPRET_GRANT_DEADLINE=PASS (already-issued A denied; existing B unaffected)")
 	}
 	if err := path.Renew(ctx, observeFixture, time.Second); err == nil {
@@ -419,6 +434,78 @@ func testZapretRoutedStrategyWire(t *testing.T, failPublication bool) {
 	}
 	if path.Lifetime().Err() == nil {
 		t.Fatal("retired egress generation did not revoke socket admission")
+	}
+}
+
+func rotateZapretAuthority(t *testing.T, ctx context.Context, journal *privilegedbroker.FileJournal, boot, peerRevision string,
+	scope planner.ZapretSocketScope, path *nftables.ZapretNativePath, observe func(context.Context) (planner.Facts, error)) {
+	t.Helper()
+	self, err := processevidence.Observe(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	attestor := func(unit string) privilegedbroker.ManifestAttestor {
+		t.Helper()
+		manifest, err := privilegedbroker.FinalizeManifest(privilegedbroker.Manifest{Schema: privilegedbroker.ManifestSchemaSystemd,
+			Clients: []privilegedbroker.ClientManifest{{Name: "panel", UID: 65534, GID: 65534, Roles: []privilegedbroker.Role{privilegedbroker.RolePanel},
+				Executable: self.Executable, ExecutableDigest: self.ExeDigest, Device: self.ExeDevice, Inode: self.ExeInode,
+				CgroupUnit: unit, CgroupPolicy: privilegedbroker.CgroupRequired, CgroupAuthorityRevision: privilegedbroker.CgroupAuthorityRevisionV1}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		a, err := privilegedbroker.NewManifestAttestor(manifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return a
+	}
+	before, after := attestor("sui-fixture-before.service"), attestor("sui-fixture-after.service")
+	server, err := privilegedbroker.NewServer(privilegedbroker.NewRegistry(), journal, before, boot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// This fixture has already enrolled its A socket. It exercises revocation
+	// of that generation, not attestation of a new capless client.
+	peer := privilegedbroker.PeerIdentity{BootID: boot, Revision: peerRevision, ManifestRevision: before.AuthorityRevision()}
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	published, done := make(chan string, 1), make(chan error, 1)
+	go func() {
+		done <- server.ServeZapretSockets(ctx, scope, peer, path, observe, func(publication context.Context, name string) error {
+			published <- name
+			select {
+			case <-path.Lifetime().Done():
+				return publication.Err()
+			case <-ctx.Done():
+				return errors.New("generation did not retire while publication was pending")
+			}
+		})
+	}()
+	var name string
+	select {
+	case name = <-published:
+	case err := <-done:
+		t.Fatalf("listener did not reach publication: %v", err)
+	case <-ctx.Done():
+		t.Fatal("listener did not reach publication before the test deadline")
+	}
+	if err := server.RotateAuthority(ctx, after, after.AuthorityRevision()); err != nil {
+		t.Fatalf("authority rotation did not drain the old generation: %v", err)
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("unexpected listener exit: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("listener did not exit after rotation")
+	}
+	if server.AuthorityRevision() != after.AuthorityRevision() || !errors.Is(path.Lifetime().Err(), context.Canceled) || path.AdmissionReady(scope, path.Generation()) {
+		t.Fatal("old generation remained live after authority rotation")
+	}
+	if _, err := os.Lstat(name); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("old generation endpoint still exists: %v", err)
 	}
 }
 

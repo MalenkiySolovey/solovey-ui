@@ -121,6 +121,18 @@ jobs:
               SOLOVEY_TEST_GUARD_ROOT="$mountpoint" bash -euc '
                 mount -t bpf bpf -o mode=0700 "$SOLOVEY_TEST_GUARD_ROOT"
                 sysctl -w net.netfilter.nf_conntrack_acct=1
+                if [[ $2 == TestZapretRoutedAuthorityRotation ]]; then
+                  # Give the production binder its own /run and group lookup.
+                  # Neither mount is visible outside this fixture namespace.
+                  mount -t tmpfs -o mode=0755,nodev,nosuid tmpfs /run
+                  cp -- /etc/group /run/zapret-test-group
+                  if ! getent group solovey-ui >/dev/null; then
+                    printf "%s\n" "solovey-ui:x:65534:" >> /run/zapret-test-group
+                  fi
+                  mount --bind /run/zapret-test-group /etc/group
+                  install -d -m 0755 /run/solovey-ui
+                  install -d -o 0 -g solovey-ui -m 0750 /run/solovey-ui/zapret
+                fi
                 exec "$1" -test.run "^$2$" -test.v -test.timeout=45s
               ' _ "$1" "$2" | tee -a "$GITHUB_STEP_SUMMARY"
           }
@@ -129,4 +141,5 @@ jobs:
           exercise "$RUNNER_TEMP/zapret-egress-proof" TestZapretNativeGuardRoutedEgress || guard_result=$?
           exercise "$RUNNER_TEMP/zapret-proof" TestZapretRoutedStrategyWire
           exercise "$RUNNER_TEMP/zapret-proof" TestZapretRoutedPublicationFailure
+          exercise "$RUNNER_TEMP/zapret-proof" TestZapretRoutedAuthorityRotation
           test "$guard_result" -eq 0

@@ -36,17 +36,22 @@ type ZapretSocketGrant struct {
 type zapretSocketFence func(ctx context.Context, grant ZapretSocketGrant, fd int, admit func() error) error
 
 // ServeZapretSockets creates and publishes a root-owned socket after the
-// committed generation is ready. The generation supplies the grant expiry.
+// committed generation is ready. The peer comes from the current manifest
+// attestor and the generation supplies the grant expiry.
 // publish runs before accept and must not dial the socket. observe is broker-local
 // and supplies fresh Planner facts. Once publication is claimed, this call retires
 // the generation on any exit, including failure before the listener is bound.
-func (s *Server) ServeZapretSockets(ctx context.Context, scope planner.ZapretSocketScope, peerRevision string,
+func (s *Server) ServeZapretSockets(ctx context.Context, scope planner.ZapretSocketScope, peer PeerIdentity,
 	path *nftables.ZapretNativePath, observe func(context.Context) (planner.Facts, error), publish func(context.Context, string) error,
 ) (failure error) {
 	if s == nil || path == nil || observe == nil || publish == nil || !path.ClaimSocketPublication(scope) {
 		return errZapretSocket
 	}
-	defer func() { failure = errors.Join(failure, path.Close()) }()
+	var authority *authorityLease
+	defer func() {
+		failure = errors.Join(failure, path.Close())
+		authority.Release()
+	}()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -54,15 +59,28 @@ func (s *Server) ServeZapretSockets(ctx context.Context, scope planner.ZapretSoc
 	if !ok || !time.Now().Before(expires) {
 		return errZapretSocket
 	}
-	grant := ZapretSocketGrant{Scope: scope, Generation: path.Generation(), PeerRevision: peerRevision, Expires: expires}
+	grant := ZapretSocketGrant{Scope: scope, Generation: path.Generation(), PeerRevision: peer.Revision, Expires: expires}
 	journal, ok := s.Journal.(*FileJournal)
-	if !ok || journal == nil || journal.bootID != s.BootID || journal.checkZapretPath(grant) != nil {
+	if !ok || journal == nil || journal.bootID != s.BootID || peer.BootID != s.BootID || journal.checkZapretPath(grant) != nil {
 		return errZapretSocket
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stop := context.AfterFunc(path.Lifetime(), cancel)
 	defer stop()
+	var err error
+	authority, err = s.beginAuthority(ctx)
+	if err != nil {
+		return err
+	}
+	if _, ok := authority.Attestor.(ManifestAttestor); !ok || !authority.Revisioned || authority.Revision != peer.ManifestRevision {
+		return errZapretSocket
+	}
+	// Rotation must revoke existing traffic, not just deny the next FD.
+	// Retire even if publication or a client handler has not returned yet.
+	ctx = authority.Context
+	stopRetirement := context.AfterFunc(ctx, func() { _ = path.Close() })
+	defer stopRetirement()
 	gid, err := lookupBrokerGroup()
 	if err != nil {
 		return err
@@ -74,7 +92,7 @@ func (s *Server) ServeZapretSockets(ctx context.Context, scope planner.ZapretSoc
 	return s.serveZapretSockets(ctx, endpoint, grant, func(ctx context.Context, expected ZapretSocketGrant, fd int, admit func() error) error {
 		return path.WithSocket(ctx, observe, expected.Scope, expected.Generation, fd, admit)
 	}, func(ctx context.Context, name string) error {
-		if !path.AdmissionReady(grant.Scope, grant.Generation) || journal.checkZapretPath(grant) != nil {
+		if ctx.Err() != nil || !path.AdmissionReady(grant.Scope, grant.Generation) || journal.checkZapretPath(grant) != nil {
 			return errZapretSocket
 		}
 		return publish(ctx, name)
