@@ -386,6 +386,9 @@ func TestZapretOutboundNamespace(t *testing.T) {
 		t.Fatal("the retired checkpoint still authorizes the missing table")
 	}
 	t.Log("PACKET_PATH_PROVEN: TCP/UDP IPv4/IPv6, failed apply atomic, stop scoped, no external traffic")
+	t.Run("explicit egress pin after route change", func(t *testing.T) {
+		qualifyZapretEgressPin(t, ctx, plan.SocketMark())
+	})
 }
 
 const (

@@ -65,6 +65,7 @@ jobs:
           sudo modprobe sch_ingress || true
           sudo modprobe cls_fw || true
           sudo modprobe act_gact || true
+          sudo modprobe dummy || true
           if ! sudo unshare --net -- test -r /proc/net/netfilter/nfnetlink_queue; then
             echo 'PACKET_PATH_NOT_YET_PROVEN: runner cannot create a disposable network namespace with Linux NFQUEUE' | tee -a "$GITHUB_STEP_SUMMARY"
             echo 'Needed: a disposable Linux runner with CAP_SYS_ADMIN, CAP_NET_ADMIN, nfnetlink_queue, nft_queue and conntrack accounting.' >> "$GITHUB_STEP_SUMMARY"
