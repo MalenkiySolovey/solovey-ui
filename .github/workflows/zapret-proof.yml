@@ -11,9 +11,12 @@ on:
       - 'network/nftables/nft_backend.go'
       - 'internal/ops/privilegedbroker/zapret_socket*'
       - 'scripts/generate-component-imports.mjs'
+      - 'scripts/component-source-inputs.mjs'
       - 'internal/entities/outbounds/**'
       - 'go.mod'
       - 'go.sum'
+      - 'go.extended.mod'
+      - 'go.extended.sum'
   workflow_dispatch:
 
 permissions:

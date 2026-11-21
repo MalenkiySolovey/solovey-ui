@@ -57,6 +57,19 @@ test('reject duplicate IDs and missing provenance',t => {
   delete source.files.NOTICE
   assert.throws(() => validateSourceLock(lock),/provenance/)
 })
+test('headless pseudo-version requires a canonical shape and the accepted commit prefix',t => {
+  const {lock,source} = fixture(t)
+  for (const key of Object.keys(source.files)) {
+    if (key.startsWith('frontend/') || key === 'HOST_UI_PIN.json') delete source.files[key]
+  }
+  source.frontendSHA256 = frontendDigest(source.files)
+  source.version = `v0.1.2-0.20261121133845-${source.sourceCommit.slice(0,12)}`
+  assert.equal(validateSourceLock(lock),lock)
+  for (const version of ['main', 'v0.1.2-rc1', 'v0.1.2-0.20261121133845-abcdef123456', source.version+'\n']) {
+    source.version = version
+    assert.throws(() => validateSourceLock(lock),/headless/)
+  }
+})
 for (const name of ['../outside','frontend/../../outside','/outside','C:/outside','frontend\\outside','frontend/.git/config','frontend/space.','frontend/name:stream']) {
   test(`reject source path ${name}`,t => {
     const {source,lock} = fixture(t)
