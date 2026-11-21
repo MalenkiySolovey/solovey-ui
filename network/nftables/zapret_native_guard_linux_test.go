@@ -134,8 +134,20 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	if err := guard.Renew(10 * time.Second); err != nil {
 		t.Fatal(err)
 	}
+	check(a, peer, "socket mark is not admission", false)
+	if err := guard.EnrollSocket(a); err != nil {
+		t.Fatal(err)
+	}
+	if err := guard.EnrollSocket(a); err == nil {
+		t.Fatal("a socket cookie was admitted twice")
+	}
 	check(a, peer, "active A", true)
 	check(b, peer, "active B", true)
+	staleSocket := testGuardUDPSocket(t)
+	if err := unix.SetsockoptInt(staleSocket, unix.SOL_SOCKET, unix.SO_MARK, int(plan.SocketMark())); err != nil {
+		t.Fatal(err)
+	}
+	check(staleSocket, peer, "different socket with the same mark", false)
 	remove := "delete table inet " + planner.ZapretInstalledTable + "\n"
 	nft(remove)
 	check(a, peer, "table gone", false)
@@ -171,8 +183,8 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	if err := guard.Renew(time.Second); err == nil {
 		t.Fatal("replaced device was admitted into the old generation")
 	}
-	// Closing these FDs simulates owner loss while the pins and marked
-	// sockets survive. The independent hook must remain attached.
+	// Close revokes without detaching the pinned hooks. Marked sockets may
+	// still exist; removing a pin here would incorrectly restore plain Direct.
 	if err := guard.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +193,7 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	if after := run("", "nft", "list", "table", "inet", "r8b1_foreign"); after != foreignBefore {
 		t.Fatal("pre-existing firewall was changed")
 	}
-	t.Log("veth wire: A delivered only while admitted; B unchanged; table/queue/route loss, generated-mark inheritance, ifindex reuse and owner loss denied")
+	t.Log("veth wire: only the enrolled A socket delivered; B unchanged; table/queue/route loss, inherited marks and ifindex reuse denied; closed hooks remained pinned")
 }
 
 func probeNamespaceForGuard(parent string) (string, error) {

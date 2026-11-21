@@ -50,11 +50,12 @@ jobs:
           go test -count=1 -run '^TestComponentImportsStayBehindCompositionPackages$' ./internal/components/architecture
           go test -count=1 -run '^TestPreservationExecutableContainsInstalledDurableOwners$' ./cmd/solovey-openwrt-lifecycle ./cmd/solovey-openwrt-preservation
       - name: Build the exact component engine and namespace fixture
+        id: zapret-engine
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y nftables libcap-dev libnetfilter-queue-dev libnfnetlink-dev libmnl-dev liblua5.4-dev zlib1g-dev
+          sudo apt-get install --no-install-recommends -y nftables ethtool libcap-dev libnetfilter-queue-dev libnfnetlink-dev libmnl-dev liblua5.4-dev zlib1g-dev
           node scripts/component-source-inputs.mjs prepare
           bash .component-sources/zapret/scripts/build-nfqws2.sh "$RUNNER_TEMP/zapret-engine"
           go test -c -tags zapretproof -o "$RUNNER_TEMP/zapret-proof" ./components/zapret
@@ -90,17 +91,22 @@ jobs:
               exec "$1" -test.run "^TestZapretOutboundNamespace$" -test.v -test.timeout=60s
             ' _ "$RUNNER_TEMP/zapret-proof" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Prove the independent guard on disposable routed egress
+        if: ${{ !cancelled() && steps.zapret-engine.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
           test "$GITHUB_ACTIONS" = true
           mountpoint="$RUNNER_TEMP/zapret-bpffs"
           mkdir -m 0700 "$mountpoint"
-          sudo unshare --mount --propagation private --net -- env \
-            SOLOVEY_TEST_PARENT_NETNS="$(readlink /proc/self/ns/net)" \
-            SOLOVEY_TEST_ENGINE_ROOT="$RUNNER_TEMP/zapret-engine" \
-            SOLOVEY_TEST_GUARD_ROOT="$mountpoint" bash -euc '
-              mount -t bpf bpf -o mode=0700 "$SOLOVEY_TEST_GUARD_ROOT"
-              sysctl -w net.netfilter.nf_conntrack_acct=1
-              exec "$1" -test.run "^TestZapretNativeGuardRoutedEgress$" -test.v -test.timeout=45s
-            ' _ "$RUNNER_TEMP/zapret-egress-proof" | tee -a "$GITHUB_STEP_SUMMARY"
+          exercise() {
+            sudo unshare --mount --propagation private --net -- env \
+              SOLOVEY_TEST_PARENT_NETNS="$(readlink /proc/self/ns/net)" \
+              SOLOVEY_TEST_ENGINE_ROOT="$RUNNER_TEMP/zapret-engine" \
+              SOLOVEY_TEST_GUARD_ROOT="$mountpoint" bash -euc '
+                mount -t bpf bpf -o mode=0700 "$SOLOVEY_TEST_GUARD_ROOT"
+                sysctl -w net.netfilter.nf_conntrack_acct=1
+                exec "$1" -test.run "^$2$" -test.v -test.timeout=45s
+              ' _ "$1" "$2" | tee -a "$GITHUB_STEP_SUMMARY"
+          }
+          exercise "$RUNNER_TEMP/zapret-egress-proof" TestZapretNativeGuardRoutedEgress
+          exercise "$RUNNER_TEMP/zapret-proof" TestZapretRoutedStrategyWire

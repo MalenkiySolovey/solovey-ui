@@ -6,7 +6,6 @@ import (
 	"net"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/MalenkiySolovey/solovey-host/network/intent"
 	"github.com/MalenkiySolovey/solovey-ui/network/planner"
@@ -272,14 +271,11 @@ func checkZapretSocket(fd int, peer PeerIdentity, scope planner.ZapretSocketScop
 }
 
 func socketNetNSCookie(fd int) (uint64, error) {
-	var cookie uint64
-	length := uint32(8)
-	_, _, errno := unix.Syscall6(unix.SYS_GETSOCKOPT, uintptr(fd), unix.SOL_SOCKET, unix.SO_NETNS_COOKIE,
-		uintptr(unsafe.Pointer(&cookie)), uintptr(unsafe.Pointer(&length)), 0)
-	if errno != 0 {
-		return 0, errno
+	cookie, err := unix.GetsockoptUint64(fd, unix.SOL_SOCKET, unix.SO_NETNS_COOKIE)
+	if err != nil {
+		return 0, err
 	}
-	if length != 8 || cookie == 0 {
+	if cookie == 0 {
 		return 0, errZapretSocket
 	}
 	return cookie, nil

@@ -474,6 +474,11 @@ func newZapretProbeChange(t *testing.T, ctx context.Context, probe *nftables.Zap
 	if err != nil {
 		t.Fatal(err)
 	}
+	server.Diagnostic = func(event broker.DiagnosticEvent) {
+		if event.PeerAttestation != "" || event.HandlerReason != "" {
+			t.Logf("broker denial: phase=%s class=%s attestation=%s reason=%s", event.Phase, event.ResultClass, event.PeerAttestation, event.HandlerReason)
+		}
+	}
 	// The fixture uses a private socket, never the installed broker's path.
 	path := filepath.Join(t.TempDir(), "probe.sock")
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})

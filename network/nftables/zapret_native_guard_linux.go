@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/network/planner"
@@ -20,15 +21,19 @@ import (
 const (
 	zapretPostrouting   = 4
 	zapretGuardPriority = math.MaxInt32 - 1
+	zapretSocketLimit   = 1 << 16
 )
 
 // ZapretNativeGuard is owned by the installed Planner adapter. It starts
 // closed. Pins are kernel lifetime anchors, not authority to adopt an old
 // generation. Close deliberately leaves them attached.
 type ZapretNativeGuard struct {
-	device, deadline *ebpf.Map
-	hooks            []link.Link
-	ifindex          uint32
+	mu                        sync.Mutex
+	device, deadline, sockets *ebpf.Map
+	hooks                     []link.Link
+	ifindex                   uint32
+	namespace                 uint64
+	revoked, closed           bool
 }
 
 // CreateZapretNativeGuard requires an empty, root-owned generation directory
@@ -45,11 +50,20 @@ func CreateZapretNativeGuard(plan planner.ZapretPlan, pinDir string) (_ *ZapretN
 	if strconv.IntSize != 64 {
 		return nil, errors.New("Zapret BPF guard requires a 64-bit Linux kernel and broker")
 	}
+	probe, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)
+	if err != nil {
+		return nil, fmt.Errorf("observe Zapret guard network namespace: %w", err)
+	}
+	namespace, err := unix.GetsockoptUint64(probe, unix.SOL_SOCKET, unix.SO_NETNS_COOKIE)
+	_ = unix.Close(probe)
+	if err != nil || namespace != scope.Egress().NamespaceCookie {
+		return nil, errors.New("Zapret guard is not in the planned network namespace")
+	}
 	layout, err := observeZapretKernelLayout()
 	if err != nil {
 		return nil, fmt.Errorf("Zapret egress guard requires kernel BTF: %w", err)
 	}
-	g := &ZapretNativeGuard{ifindex: uint32(scope.Egress().IfIndex)}
+	g := &ZapretNativeGuard{ifindex: uint32(scope.Egress().IfIndex), namespace: namespace}
 	var pins []string
 	defer func() {
 		if failure != nil {
@@ -70,13 +84,21 @@ func CreateZapretNativeGuard(plan planner.ZapretPlan, pinDir string) (_ *ZapretN
 	if err != nil {
 		return nil, fmt.Errorf("create Zapret deadline map: %w", err)
 	}
+	// Cookies are kernel identities, not FD numbers or marks. Entries are
+	// never evicted or recycled across generations. Capacity exhaustion denies
+	// further admissions rather than weakening old-socket containment.
+	g.sockets, err = ebpf.NewMap(&ebpf.MapSpec{Name: "sui_zapret_sock", Type: ebpf.Hash, KeySize: 8, ValueSize: 4,
+		MaxEntries: zapretSocketLimit, Flags: unix.BPF_F_RDONLY_PROG | unix.BPF_F_NO_PREALLOC})
+	if err != nil {
+		return nil, fmt.Errorf("create Zapret socket admission map: %w", err)
+	}
 	for _, family := range []struct {
 		pin string
 		num uint32
 		use bool
 	}{{"ipv4", unix.NFPROTO_IPV4, scope.Egress().IPv4}, {"ipv6", unix.NFPROTO_IPV6, scope.Egress().IPv6}} {
 		program, err := ebpf.NewProgram(&ebpf.ProgramSpec{Name: "sui_zapret_out", Type: ebpf.Netfilter, AttachType: ebpf.AttachNetfilter,
-			License: "GPL", Instructions: zapretGuardProgram(plan, layout, g.device.FD(), g.deadline.FD(), family.use)})
+			License: "GPL", Instructions: zapretGuardProgram(plan, layout, g.device.FD(), g.deadline.FD(), g.sockets.FD(), family.use)})
 		if err != nil {
 			return nil, fmt.Errorf("load Zapret %s egress guard: %w", family.pin, err)
 		}
@@ -116,22 +138,77 @@ func checkZapretPinDirectory(path string) error {
 // the generation. It cannot re-enroll a replaced device: only the initial
 // setup populates the DEVMAP, and unregister removes the kernel reference.
 func (g *ZapretNativeGuard) Renew(lifetime time.Duration) error {
-	if g == nil || g.deadline == nil || lifetime <= 0 || lifetime > 10*time.Second {
+	if g == nil || lifetime <= 0 || lifetime > 10*time.Second {
 		return errors.New("invalid Zapret egress guard lease")
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.closed || g.revoked || g.deadline == nil {
+		return errors.New("Zapret egress guard was retired")
 	}
 	var ifindex uint32
 	if err := g.device.Lookup(uint32(0), &ifindex); err != nil || ifindex != g.ifindex {
-		return errors.Join(errors.New("Zapret egress device was removed or replaced"), g.Revoke())
+		return errors.Join(errors.New("Zapret egress device was removed or replaced"), g.revokeLocked())
 	}
 	var now unix.Timespec
 	if err := unix.ClockGettime(unix.CLOCK_MONOTONIC, &now); err != nil {
 		return err
 	}
-	return g.deadline.Put(uint32(0), uint64(now.Nano()+int64(lifetime)))
+	var previous uint64
+	if err := g.deadline.Lookup(uint32(0), &previous); err != nil {
+		return errors.Join(err, g.revokeLocked())
+	}
+	if previous != 0 && previous <= uint64(now.Nano()) {
+		return errors.Join(errors.New("Zapret egress guard lease expired"), g.revokeLocked())
+	}
+	if err := g.deadline.Put(uint32(0), uint64(now.Nano()+int64(lifetime))); err != nil {
+		return errors.Join(err, g.revokeLocked())
+	}
+	return nil
+}
+
+// EnrollSocket is for the authenticated adapter fence only. The broker must
+// attest and validate the socket, enroll it and then mark it under that fence.
+func (g *ZapretNativeGuard) EnrollSocket(fd int) error {
+	if g == nil {
+		return errors.New("Zapret egress guard is unavailable")
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.closed || g.revoked || g.sockets == nil {
+		return errors.New("Zapret egress guard was retired")
+	}
+	var now unix.Timespec
+	var deadline uint64
+	if unix.ClockGettime(unix.CLOCK_MONOTONIC, &now) != nil || g.deadline.Lookup(uint32(0), &deadline) != nil || deadline <= uint64(now.Nano()) {
+		return errors.New("Zapret egress guard has no live lease")
+	}
+	namespace, err := unix.GetsockoptUint64(fd, unix.SOL_SOCKET, unix.SO_NETNS_COOKIE)
+	if err != nil || namespace != g.namespace {
+		return errors.New("Zapret socket is not in the guarded namespace")
+	}
+	cookie, err := unix.GetsockoptUint64(fd, unix.SOL_SOCKET, unix.SO_COOKIE)
+	if err != nil || cookie == 0 {
+		return errors.New("Zapret socket has no kernel cookie")
+	}
+	if err := g.sockets.Update(cookie, uint32(1), ebpf.UpdateNoExist); err != nil {
+		return fmt.Errorf("enroll Zapret socket: %w", err)
+	}
+	return nil
 }
 
 func (g *ZapretNativeGuard) Revoke() error {
-	if g == nil || g.deadline == nil {
+	if g == nil {
+		return errors.New("Zapret egress guard is unavailable")
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.revokeLocked()
+}
+
+func (g *ZapretNativeGuard) revokeLocked() error {
+	g.revoked = true
+	if g.closed || g.deadline == nil {
 		return errors.New("Zapret egress guard is unavailable")
 	}
 	return g.deadline.Put(uint32(0), uint64(0))
@@ -141,7 +218,16 @@ func (g *ZapretNativeGuard) Close() error {
 	if g == nil {
 		return nil
 	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.closed {
+		return nil
+	}
 	var err error
+	if g.deadline != nil {
+		err = errors.Join(err, g.revokeLocked())
+	}
+	g.closed = true
 	for _, hook := range g.hooks {
 		err = errors.Join(err, hook.Close())
 	}
@@ -151,11 +237,14 @@ func (g *ZapretNativeGuard) Close() error {
 	if g.deadline != nil {
 		err = errors.Join(err, g.deadline.Close())
 	}
+	if g.sockets != nil {
+		err = errors.Join(err, g.sockets.Close())
+	}
 	return err
 }
 
 type zapretKernelLayout struct {
-	state, skb, out, sk, ifindex, socketMark, packetMark int16
+	state, skb, out, sk, ifindex, socketMark, socketCookie, packetMark int16
 }
 
 func observeZapretKernelLayout() (zapretKernelLayout, error) {
@@ -164,6 +253,7 @@ func observeZapretKernelLayout() (zapretKernelLayout, error) {
 		return zapretKernelLayout{}, err
 	}
 	var layout zapretKernelLayout
+	var sockCommon, sockCommonCookie int16
 	for _, field := range []struct {
 		structure, member string
 		offset            *int16
@@ -171,6 +261,7 @@ func observeZapretKernelLayout() (zapretKernelLayout, error) {
 		{"bpf_nf_ctx", "state", &layout.state}, {"bpf_nf_ctx", "skb", &layout.skb},
 		{"nf_hook_state", "out", &layout.out}, {"nf_hook_state", "sk", &layout.sk},
 		{"net_device", "ifindex", &layout.ifindex}, {"sock", "sk_mark", &layout.socketMark},
+		{"sock", "__sk_common", &sockCommon}, {"sock_common", "skc_cookie", &sockCommonCookie},
 		{"sk_buff", "mark", &layout.packetMark},
 	} {
 		var structure *btf.Struct
@@ -183,6 +274,10 @@ func observeZapretKernelLayout() (zapretKernelLayout, error) {
 		}
 		*field.offset = int16(bits.Bytes())
 	}
+	if int(sockCommon)+int(sockCommonCookie) > math.MaxInt16 {
+		return layout, errors.New("invalid kernel socket cookie offset")
+	}
+	layout.socketCookie = sockCommon + sockCommonCookie
 	return layout, nil
 }
 
@@ -207,7 +302,7 @@ func zapretMemberOffset(typ btf.Type, name string) (btf.Bits, bool) {
 	return 0, false
 }
 
-func zapretGuardProgram(plan planner.ZapretPlan, layout zapretKernelLayout, device, deadline int, family bool) asm.Instructions {
+func zapretGuardProgram(plan planner.ZapretPlan, layout zapretKernelLayout, device, deadline, sockets int, family bool) asm.Instructions {
 	owned := int32(plan.QueueMark() | plan.LoopMark() | plan.RawPassMark())
 	// Classify by both skb and original socket mark, so a later base chain
 	// clearing a marked socket's skb mark cannot turn it into unrelated traffic.
@@ -224,9 +319,18 @@ func zapretGuardProgram(plan planner.ZapretPlan, layout zapretKernelLayout, devi
 	}
 	if family {
 		program = append(program,
-			asm.JEq.Imm(asm.R7, int32(plan.QueueMark()), "path").WithSymbol("protected"),
+			asm.JEq.Imm(asm.R7, int32(plan.QueueMark()), "socket").WithSymbol("protected"),
 			asm.JEq.Imm(asm.R7, int32(plan.LoopMark()|plan.RawPassMark()), "path"),
 			asm.JNE.Imm(asm.R7, int32(plan.LoopMark()|plan.QueueMark()|plan.RawPassMark()), "drop"),
+			asm.Ja.Label("path"),
+			asm.LoadMem(asm.R2, asm.R6, layout.sk, asm.DWord).WithSymbol("socket"),
+			asm.JEq.Imm(asm.R2, 0, "drop"),
+			asm.LoadMem(asm.R0, asm.R2, layout.socketMark, asm.Word),
+			asm.JNE.Imm(asm.R0, int32(plan.SocketMark()), "drop"),
+			asm.LoadMem(asm.R0, asm.R2, layout.socketCookie, asm.DWord),
+			asm.StoreMem(asm.R10, -16, asm.R0, asm.DWord),
+			asm.LoadMapPtr(asm.R1, sockets), asm.Mov.Reg(asm.R2, asm.R10), asm.Add.Imm(asm.R2, -16), asm.FnMapLookupElem.Call(),
+			asm.JEq.Imm(asm.R0, 0, "drop"),
 			asm.LoadMem(asm.R8, asm.R6, layout.out, asm.DWord).WithSymbol("path"),
 			asm.JEq.Imm(asm.R8, 0, "drop"),
 			asm.LoadMem(asm.R8, asm.R8, layout.ifindex, asm.Word),
