@@ -25,6 +25,8 @@ type ZapretNativePath struct {
 	guard      *ZapretNativeGuard
 	table      *ZapretOwnedTable
 	generation string
+	lifetime   context.Context
+	cancel     context.CancelFunc
 	enrolled   bool
 	closed     bool
 }
@@ -42,7 +44,8 @@ func PrepareZapretNativePath(ctx context.Context, plan planner.ZapretPlan, befor
 	}
 	var generation [32]byte
 	_, _ = rand.Read(generation[:])
-	p := &ZapretNativePath{plan: plan, engine: engine, queue: queue, generation: hex.EncodeToString(generation[:])}
+	lifetime, cancel := context.WithCancel(context.Background())
+	p := &ZapretNativePath{plan: plan, engine: engine, queue: queue, generation: hex.EncodeToString(generation[:]), lifetime: lifetime, cancel: cancel}
 	defer func() {
 		if failure != nil {
 			failure = errors.Join(failure, p.Close())
@@ -63,6 +66,10 @@ func PrepareZapretNativePath(ctx context.Context, plan planner.ZapretPlan, befor
 }
 
 func (p *ZapretNativePath) Generation() string { return p.generation }
+
+// Lifetime ends when the generation is retired. Admission listeners stop
+// accepting and drain their pending requests on this cancellation.
+func (p *ZapretNativePath) Lifetime() context.Context { return p.lifetime }
 
 // Renew is called only after the owning operation commits and whenever its
 // fresh route/allocation observation confirms the before-image. The trusted
@@ -130,6 +137,9 @@ func (p *ZapretNativePath) closeLocked() error {
 		return nil
 	}
 	p.closed = true
+	if p.cancel != nil {
+		defer p.cancel()
+	}
 	var revokeErr, tableErr, guardErr error
 	if p.guard != nil {
 		revokeErr = p.guard.Revoke()

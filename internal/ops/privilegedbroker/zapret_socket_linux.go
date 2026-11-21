@@ -43,13 +43,17 @@ type zapretSocketFence func(ctx context.Context, grant ZapretSocketGrant, fd int
 func (s *Server) ServeZapretSockets(ctx context.Context, listener *net.UnixListener, grant ZapretSocketGrant,
 	path *nftables.ZapretNativePath, observe func(context.Context) (planner.Facts, error),
 ) (failure error) {
-	if path == nil || observe == nil || path.Generation() != grant.Generation {
+	if path == nil || observe == nil || !digestPattern.MatchString(grant.Generation) || path.Generation() != grant.Generation {
 		if listener != nil {
 			_ = listener.Close()
 		}
 		return errZapretSocket
 	}
 	defer func() { failure = errors.Join(failure, path.Close()) }()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop := context.AfterFunc(path.Lifetime(), cancel)
+	defer stop()
 	return s.serveZapretSockets(ctx, listener, grant, func(ctx context.Context, expected ZapretSocketGrant, fd int, admit func() error) error {
 		return path.WithSocket(ctx, observe, expected.Scope, expected.Generation, fd, admit)
 	})

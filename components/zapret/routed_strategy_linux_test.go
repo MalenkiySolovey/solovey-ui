@@ -236,6 +236,9 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 	if err := path.Renew(ctx, facts, time.Second); err == nil {
 		t.Fatal("expired egress generation reopened")
 	}
+	if path.Lifetime().Err() == nil {
+		t.Fatal("retired egress generation did not revoke socket admission")
+	}
 }
 
 func inZapretReceiverNetNS(t *testing.T, ns string, f func()) {

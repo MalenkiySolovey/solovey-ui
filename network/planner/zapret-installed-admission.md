@@ -37,8 +37,10 @@ process. Route revision is a control-plane input, not a kernel route proof.
 
 Production activation remains closed. Before wiring it, the broker must prove
 Netfilter BPF load and a private writable bpffs directory under the installed
-unit; the base unit has neither an explicit `CAP_BPF` nor a scoped bpffs write
-path. Do not add capabilities to Panel. The root generation owner must make
+unit. On the disposable systemd runner the base unit could not create the
+device map; adding only `CAP_BPF` in a test unit left `sk_buff` reads denied by
+the kernel verifier (which requested `CAP_PERFMON` or `CAP_SYS_ADMIN`). The
+installed units and Panel capabilities remain unchanged. The owner must make
 partial apply and restart reconcile durable, reject stale socket admissions,
 and preserve a matching deny guard for surviving marked sockets. On owner
 loss the nftables port closes independently of the guard's lease. Production
