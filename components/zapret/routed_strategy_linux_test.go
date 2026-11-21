@@ -181,7 +181,15 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 		return path
 	}
 	observeFixture := func(context.Context) (planner.Facts, error) { return facts, nil }
+	assertPinCount := func(want int) {
+		t.Helper()
+		entries, err := os.ReadDir(pins)
+		if err != nil || len(entries) != want {
+			t.Fatalf("expected %d generation pins, found %v (%v)", want, entries, err)
+		}
+	}
 	failed := prepare()
+	assertPinCount(0)
 	if err := failed.Renew(ctx, facts, time.Second); err == nil || failed.AdmissionReady(scope, failed.Generation()) {
 		t.Fatal("uncommitted generation opened a lease or became ready")
 	}
@@ -192,9 +200,16 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 		t.Fatal("uncommitted generation did not reject admission")
 	}
 	writeFailure := errors.New("injected commit failure")
-	if err := failed.Commit(ctx, observeFixture, func(nftables.ZapretPathCheckpoint) error { return writeFailure }); !errors.Is(err, writeFailure) || failed.Lifetime().Err() == nil || failed.AdmissionReady(scope, failed.Generation()) {
+	if err := failed.Commit(ctx, observeFixture, func(cp nftables.ZapretPathCheckpoint) error {
+		assertPinCount(0)
+		if cp.GuardLinks[0] == 0 || cp.GuardLinks[1] == 0 || cp.GuardLinks[0] == cp.GuardLinks[1] {
+			t.Fatalf("staged links have no exact kernel identities: %v", cp.GuardLinks)
+		}
+		return writeFailure
+	}); !errors.Is(err, writeFailure) || failed.Lifetime().Err() == nil || failed.AdmissionReady(scope, failed.Generation()) {
 		t.Fatalf("commit failure did not retire the exact staged path: %v", err)
 	}
+	assertPinCount(0)
 	idle := prepare() // A failed commit must release its own unadmitted table and pins.
 	journalDir := filepath.Join(t.TempDir(), "solovey-ui-broker")
 	j, err := privilegedbroker.OpenFileJournal(journalDir, "fixture-boot")
@@ -204,12 +219,14 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 	if err := j.CommitZapretPath(ctx, idle, observeFixture, revision); err != nil {
 		t.Fatal(err)
 	}
+	assertPinCount(2)
 	if err := j.RetireZapretBeforeAdmission(ctx, idle, strings.Repeat("b", 64)); err == nil || idle.Lifetime().Err() != nil {
 		t.Fatal("unrelated peer authority retired the idle generation")
 	}
 	if err := j.RetireZapretBeforeAdmission(ctx, idle, revision); err != nil || idle.Lifetime().Err() == nil || idle.AdmissionReady(scope, idle.Generation()) {
 		t.Fatalf("unadmitted generation did not retire cleanly: %v", err)
 	}
+	assertPinCount(0)
 	// Reopening the journal must still permit a fresh generation after a
 	// verified release. The new apply must not reuse the old table or pins.
 	j, err = privilegedbroker.OpenFileJournal(journalDir, "fixture-boot")
@@ -233,6 +250,7 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 		t.Fatal("committed and leased generation is not ready")
 	}
 	t.Log("ZAPRET_COMMIT_GATE=PASS (uncommitted admission denied, failed commit retired, journal then lease)")
+	t.Log("ZAPRET_PIN_AFTER_DURABLE_COMMIT=PASS")
 	if err := path.WithSocket(ctx, observeFixture, scope, strings.Repeat("f", 64), -1, func() error {
 		t.Fatal("stale path accessed the mark action")
 		return nil

@@ -34,6 +34,7 @@ type ZapretNativeGuard struct {
 	hooks                     []zapretGuardPin
 	ifindex                   uint32
 	namespace                 uint64
+	pinned                    bool
 	revoked, closed, enrolled bool
 }
 
@@ -42,6 +43,7 @@ type zapretGuardPin struct {
 	path    string
 	id      link.ID
 	program ebpf.ProgramID
+	pinned  bool
 }
 
 // CreateZapretNativeGuard is the deny-generator guard used by capability
@@ -50,9 +52,20 @@ func CreateZapretNativeGuard(plan planner.ZapretPlan, pinDir string) (*ZapretNat
 	return createZapretNativeGuard(plan, pinDir, [2]uint64{})
 }
 
-// Require a private, empty generation directory on bpffs. No marked socket
-// may be issued before the rules and hooks are verified and committed.
-func createZapretNativeGuard(plan planner.ZapretPlan, pinDir string, raw [2]uint64) (_ *ZapretNativeGuard, failure error) {
+func createZapretNativeGuard(plan planner.ZapretPlan, pinDir string, raw [2]uint64) (*ZapretNativeGuard, error) {
+	g, err := stageZapretNativeGuard(plan, pinDir, raw)
+	if err != nil {
+		return nil, err
+	}
+	if err := g.pinLinks(); err != nil {
+		return nil, errors.Join(err, g.AbortUnadmitted())
+	}
+	return g, nil
+}
+
+// Staged deny hooks are held by file descriptors only. If the broker dies
+// before the journal commit, the kernel releases them with the broker's FDs.
+func stageZapretNativeGuard(plan planner.ZapretPlan, pinDir string, raw [2]uint64) (_ *ZapretNativeGuard, failure error) {
 	scope, err := plan.SocketScope()
 	if err != nil || plan.FinalRouteBit() == 0 {
 		return nil, errors.New("guard for Zapret requires an installed Planner allocation")
@@ -121,14 +134,29 @@ func createZapretNativeGuard(plan planner.ZapretPlan, pinDir string, raw [2]uint
 			_ = hook.Close()
 			return nil, errors.Join(errors.New("observe new Zapret guard identity"), err)
 		}
-		pin := filepath.Join(pinDir, family.pin)
-		if err := hook.Pin(pin); err != nil {
-			_ = hook.Close()
-			return nil, fmt.Errorf("pin Zapret guard: %w", err)
-		}
-		g.hooks = append(g.hooks, zapretGuardPin{hook, pin, info.ID, info.Program})
+		g.hooks = append(g.hooks, zapretGuardPin{Link: hook, path: filepath.Join(pinDir, family.pin), id: info.ID, program: info.Program})
 	}
 	return g, nil
+}
+
+func (g *ZapretNativeGuard) pinLinks() error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.closed || g.revoked || g.pinned || len(g.hooks) != 2 {
+		return errors.New("guard for Zapret cannot be pinned")
+	}
+	if err := checkZapretPinDirectory(filepath.Dir(g.hooks[0].path)); err != nil {
+		return err
+	}
+	for i := range g.hooks {
+		hook := &g.hooks[i]
+		if err := hook.Pin(hook.path); err != nil {
+			return fmt.Errorf("pin Zapret guard: %w", err)
+		}
+		hook.pinned = true
+	}
+	g.pinned = true
+	return nil
 }
 
 func (g *ZapretNativeGuard) verifiedLinks() (ids [2]uint32, err error) {
@@ -138,12 +166,18 @@ func (g *ZapretNativeGuard) verifiedLinks() (ids [2]uint32, err error) {
 		return ids, errors.New("egress guard for Zapret is unavailable")
 	}
 	for i, hook := range g.hooks {
-		current, err := link.LoadPinnedLink(hook.path, nil)
-		if err != nil {
-			return ids, fmt.Errorf("load Zapret guard pin: %w", err)
+		current := hook.Link
+		if g.pinned {
+			var err error
+			current, err = link.LoadPinnedLink(hook.path, nil)
+			if err != nil {
+				return ids, fmt.Errorf("load Zapret guard pin: %w", err)
+			}
 		}
 		info, err := current.Info()
-		_ = current.Close()
+		if g.pinned {
+			_ = current.Close()
+		}
 		if err != nil || info.ID != hook.id || info.Program != hook.program {
 			return ids, errors.Join(errors.New("guard link or program for Zapret changed"), err)
 		}
@@ -157,7 +191,7 @@ func (g *ZapretNativeGuard) leaseActive() bool {
 	defer g.mu.Unlock()
 	var now unix.Timespec
 	var deadline uint64
-	return !g.closed && !g.revoked && g.deadline != nil && unix.ClockGettime(unix.CLOCK_MONOTONIC, &now) == nil &&
+	return !g.closed && !g.revoked && g.pinned && g.deadline != nil && unix.ClockGettime(unix.CLOCK_MONOTONIC, &now) == nil &&
 		g.deadline.Lookup(uint32(0), &deadline) == nil && deadline > uint64(now.Nano())
 }
 
@@ -187,8 +221,8 @@ func (g *ZapretNativeGuard) Renew(lifetime time.Duration) error {
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if g.closed || g.revoked || g.deadline == nil {
-		return errors.New("egress guard for Zapret was retired")
+	if g.closed || g.revoked || !g.pinned || g.deadline == nil {
+		return errors.New("egress guard for Zapret is not pinned and active")
 	}
 	var ifindex uint32
 	if err := g.device.Lookup(uint32(0), &ifindex); err != nil || ifindex != g.ifindex {
@@ -219,8 +253,8 @@ func (g *ZapretNativeGuard) EnrollSocket(fd int) error {
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if g.closed || g.revoked || g.sockets == nil {
-		return errors.New("egress guard for Zapret was retired")
+	if g.closed || g.revoked || !g.pinned || g.sockets == nil {
+		return errors.New("egress guard for Zapret is not pinned and active")
 	}
 	var now unix.Timespec
 	var deadline uint64
@@ -288,6 +322,9 @@ func (g *ZapretNativeGuard) AbortUnadmitted() error {
 		err = g.revokeLocked()
 	}
 	for _, hook := range g.hooks {
+		if !hook.pinned {
+			continue
+		}
 		current, loadErr := link.LoadPinnedLink(hook.path, nil)
 		if errors.Is(loadErr, os.ErrNotExist) {
 			continue
@@ -298,7 +335,7 @@ func (g *ZapretNativeGuard) AbortUnadmitted() error {
 		}
 		info, infoErr := current.Info()
 		_ = current.Close()
-		if infoErr != nil || info.ID != hook.id {
+		if infoErr != nil || info.ID != hook.id || info.Program != hook.program {
 			err = errors.Join(err, errors.New("guard pin for Zapret changed ownership"), infoErr)
 			continue
 		}

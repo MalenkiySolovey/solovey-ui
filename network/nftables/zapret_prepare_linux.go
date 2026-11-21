@@ -69,7 +69,7 @@ func PrepareZapretNativePath(ctx context.Context, plan planner.ZapretPlan, befor
 			failure = errors.Join(failure, p.Close())
 		}
 	}()
-	p.guard, err = createZapretNativeGuard(plan, pinDir, sockets.raw)
+	p.guard, err = stageZapretNativeGuard(plan, pinDir, sockets.raw)
 	if err != nil {
 		return nil, err
 	}
@@ -120,6 +120,9 @@ func (p *ZapretNativePath) Commit(ctx context.Context, observe func(context.Cont
 		SocketMark: p.plan.SocketMark(), QueueMark: p.plan.QueueMark(), LoopMark: p.plan.LoopMark(), FinalRouteBit: p.plan.FinalRouteBit(),
 		TablePort: p.table.port, TableHandle: p.table.handle, GuardLinks: ids, QueueOwner: p.sockets.queue, RawSocketCookies: p.sockets.raw}
 	if err := record(checkpoint); err != nil {
+		return errors.Join(err, p.closeLocked())
+	}
+	if err := p.guard.pinLinks(); err != nil {
 		return errors.Join(err, p.closeLocked())
 	}
 	if err := verify(); err != nil {

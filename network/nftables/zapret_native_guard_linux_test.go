@@ -23,6 +23,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/processevidence"
 	"github.com/MalenkiySolovey/solovey-ui/network/planner"
 	"github.com/cilium/ebpf"
+	ebpflink "github.com/cilium/ebpf/link"
 	"golang.org/x/sys/unix"
 )
 
@@ -125,6 +126,27 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	}
 	nft(foreign)
 	foreignBefore := run("", "nft", "list", "table", "inet", "r8b1_foreign")
+	stopStage, stageLinks := startZapretTableOwner(t, iface.Index, port, true)
+	if entries, err := os.ReadDir(pins); err != nil || len(entries) != 0 {
+		t.Fatalf("staged guard created persistent pins: %v (%v)", entries, err)
+	}
+	stopStage()
+	for _, id := range stageLinks {
+		for deadline := time.Now().Add(time.Second); ; time.Sleep(10 * time.Millisecond) {
+			hook, err := ebpflink.NewFromID(ebpflink.ID(id))
+			if errors.Is(err, os.ErrNotExist) {
+				break
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = hook.Close()
+			if time.Now().After(deadline) {
+				t.Fatalf("unjournaled guard link %d survived its owner", id)
+			}
+		}
+	}
+	t.Log("ZAPRET_UNPINNED_STAGE_SIGKILL_CLEANUP=PASS")
 	remove := "delete table inet " + planner.ZapretInstalledTable + "\n"
 	nft("create table inet " + planner.ZapretInstalledTable + " { comment \"foreign reservation\"; }\n")
 	reservedBefore := run("", "nft", "list", "table", "inet", planner.ZapretInstalledTable)
@@ -162,7 +184,7 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	if err := unix.Connect(a, destination); err != nil {
 		t.Fatal(err)
 	}
-	stopTable := startZapretTableOwner(t, iface.Index, port)
+	stopTable, _ := startZapretTableOwner(t, iface.Index, port, false)
 	otherPort := exec.CommandContext(t.Context(), "nft", "-f", "-")
 	otherPort.Stdin = strings.NewReader(remove)
 	if out, err := otherPort.CombinedOutput(); err == nil {
@@ -340,7 +362,7 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	t.Log("queue ownership: descriptor/netlink identity proven for the live consumer; mismatched revision and dead consumer denied")
 }
 
-func startZapretTableOwner(t *testing.T, ifindex int, port uint16) func() {
+func startZapretTableOwner(t *testing.T, ifindex int, port uint16, stageGuard bool) (func(), [2]uint32) {
 	t.Helper()
 	ready, publish, err := os.Pipe()
 	if err != nil {
@@ -351,6 +373,7 @@ func startZapretTableOwner(t *testing.T, ifindex int, port uint16) func() {
 	var logs bytes.Buffer
 	keeper := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestZapretTableOwnerProcess$", "-test.v", "-test.timeout=30s")
 	keeper.Env = append(os.Environ(), "SOLOVEY_TEST_ZAPRET_TABLE_OWNER="+strconv.Itoa(ifindex)+":"+strconv.Itoa(int(port)))
+	keeper.Env = append(keeper.Env, "SOLOVEY_TEST_ZAPRET_STAGE_GUARD="+strconv.FormatBool(stageGuard))
 	keeper.ExtraFiles = []*os.File{publish}
 	keeper.Stdout, keeper.Stderr = &logs, &logs
 	if err := keeper.Start(); err != nil {
@@ -361,11 +384,15 @@ func startZapretTableOwner(t *testing.T, ifindex int, port uint16) func() {
 	if err := ready.SetReadDeadline(time.Now().Add(4 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	var signal [1]byte
+	var signal [9]byte
 	if _, err := io.ReadFull(ready, signal[:]); err != nil || signal[0] != 1 {
 		t.Fatalf("owner process did not verify its kernel table: %v", err)
 	}
-	return stop
+	ids := [2]uint32{binary.NativeEndian.Uint32(signal[1:5]), binary.NativeEndian.Uint32(signal[5:9])}
+	if stageGuard && (ids[0] == 0 || ids[1] == 0 || ids[0] == ids[1]) {
+		t.Fatalf("stage owner did not publish its link identities: %v", ids)
+	}
+	return stop, ids
 }
 
 func TestZapretTableOwnerProcess(t *testing.T) {
@@ -384,6 +411,18 @@ func TestZapretTableOwnerProcess(t *testing.T) {
 		t.Fatal("refusing to open an owned table outside the disposable egress fixture")
 	}
 	plan := testGuardPlan(t, index, uint16(port))
+	var ids [2]uint32
+	if os.Getenv("SOLOVEY_TEST_ZAPRET_STAGE_GUARD") == "true" {
+		guard, err := stageZapretNativeGuard(plan, os.Getenv("SOLOVEY_TEST_GUARD_ROOT"), [2]uint64{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer guard.AbortUnadmitted()
+		ids, err = guard.verifiedLinks()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	table, err := CreateZapretOwnedTable(t.Context(), plan)
 	if err != nil {
 		t.Fatal(err)
@@ -393,7 +432,9 @@ func TestZapretTableOwnerProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	ready := os.NewFile(3, "owned-table-ready")
-	if _, err := ready.Write([]byte{1}); err != nil {
+	signal := binary.NativeEndian.AppendUint32([]byte{1}, ids[0])
+	signal = binary.NativeEndian.AppendUint32(signal, ids[1])
+	if _, err := ready.Write(signal); err != nil {
 		t.Fatal(err)
 	}
 	_ = ready.Close()

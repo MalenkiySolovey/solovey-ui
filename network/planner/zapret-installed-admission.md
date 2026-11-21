@@ -53,8 +53,10 @@ first renewal it rechecks Planner facts, the real route, table owner, pinned
 guard IDs and programs, and authenticated queue consumer; it retains the
 checkpoint in the existing broker journal against the expected Panel process
 revision. A single completed row avoids leaving an active mutation that would
-block unrelated broker actions. Verification runs again after the durable write.
-A failed write retires the path even if a record can subsequently be read.
+block unrelated broker actions. Before that write the deny hooks live only on
+the broker's descriptors, so an early crash leaves no durable pins. After the
+write the same links are pinned and verified again before the first lease. A
+failed write retires the path even if a record can subsequently be read.
 Publication requires both the exact receipt and a lease held by the live path.
 A new generation can replace a prior-boot receipt only after verifying the
 current kernel boot ID. In the same boot broker restart does not adopt old pins
