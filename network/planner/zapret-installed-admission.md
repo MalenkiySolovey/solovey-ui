@@ -48,6 +48,16 @@ masks reserve bits in the allocator; a rule change invalidates the generation.
 This covers routing selectors, not foreign nftables, iptables, tc or BPF
 writers. An unchanged snapshot does not establish that those writers are safe.
 
+The staged generation has no kernel lease or socket authority. Before the
+first renewal it rechecks Planner facts, the real route, table owner, pinned
+guard IDs and programs, and authenticated queue consumer; it retains the
+checkpoint in the existing broker journal against the expected Panel process
+revision. Verification runs again after the durable write. A failed write
+retires the path even if a record can subsequently be read. Publication
+requires both the exact receipt and a lease held by the live path. A retained
+record blocks automatic replacement; restart does not adopt old pins or pass
+bits. Releasing the record still requires a verified old-socket drain.
+
 Production activation remains closed. Before wiring it, the broker must prove
 Netfilter BPF load and a private writable bpffs directory under the installed
 unit. On the disposable systemd runner the base unit could not create the
@@ -58,9 +68,9 @@ partial apply and restart reconcile durable, reject stale socket admissions,
 and preserve a matching deny guard for surviving marked sockets. On owner
 loss the nftables port closes independently of the guard's lease. Production
 reconcile must not reinstall pass-bit rules for a still-leased old generation.
-The hooks see the routed device and L3 next hop at `POSTROUTING`, not a
-subsequent device redirect or L2 rewrite. Neither later mutation is an
-admitted installed path. A netdev nftables egress chain by itself is also
-insufficient: Linux runs it before tc egress and conditionally skips the hook
-on reinjection from tc. The installed privilege, final egress and recovery
-gates must pass before publication of a socket admission listener.
+The hooks do not cover a device redirect or L2 rewrite after `POSTROUTING`.
+A netdev nftables egress chain also runs before tc. The scoped cgroup egress
+and TCX proof used a synthetic pass bit, with the TCX program first in its
+chain. It did not prove real generator output, stable hook precedence or
+containment after link loss. The installed privilege, final egress and
+recovery gates must pass before publication of a socket admission listener.

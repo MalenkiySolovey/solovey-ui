@@ -26,6 +26,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-host/network/intent"
 	hostoutbounds "github.com/MalenkiySolovey/solovey-host/outbounds"
 	platform "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/processevidence"
 	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
 	"github.com/MalenkiySolovey/solovey-ui/network/planner"
@@ -166,19 +167,52 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path, err := nftables.PrepareZapretNativePath(ctx, plan, facts, pins, identity)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer path.Close()
 	scope, err := plan.SocketScope()
 	if err != nil {
 		t.Fatal(err)
 	}
+	prepare := func() *nftables.ZapretNativePath {
+		t.Helper()
+		path, err := nftables.PrepareZapretNativePath(ctx, plan, facts, pins, identity)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = path.Close() })
+		return path
+	}
+	observeFixture := func(context.Context) (planner.Facts, error) { return facts, nil }
+	failed := prepare()
+	if err := failed.Renew(ctx, facts, time.Second); err == nil || failed.AdmissionReady(scope, failed.Generation()) {
+		t.Fatal("uncommitted generation opened a lease or became ready")
+	}
+	if err := failed.WithSocket(ctx, observeFixture, scope, failed.Generation(), -1, func() error {
+		t.Fatal("uncommitted path accessed the mark action")
+		return nil
+	}); err == nil {
+		t.Fatal("uncommitted generation did not reject admission")
+	}
+	writeFailure := errors.New("injected commit failure")
+	if err := failed.Commit(ctx, observeFixture, func(nftables.ZapretPathCheckpoint) error { return writeFailure }); !errors.Is(err, writeFailure) || failed.Lifetime().Err() == nil || failed.AdmissionReady(scope, failed.Generation()) {
+		t.Fatalf("commit failure did not retire the exact staged path: %v", err)
+	}
+	path := prepare() // A failed commit must release its own unadmitted table and pins.
+	j, err := privilegedbroker.OpenFileJournal(filepath.Join(t.TempDir(), "solovey-ui-broker"), "fixture-boot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := j.CommitZapretPath(ctx, path, observeFixture, revision); err != nil {
+		t.Fatal(err)
+	}
+	if path.AdmissionReady(scope, path.Generation()) {
+		t.Fatal("durable record became an admission grant before the first lease")
+	}
 	if err := path.Renew(ctx, facts, 10*time.Second); err != nil {
 		t.Fatal(err)
 	}
-	observeFixture := func(context.Context) (planner.Facts, error) { return facts, nil }
+	if !path.AdmissionReady(scope, path.Generation()) {
+		t.Fatal("committed and leased generation is not ready")
+	}
+	t.Log("ZAPRET_COMMIT_GATE=PASS (uncommitted admission denied, failed commit retired, journal then lease)")
 	if err := path.WithSocket(ctx, observeFixture, scope, strings.Repeat("f", 64), -1, func() error {
 		t.Fatal("stale path accessed the mark action")
 		return nil

@@ -39,8 +39,9 @@ type ZapretNativeGuard struct {
 
 type zapretGuardPin struct {
 	link.Link
-	path string
-	id   link.ID
+	path    string
+	id      link.ID
+	program ebpf.ProgramID
 }
 
 // CreateZapretNativeGuard requires an empty, root-owned generation directory
@@ -111,7 +112,7 @@ func CreateZapretNativeGuard(plan planner.ZapretPlan, pinDir string) (_ *ZapretN
 			return nil, fmt.Errorf("attach Zapret %s POSTROUTING guard: %w", family.pin, err)
 		}
 		info, err := hook.Info()
-		if err != nil || info.ID == 0 {
+		if err != nil || info.ID == 0 || info.Program == 0 {
 			_ = hook.Close()
 			return nil, errors.Join(errors.New("observe new Zapret guard identity"), err)
 		}
@@ -120,9 +121,39 @@ func CreateZapretNativeGuard(plan planner.ZapretPlan, pinDir string) (_ *ZapretN
 			_ = hook.Close()
 			return nil, fmt.Errorf("pin Zapret guard: %w", err)
 		}
-		g.hooks = append(g.hooks, zapretGuardPin{hook, pin, info.ID})
+		g.hooks = append(g.hooks, zapretGuardPin{hook, pin, info.ID, info.Program})
 	}
 	return g, nil
+}
+
+func (g *ZapretNativeGuard) verifiedLinks() (ids [2]uint32, err error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.closed || g.revoked || len(g.hooks) != len(ids) {
+		return ids, errors.New("egress guard for Zapret is unavailable")
+	}
+	for i, hook := range g.hooks {
+		current, err := link.LoadPinnedLink(hook.path, nil)
+		if err != nil {
+			return ids, fmt.Errorf("load Zapret guard pin: %w", err)
+		}
+		info, err := current.Info()
+		_ = current.Close()
+		if err != nil || info.ID != hook.id || info.Program != hook.program {
+			return ids, errors.Join(errors.New("guard link or program for Zapret changed"), err)
+		}
+		ids[i] = uint32(info.ID)
+	}
+	return ids, nil
+}
+
+func (g *ZapretNativeGuard) leaseActive() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	var now unix.Timespec
+	var deadline uint64
+	return !g.closed && !g.revoked && g.deadline != nil && unix.ClockGettime(unix.CLOCK_MONOTONIC, &now) == nil &&
+		g.deadline.Lookup(uint32(0), &deadline) == nil && deadline > uint64(now.Nano())
 }
 
 func checkZapretPinDirectory(path string) error {

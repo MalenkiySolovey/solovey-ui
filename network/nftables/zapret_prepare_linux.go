@@ -27,13 +27,26 @@ type ZapretNativePath struct {
 	generation string
 	lifetime   context.Context
 	cancel     context.CancelFunc
+	committed  bool
 	enrolled   bool
 	closed     bool
 }
 
+// ZapretPathCheckpoint identifies the owned resources for recovery. It is not
+// a socket grant and is never sufficient to reactivate a previous generation.
+type ZapretPathCheckpoint struct {
+	Generation, PlanRevision        string
+	Egress                          planner.ZapretEgress
+	SocketMark, QueueMark, LoopMark uint32
+	RawPassMark, TablePort          uint32
+	TableHandle                     uint64
+	GuardLinks                      [2]uint32
+	QueueOwner                      ZapretQueueOwner
+}
+
 // PrepareZapretNativePath stages the exact Planner allocation. The caller is
 // the privileged owner, must supply real observations and the trusted launch
-// identity, and must durably commit before renewing or publishing a grant.
+// identity. A staged path cannot renew or admit sockets.
 func PrepareZapretNativePath(ctx context.Context, plan planner.ZapretPlan, before planner.Facts, pinDir string, engine processevidence.Fact) (_ *ZapretNativePath, failure error) {
 	if err := planner.CheckCurrent(plan.Plan(), before); err != nil {
 		return nil, err
@@ -74,12 +87,67 @@ func (p *ZapretNativePath) Generation() string { return p.generation }
 // accepting and drain their pending requests on this cancellation.
 func (p *ZapretNativePath) Lifetime() context.Context { return p.lifetime }
 
-// Renew is called only after the owning operation commits and whenever its
-// fresh route/allocation observation confirms the before-image. The trusted
-// observer may exclude only this exact path's verified live allocations.
+// Commit records the verified generation through the owning broker journal.
+// A failed write or changed observation retires the path, even if the write
+// left a complete-looking record on disk. No lease exists during the write.
+func (p *ZapretNativePath) Commit(ctx context.Context, observe func(context.Context) (planner.Facts, error), record func(ZapretPathCheckpoint) error) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed || p.committed || observe == nil || record == nil {
+		return errors.New("Zapret path cannot be committed")
+	}
+	verify := func() error {
+		facts, err := observe(ctx)
+		if err != nil {
+			return err
+		}
+		return p.verify(ctx, facts)
+	}
+	if err := verify(); err != nil {
+		return errors.Join(err, p.closeLocked())
+	}
+	ids, err := p.guard.verifiedLinks()
+	if err != nil {
+		return errors.Join(err, p.closeLocked())
+	}
+	scope, err := p.plan.SocketScope()
+	if err != nil {
+		return errors.Join(err, p.closeLocked())
+	}
+	checkpoint := ZapretPathCheckpoint{Generation: p.generation, PlanRevision: scope.PlanRevision(), Egress: scope.Egress(),
+		SocketMark: p.plan.SocketMark(), QueueMark: p.plan.QueueMark(), LoopMark: p.plan.LoopMark(), RawPassMark: p.plan.RawPassMark(),
+		TablePort: p.table.port, TableHandle: p.table.handle, GuardLinks: ids, QueueOwner: p.queue}
+	if err := record(checkpoint); err != nil {
+		return errors.Join(err, p.closeLocked())
+	}
+	if err := verify(); err != nil {
+		return errors.Join(err, p.closeLocked())
+	}
+	p.committed = true
+	return nil
+}
+
+// AdmissionReady is a publication gate only; every descriptor is fenced
+// and rechecked separately before it can receive the allocated mark.
+func (p *ZapretNativePath) AdmissionReady(scope planner.ZapretSocketScope, generation string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.admits(scope, generation) && p.guard.leaseActive()
+}
+
+func (p *ZapretNativePath) admits(scope planner.ZapretSocketScope, generation string) bool {
+	return !p.closed && p.committed && scope.Valid() && scope.PlanRevision() == p.plan.Plan().Revision() && generation == p.generation
+}
+
+// Renew requires a committed generation whose fresh route/allocation
+// observation confirms the before-image. The observer may exclude only this
+// exact path's verified live allocations.
 func (p *ZapretNativePath) Renew(ctx context.Context, current planner.Facts, lifetime time.Duration) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if !p.committed {
+		return errors.New("Zapret path has no committed generation")
+	}
 	if err := p.verify(ctx, current); err != nil {
 		return errors.Join(err, p.closeLocked())
 	}
@@ -95,7 +163,7 @@ func (p *ZapretNativePath) Renew(ctx context.Context, current planner.Facts, lif
 func (p *ZapretNativePath) WithSocket(ctx context.Context, observe func(context.Context) (planner.Facts, error), scope planner.ZapretSocketScope, generation string, fd int, action func() error) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.closed || !scope.Valid() || scope.PlanRevision() != p.plan.Plan().Revision() || generation != p.generation || action == nil || observe == nil {
+	if !p.admits(scope, generation) || action == nil || observe == nil {
 		return errors.New("stale or invalid Zapret path generation")
 	}
 	current, err := observe(ctx)
@@ -123,6 +191,9 @@ func (p *ZapretNativePath) verify(ctx context.Context, current planner.Facts) er
 		return err
 	}
 	if err := p.table.Verify(ctx); err != nil {
+		return err
+	}
+	if _, err := p.guard.verifiedLinks(); err != nil {
 		return err
 	}
 	queue, err := ObserveZapretQueueOwner(p.plan, p.engine)
