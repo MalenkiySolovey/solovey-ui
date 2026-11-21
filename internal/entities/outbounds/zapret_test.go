@@ -1,0 +1,63 @@
+package outbounds
+
+import (
+	"encoding/json"
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+)
+
+func TestZapretDesiredIntentSurvivesUnavailableProjection(t *testing.T) {
+	row := model.Outbound{Tag: "direct-a", Type: "direct", Options: json.RawMessage(
+		`{"routing_mark":"0x0123","zapret":{"outboundRef":"direct-a","enabled":true,"strategyRef":"fixture-a"}}`)}
+	before := string(row.Options)
+	if _, err := projectZapretOutbound(row); !errors.Is(err, ErrZapretPacketPathUnqualified) {
+		t.Fatalf("enabled intent did not block Core projection: %v", err)
+	}
+	_, binding, err := zapretOptions(row)
+	if err != nil || binding == nil || !binding.Enabled || binding.StrategyRef != "fixture-a" || string(row.Options) != before {
+		t.Fatalf("unresolved desired intent was lost: %+v %v", binding, err)
+	}
+	row.Options = json.RawMessage(strings.Replace(before, `"enabled":true`, `"enabled":false`, 1))
+	native, err := projectZapretOutbound(row)
+	if err != nil || string(native.Options) != `{"routing_mark":"0x0123"}` || !strings.Contains(string(row.Options), `"zapret"`) {
+		t.Fatalf("OFF did not preserve ordinary Direct: %s %v", native.Options, err)
+	}
+}
+
+func TestZapretAttachmentRejectsAmbiguousOptions(t *testing.T) {
+	for _, raw := range []string{
+		`{"zapret": null}`,
+		`{"zapret":{"outboundRef":"a"}}`,
+		`{"zapret":{"outboundRef":"a","enabled":null}}`,
+		`{"zapret":{"outboundRef":"a","enabled":true}}`,
+		`{"zapret":{"outboundRef":"a","enabled":true,"strategyRef":"a","queue":1}}`,
+		`{"zapret":{"outboundRef":"b","enabled":false}}`,
+		`{"detour":"proxy","zapret":{"outboundRef":"a","enabled":true,"strategyRef":"a"}}`,
+		`{"zapret":{"outboundRef":"a","enabled":true,"enabled":false}}`,
+	} {
+		if _, err := projectZapretOutbound(model.Outbound{Tag: "a", Type: "direct", Options: json.RawMessage(raw)}); err == nil {
+			t.Errorf("invalid attachment was accepted: %s", raw)
+		}
+	}
+}
+
+func TestUnavailableZapretStopsBatchBeforeAnyLiveRemoval(t *testing.T) {
+	db := newFailoverDB(t)
+	rows := []model.Outbound{
+		{Tag: "direct-b", Type: "direct", Options: json.RawMessage(`{}`)},
+		{Tag: "direct-a", Type: "direct", Options: json.RawMessage(`{"zapret":{"outboundRef":"direct-a","enabled":true,"strategyRef":"a"}}`)},
+	}
+	if err := db.Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	core := &fakeOutboundCore{running: true}
+	if err := Restart(db, []uint{rows[0].Id, rows[1].Id}, core); !errors.Is(err, ErrZapretPacketPathUnqualified) || len(core.calls) != 0 {
+		t.Fatalf("unqualified binding crossed the runtime boundary: %v, calls=%q", err, core.calls)
+	}
+	if err := requireExplicitZapretChange(rows[1], model.Outbound{Tag: "direct-a", Type: "direct"}); !errors.Is(err, errZapretChangeRequired) {
+		t.Fatalf("ordinary edit could silently drop the saved binding: %v", err)
+	}
+}

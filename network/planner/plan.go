@@ -65,6 +65,7 @@ type Facts struct {
 	Resources          []ResourceBinding     `json:"resources"`
 	Allocations        []Allocation          `json:"allocations"`
 	Continuity         []Continuity          `json:"continuity"`
+	Zapret             *ZapretFacts          `json:"zapret,omitempty"`
 }
 
 // Plan is immutable across the public boundary. Accessors return copies.
@@ -74,6 +75,7 @@ type Plan struct {
 	facts     Facts
 	revision  string
 	resources []Ownership
+	zapret    *networkintent.ZapretPacketPathIntent
 }
 
 func (p Plan) Revision() string       { return p.revision }
@@ -81,19 +83,10 @@ func (p Plan) Intent() Intent         { return clone(p.intent) }
 func (p Plan) Resources() []Ownership { return append([]Ownership(nil), p.resources...) }
 
 func Compile(intent Intent, facts Facts) (Plan, error) {
+	// Protection's existing plan identity does not depend on Zapret facts.
+	facts.Zapret = nil
 	intent, facts = canonicalIntent(intent), canonicalFacts(facts)
-	if !intent.HostRef.IsLocal() || !token(intent.Owner, 64) || !token(intent.ResourceRef, 256) ||
-		!digest(intent.DesiredRevision) || intent.ConfigurationRevision != "" && !digest(intent.ConfigurationRevision) || !digest(intent.InputRevision) || !token(intent.Purpose, 96) || len(intent.Resources) > 4096 {
-		return Plan{}, conflict(InvalidIntent, intent.ResourceRef)
-	}
-	if !facts.HostRef.IsLocal() || !digest(facts.Revision) || !facts.InventoryComplete ||
-		len(facts.Resources) > 4096 || len(facts.Allocations) > 8192 || len(facts.Continuity) > 4096 {
-		return Plan{}, conflict(ObservationUnknown, intent.ResourceRef)
-	}
-	if facts.Capability.Availability != platform.Available || !token(facts.Capability.Backend, 96) || !digest(facts.CapabilityRevision) {
-		return Plan{}, conflict(CapabilityUnavailable, intent.ResourceRef)
-	}
-	if err := checkBindings(intent, facts); err != nil {
+	if err := validatePlanInputs(intent, facts); err != nil {
 		return Plan{}, err
 	}
 	for _, allocation := range facts.Allocations {
@@ -105,15 +98,34 @@ func Compile(intent Intent, facts Facts) (Plan, error) {
 			return Plan{}, &Conflict{Reason: ResourceConflict, ResourceRef: intent.ResourceRef, Allocation: ProtectionAllocation}
 		}
 	}
+	plan := newPlan(intent, facts)
+	plan.resources = []Ownership{{HostRef: intent.HostRef, Owner: intent.Owner, ResourceRef: intent.ResourceRef,
+		PlanRevision: plan.revision, Kind: "filter_table", Purpose: intent.Purpose, Allocation: ProtectionAllocation}}
+	return plan, nil
+}
+
+func validatePlanInputs(intent Intent, facts Facts) error {
+	if !intent.HostRef.IsLocal() || !token(intent.Owner, 64) || !token(intent.ResourceRef, 256) ||
+		!digest(intent.DesiredRevision) || intent.ConfigurationRevision != "" && !digest(intent.ConfigurationRevision) || !digest(intent.InputRevision) || !token(intent.Purpose, 96) || len(intent.Resources) > 4096 {
+		return conflict(InvalidIntent, intent.ResourceRef)
+	}
+	if !facts.HostRef.IsLocal() || !digest(facts.Revision) || !facts.InventoryComplete ||
+		len(facts.Resources) > 4096 || len(facts.Allocations) > 8192 || len(facts.Continuity) > 4096 {
+		return conflict(ObservationUnknown, intent.ResourceRef)
+	}
+	if facts.Capability.Availability != platform.Available || !token(facts.Capability.Backend, 96) || !digest(facts.CapabilityRevision) {
+		return conflict(CapabilityUnavailable, intent.ResourceRef)
+	}
+	return checkBindings(intent, facts)
+}
+
+func newPlan(intent Intent, facts Facts) Plan {
 	identity := struct {
 		Schema string
 		Intent Intent
 		Facts  Facts
 	}{Schema, intent, facts}
-	plan := Plan{intent: intent, facts: facts, revision: revision(identity)}
-	plan.resources = []Ownership{{HostRef: intent.HostRef, Owner: intent.Owner, ResourceRef: intent.ResourceRef,
-		PlanRevision: plan.revision, Kind: "filter_table", Purpose: intent.Purpose, Allocation: ProtectionAllocation}}
-	return plan, nil
+	return Plan{intent: intent, facts: facts, revision: revision(identity)}
 }
 
 func checkBindings(intent Intent, facts Facts) error {
@@ -164,7 +176,14 @@ func CheckCurrent(plan Plan, current Facts) error {
 	if !digest(plan.revision) {
 		return conflict(InvalidIntent, "plan")
 	}
-	next, err := Compile(plan.intent, current)
+	var next Plan
+	var err error
+	if plan.zapret != nil {
+		candidate, compileErr := CompileZapret(*plan.zapret, current)
+		next, err = candidate.plan, compileErr
+	} else {
+		next, err = Compile(plan.intent, current)
+	}
 	if err != nil {
 		return err
 	}

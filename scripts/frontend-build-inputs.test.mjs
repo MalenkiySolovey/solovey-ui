@@ -53,6 +53,21 @@ test('Product projects exact pinned UI, retains locales/tests, excludes Go, and 
   assert.ok(!fs.existsSync(path.join(f.frontend, '.component-inputs.lock')))
 })
 
+test('an immutable headless component does not alter the admitted Frontend tuple', t => {
+  const f = fixture(t), before = f.prepare()
+  const manifest = JSON.stringify({id: 'zapret', delivery: 'in-process'})
+  const files = Object.fromEntries(['go.mod', 'go.sum', 'LICENSE', 'NOTICE', 'SOURCE_PROVENANCE.json'].map(name => [name, digest(name)]))
+  files['component.json'] = digest(manifest)
+  const headless = {...f.source, id: 'zapret', module: 'github.com/MalenkiySolovey/solovey-component-zapret',
+    manifestSHA256: files['component.json'], frontendSHA256: frontendDigest(files), files}
+  f.write('components/zapret/component.json', manifest)
+  f.write('components/sources.lock.json', JSON.stringify({...f.sourceLock, sources: [...f.sourceLock.sources, headless]}))
+  assert.deepEqual(f.prepare(), before)
+  headless.files['frontend/index.ts'] = digest('export {}')
+  f.write('components/sources.lock.json', JSON.stringify({...f.sourceLock, sources: [...f.sourceLock.sources, headless]}))
+  assert.throws(() => f.prepare(), /headless module cannot declare Frontend inputs/)
+})
+
 test('a new pinned input tuple does not read or project the legacy Panel Update archive', t => {
   const f = fixture(t), expected = f.prepare()
   const pin = JSON.parse(fs.readFileSync(new URL('../deploy/dependencies/solovey-frontend.json', import.meta.url)))

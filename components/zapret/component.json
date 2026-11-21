@@ -1,0 +1,11 @@
+{
+  "id": "zapret",
+  "name": "Zapret",
+  "version": "1",
+  "since": "2026.11.21",
+  "delivery": "in-process",
+  "defaultEnabled": false,
+  "hostAPI": {
+    "version": "solovey.component-host/v1"
+  }
+}

@@ -86,6 +86,10 @@ func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 	}
 	failoverRejectSupportAdded := false
 	for _, outbound := range rows {
+		native, err := projectZapretOutbound(*outbound)
+		if err != nil {
+			return nil, err
+		}
 		if !view.facts[outbound.Tag].Available {
 			continue
 		}
@@ -105,7 +109,7 @@ func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 			}
 			continue
 		} else {
-			outboundJSON, err := view.render(db, *outbound)
+			outboundJSON, err := view.render(db, native)
 			if err != nil {
 				return nil, err
 			}
@@ -128,6 +132,9 @@ func ValidateStored(db *gorm.DB) error {
 	}
 	for _, row := range rows {
 		if err := jsonvalue.OptionalObject("outbound options", row.Options); err != nil {
+			return fmt.Errorf("stored outbound row %d: %w", row.Id, err)
+		}
+		if _, _, err := zapretOptions(row); err != nil {
 			return fmt.Errorf("stored outbound row %d: %w", row.Id, err)
 		}
 		if row.Type == FailoverType {
@@ -156,6 +163,9 @@ func Save(tx *gorm.DB, act string, data json.RawMessage) (*singboxapply.Change, 
 func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply.Change, error) {
 	outbound, err := decodeSaveOutbound(data)
 	if err != nil {
+		return nil, err
+	}
+	if _, err := projectZapretOutbound(outbound); err != nil {
 		return nil, err
 	}
 	if err := saveeligibility.Validate(tx, action, outbound.Id, &model.Outbound{}, "outbounds", outbound.Type); err != nil {
@@ -213,10 +223,14 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 			return nil, err
 		}
 	}
-	oldTag, err := tagByID(tx, outbound.Id)
+	previous, err := previousOutbound(tx, outbound.Id)
 	if err != nil {
 		return nil, err
 	}
+	if err := requireExplicitZapretChange(previous, outbound); err != nil {
+		return nil, err
+	}
+	oldTag := previous.Tag
 	renamed := oldTag != "" && oldTag != outbound.Tag
 	if renamed {
 		refs, err := tagrefs.Outbound(tx, oldTag, outbound.Id, 0)
@@ -262,13 +276,13 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 	return change, nil
 }
 
-func tagByID(tx *gorm.DB, id uint) (string, error) {
+func previousOutbound(tx *gorm.DB, id uint) (model.Outbound, error) {
+	var previous model.Outbound
 	if id == 0 {
-		return "", nil
+		return previous, nil
 	}
-	var tag string
-	err := tx.Model(model.Outbound{}).Select("tag").Where("id = ?", id).Find(&tag).Error
-	return tag, err
+	err := tx.Select("tag", "type", "options").Where("id = ?", id).Find(&previous).Error
+	return previous, err
 }
 
 func saveDelete(tx *gorm.DB, data json.RawMessage) (*singboxapply.Change, error) {
@@ -328,6 +342,10 @@ func Restart(tx *gorm.DB, ids []uint, core Core) error {
 	// Complete capability/serialization preflight for the whole batch before
 	// the first removal. Unavailable historical rows do not mutate live state.
 	for _, row := range rows {
+		native, err := projectZapretOutbound(*row)
+		if err != nil {
+			return err
+		}
 		if !view.facts[row.Tag].Available {
 			continue
 		}
@@ -340,7 +358,7 @@ func Restart(tx *gorm.DB, ids []uint, core Core) error {
 				return err
 			}
 		} else {
-			config, err := view.render(tx, *row)
+			config, err := view.render(tx, native)
 			if err != nil {
 				return err
 			}
