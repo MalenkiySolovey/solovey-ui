@@ -209,15 +209,19 @@ func (e systemNFTExecutor) run(ctx context.Context, args ...string) ([]byte, []b
 }
 
 func (e systemNFTExecutor) runWithInput(ctx context.Context, input []byte, args ...string) ([]byte, []byte, error) {
-	if e.binary == nil || e.binary.File() == nil || e.binary.Revalidate() != nil {
-		return nil, nil, errors.New("nft capability is unavailable")
+	return runNetworkTool(ctx, e.binary, "nft", input, args...)
+}
+
+func runNetworkTool(ctx context.Context, binary *executableobject.Object, label string, input []byte, args ...string) ([]byte, []byte, error) {
+	if binary == nil || binary.File() == nil || binary.Revalidate() != nil {
+		return nil, nil, fmt.Errorf("%s capability is unavailable", label)
 	}
 	bounded, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	stdout, stderr := &boundedBuffer{limit: MaxOutputBytes}, &boundedBuffer{limit: MaxOutputBytes}
-	command := exec.CommandContext(bounded, e.binary.ExecPath(0), args...)
-	command.Args[0] = e.binary.Label()
-	command.ExtraFiles = []*os.File{e.binary.File()}
+	command := exec.CommandContext(bounded, binary.ExecPath(0), args...)
+	command.Args[0] = binary.Label()
+	command.ExtraFiles = []*os.File{binary.File()}
 	command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C", "TZ=UTC0"}
 	if input != nil {
 		command.Stdin = bytes.NewReader(input)
@@ -225,10 +229,10 @@ func (e systemNFTExecutor) runWithInput(ctx context.Context, input []byte, args 
 	command.Stdout, command.Stderr = stdout, stderr
 	err := command.Run()
 	if stdout.truncated || stderr.truncated || bounded.Err() != nil {
-		return stdout.buffer.Bytes(), stderr.buffer.Bytes(), errors.New("nft output exceeded the bounded limit")
+		return stdout.buffer.Bytes(), stderr.buffer.Bytes(), fmt.Errorf("%s output exceeded the bounded limit", label)
 	}
 	if err != nil {
-		return stdout.buffer.Bytes(), stderr.buffer.Bytes(), fmt.Errorf("restricted nft operation failed: %w", err)
+		return stdout.buffer.Bytes(), stderr.buffer.Bytes(), fmt.Errorf("restricted %s operation failed: %w", label, err)
 	}
 	return stdout.buffer.Bytes(), stderr.buffer.Bytes(), nil
 }

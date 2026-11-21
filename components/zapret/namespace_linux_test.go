@@ -123,7 +123,7 @@ func TestZapretOutboundNamespace(t *testing.T) {
 		InventoryComplete: true, Capability: platform.PlatformFact{Availability: platform.Available, Backend: planner.ZapretNamespaceBackend},
 		Allocations: []planner.Allocation{{Ownership: planner.Ownership{Allocation: "inet:fixture_other"}}},
 		Zapret: &planner.ZapretFacts{OutboundRef: resolved.Intent.OutboundRef, OutboundRevision: resolved.Intent.InputRevision,
-			Provider: "sing-box", DirectSocket: true, SocketMark: true, NFQueue: true, ConntrackAccounting: true}}
+			Provider: "sing-box", DirectSocket: true, SocketMark: true, NFQueue: true, ConntrackAccounting: true, EgressGuard: true}}
 	plan, err := planner.CompileZapret(resolved.Intent, facts)
 	if err != nil {
 		t.Fatal(err)
@@ -156,7 +156,7 @@ func TestZapretOutboundNamespace(t *testing.T) {
 	if tables := string(nft("", "list", "tables")); strings.Contains(tables, planner.ZapretProbeTable) {
 		t.Fatal("queue-less Apply altered the namespace")
 	}
-	argv, err := value.Compile(engineRoot, plan.Queue(), plan.SocketMark(), plan.LoopMark())
+	argv, err := value.Compile(engineRoot, plan.Queue(), plan.QueueMark(), plan.LoopMark())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,6 +277,57 @@ func TestZapretOutboundNamespace(t *testing.T) {
 		t.Fatal("unrelated table replacement disturbed the admitted path")
 	}
 	t.Log("FOREIGN_TABLE_RELOAD_SCOPED: the exact Zapret table still queued Direct A after independent table replacement")
+	// Leave an already-used UDP socket alive across the loss of its table.
+	var established net.Conn
+	target := endpoints[0] // TCP/IPv4
+	established, err = dial(ctx, "direct-a", "udp", reloadTarget.address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer established.Close()
+	zapretExchange(t, established)
+	assertTCPBlocked := func(address string) {
+		t.Helper()
+		blocked, cancelBlocked := context.WithTimeout(ctx, 450*time.Millisecond)
+		defer cancelBlocked()
+		conn, err := dial(blocked, "direct-a", "tcp", address)
+		if conn != nil {
+			_ = conn.Close()
+		}
+		if err == nil {
+			t.Fatal("Direct A silently downgraded to plain Direct")
+		}
+	}
+	assertUDPBlocked := func(conn net.Conn, attempts int) {
+		t.Helper()
+		if err := conn.SetDeadline(time.Now().Add(400 * time.Millisecond)); err != nil {
+			t.Fatal(err)
+		}
+		for range attempts {
+			_, _ = conn.Write([]byte("echo"))
+		}
+		var data [4]byte
+		if n, _ := conn.Read(data[:]); n != 0 {
+			t.Fatal("Direct A leaked a datagram without the admitted path")
+		}
+	}
+	// Remove only the TCP dispatch rule while its queue peer is alive.
+	list := nft("", "-j", "-a", "list", "chain", "inet", planner.ZapretProbeTable, "outbound")
+	handle := zapretHandoffHandle(t, list, "tcp_captured")
+	nft("", "delete", "rule", "inet", planner.ZapretProbeTable, "outbound", "handle", fmt.Sprint(handle))
+	assertTCPBlocked(target.address)
+	conn, err = dial(ctx, "direct-b", "tcp", target.address)
+	zapretRoundTrip(t, conn, err)
+	if err := probe.VerifyCurrent(ctx, checkpoint); err == nil {
+		t.Fatal("checkpoint admitted a missing dispatch rule")
+	}
+	changed := nft("", "list", "table", "inet", planner.ZapretProbeTable)
+	if err := change.call(ctx, zapretRollback, 5); !probeBrokerFailure(err, broker.CodeRecoveryRequired) ||
+		!bytes.Equal(changed, nft("", "list", "table", "inet", planner.ZapretProbeTable)) {
+		t.Fatalf("rollback removed or changed an unproven table generation: %v", err)
+	}
+	t.Log("RULE_LOSS_FAIL_CLOSED: removed the TCP handoff with the queue and Core alive; A blocked, B echoed")
+	// No packet count may become an implicit pass after queue loss.
 	if err := cmd.Process.Signal(os.Interrupt); err != nil {
 		t.Fatal(err)
 	}
@@ -285,35 +336,39 @@ func TestZapretOutboundNamespace(t *testing.T) {
 	if err != nil || ready() {
 		t.Fatalf("engine did not release its queue: %v", err)
 	}
-	if err := probe.VerifyCurrent(ctx, checkpoint); !errors.Is(err, nftables.ErrZapretProbeQueue) {
-		t.Fatalf("checkpoint appeared healthy after queue loss: %v", err)
-	}
-	// Loss of the queue consumer must not turn the admitted outbound into
-	// plain Direct, nor interrupt the unmarked outbound to the same peer.
-	blockedCtx, cancelBlocked := context.WithTimeout(ctx, 750*time.Millisecond)
-	target := endpoints[0] // TCP/IPv4
-	conn, err = dial(blockedCtx, "direct-a", "tcp", target.address)
-	cancelBlocked()
-	if conn != nil {
-		_ = conn.Close()
-	}
-	if err == nil {
-		t.Fatal("engine loss silently downgraded A to plain Direct")
-	}
-	conn, err = dial(ctx, "direct-b", "tcp", target.address)
+	assertUDPBlocked(established, 24)
+	conn, err = dial(ctx, "direct-b", "udp", reloadTarget.address)
 	zapretRoundTrip(t, conn, err)
-	t.Log("QUEUE_LOSS_FAIL_CLOSED: Direct A did not connect; Direct B echoed")
+	t.Log("QUEUE_LOSS_FAIL_CLOSED: the remaining UDP rule had no queue peer; A could not echo after 24 sends, B echoed")
+	nft("", "delete", "table", "inet", planner.ZapretProbeTable)
+	for _, target := range endpoints {
+		if target.proto == intent.PacketProtocolTCP {
+			assertTCPBlocked(target.address)
+		} else {
+			conn, err := dial(ctx, "direct-a", "udp", target.address)
+			if err == nil {
+				assertUDPBlocked(conn, 1)
+				_ = conn.Close()
+			}
+		}
+		for _, name := range []string{"direct-b", "unmarked"} {
+			conn, err := dial(ctx, name, string(target.proto), target.address)
+			zapretRoundTrip(t, conn, err)
+		}
+	}
+	assertUDPBlocked(established, 1)
+	t.Log("TABLE_LOSS_FAIL_CLOSED: tc blocked fresh TCP/UDP on IPv4/IPv6 and the existing UDP socket; B and foreign traffic echoed")
+	change.stop()
+	change = newZapretProbeChange(t, ctx, probe, accepted, facts, journalRoot, plan.Plan().Revision())
+	if err := change.call(ctx, zapretCommit, 6); !probeBrokerFailure(err, broker.CodeRecoveryRequired) {
+		t.Fatalf("restarted broker committed a lost nft generation: %v", err)
+	}
+	t.Log("CHECKPOINT_REFUSED_AFTER_REOPEN: a durable receipt did not authorize the missing table")
 	if err := core.Stop(); err != nil {
 		t.Fatal(err)
 	}
-	nft("", "add", "counter", "inet", planner.ZapretProbeTable, "intervening")
-	changed := nft("", "list", "table", "inet", planner.ZapretProbeTable)
-	if err := change.call(ctx, zapretRollback, 5); !probeBrokerFailure(err, broker.CodeRecoveryRequired) ||
-		!bytes.Equal(changed, nft("", "list", "table", "inet", planner.ZapretProbeTable)) {
-		t.Fatalf("rollback removed or changed an unproven table generation: %v", err)
-	}
-	nft("", "delete", "counter", "inet", planner.ZapretProbeTable, "intervening")
-	change.require(t, ctx, zapretRollback, 6)
+	_ = established.Close()
+	change.require(t, ctx, zapretRollback, 7)
 	if _, _, err := change.load(zapretApply); err == nil {
 		t.Fatal("verified rollback did not release the Apply authority")
 	}
@@ -545,6 +600,11 @@ func zapretRoundTrip(t *testing.T, conn net.Conn, err error) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
+	zapretExchange(t, conn)
+}
+
+func zapretExchange(t *testing.T, conn net.Conn) {
+	t.Helper()
 	if err := conn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
@@ -555,6 +615,33 @@ func zapretRoundTrip(t *testing.T, conn net.Conn, err error) {
 	if _, err := io.ReadFull(conn, data[:]); err != nil || string(data[:]) != "echo" {
 		t.Fatalf("echo data did not pass the queue: %q %v", data, err)
 	}
+}
+
+func zapretHandoffHandle(t *testing.T, raw []byte, counter string) uint64 {
+	t.Helper()
+	var listing struct {
+		NFTables []struct {
+			Rule *struct {
+				Handle uint64
+				Expr   []struct{ Counter json.RawMessage }
+			}
+		}
+	}
+	if err := json.Unmarshal(raw, &listing); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range listing.NFTables {
+		if item.Rule == nil {
+			continue
+		}
+		for _, expr := range item.Rule.Expr {
+			if string(expr.Counter) == fmt.Sprintf("%q", counter) && item.Rule.Handle != 0 {
+				return item.Rule.Handle
+			}
+		}
+	}
+	t.Fatalf("handoff rule for %s not found: %s", counter, raw)
+	return 0
 }
 
 func zapretCounters(t *testing.T, raw []byte) map[string]uint64 {

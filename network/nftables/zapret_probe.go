@@ -19,7 +19,7 @@ import (
 // RenderZapretProbe is a compiler for the isolated namespace adapter only.
 // The production broker does not admit this table, hook, or queue action.
 func RenderZapretProbe(plan planner.ZapretPlan) (string, error) {
-	if plan.Plan().Revision() == "" || plan.Queue() == 0 || plan.SocketMark() == 0 {
+	if plan.Plan().Revision() == "" || plan.Queue() == 0 || plan.SocketMark() == 0 || plan.QueueMark() == plan.SocketMark() {
 		return "", errors.New("no validated Zapret probe plan")
 	}
 	scope := plan.PacketScope()
@@ -41,9 +41,12 @@ func RenderZapretProbe(plan planner.ZapretPlan) (string, error) {
 		}
 		match := fmt.Sprintf("oifname \"lo\" ct direction original %s dport { %s }", network, strings.Join(values, ", "))
 		fmt.Fprintf(&text, "add rule %s outbound %s counter name %s_seen\n", table, match, network)
-		fmt.Fprintf(&text, "add rule %s outbound %s meta mark 0x%x ct original packets 1-12 counter name %s_captured queue num %d\n",
-			table, match, plan.SocketMark(), network, plan.Queue())
+		// Issue the pass bit in the same rule as queue, without bypass. A
+		// removed rule cannot release packets through a later accept rule.
+		fmt.Fprintf(&text, "add rule %s outbound %s meta mark 0x%x counter name %s_captured meta mark set 0x%x queue num %d\n",
+			table, match, plan.SocketMark(), network, plan.QueueMark(), plan.Queue())
 	}
+	fmt.Fprintf(&text, "add rule %s outbound meta mark 0x%x drop\n", table, plan.SocketMark())
 	return text.String(), nil
 }
 
@@ -53,6 +56,7 @@ func probeComment(plan planner.ZapretPlan) string { return "solovey-r8a:" + plan
 // process, alter a prior table, or operate outside its original namespace.
 type ZapretProbe struct {
 	executor  systemNFTExecutor
+	guard     zapretGuard
 	namespace string
 	parent    string
 	plan      planner.ZapretPlan
@@ -72,6 +76,7 @@ type ZapretProbeSeal struct {
 	CandidateDigest string `json:"candidateDigest"`
 	BeforeDigest    string `json:"beforeDigest"`
 	TableDigest     string `json:"tableDigest"`
+	GuardDigest     string `json:"guardDigest"`
 	QueuePeer       uint32 `json:"queuePeer"`
 }
 
@@ -93,10 +98,18 @@ func NewZapretProbe(plan planner.ZapretPlan, parentNamespace string) (*ZapretPro
 	if !ok || executor.binary == nil {
 		return nil, errors.New("trusted nft executable not available")
 	}
-	return &ZapretProbe{executor: executor, plan: plan, parent: parentNamespace, namespace: current, candidate: []byte(candidate)}, nil
+	tc := openNFTExecutable([]string{"/usr/sbin/tc", "/usr/bin/tc", "/sbin/tc", "/bin/tc"})
+	if tc == nil {
+		_ = executor.binary.Close()
+		return nil, errors.New("trusted tc executable not available")
+	}
+	return &ZapretProbe{executor: executor, guard: zapretGuard{binary: tc}, plan: plan,
+		parent: parentNamespace, namespace: current, candidate: []byte(candidate)}, nil
 }
 
-func (p *ZapretProbe) Close() error { return p.executor.binary.Close() }
+func (p *ZapretProbe) Close() error {
+	return errors.Join(p.executor.binary.Close(), p.guard.binary.Close())
+}
 
 func probeNamespace(parent string) (string, error) {
 	current, err := os.Readlink("/proc/self/ns/net")
@@ -218,14 +231,22 @@ func (p *ZapretProbe) Validate(ctx context.Context, facts planner.Facts) (Zapret
 	if err != nil {
 		return ZapretProbeValidation{}, err
 	}
-	if before.table != "" {
-		return ZapretProbeValidation{}, errors.New("Zapret probe cannot adopt a pre-existing table")
+	if err := p.requireAbsent(ctx, before); err != nil {
+		return ZapretProbeValidation{}, err
 	}
 	if _, _, err := p.executor.runWithInput(ctx, p.candidate, "--check", "-f", "-"); err != nil {
 		return ZapretProbeValidation{}, err
 	}
 	accepted, err := planner.Accept(p.plan.Plan(), facts, sha256Hex(p.candidate))
 	return ZapretProbeValidation{accepted: accepted, baseline: before.baseline}, err
+}
+
+func (p *ZapretProbe) requireAbsent(ctx context.Context, before zapretProbeSnapshot) error {
+	guard, _, err := p.guard.snapshot(ctx)
+	if err != nil || guard != "" || before.table != "" {
+		return errors.Join(errors.New("Zapret probe cannot adopt pre-existing table or qdisc"), err)
+	}
+	return nil
 }
 
 func (p *ZapretProbe) Apply(ctx context.Context, validated ZapretProbeValidation, current planner.Facts) (ZapretProbeSeal, error) {
@@ -237,12 +258,19 @@ func (p *ZapretProbe) Apply(ctx context.Context, validated ZapretProbeValidation
 	if err != nil {
 		return ZapretProbeSeal{}, err
 	}
-	if before.table != "" || before.baseline != validated.baseline {
+	if before.baseline != validated.baseline {
 		return ZapretProbeSeal{}, errors.New("nft before-image changed after Zapret validation")
+	}
+	if err := p.requireAbsent(ctx, before); err != nil {
+		return ZapretProbeSeal{}, err
 	}
 	peer, err := p.QueuePeer()
 	if err != nil {
 		return ZapretProbeSeal{}, err
+	}
+	guard, err := p.guard.install(ctx, p.plan.SocketMark(), p.plan.QueueMark())
+	if err != nil {
+		return ZapretProbeSeal{}, errors.Join(ErrZapretProbeRecovery, err)
 	}
 	if _, _, err := p.executor.runWithInput(ctx, p.candidate, "-f", "-"); err != nil {
 		return ZapretProbeSeal{}, errors.Join(ErrZapretProbeRecovery, err)
@@ -252,12 +280,12 @@ func (p *ZapretProbe) Apply(ctx context.Context, validated ZapretProbeValidation
 		return ZapretProbeSeal{}, errors.Join(ErrZapretProbeRecovery, err)
 	}
 	return ZapretProbeSeal{PlanRevision: p.plan.Plan().Revision(), CandidateDigest: candidateDigest,
-		BeforeDigest: before.baseline, TableDigest: after.table, QueuePeer: peer}, nil
+		BeforeDigest: before.baseline, TableDigest: after.table, GuardDigest: guard, QueuePeer: peer}, nil
 }
 
 func (p *ZapretProbe) verifySeal(seal ZapretProbeSeal) error {
 	if seal.PlanRevision != p.plan.Plan().Revision() || seal.CandidateDigest != sha256Hex(p.candidate) ||
-		!validSHA256(seal.BeforeDigest) || !validSHA256(seal.TableDigest) || seal.QueuePeer == 0 {
+		!validSHA256(seal.BeforeDigest) || !validSHA256(seal.TableDigest) || !validSHA256(seal.GuardDigest) || seal.QueuePeer == 0 {
 		return errors.New("Zapret probe completion does not match its plan")
 	}
 	return nil
@@ -287,6 +315,9 @@ func (p *ZapretProbe) verify(ctx context.Context, seal ZapretProbeSeal, checkBef
 	if checkBeforeImage && current.baseline != seal.BeforeDigest {
 		return errors.New("unrelated rules changed before Zapret probe verification")
 	}
+	if guard, _, err := p.guard.snapshot(ctx); err != nil || guard != seal.GuardDigest {
+		return errors.Join(errors.New("Zapret probe egress guard changed"), err)
+	}
 	if peer, err := p.QueuePeer(); err != nil || peer != seal.QueuePeer {
 		return ErrZapretProbeQueue
 	}
@@ -298,18 +329,35 @@ func (p *ZapretProbe) Rollback(ctx context.Context, seal ZapretProbeSeal) error 
 		return err
 	}
 	before, err := p.snapshot(ctx)
-	if err != nil || before.table == "" {
-		return err // the before-image (absence) already holds
+	if err != nil {
+		return err
 	}
-	if before.table != seal.TableDigest || before.marker != probeComment(p.plan) {
+	guard, _, err := p.guard.snapshot(ctx)
+	if err != nil || guard != "" && guard != seal.GuardDigest || guard == "" && before.table != "" {
+		return errors.Join(errors.New("refusing rollback without the exact Zapret egress guard"), err)
+	}
+	if before.table == "" && guard == "" {
+		return nil // the before-image (absence) already holds
+	}
+	if before.table != "" && (before.table != seal.TableDigest || before.marker != probeComment(p.plan)) {
 		return errors.New("refusing to remove a changed Zapret probe table")
 	}
-	if _, _, err := p.executor.run(ctx, "delete", "table", "inet", "handle", strconv.FormatUint(before.handle, 10)); err != nil {
-		return err
+	if before.table != "" {
+		if _, _, err := p.executor.run(ctx, "delete", "table", "inet", "handle", strconv.FormatUint(before.handle, 10)); err != nil {
+			return err
+		}
 	}
 	after, err := p.snapshot(ctx)
 	if err != nil || after.table != "" || after.baseline != before.baseline {
 		return errors.Join(errors.New("Zapret probe rollback was not verified"), err)
 	}
-	return nil
+	// The caller must quiesce/stop the exact Core generation before Rollback.
+	// Removing the guard first would reopen the marked sockets on rule loss.
+	if current, _, err := p.guard.snapshot(ctx); err != nil || current != guard {
+		return errors.Join(errors.New("Zapret egress guard changed before release"), err)
+	}
+	if _, err := p.guard.run(ctx, "qdisc", "del", "dev", "lo", "clsact"); err != nil {
+		return err
+	}
+	return p.requireAbsent(ctx, after)
 }
