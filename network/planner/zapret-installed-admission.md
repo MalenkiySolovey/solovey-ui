@@ -69,6 +69,9 @@ even a generation with no enrolled Panel sockets must keep its deny hooks once
 this transition succeeds. A failed journal write cannot open the lease; a
 visible but ambiguously synced transition still fences replacement.
 Publication requires this receipt and a lease held by the live path.
+The grant's fixed monotonic deadline also caps every kernel lease. Both
+marked socket and engine raw output expire without waiting for the broker to
+close its listener or the owner port.
 
 A prior-boot receipt can be replaced only after verifying the current kernel
 boot ID. In the same boot, the live owner can retire its own unleased path. A

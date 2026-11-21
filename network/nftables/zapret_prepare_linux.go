@@ -12,6 +12,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/processevidence"
 	"github.com/MalenkiySolovey/solovey-ui/network/planner"
+	"golang.org/x/sys/unix"
 )
 
 // ZapretNativePath is a broker-local generation. Its initial kernel lease
@@ -27,6 +28,7 @@ type ZapretNativePath struct {
 	generation       string
 	lifetime         context.Context
 	cancel           context.CancelFunc
+	grantDeadline    uint64
 	commitFirstLease func(context.Context) error
 	committed        bool
 	mayHaveLeased    bool
@@ -63,8 +65,24 @@ func (c ZapretPathCheckpoint) ExcludesPriorRegistration(old ZapretPathCheckpoint
 
 // PrepareZapretNativePath stages the exact Planner allocation. The caller is
 // the privileged owner, must supply real observations and the trusted launch
-// identity. A staged path cannot renew or admit sockets.
-func PrepareZapretNativePath(ctx context.Context, plan planner.ZapretPlan, before planner.Facts, pinDir string, engine processevidence.Fact) (_ *ZapretNativePath, failure error) {
+// identity. Grant validity begins at staging and bounds every kernel lease.
+// A staged path cannot renew or admit sockets.
+func PrepareZapretNativePath(ctx context.Context, plan planner.ZapretPlan, before planner.Facts, pinDir string, engine processevidence.Fact, grantLifetime time.Duration) (_ *ZapretNativePath, failure error) {
+	if grantLifetime <= 0 {
+		return nil, errors.New("invalid Zapret generation lifetime")
+	}
+	expires := time.Now().Add(grantLifetime)
+	var now unix.Timespec
+	if err := unix.ClockGettime(unix.CLOCK_MONOTONIC, &now); err != nil {
+		return nil, err
+	}
+	// Sample the remaining time after the kernel clock so a scheduling
+	// delay can shorten the bound but cannot extend it past expires.
+	remaining := time.Until(expires)
+	if remaining <= 0 {
+		return nil, errors.New("Zapret generation expired before staging")
+	}
+	grantDeadline := uint64(now.Nano()) + uint64(remaining)
 	if err := planner.CheckCurrent(plan.Plan(), before); err != nil {
 		return nil, err
 	}
@@ -77,8 +95,9 @@ func PrepareZapretNativePath(ctx context.Context, plan planner.ZapretPlan, befor
 	}
 	var generation [32]byte
 	_, _ = rand.Read(generation[:])
-	lifetime, cancel := context.WithCancel(context.Background())
-	p := &ZapretNativePath{plan: plan, engine: engine, sockets: sockets, generation: hex.EncodeToString(generation[:]), lifetime: lifetime, cancel: cancel}
+	lifetime, cancel := context.WithDeadline(context.Background(), expires)
+	p := &ZapretNativePath{plan: plan, engine: engine, sockets: sockets, generation: hex.EncodeToString(generation[:]),
+		lifetime: lifetime, cancel: cancel, grantDeadline: grantDeadline}
 	defer func() {
 		if failure != nil {
 			failure = errors.Join(failure, p.Close())
@@ -100,8 +119,8 @@ func PrepareZapretNativePath(ctx context.Context, plan planner.ZapretPlan, befor
 
 func (p *ZapretNativePath) Generation() string { return p.generation }
 
-// Lifetime ends when the generation is retired. Admission listeners stop
-// accepting and drain their pending requests on this cancellation.
+// Lifetime ends at the grant deadline or when the generation is retired.
+// Admission listeners stop accepting and drain their pending requests then.
 func (p *ZapretNativePath) Lifetime() context.Context { return p.lifetime }
 
 // Commit records the verified generation through the owning broker journal.
@@ -159,7 +178,8 @@ func (p *ZapretNativePath) AdmissionReady(scope planner.ZapretSocketScope, gener
 }
 
 func (p *ZapretNativePath) admits(scope planner.ZapretSocketScope, generation string) bool {
-	return !p.closed && p.committed && p.mayHaveLeased && scope.Valid() && scope.PlanRevision() == p.plan.Plan().Revision() && generation == p.generation
+	return !p.closed && p.lifetime.Err() == nil && p.committed && p.mayHaveLeased &&
+		scope.Valid() && scope.PlanRevision() == p.plan.Plan().Revision() && generation == p.generation
 }
 
 // Renew requires a committed generation whose fresh route/allocation
@@ -194,7 +214,7 @@ func (p *ZapretNativePath) Renew(ctx context.Context, observe func(context.Conte
 			return errors.Join(err, p.closeLocked())
 		}
 	}
-	if err := p.guard.Renew(lifetime); err != nil {
+	if err := p.guard.renewBefore(lifetime, p.grantDeadline); err != nil {
 		return errors.Join(err, p.closeLocked())
 	}
 	return nil
@@ -223,7 +243,7 @@ func (p *ZapretNativePath) WithSocket(ctx context.Context, observe func(context.
 }
 
 func (p *ZapretNativePath) verify(ctx context.Context, current planner.Facts) error {
-	if p.closed || p.guard == nil || p.table == nil {
+	if p.closed || p.lifetime.Err() != nil || p.guard == nil || p.table == nil {
 		return errors.New("native path for Zapret is unavailable")
 	}
 	if err := planner.CheckCurrent(p.plan.Plan(), current); err != nil {

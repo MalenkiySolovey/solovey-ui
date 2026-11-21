@@ -36,15 +36,20 @@ type ZapretSocketGrant struct {
 type zapretSocketFence func(ctx context.Context, grant ZapretSocketGrant, fd int, admit func() error) error
 
 // ServeZapretSockets creates and publishes a root-owned socket after the
-// committed generation is ready. publish runs before accept and must not dial
-// the socket. observe is broker-local and supplies fresh Planner facts. The
-// caller retains generation ownership if binding fails.
-func (s *Server) ServeZapretSockets(ctx context.Context, grant ZapretSocketGrant,
+// committed generation is ready. The generation supplies the grant expiry.
+// publish runs before accept and must not dial the socket. observe is broker-local
+// and supplies fresh Planner facts. The caller retains ownership if binding fails.
+func (s *Server) ServeZapretSockets(ctx context.Context, scope planner.ZapretSocketScope, peerRevision string,
 	path *nftables.ZapretNativePath, observe func(context.Context) (planner.Facts, error), publish func(context.Context, string) error,
 ) (failure error) {
-	if s == nil || path == nil || observe == nil || publish == nil || !time.Now().Before(grant.Expires) || !path.AdmissionReady(grant.Scope, grant.Generation) {
+	if s == nil || path == nil || observe == nil || publish == nil || !path.AdmissionReady(scope, path.Generation()) {
 		return errZapretSocket
 	}
+	expires, ok := path.Lifetime().Deadline()
+	if !ok || !time.Now().Before(expires) {
+		return errZapretSocket
+	}
+	grant := ZapretSocketGrant{Scope: scope, Generation: path.Generation(), PeerRevision: peerRevision, Expires: expires}
 	journal, ok := s.Journal.(*FileJournal)
 	if !ok || journal == nil || journal.bootID != s.BootID || journal.checkZapretPath(grant) != nil {
 		return errZapretSocket

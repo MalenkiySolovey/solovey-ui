@@ -229,6 +229,10 @@ func checkZapretPinDirectory(path string) error {
 // the generation. It cannot re-enroll a replaced device: only the initial
 // setup populates the DEVMAP, and unregister removes the kernel reference.
 func (g *ZapretNativeGuard) Renew(lifetime time.Duration) error {
+	return g.renewBefore(lifetime, 0)
+}
+
+func (g *ZapretNativeGuard) renewBefore(lifetime time.Duration, grantDeadline uint64) error {
 	if g == nil || lifetime <= 0 || lifetime > 10*time.Second {
 		return errors.New("invalid Zapret egress guard lease")
 	}
@@ -249,11 +253,19 @@ func (g *ZapretNativeGuard) Renew(lifetime time.Duration) error {
 	if err := g.deadline.Lookup(uint32(0), &previous); err != nil {
 		return errors.Join(err, g.revokeLocked())
 	}
-	if previous != 0 && previous <= uint64(now.Nano()) {
+	kernelNow := uint64(now.Nano())
+	if previous != 0 && previous <= kernelNow {
 		return errors.Join(errors.New("egress guard lease for Zapret expired"), g.revokeLocked())
 	}
+	deadline := kernelNow + uint64(lifetime)
+	if grantDeadline != 0 {
+		if grantDeadline <= kernelNow {
+			return errors.Join(errors.New("Zapret generation grant expired"), g.revokeLocked())
+		}
+		deadline = min(deadline, grantDeadline)
+	}
 	g.leased = true // Raw output may be authorized even before socket enrollment.
-	if err := g.deadline.Put(uint32(0), uint64(now.Nano()+int64(lifetime))); err != nil {
+	if err := g.deadline.Put(uint32(0), deadline); err != nil {
 		return errors.Join(err, g.revokeLocked())
 	}
 	return nil

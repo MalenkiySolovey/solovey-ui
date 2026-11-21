@@ -173,7 +173,7 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 	}
 	prepare := func() *nftables.ZapretNativePath {
 		t.Helper()
-		path, err := nftables.PrepareZapretNativePath(ctx, plan, facts, pins, identity)
+		path, err := nftables.PrepareZapretNativePath(ctx, plan, facts, pins, identity, 10*time.Second)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -303,28 +303,33 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 		return errors.Join(err, admission)
 	}}
 	request := []byte("GET /r8b1 HTTP/1.1\r\nHost: example.invalid\r\nConnection: close\r\n\r\n")
+	type stream struct {
+		sender, receiver net.Conn
+	}
+	var a, b stream
 	for _, flow := range []struct {
 		name    string
 		dialer  *net.Dialer
 		packets int
-	}{{"marked A", &dialer, 2}, {"unmarked control", &net.Dialer{}, 1}} {
+		stream  *stream
+	}{{"marked A", &dialer, 2, &a}, {"unmarked control", &net.Dialer{}, 1, &b}} {
 		conn, err := flow.dialer.DialContext(ctx, "tcp4", listener.Addr().String())
 		if err != nil {
 			t.Fatalf("%s: %v", flow.name, err)
 		}
+		defer conn.Close()
 		upstream, err := listener.AcceptTCP()
 		if err != nil {
-			_ = conn.Close()
 			t.Fatal(err)
 		}
+		defer upstream.Close()
+		*flow.stream = stream{conn, upstream}
 		_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
 		_ = upstream.SetReadDeadline(time.Now().Add(time.Second))
 		sourcePort := uint16(conn.LocalAddr().(*net.TCPAddr).Port)
 		_, sendErr := conn.Write(request)
 		got := make([]byte, len(request))
 		_, readErr := io.ReadFull(upstream, got)
-		_ = conn.Close()
-		_ = upstream.Close()
 		if sendErr != nil || readErr != nil || !bytes.Equal(got, request) {
 			t.Fatalf("%s: receiver did not receive the original byte stream: %v, %v", flow.name, sendErr, readErr)
 		}
@@ -338,10 +343,36 @@ func TestZapretRoutedStrategyWire(t *testing.T) {
 		t.Fatal("retirement released a checkpoint after socket enrollment")
 	}
 	t.Log("ZAPRET_IDLE_RETIRE_REOPEN=PASS; STALE_AND_ADMITTED_RELEASE=DENIED")
-	if err := path.Renew(ctx, observeFixture, 30*time.Millisecond); err != nil {
+	if err := path.Renew(ctx, observeFixture, 10*time.Second); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(40 * time.Millisecond)
+	// Both sockets stay open and the owner does not revoke the kernel lease
+	// or remove the live table. A renewal cannot outlast the grant.
+	select {
+	case <-path.Lifetime().Done():
+	case <-ctx.Done():
+		t.Fatal("generation did not expire in the routed fixture")
+	}
+	if !errors.Is(path.Lifetime().Err(), context.DeadlineExceeded) || path.AdmissionReady(scope, path.Generation()) {
+		t.Fatal("generation did not close admission at its grant deadline")
+	}
+	for _, flow := range []struct {
+		stream
+		allowed bool
+	}{{a, false}, {b, true}} {
+		_ = flow.sender.SetWriteDeadline(time.Now().Add(time.Second))
+		_, sendErr := flow.sender.Write([]byte{0x61})
+		_ = flow.receiver.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+		var marker [1]byte
+		n, readErr := flow.receiver.Read(marker[:])
+		if flow.allowed && (sendErr != nil || readErr != nil || n != 1 || marker[0] != 0x61) {
+			t.Fatalf("grant expiry affected the unmarked socket: sent %v, read %d (%v)", sendErr, n, readErr)
+		}
+		if !flow.allowed && (n != 0 || !errors.Is(readErr, os.ErrDeadlineExceeded)) {
+			t.Fatalf("old marked socket was not blocked at grant expiry: read %d (%v)", n, readErr)
+		}
+	}
+	t.Log("ZAPRET_GRANT_DEADLINE=PASS (already-issued A denied; existing B unaffected)")
 	if err := path.Renew(ctx, observeFixture, time.Second); err == nil {
 		t.Fatal("expired egress generation reopened")
 	}
