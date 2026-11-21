@@ -21,7 +21,7 @@ type ZapretNativePath struct {
 	mu         sync.Mutex
 	plan       planner.ZapretPlan
 	engine     processevidence.Fact
-	queue      ZapretQueueOwner
+	sockets    zapretEngineSockets
 	guard      *ZapretNativeGuard
 	table      *ZapretOwnedTable
 	generation string
@@ -38,10 +38,11 @@ type ZapretPathCheckpoint struct {
 	Generation, PlanRevision        string
 	Egress                          planner.ZapretEgress
 	SocketMark, QueueMark, LoopMark uint32
-	RawPassMark, TablePort          uint32
+	FinalRouteBit, TablePort        uint32
 	TableHandle                     uint64
 	GuardLinks                      [2]uint32
 	QueueOwner                      ZapretQueueOwner
+	RawSocketCookies                [2]uint64
 }
 
 // PrepareZapretNativePath stages the exact Planner allocation. The caller is
@@ -54,20 +55,20 @@ func PrepareZapretNativePath(ctx context.Context, plan planner.ZapretPlan, befor
 	if err := verifyZapretRoute(ctx, plan); err != nil {
 		return nil, err
 	}
-	queue, err := ObserveZapretQueueOwner(plan, engine)
+	sockets, err := observeZapretEngineSockets(plan, engine)
 	if err != nil {
 		return nil, err
 	}
 	var generation [32]byte
 	_, _ = rand.Read(generation[:])
 	lifetime, cancel := context.WithCancel(context.Background())
-	p := &ZapretNativePath{plan: plan, engine: engine, queue: queue, generation: hex.EncodeToString(generation[:]), lifetime: lifetime, cancel: cancel}
+	p := &ZapretNativePath{plan: plan, engine: engine, sockets: sockets, generation: hex.EncodeToString(generation[:]), lifetime: lifetime, cancel: cancel}
 	defer func() {
 		if failure != nil {
 			failure = errors.Join(failure, p.Close())
 		}
 	}()
-	p.guard, err = CreateZapretNativeGuard(plan, pinDir)
+	p.guard, err = createZapretNativeGuard(plan, pinDir, sockets.raw)
 	if err != nil {
 		return nil, err
 	}
@@ -115,8 +116,8 @@ func (p *ZapretNativePath) Commit(ctx context.Context, observe func(context.Cont
 		return errors.Join(err, p.closeLocked())
 	}
 	checkpoint := ZapretPathCheckpoint{Generation: p.generation, PlanRevision: scope.PlanRevision(), Egress: scope.Egress(),
-		SocketMark: p.plan.SocketMark(), QueueMark: p.plan.QueueMark(), LoopMark: p.plan.LoopMark(), RawPassMark: p.plan.RawPassMark(),
-		TablePort: p.table.port, TableHandle: p.table.handle, GuardLinks: ids, QueueOwner: p.queue}
+		SocketMark: p.plan.SocketMark(), QueueMark: p.plan.QueueMark(), LoopMark: p.plan.LoopMark(), FinalRouteBit: p.plan.FinalRouteBit(),
+		TablePort: p.table.port, TableHandle: p.table.handle, GuardLinks: ids, QueueOwner: p.sockets.queue, RawSocketCookies: p.sockets.raw}
 	if err := record(checkpoint); err != nil {
 		return errors.Join(err, p.closeLocked())
 	}
@@ -196,9 +197,9 @@ func (p *ZapretNativePath) verify(ctx context.Context, current planner.Facts) er
 	if _, err := p.guard.verifiedLinks(); err != nil {
 		return err
 	}
-	queue, err := ObserveZapretQueueOwner(p.plan, p.engine)
-	if err != nil || queue != p.queue {
-		return errors.Join(errors.New("queue ownership for Zapret changed"), err)
+	sockets, err := observeZapretEngineSockets(p.plan, p.engine)
+	if err != nil || sockets != p.sockets {
+		return errors.Join(errors.New("queue or generator socket ownership for Zapret changed"), err)
 	}
 	return ctx.Err()
 }

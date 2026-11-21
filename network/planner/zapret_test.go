@@ -145,7 +145,7 @@ func TestInstalledZapretDoesNotReuseRoutingMarkSelectors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bits := plan.QueueMark() | plan.LoopMark() | plan.RawPassMark(); bits != 0x3c {
+	if bits := plan.QueueMark() | plan.LoopMark() | plan.FinalRouteBit(); bits != 0x3c {
 		t.Fatalf("expected only the four unclaimed bits, got %#x", bits)
 	}
 	facts.Zapret.InstalledEgress.RoutingMarkBits |= 4

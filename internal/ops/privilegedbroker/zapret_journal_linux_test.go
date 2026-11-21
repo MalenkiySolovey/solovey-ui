@@ -18,7 +18,7 @@ func TestZapretSocketCommitJournal(t *testing.T) {
 	}
 	grant := ZapretSocketGrant{Scope: scope, Generation: Digest([]byte("generation")), PeerRevision: Digest([]byte("attested-peer"))}
 	checkpoint := nftables.ZapretPathCheckpoint{Generation: grant.Generation, PlanRevision: scope.PlanRevision(), Egress: scope.Egress(),
-		SocketMark: plan.SocketMark(), QueueMark: plan.QueueMark(), LoopMark: plan.LoopMark(), RawPassMark: plan.RawPassMark(),
+		SocketMark: plan.SocketMark(), QueueMark: plan.QueueMark(), LoopMark: plan.LoopMark(), FinalRouteBit: plan.FinalRouteBit(),
 		TablePort: 77, TableHandle: 23, GuardLinks: [2]uint32{4, 5}, QueueOwner: nftables.ZapretQueueOwner{
 			Queue: plan.Queue(), PortID: 88, SocketInode: 204, ProcessRevision: Digest([]byte("engine")),
 		}}

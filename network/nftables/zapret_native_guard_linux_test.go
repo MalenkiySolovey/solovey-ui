@@ -113,9 +113,10 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	owner, err := ObserveZapretQueueOwner(plan, engineIdentity)
-	if err != nil || owner.Queue != plan.Queue() || owner.ProcessRevision != engineIdentity.Revision || owner.SocketInode == 0 {
-		t.Fatalf("pinned consumer identity not proven: %+v (%v)", owner, err)
+	engineSockets, err := observeZapretEngineSockets(plan, engineIdentity)
+	owner := engineSockets.queue
+	if err != nil || owner.Queue != plan.Queue() || owner.ProcessRevision != engineIdentity.Revision || owner.SocketInode == 0 || engineSockets.raw[0] == 0 {
+		t.Fatalf("pinned consumer and IPv4 generator identity not proven: %+v (%v)", engineSockets, err)
 	}
 	wrong := engineIdentity
 	wrong.Revision = strings.Repeat("f", 64)
@@ -149,7 +150,7 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 		t.Fatal("failed create changed a foreign table with the reserved name")
 	}
 	nft(remove)
-	guard, err := CreateZapretNativeGuard(plan, pins)
+	guard, err := createZapretNativeGuard(plan, pins, engineSockets.raw)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,6 +200,11 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	}
 	check(a, peer, "active A", true)
 	check(b, peer, "active B", true)
+	forgedRaw := testGuardUDPSocket(t)
+	if err := unix.SetsockoptInt(forgedRaw, unix.SOL_SOCKET, unix.SO_MARK, int(plan.LoopMark()|plan.QueueMark())); err != nil {
+		t.Fatal(err)
+	}
+	check(forgedRaw, peer, "foreign socket with the generator mark and allowed destination", false)
 	staleSocket := testGuardUDPSocket(t)
 	if err := unix.SetsockoptInt(staleSocket, unix.SOL_SOCKET, unix.SO_MARK, int(plan.SocketMark())); err != nil {
 		t.Fatal(err)
@@ -254,25 +260,37 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	defer table.Close()
 	check(a, peer, "lost consumer", false)
 	check(b, peer, "lost consumer B", true)
-	// Model packet permission without the nft table, to directly challenge
-	// the kernel reference rather than just testing nft's oif comparison.
+	// Alter only the skb mark of another enrolled socket at the right
+	// egress. This isolates the final route bit and the pinned device from
+	// the owned table's other packet checks.
 	if err := table.Close(); err != nil {
 		t.Fatal(err)
 	}
-	raw := testGuardUDPSocket(t)
-	if err := unix.SetsockoptInt(raw, unix.SOL_SOCKET, unix.SO_MARK, int(plan.LoopMark()|plan.QueueMark())); err != nil {
+	probe := testGuardUDPSocket(t)
+	if err := guard.EnrollSocket(probe); err != nil {
 		t.Fatal(err)
 	}
-	check(raw, peer, "generated packet with inherited queue mark", false)
-	if err := unix.SetsockoptInt(raw, unix.SOL_SOCKET, unix.SO_MARK, int(plan.LoopMark()|plan.RawPassMark())); err != nil {
+	if err := unix.SetsockoptInt(probe, unix.SOL_SOCKET, unix.SO_MARK, int(plan.SocketMark())); err != nil {
 		t.Fatal(err)
 	}
-	check(raw, peer, "control with permission", true)
+	const injected = "r8b1_mark_injection"
+	nft(fmt.Sprintf("add table ip %[1]s\nadd chain ip %[1]s post { type filter hook postrouting priority %[2]d; policy accept; }\n", injected, zapretGuardPriority-2))
+	setPacketMark := func(mark uint32) {
+		t.Helper()
+		nft(fmt.Sprintf("flush chain ip %[1]s post\nadd rule ip %[1]s post meta mark 0x%[2]x counter meta mark set 0x%[3]x\n", injected, plan.SocketMark(), mark))
+	}
+	setPacketMark(plan.QueueMark())
+	check(probe, peer, "queue mark without final route bit", false)
+	if listing := run("", "nft", "list", "chain", "ip", injected, "post"); !strings.Contains(listing, "packets 1 bytes") {
+		t.Fatalf("missing final-route-bit test did not reach postrouting: %s", listing)
+	}
+	setPacketMark(plan.QueueMark() | plan.FinalRouteBit())
+	check(probe, peer, "control with queue and final route bits", true)
 	ip("link", "del", "r8ba")
 	link("r8ba", "r8bap", "192.0.2.2", firstGateway, iface.Index)
 	route("r8ba", firstGateway)
 	replaced := testGuardReceiver(t, "r8bap")
-	check(raw, replaced, "recreated ifindex with an otherwise valid mark", false)
+	check(probe, replaced, "recreated ifindex with an otherwise valid mark", false)
 	check(b, replaced, "recreated ifindex B", true)
 	if err := guard.Renew(time.Second); err == nil {
 		t.Fatal("replaced device was admitted into the old generation")
@@ -287,7 +305,8 @@ func TestZapretNativeGuardRoutedEgress(t *testing.T) {
 	if after := run("", "nft", "list", "table", "inet", "r8b1_foreign"); after != foreignBefore {
 		t.Fatal("pre-existing firewall was changed")
 	}
-	t.Log("veth wire: only the enrolled A socket delivered; B unchanged; table/queue/route loss, inherited marks and ifindex reuse denied; closed hooks remained pinned")
+	t.Log("veth wire: only the enrolled A socket delivered; B unchanged; table/queue/route loss and ifindex reuse denied; closed hooks remained pinned")
+	t.Log("FINAL_ROUTE_BIT_REQUIRED=PASS; FOREIGN_GENERATOR_MARK_DENIED=PASS")
 	t.Log("NFT_OWNER_SIGKILL=PASS; QUEUE_STILL_BOUND=PASS; OLD_MARKED_SOCKET_BLOCKED=PASS; FOREIGN_RULESET_UNCHANGED=PASS")
 	t.Log("FAILED_APPLY_OWNED_PINS_REMOVED=PASS; FOREIGN_RESERVED_NAME_UNCHANGED=PASS; ADMITTED_GUARD_ROLLBACK_DENIED=PASS")
 	t.Log("queue ownership: descriptor/netlink identity proven for the live consumer; mismatched revision and dead consumer denied")

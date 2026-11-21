@@ -15,7 +15,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const zapretQueueInventoryLimit = 1 << 20
+const (
+	zapretQueueInventoryLimit = 1 << 20
+	zapretEngineSocketLimit   = 64
+)
 
 // ZapretQueueOwner is a fresh observation, not a grant or a durable receipt.
 // A port ID is a netlink address, not a Linux PID.
@@ -26,55 +29,75 @@ type ZapretQueueOwner struct {
 	ProcessRevision string
 }
 
+type zapretEngineSockets struct {
+	queue ZapretQueueOwner
+	raw   [2]uint64 // IPv4 and IPv6 SO_COOKIE values (zero means absent).
+}
+
 // ObserveZapretQueueOwner proves the selected queue belongs to the engine
 // the privileged launcher already authenticated. Never derive expected from
 // a queue port ID, on-disk PID file, or a Panel request.
 func ObserveZapretQueueOwner(plan planner.ZapretPlan, expected processevidence.Fact) (ZapretQueueOwner, error) {
+	sockets, err := observeZapretEngineSockets(plan, expected)
+	return sockets.queue, err
+}
+
+func observeZapretEngineSockets(plan planner.ZapretPlan, expected processevidence.Fact) (zapretEngineSockets, error) {
 	scope, err := plan.SocketScope()
 	if err != nil || expected.PID <= 1 || !validSHA256(expected.Revision) || !validSHA256(expected.ExeDigest) ||
 		expected.ExecutableDeleted || expected.ExeUID != 0 || expected.ExeMode&0o022 != 0 {
-		return ZapretQueueOwner{}, errors.New("queue for Zapret has no trusted engine identity")
+		return zapretEngineSockets{}, errors.New("queue for Zapret has no trusted engine identity")
 	}
 	pidfd, err := unix.PidfdOpen(expected.PID, 0)
 	if err != nil {
-		return ZapretQueueOwner{}, fmt.Errorf("open Zapret engine pidfd: %w", err)
+		return zapretEngineSockets{}, fmt.Errorf("open Zapret engine pidfd: %w", err)
 	}
 	defer unix.Close(pidfd)
 	process, err := processevidence.Observe(expected.PID)
 	if err != nil || process.Revision != expected.Revision || !zapretPidfdAlive(pidfd) {
-		return ZapretQueueOwner{}, errors.New("process generation for the Zapret engine changed")
+		return zapretEngineSockets{}, errors.New("process generation for the Zapret engine changed")
 	}
 	port, inode, err := observeZapretQueueBinding(plan.Queue())
 	if err != nil {
-		return ZapretQueueOwner{}, err
+		return zapretEngineSockets{}, err
 	}
 	descriptors, err := processevidence.ObserveDescriptorSnapshot(expected.PID)
 	if err != nil {
-		return ZapretQueueOwner{}, err
+		return zapretEngineSockets{}, err
 	}
-	wantInode := strconv.FormatUint(inode, 10)
-	for fd, observed := range descriptors.SocketInodes {
-		if observed != wantInode {
-			continue
-		}
-		matched, err := verifyZapretQueueSocket(pidfd, fd, port, inode, scope.Egress().NamespaceCookie)
+	if len(descriptors.SocketInodes) > zapretEngineSocketLimit {
+		return zapretEngineSockets{}, errors.New("socket inventory for the Zapret engine exceeds its bound")
+	}
+	var result zapretEngineSockets
+	egress := scope.Egress()
+	for fd, inodeText := range descriptors.SocketInodes {
+		observed, err := strconv.ParseUint(inodeText, 10, 64)
 		if err != nil {
-			return ZapretQueueOwner{}, err
+			return zapretEngineSockets{}, err
 		}
-		if !matched {
-			continue
+		dup, err := unix.PidfdGetfd(pidfd, fd, 0)
+		if err != nil {
+			return zapretEngineSockets{}, fmt.Errorf("duplicate Zapret engine socket for identity proof: %w", err)
 		}
-		afterPort, afterInode, err := observeZapretQueueBinding(plan.Queue())
-		if err != nil || afterPort != port || afterInode != inode || !zapretPidfdAlive(pidfd) {
-			return ZapretQueueOwner{}, errors.New("queue binding for Zapret changed during observation")
+		err = result.observeSocket(dup, observed, inode, egress.NamespaceCookie, port)
+		_ = unix.Close(dup)
+		if err != nil {
+			return zapretEngineSockets{}, err
 		}
-		afterProcess, err := processevidence.Observe(expected.PID)
-		if err != nil || afterProcess.Revision != process.Revision || !zapretPidfdAlive(pidfd) {
-			return ZapretQueueOwner{}, errors.New("process for the Zapret engine changed during queue observation")
-		}
-		return ZapretQueueOwner{plan.Queue(), port, inode, process.Revision}, nil
 	}
-	return ZapretQueueOwner{}, errors.New("queue for Zapret does not belong to the authenticated engine")
+	if result.queue.PortID == 0 || egress.IPv4Gateway.IsValid() && result.raw[0] == 0 || egress.IPv6Gateway.IsValid() && result.raw[1] == 0 {
+		return zapretEngineSockets{}, errors.New("authenticated engine for Zapret does not own the queue and required raw sockets")
+	}
+	afterPort, afterInode, err := observeZapretQueueBinding(plan.Queue())
+	if err != nil || afterPort != port || afterInode != inode || !zapretPidfdAlive(pidfd) {
+		return zapretEngineSockets{}, errors.New("queue binding for Zapret changed during observation")
+	}
+	afterProcess, err := processevidence.Observe(expected.PID)
+	if err != nil || afterProcess.Revision != process.Revision || !zapretPidfdAlive(pidfd) {
+		return zapretEngineSockets{}, errors.New("process for the Zapret engine changed during socket observation")
+	}
+	result.queue.Queue, result.queue.ProcessRevision = plan.Queue(), process.Revision
+	return result, nil
 }
 
 func zapretPidfdAlive(fd int) bool {
@@ -82,27 +105,43 @@ func zapretPidfdAlive(fd int) bool {
 	return n == 0 && err == nil
 }
 
-func verifyZapretQueueSocket(pidfd, fd int, port uint32, inode, namespace uint64) (bool, error) {
-	dup, err := unix.PidfdGetfd(pidfd, fd, 0)
-	if err != nil {
-		return false, fmt.Errorf("duplicate Zapret engine netlink descriptor for identity proof: %w", err)
-	}
-	defer unix.Close(dup)
+func (s *zapretEngineSockets) observeSocket(fd int, inode, queueInode, namespace uint64, port uint32) error {
 	var stat unix.Stat_t
-	if err := unix.Fstat(dup, &stat); err != nil || stat.Mode&unix.S_IFMT != unix.S_IFSOCK || stat.Ino != inode {
-		return false, nil
+	if err := unix.Fstat(fd, &stat); err != nil || stat.Mode&unix.S_IFMT != unix.S_IFSOCK || stat.Ino != inode {
+		return errors.New("descriptor for the Zapret engine changed during socket observation")
 	}
-	protocol, err := unix.GetsockoptInt(dup, unix.SOL_SOCKET, unix.SO_PROTOCOL)
-	if err != nil || protocol != unix.NETLINK_NETFILTER {
-		return false, nil
+	domain, err := unix.GetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_DOMAIN)
+	protocol, protocolErr := unix.GetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_PROTOCOL)
+	if err != nil || protocolErr != nil {
+		return errors.New("socket kind for the Zapret engine is unavailable")
 	}
-	cookie, err := unix.GetsockoptUint64(dup, unix.SOL_SOCKET, unix.SO_NETNS_COOKIE)
+	if inode != queueInode && ((domain != unix.AF_INET && domain != unix.AF_INET6) || protocol != unix.IPPROTO_RAW) {
+		return nil
+	}
+	cookie, err := unix.GetsockoptUint64(fd, unix.SOL_SOCKET, unix.SO_NETNS_COOKIE)
 	if err != nil || cookie != namespace {
-		return false, nil
+		return errors.New("socket for the Zapret engine is outside the planned network namespace")
 	}
-	address, err := unix.Getsockname(dup)
-	netlink, ok := address.(*unix.SockaddrNetlink)
-	return err == nil && ok && netlink.Pid == port, nil
+	if inode == queueInode {
+		address, err := unix.Getsockname(fd)
+		netlink, ok := address.(*unix.SockaddrNetlink)
+		if err != nil || !ok || domain != unix.AF_NETLINK || protocol != unix.NETLINK_NETFILTER || netlink.Pid != port || s.queue.PortID != 0 {
+			return errors.New("netlink descriptor for the Zapret engine is ambiguous or does not match the queue")
+		}
+		s.queue.PortID, s.queue.SocketInode = port, inode
+		return nil
+	}
+	family := 0
+	if domain == unix.AF_INET6 {
+		family = 1
+	}
+	kind, kindErr := unix.GetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TYPE)
+	rawCookie, cookieErr := unix.GetsockoptUint64(fd, unix.SOL_SOCKET, unix.SO_COOKIE)
+	if kindErr != nil || kind != unix.SOCK_RAW || cookieErr != nil || rawCookie == 0 || s.raw[family] != 0 {
+		return errors.New("raw socket for the Zapret engine is unavailable or ambiguous")
+	}
+	s.raw[family] = rawCookie
+	return nil
 }
 
 func observeZapretQueueBinding(queue uint16) (uint32, uint64, error) {

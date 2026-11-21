@@ -17,7 +17,7 @@ const ZapretProbeGuard = "tc:lo:clsact:egress"
 
 // ZapretInstalledBackend is a compile target, not an advertised capability.
 // Only an adapter with a live, independent egress guard can admit the plan.
-const ZapretInstalledBackend = "native-linux-bpf-nft-nfqueue/v1"
+const ZapretInstalledBackend = "native-linux-bpf-nft-nfqueue/v2"
 const ZapretInstalledTable = "solovey_zapret"
 
 // ZapretFacts are supplied under the same operation fence as Facts. An owner
@@ -61,7 +61,7 @@ type ZapretPlan struct {
 	mark     uint32
 	loopMark uint32
 	passMark uint32
-	rawPass  uint32
+	finalBit uint32
 }
 
 func (p ZapretPlan) Plan() Plan         { return p.plan }
@@ -73,9 +73,14 @@ func (p ZapretPlan) LoopMark() uint32   { return p.loopMark }
 // the dialer. The egress guard drops the unapproved socket mark.
 func (p ZapretPlan) QueueMark() uint32 { return p.mark | p.passMark }
 
-// RawPassMark is applied to generator output by the installed firewall. It
-// must not be present on queued packets or inherited by the engine's sendto.
-func (p ZapretPlan) RawPassMark() uint32 { return p.rawPass }
+// RawOutputMark distinguishes generator packets which passed LOCAL_OUT from
+// the two input marks nfqws2 uses for its raw sends.
+func (p ZapretPlan) RawOutputMark() uint32 { return p.loopMark | p.passMark }
+
+// FinalRouteBit is the installed firewall's final route proof bit. Only
+// POSTROUTING applies it, for both queued originals and generator output.
+// It is never inherited by NFQUEUE or the engine's sendto.
+func (p ZapretPlan) FinalRouteBit() uint32 { return p.finalBit }
 func (p ZapretPlan) PacketScope() intent.ZapretPacketPathIntent {
 	return intent.CanonicalZapretPacketPathIntent(p.intent)
 }
@@ -180,7 +185,7 @@ func CompileZapret(request intent.ZapretPacketPathIntent, facts Facts) (ZapretPl
 			break
 		}
 	}
-	var mark, loopMark, passMark, rawPass uint32
+	var mark, loopMark, passMark, finalBit uint32
 	reserved := z.ReservedMarkBits
 	if z.InstalledEgress != nil {
 		reserved |= z.InstalledEgress.RoutingMarkBits
@@ -202,11 +207,11 @@ func CompileZapret(request intent.ZapretPacketPathIntent, facts Facts) (ZapretPl
 				break
 			}
 		} else {
-			rawPass = bit
+			finalBit = bit
 			break
 		}
 	}
-	if queue == 0 || passMark == 0 || z.InstalledEgress != nil && rawPass == 0 {
+	if queue == 0 || passMark == 0 || z.InstalledEgress != nil && finalBit == 0 {
 		return ZapretPlan{}, conflict(AllocationUnavailable, ref)
 	}
 	type claim struct{ kind, allocation string }
@@ -218,14 +223,14 @@ func CompileZapret(request intent.ZapretPacketPathIntent, facts Facts) (ZapretPl
 		{"packet_pass_mark", fmt.Sprintf("mark:0x%x", passMark)},
 		{"egress_guard", guard},
 	}
-	if rawPass != 0 {
-		claims = append(claims, claim{"packet_pass_mark", fmt.Sprintf("mark:0x%x", rawPass)})
+	if finalBit != 0 {
+		claims = append(claims, claim{"packet_pass_mark", fmt.Sprintf("mark:0x%x", finalBit)})
 	}
 	for _, claim := range claims {
 		plan.resources = append(plan.resources, Ownership{HostRef: request.HostRef, Owner: request.Owner,
 			ResourceRef: ref, PlanRevision: plan.revision, Kind: claim.kind, Purpose: request.Purpose, Allocation: claim.allocation})
 	}
-	result := ZapretPlan{plan: plan, intent: request, queue: queue, mark: mark, loopMark: loopMark, passMark: passMark, rawPass: rawPass}
+	result := ZapretPlan{plan: plan, intent: request, queue: queue, mark: mark, loopMark: loopMark, passMark: passMark, finalBit: finalBit}
 	result.plan.zapret = &request
 	return result, nil
 }

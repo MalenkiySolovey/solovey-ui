@@ -44,12 +44,17 @@ type zapretGuardPin struct {
 	program ebpf.ProgramID
 }
 
-// CreateZapretNativeGuard requires an empty, root-owned generation directory
-// on bpffs. No marked socket may be issued until both hooks are pinned and
-// the queue/rules have been verified and committed by the generation owner.
-func CreateZapretNativeGuard(plan planner.ZapretPlan, pinDir string) (_ *ZapretNativeGuard, failure error) {
+// CreateZapretNativeGuard is the deny-generator guard used by capability
+// probes. The staged path authorizes generator sockets by kernel cookie.
+func CreateZapretNativeGuard(plan planner.ZapretPlan, pinDir string) (*ZapretNativeGuard, error) {
+	return createZapretNativeGuard(plan, pinDir, [2]uint64{})
+}
+
+// Require a private, empty generation directory on bpffs. No marked socket
+// may be issued before the rules and hooks are verified and committed.
+func createZapretNativeGuard(plan planner.ZapretPlan, pinDir string, raw [2]uint64) (_ *ZapretNativeGuard, failure error) {
 	scope, err := plan.SocketScope()
-	if err != nil || plan.RawPassMark() == 0 {
+	if err != nil || plan.FinalRouteBit() == 0 {
 		return nil, errors.New("guard for Zapret requires an installed Planner allocation")
 	}
 	if err := checkZapretPinDirectory(pinDir); err != nil {
@@ -96,13 +101,13 @@ func CreateZapretNativeGuard(plan planner.ZapretPlan, pinDir string) (_ *ZapretN
 	if err != nil {
 		return nil, fmt.Errorf("create Zapret socket admission map: %w", err)
 	}
-	for _, family := range []struct {
+	for i, family := range []struct {
 		pin string
 		num link.NetfilterProtocolFamily
 		use bool
 	}{{"ipv4", link.NetfilterProtoIPv4, scope.Egress().IPv4Gateway.IsValid()}, {"ipv6", link.NetfilterProtoIPv6, scope.Egress().IPv6Gateway.IsValid()}} {
 		program, err := ebpf.NewProgram(&ebpf.ProgramSpec{Name: "sui_zapret_out", Type: ebpf.Netfilter, AttachType: ebpf.AttachNetfilter,
-			License: "GPL", Instructions: zapretGuardProgram(plan, layout, g.device.FD(), g.deadline.FD(), g.sockets.FD(), family.use)})
+			License: "GPL", Instructions: zapretGuardProgram(plan, layout, g.device.FD(), g.deadline.FD(), g.sockets.FD(), raw, i, family.use)})
 		if err != nil {
 			return nil, fmt.Errorf("load Zapret %s egress guard: %w", family.pin, err)
 		}
@@ -385,35 +390,57 @@ func zapretMemberOffset(typ btf.Type, name string) (btf.Bits, bool) {
 	return 0, false
 }
 
-func zapretGuardProgram(plan planner.ZapretPlan, layout zapretKernelLayout, device, deadline, sockets int, family bool) asm.Instructions {
-	owned := int32(plan.QueueMark() | plan.LoopMark() | plan.RawPassMark())
+func zapretGuardProgram(plan planner.ZapretPlan, layout zapretKernelLayout, device, deadline, sockets int, raw [2]uint64, family int, allowed bool) asm.Instructions {
+	owned := int32(plan.QueueMark() | plan.LoopMark() | plan.FinalRouteBit())
 	// Classify by both skb and original socket mark, so a later base chain
 	// clearing a marked socket's skb mark cannot turn it into unrelated traffic.
 	program := asm.Instructions{
 		asm.LoadMem(asm.R6, asm.R1, layout.state, asm.DWord),
 		asm.LoadMem(asm.R7, asm.R1, layout.skb, asm.DWord),
 		asm.LoadMem(asm.R7, asm.R7, layout.packetMark, asm.Word),
-		asm.JSet.Imm(asm.R7, owned, "protected"),
-		asm.LoadMem(asm.R2, asm.R6, layout.sk, asm.DWord),
-		asm.JEq.Imm(asm.R2, 0, "accept"),
-		asm.LoadMem(asm.R2, asm.R2, layout.socketMark, asm.Word),
+		asm.LoadMem(asm.R9, asm.R6, layout.sk, asm.DWord),
+	}
+	if raw[0] != 0 || raw[1] != 0 {
+		// A known generator socket is never ordinary traffic, even if a
+		// later chain strips every Planner bit from its packet mark.
+		program = append(program,
+			asm.JEq.Imm(asm.R9, 0, "classify"),
+			asm.LoadMem(asm.R0, asm.R9, layout.socketCookie, asm.DWord),
+		)
+		for i, cookie := range raw {
+			if cookie == 0 {
+				continue
+			}
+			verdict := "drop"
+			if allowed && i == family {
+				verdict = "generated"
+			}
+			program = append(program, asm.LoadImm(asm.R2, int64(cookie), asm.DWord), asm.JEq.Reg(asm.R0, asm.R2, verdict))
+		}
+	}
+	program = append(program,
+		asm.JSet.Imm(asm.R7, owned, "protected").WithSymbol("classify"),
+		asm.JEq.Imm(asm.R9, 0, "accept"),
+		asm.LoadMem(asm.R2, asm.R9, layout.socketMark, asm.Word),
 		asm.JSet.Imm(asm.R2, owned, "protected"),
 		asm.Ja.Label("accept"),
-	}
-	if family {
+	)
+	if allowed {
 		program = append(program,
-			asm.JEq.Imm(asm.R7, int32(plan.QueueMark()), "socket").WithSymbol("protected"),
-			asm.JEq.Imm(asm.R7, int32(plan.LoopMark()|plan.RawPassMark()), "path"),
-			asm.JNE.Imm(asm.R7, int32(plan.LoopMark()|plan.QueueMark()|plan.RawPassMark()), "drop"),
-			asm.Ja.Label("path"),
-			asm.LoadMem(asm.R2, asm.R6, layout.sk, asm.DWord).WithSymbol("socket"),
-			asm.JEq.Imm(asm.R2, 0, "drop"),
-			asm.LoadMem(asm.R0, asm.R2, layout.socketMark, asm.Word),
+			asm.JNE.Imm(asm.R7, int32(plan.QueueMark()|plan.FinalRouteBit()), "drop").WithSymbol("protected"),
+			asm.JEq.Imm(asm.R9, 0, "drop"),
+			asm.LoadMem(asm.R0, asm.R9, layout.socketMark, asm.Word),
 			asm.JNE.Imm(asm.R0, int32(plan.SocketMark()), "drop"),
-			asm.LoadMem(asm.R0, asm.R2, layout.socketCookie, asm.DWord),
+			asm.LoadMem(asm.R0, asm.R9, layout.socketCookie, asm.DWord),
 			asm.StoreMem(asm.R10, -16, asm.R0, asm.DWord),
 			asm.LoadMapPtr(asm.R1, sockets), asm.Mov.Reg(asm.R2, asm.R10), asm.Add.Imm(asm.R2, -16), asm.FnMapLookupElem.Call(),
 			asm.JEq.Imm(asm.R0, 0, "drop"),
+		)
+		if raw[family] != 0 {
+			program = append(program, asm.Ja.Label("path"),
+				asm.JNE.Imm(asm.R7, int32(plan.RawOutputMark()|plan.FinalRouteBit()), "drop").WithSymbol("generated"))
+		}
+		program = append(program,
 			asm.LoadMem(asm.R8, asm.R6, layout.out, asm.DWord).WithSymbol("path"),
 			asm.JEq.Imm(asm.R8, 0, "drop"),
 			asm.LoadMem(asm.R8, asm.R8, layout.ifindex, asm.Word),

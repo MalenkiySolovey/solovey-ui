@@ -47,7 +47,7 @@ type ZapretOwnedTable struct {
 // Partial or unconfirmed apply closes its port, never deletes by table name.
 func CreateZapretOwnedTable(ctx context.Context, plan planner.ZapretPlan) (_ *ZapretOwnedTable, failure error) {
 	scope, err := plan.SocketScope()
-	if err != nil || plan.Queue() == 0 || plan.RawPassMark() == 0 {
+	if err != nil || plan.Queue() == 0 || plan.FinalRouteBit() == 0 {
 		return nil, errors.New("missing installed Zapret allocation")
 	}
 	comment := zapretTableComment(scope.PlanRevision())
@@ -300,25 +300,27 @@ func zapretOwnedBatch(plan planner.ZapretPlan, comment []byte) ([]netlink.Messag
 				}
 				for _, mark := range generated {
 					raw := append(append([]expr.Any(nil), match...), meta(unix.NFT_META_MARK), eq(u32(mark)))
-					raw = append(raw, setMark(mark|plan.RawPassMark())...)
+					raw = append(raw, setMark(plan.RawOutputMark())...)
 					if err := addRule(zapretOutput, append(raw, &expr.Verdict{Kind: expr.VerdictAccept})); err != nil {
 						return nil, err
 					}
 				}
 			}
 		}
-		// A later route-type OUTPUT chain can cause a second lookup after
-		// NFQUEUE reinjection. Require the actual route again in POSTROUTING.
-		for _, mark := range []uint32{plan.QueueMark(), generated[0] | plan.RawPassMark(), generated[1] | plan.RawPassMark()} {
-			match := append(append([]expr.Any(nil), path...), meta(unix.NFT_META_MARK), eq(u32(mark)), &expr.Verdict{Kind: expr.VerdictAccept})
-			if err := addRule(zapretPostRouting, match); err != nil {
+		// NFQUEUE admission is not final egress approval. A later OUTPUT
+		// lookup can change the next hop, or the owned port can disappear
+		// while a packet is between the two hooks. Mint the final bit here.
+		for _, mark := range []uint32{plan.QueueMark(), plan.RawOutputMark()} {
+			match := append(append([]expr.Any(nil), path...), meta(unix.NFT_META_MARK), eq(u32(mark)))
+			match = append(match, setMark(mark|plan.FinalRouteBit())...)
+			if err := addRule(zapretPostRouting, append(match, &expr.Verdict{Kind: expr.VerdictAccept})); err != nil {
 				return nil, err
 			}
 		}
 	}
 	for _, chain := range []string{zapretOutput, zapretPostRouting} {
 		if err := addRule(chain, []expr.Any{meta(unix.NFT_META_MARK),
-			&expr.Bitwise{SourceRegister: reg, DestRegister: reg, Len: 4, Mask: u32(plan.QueueMark() | plan.LoopMark() | plan.RawPassMark()), Xor: u32(0)},
+			&expr.Bitwise{SourceRegister: reg, DestRegister: reg, Len: 4, Mask: u32(plan.QueueMark() | plan.LoopMark() | plan.FinalRouteBit()), Xor: u32(0)},
 			&expr.Cmp{Op: expr.CmpOpNeq, Register: reg, Data: u32(0)}, &expr.Verdict{Kind: expr.VerdictDrop},
 		}); err != nil {
 			return nil, err
