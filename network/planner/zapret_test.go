@@ -61,6 +61,38 @@ func TestCompileZapretAllocatesFreshBoundedResources(t *testing.T) {
 	}
 }
 
+func TestInstalledZapretScopeBindsEgressAndRejectsProbe(t *testing.T) {
+	request, facts := zapretFixture()
+	probe, err := CompileZapret(request, facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = probe.SocketScope()
+	requireReason(t, err, CapabilityUnavailable)
+	facts.Capability.Backend = ZapretInstalledBackend
+	_, err = CompileZapret(request, facts)
+	requireReason(t, err, CapabilityUnavailable)
+	facts.Zapret.InstalledEgress = &ZapretEgress{NamespaceCookie: 11, IfIndex: 2, IPv4: true, RouteRevision: hash("egress")}
+	plan, err := CompileZapret(request, facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope, err := plan.SocketScope()
+	if err != nil || !scope.Valid() || scope.Mark() != plan.SocketMark() || scope.PlanRevision() != plan.Plan().Revision() ||
+		scope.OutboundRef() != request.OutboundRef || scope.StrategyRevision() != request.StrategyRevision ||
+		!scope.AllowsProtocol(intent.PacketProtocolTCP) || scope.AllowsProtocol(intent.PacketProtocolUDP) {
+		t.Fatalf("wrong installed scope: %#v (%v)", scope, err)
+	}
+	facts.Zapret.InstalledEgress.IfIndex = 3
+	if scope.Egress().IfIndex != 2 {
+		t.Fatal("observed egress mutation changed existing allocation")
+	}
+	requireReason(t, CheckCurrent(plan.Plan(), facts), StalePlan)
+	facts.Zapret.InstalledEgress.IfIndex = 2
+	facts.Zapret.InstalledEgress.RouteRevision = hash("new route, same link")
+	requireReason(t, CheckCurrent(plan.Plan(), facts), StalePlan)
+}
+
 func TestCompileZapretFailsClosedForUnsupportedPathAndCollision(t *testing.T) {
 	for name, edit := range map[string]func(*intent.ZapretPacketPathIntent, *Facts){
 		"tun auto redirect": func(_ *intent.ZapretPacketPathIntent, f *Facts) { f.Zapret.TUNAutoRedirect = true },

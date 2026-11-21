@@ -575,6 +575,8 @@ func sanitizeHandlerDiagnostic(value string) string {
 
 func ownerDomain(verb Verb) string {
 	switch sanitizeAuditVerb(verb) {
+	case auditZapretSocket:
+		return "zapret"
 	case VerbSSHObserve, VerbSSHPrepare, VerbSSHStage, VerbSSHRecoverStage, VerbSSHReleaseStage, VerbSSHValidate, VerbSSHReload, VerbSSHArm, VerbSSHRestore, VerbSSHInspect, VerbSSHVerify, VerbSSHProof:
 		return "ssh"
 	case VerbDeploymentObserve, VerbDeploymentDoctor, VerbDeploymentPrepare, VerbDeploymentApply, VerbDeploymentVerify, VerbDeploymentRollback:

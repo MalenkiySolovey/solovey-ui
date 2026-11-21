@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -361,7 +362,7 @@ func TestZapretOutboundNamespace(t *testing.T) {
 	change.stop()
 	change = newZapretProbeChange(t, ctx, probe, accepted, facts, journalRoot, plan.Plan().Revision())
 	if err := change.call(ctx, zapretCommit, 6); !probeBrokerFailure(err, broker.CodeRecoveryRequired) {
-		t.Fatalf("restarted broker committed a lost nft generation: %v", err)
+		t.Fatalf("restarted broker did not reject the missing nft generation with recovery-required: %v", err)
 	}
 	t.Log("CHECKPOINT_REFUSED_AFTER_REOPEN: a durable receipt did not authorize the missing table")
 	if err := core.Stop(); err != nil {
@@ -474,12 +475,26 @@ func newZapretProbeChange(t *testing.T, ctx context.Context, probe *nftables.Zap
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The fixture uses a private socket, never the installed broker's path.
+	server.Diagnostic = func(event broker.DiagnosticEvent) {
+		if event.PeerAttestation != "" || event.HandlerReason != "" {
+			t.Logf("broker denial: phase=%s class=%s attestation=%s reason=%s", event.Phase, event.ResultClass, event.PeerAttestation, event.HandlerReason)
+		}
+	}
+	// Enable credentials before a fixture client can queue data, including
+	// the first connection immediately after a journal reopen.
 	path := filepath.Join(t.TempDir(), "probe.sock")
-	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	config := net.ListenConfig{Control: func(_, _ string, raw syscall.RawConn) error {
+		var optionErr error
+		err := raw.Control(func(fd uintptr) {
+			optionErr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_PASSCRED, 1)
+		})
+		return errors.Join(err, optionErr)
+	}}
+	bound, err := config.Listen(ctx, "unix", path)
 	if err != nil {
 		t.Fatal(err)
 	}
+	listener := bound.(*net.UnixListener)
 	serveCtx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(serveCtx, listener, broker.RolePanel) }()
