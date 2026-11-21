@@ -4,7 +4,9 @@ package planner
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -18,7 +20,8 @@ import (
 )
 
 // ObserveZapretLinuxEgress snapshots the single gateway route in table main
-// for each enabled family. The broker calls it in the socket namespace. It
+// for each enabled family and the namespace's IPv4/IPv6 routing rules. The
+// broker calls it in the socket namespace. It
 // does not infer the effective path for arbitrary destinations: the adapter
 // must also check the packet's actual output device and next hop in kernel.
 func ObserveZapretLinuxEgress(ctx context.Context, ifindex int32, ipv4, ipv6 bool) (ZapretEgress, error) {
@@ -50,82 +53,150 @@ func ObserveZapretLinuxEgress(ctx context.Context, ifindex int32, ipv4, ipv6 boo
 		return ZapretEgress{}, errors.Join(errors.New("could not prove namespace for Zapret route observation"), err, cookieErr)
 	}
 	egress := ZapretEgress{NamespaceCookie: cookie, IfIndex: ifindex}
-	revisions := [2]string{}
+	revisions := [2]struct{ Default, Rules string }{}
 	for i, family := range []struct {
 		observe bool
 		id      byte
 		gateway *netip.Addr
 	}{{ipv4, unix.AF_INET, &egress.IPv4Gateway}, {ipv6, unix.AF_INET6, &egress.IPv6Gateway}} {
-		if !family.observe {
-			continue
+		if family.observe {
+			*family.gateway, revisions[i].Default, err = zapretDefaultRoute(ctx, conn, ifindex, family.id)
+			if err != nil {
+				return ZapretEgress{}, fmt.Errorf("observe Zapret gateway (family %d, ifindex %d): %w", family.id, ifindex, err)
+			}
 		}
-		*family.gateway, revisions[i], err = zapretDefaultRoute(ctx, conn, ifindex, family.id)
+		// The guard reserves the same marks in both families, including a
+		// family with no admitted gateway. Inventory both routing policies.
+		bits, policy, err := zapretRoutingRules(ctx, conn, family.id)
 		if err != nil {
-			return ZapretEgress{}, fmt.Errorf("observe Zapret gateway (family %d, ifindex %d): %w", family.id, ifindex, err)
+			return ZapretEgress{}, fmt.Errorf("observe Zapret routing policy (family %d): %w", family.id, err)
 		}
+		egress.RoutingMarkBits |= bits
+		revisions[i].Rules = policy
 	}
 	egress.RouteRevision = revision(revisions)
 	return egress, ctx.Err()
 }
 
 func zapretDefaultRoute(ctx context.Context, conn *socket.Conn, ifindex int32, family byte) (netip.Addr, string, error) {
-	// Receive the terminal NLMSG_DONE ourselves: the ordinary netlink Conn
-	// strips it, including NLM_F_DUMP_INTR on a concurrently modified FIB.
-	seq := uint32(family)
-	request := netlink.Message{Header: netlink.Header{Length: unix.SizeofNlMsghdr + unix.SizeofRtMsg,
-		Type: unix.RTM_GETROUTE, Flags: netlink.Request | netlink.Dump, Sequence: seq}, Data: make([]byte, unix.SizeofRtMsg)}
-	request.Data[0], request.Data[4] = family, unix.RT_TABLE_MAIN
-	data, err := request.MarshalBinary()
-	if err != nil {
-		return netip.Addr{}, "", err
-	}
-	if err := conn.Sendto(ctx, data, 0, &unix.SockaddrNetlink{Family: unix.AF_NETLINK}); err != nil {
-		return netip.Addr{}, "", err
-	}
 	var gateway netip.Addr
 	var identity string
+	header := make([]byte, unix.SizeofRtMsg)
+	header[0], header[4] = family, unix.RT_TABLE_MAIN
+	if err := zapretRTNLDump(ctx, conn, uint32(family), unix.RTM_GETROUTE, unix.RTM_NEWROUTE, header, func(row []byte) error {
+		addr, snapshot, err := parseZapretDefaultRoute(row, ifindex, family)
+		if err == nil && addr.IsValid() {
+			if gateway.IsValid() {
+				return errors.New("multiple main-table defaults are not supported")
+			}
+			gateway, identity = addr, snapshot
+		}
+		return err
+	}); err != nil {
+		return netip.Addr{}, "", err
+	}
+	if !gateway.IsValid() {
+		return netip.Addr{}, "", errors.New("no main-table default gateway")
+	}
+	return gateway, identity, nil
+}
+
+func zapretRTNLDump(ctx context.Context, conn *socket.Conn, seq uint32, requestType, rowType uint16, header []byte, consume func([]byte) error) error {
+	// Receive the terminal NLMSG_DONE ourselves: the ordinary netlink Conn
+	// strips it, including NLM_F_DUMP_INTR on a concurrently modified FIB.
+	request := netlink.Message{Header: netlink.Header{Length: uint32(unix.SizeofNlMsghdr + len(header)),
+		Type: netlink.HeaderType(requestType), Flags: netlink.Request | netlink.Dump, Sequence: seq}, Data: header}
+	data, err := request.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	if err := conn.Sendto(ctx, data, 0, &unix.SockaddrNetlink{Family: unix.AF_NETLINK}); err != nil {
+		return err
+	}
 	var buffer [32 << 10]byte
 	for count := 0; count < 8192; {
 		n, _, flags, from, err := conn.Recvmsg(ctx, buffer[:], nil, 0)
 		if err != nil {
-			return netip.Addr{}, "", err
+			return err
 		}
 		peer, ok := from.(*unix.SockaddrNetlink)
 		if !ok || peer.Pid != 0 || flags&unix.MSG_TRUNC != 0 {
-			return netip.Addr{}, "", errors.New("truncated or non-kernel route inventory")
+			return errors.New("truncated or non-kernel route inventory")
 		}
 		rows, err := syscall.ParseNetlinkMessage(buffer[:n])
 		if err != nil || len(rows) == 0 {
-			return netip.Addr{}, "", errors.New("invalid route inventory response")
+			return errors.New("invalid route inventory response")
 		}
 		for i, row := range rows {
 			count++
 			if count > 8192 || row.Header.Seq != seq || row.Header.Flags&unix.NLM_F_DUMP_INTR != 0 {
-				return netip.Addr{}, "", errors.New("route inventory exceeded its bound or changed during observation")
+				return errors.New("route inventory exceeded its bound or changed during observation")
 			}
 			switch row.Header.Type {
 			case unix.NLMSG_DONE:
-				if i != len(rows)-1 || len(row.Data) < 4 || binary.NativeEndian.Uint32(row.Data[:4]) != 0 || !gateway.IsValid() {
-					return netip.Addr{}, "", errors.New("no complete inventory with a single main-table default gateway")
+				if i != len(rows)-1 || len(row.Data) < 4 || binary.NativeEndian.Uint32(row.Data[:4]) != 0 {
+					return errors.New("route inventory did not complete")
 				}
-				return gateway, identity, nil
-			case unix.RTM_NEWROUTE:
-				addr, snapshot, err := parseZapretDefaultRoute(row.Data, ifindex, family)
-				if err != nil {
-					return netip.Addr{}, "", err
-				}
-				if addr.IsValid() {
-					if gateway.IsValid() {
-						return netip.Addr{}, "", errors.New("multiple main-table defaults are not supported")
-					}
-					gateway, identity = addr, snapshot
+				return nil
+			case rowType:
+				if err := consume(row.Data); err != nil {
+					return err
 				}
 			default:
-				return netip.Addr{}, "", errors.New("unexpected route inventory response")
+				return errors.New("unexpected route inventory response")
 			}
 		}
 	}
-	return netip.Addr{}, "", errors.New("route inventory exceeded its bound")
+	return errors.New("route inventory exceeded its bound")
+}
+
+func zapretRoutingRules(ctx context.Context, conn *socket.Conn, family byte) (uint32, string, error) {
+	const fibRuleHeaderSize = 12 // Linux UAPI struct fib_rule_hdr.
+	header := make([]byte, fibRuleHeaderSize)
+	header[0] = family
+	var reserved uint32
+	hash := sha256.New()
+	if err := zapretRTNLDump(ctx, conn, uint32(family)+256, unix.RTM_GETRULE, unix.RTM_NEWRULE, header, func(row []byte) error {
+		if len(row) < fibRuleHeaderSize || row[0] != family {
+			return errors.New("unexpected routing rule family")
+		}
+		attrs, err := netlink.NewAttributeDecoder(row[fibRuleHeaderSize:])
+		if err != nil {
+			return err
+		}
+		var mark, mask uint32
+		var hasMark, hasMask bool
+		for attrs.Next() {
+			switch attrs.Type() {
+			case unix.FRA_FWMARK:
+				if hasMark {
+					return errors.New("duplicate routing rule mark")
+				}
+				mark, hasMark = attrs.Uint32(), true
+			case unix.FRA_FWMASK:
+				if hasMask {
+					return errors.New("duplicate routing rule mark mask")
+				}
+				mask, hasMask = attrs.Uint32(), true
+			}
+		}
+		if err := attrs.Err(); err != nil {
+			return err
+		}
+		if mark != 0 && !hasMask {
+			mask = ^uint32(0)
+		}
+		reserved |= mark | mask
+		// Rule order is routing semantics, including ties in priority.
+		var size [4]byte
+		binary.BigEndian.PutUint32(size[:], uint32(len(row)))
+		_, _ = hash.Write(size[:])
+		_, _ = hash.Write(row)
+		return nil
+	}); err != nil {
+		return 0, "", err
+	}
+	return reserved, hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func parseZapretDefaultRoute(data []byte, ifindex int32, family byte) (netip.Addr, string, error) {

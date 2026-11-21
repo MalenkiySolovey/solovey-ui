@@ -133,6 +133,26 @@ func TestCompileZapretFailsClosedForUnsupportedPathAndCollision(t *testing.T) {
 	}
 }
 
+func TestInstalledZapretDoesNotReuseRoutingMarkSelectors(t *testing.T) {
+	request, facts := zapretFixture()
+	facts.Capability.Backend = ZapretInstalledBackend
+	facts.Zapret.ReservedMarkBits = ^uint32(0x3f)
+	facts.Zapret.InstalledEgress = &ZapretEgress{
+		NamespaceCookie: 11, IfIndex: 2, IPv4Gateway: netip.MustParseAddr("192.0.2.1"),
+		RouteRevision: hash("egress"), RoutingMarkBits: 3,
+	}
+	plan, err := CompileZapret(request, facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bits := plan.QueueMark() | plan.LoopMark() | plan.RawPassMark(); bits != 0x3c {
+		t.Fatalf("expected only the four unclaimed bits, got %#x", bits)
+	}
+	facts.Zapret.InstalledEgress.RoutingMarkBits |= 4
+	_, err = CompileZapret(request, facts)
+	requireReason(t, err, AllocationUnavailable)
+}
+
 func TestZapretDriftChecksAllAllocationsBeforeAllowingRepair(t *testing.T) {
 	request, facts := zapretFixture()
 	zapret, err := CompileZapret(request, facts)

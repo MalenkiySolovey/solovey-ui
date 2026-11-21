@@ -38,7 +38,9 @@ type ZapretEgress struct {
 	IfIndex         int32
 	// A zero address means that family has no admitted gateway in table main.
 	IPv4Gateway, IPv6Gateway netip.Addr
-	RouteRevision            string
+	// RoutingMarkBits includes kernel RPDB selectors, not firewall writers.
+	RoutingMarkBits uint32
+	RouteRevision   string
 }
 
 func (e ZapretEgress) valid() bool {
@@ -179,11 +181,15 @@ func CompileZapret(request intent.ZapretPacketPathIntent, facts Facts) (ZapretPl
 		}
 	}
 	var mark, loopMark, passMark, rawPass uint32
+	reserved := z.ReservedMarkBits
+	if z.InstalledEgress != nil {
+		reserved |= z.InstalledEgress.RoutingMarkBits
+	}
 	// Keep the marks in the nonnegative range expected by both
 	// nfqws2 CLI parsing and the provider's Linux socket control.
 	for offset := range 31 {
 		bit := uint32(1) << ((int(seed) + offset) % 31)
-		if z.ReservedMarkBits&bit != 0 {
+		if reserved&bit != 0 {
 			continue
 		}
 		if mark == 0 {

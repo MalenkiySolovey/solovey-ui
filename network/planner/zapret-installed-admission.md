@@ -42,8 +42,11 @@ not match. This path is gateway-scoped, not general LAN or policy routing.
 
 An allocation is not a grant. The adapter checks the NFQUEUE netlink
 descriptor against the authenticated `nfqws2` process. It still needs a
-complete account of routing policy and mark owners, including masked uses and
-foreign writers. An unchanged gateway snapshot does not establish those facts.
+complete account of mark writers. The snapshot includes the ordered IPv4/IPv6
+routing rules, even when only one family is enabled. Their `fwmark` values and
+masks reserve bits in the allocator; a rule change invalidates the generation.
+This covers routing selectors, not foreign nftables, iptables, tc or BPF
+writers. An unchanged snapshot does not establish that those writers are safe.
 
 Production activation remains closed. Before wiring it, the broker must prove
 Netfilter BPF load and a private writable bpffs directory under the installed
@@ -57,5 +60,7 @@ loss the nftables port closes independently of the guard's lease. Production
 reconcile must not reinstall pass-bit rules for a still-leased old generation.
 The hooks see the routed device and L3 next hop at `POSTROUTING`, not a
 subsequent device redirect or L2 rewrite. Neither later mutation is an
-admitted installed path. The installed privilege, final egress and recovery
+admitted installed path. A netdev nftables egress chain by itself is also
+insufficient: Linux runs it before tc egress and conditionally skips the hook
+on reinjection from tc. The installed privilege, final egress and recovery
 gates must pass before publication of a socket admission listener.
