@@ -80,7 +80,7 @@ func PrepareZapretNativePath(ctx context.Context, plan planner.ZapretPlan, befor
 	// delay can shorten the bound but cannot extend it past expires.
 	remaining := time.Until(expires)
 	if remaining <= 0 {
-		return nil, errors.New("Zapret generation expired before staging")
+		return nil, errors.New("generation for Zapret expired before staging")
 	}
 	grantDeadline := uint64(now.Nano()) + uint64(remaining)
 	if err := planner.CheckCurrent(plan.Plan(), before); err != nil {

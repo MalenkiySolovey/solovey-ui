@@ -260,7 +260,7 @@ func (g *ZapretNativeGuard) renewBefore(lifetime time.Duration, grantDeadline ui
 	deadline := kernelNow + uint64(lifetime)
 	if grantDeadline != 0 {
 		if grantDeadline <= kernelNow {
-			return errors.Join(errors.New("Zapret generation grant expired"), g.revokeLocked())
+			return errors.Join(errors.New("generation grant for Zapret expired"), g.revokeLocked())
 		}
 		deadline = min(deadline, grantDeadline)
 	}
