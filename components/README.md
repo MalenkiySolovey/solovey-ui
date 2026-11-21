@@ -15,6 +15,11 @@ binds them to the Backend database lifecycle and existing destination owners.
 customer bot behavior. Backend supplies the transaction and owns Client
 entitlements; Product binds both to the existing ComponentHost.
 
+Zapret is a headless source input: Full links its inert descriptor and Core
+does not link the component module. It is not shipped as an installed pack
+in this slice. An enabled Outbound binding is rejected by runtime preflight
+until a production packet-path adapter is qualified.
+
 Panel Update is intrinsic. Frontend owns the maintenance UI, Backend owns the
 HTTP and authorization boundary, Host owns component management, and Product
 binds the installed updater and publisher. `panel-update-ui` is only a legacy

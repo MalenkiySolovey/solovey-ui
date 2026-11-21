@@ -59,6 +59,11 @@ func TestSysupgradeProductionOwnerChild(t *testing.T) {
 		if owner.Manifest.ID == installstate.FormerPanelUpdateID {
 			t.Fatal("intrinsic Panel Update must not register a package owner")
 		}
+		// The Full binary also sees unshipped descriptors. Project the
+		// installed pack inventory as the OpenWrt stage builder does.
+		if len(owner.Manifest.Frontend.Entries) == 0 {
+			continue
+		}
 		installed.Components = append(installed.Components, installstate.InstalledComponent{ID: owner.Manifest.ID, Delivery: owner.Manifest.Delivery, Installed: true})
 	}
 	if len(installed.Components) != 7 {

@@ -1,0 +1,77 @@
+name: Zapret namespace qualification
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/zapret-proof.yml'
+      - 'components/zapret/**'
+      - 'components/sources.lock.json'
+      - 'network/planner/**'
+      - 'network/nftables/zapret_probe.go'
+      - 'scripts/generate-component-imports.mjs'
+      - 'internal/entities/outbounds/**'
+      - 'go.mod'
+      - 'go.sum'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GOWORK: 'off'
+  GOTOOLCHAIN: local
+  GOFLAGS: -mod=readonly
+
+jobs:
+  zapret-namespace:
+    name: Zapret namespace qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: .node-version
+      - name: Verify bounded planner and canonical Outbound rejection
+        run: |
+          go test -count=1 ./network/planner ./network/nftables ./internal/entities/outbounds ./components/zapret
+          go test -count=1 -run '^TestComponentImportsStayBehindCompositionPackages$' ./internal/components/architecture
+          go test -count=1 -run '^TestPreservationExecutableContainsInstalledDurableOwners$' ./cmd/solovey-openwrt-lifecycle ./cmd/solovey-openwrt-preservation
+      - name: Build the exact component engine and namespace fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y nftables libcap-dev libnetfilter-queue-dev libnfnetlink-dev libmnl-dev liblua5.4-dev zlib1g-dev
+          node scripts/component-source-inputs.mjs prepare
+          bash .component-sources/zapret/scripts/build-nfqws2.sh "$RUNNER_TEMP/zapret-engine"
+          go test -c -tags zapretproof -o "$RUNNER_TEMP/zapret-proof" ./components/zapret
+      - name: Exercise only loopback inside a disposable network namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Any modules loaded here belong to this disposable GitHub VM.
+          test "$GITHUB_ACTIONS" = true
+          sudo modprobe nf_conntrack || true
+          sudo modprobe nfnetlink_queue || true
+          sudo modprobe nft_queue || true
+          if ! sudo unshare --net -- test -r /proc/net/netfilter/nfnetlink_queue; then
+            echo 'PACKET_PATH_NOT_YET_PROVEN: runner cannot create a disposable network namespace with Linux NFQUEUE' | tee -a "$GITHUB_STEP_SUMMARY"
+            echo 'Needed: a disposable Linux runner with CAP_SYS_ADMIN, CAP_NET_ADMIN, nfnetlink_queue, nft_queue and conntrack accounting.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          sudo unshare --net -- env SOLOVEY_TEST_PARENT_NETNS="$(readlink /proc/self/ns/net)" \
+            SOLOVEY_TEST_ENGINE_ROOT="$RUNNER_TEMP/zapret-engine" PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+            bash -euc '
+              test "$(readlink /proc/self/ns/net)" != "$SOLOVEY_TEST_PARENT_NETNS"
+              test "$(readlink /proc/self/ns/net)" != "$(readlink /proc/1/ns/net)"
+              sysctl -w net.netfilter.nf_conntrack_acct=1
+              ip link set lo up
+              exec "$1" -test.run "^TestZapretOutboundNamespace$" -test.v -test.timeout=60s
+            ' _ "$RUNNER_TEMP/zapret-proof" | tee -a "$GITHUB_STEP_SUMMARY"

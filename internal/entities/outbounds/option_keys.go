@@ -76,6 +76,9 @@ func decodeSaveOutbound(data json.RawMessage) (model.Outbound, error) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return model.Outbound{}, err
 	}
+	if _, bound := raw[zapretOption]; bound && jsonvalue.StrictObject(data) != nil {
+		return model.Outbound{}, errZapretBindingInvalid
+	}
 	if kind, _ := raw["type"].(string); len(managedCredentialFields(kind)) != 0 && jsonvalue.StrictObject(data) != nil {
 		return model.Outbound{}, errOutboundCredentialInvalid
 	}

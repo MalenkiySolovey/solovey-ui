@@ -642,6 +642,37 @@
         "workflow/purchase.go": "b17fbabb3ce0720f368d19ef765d6107f2df7967802582494cb7ce7b48e16727",
         "workflow/refund.go": "3159753e95f2165ff97d4958001b2b0c48cc8927e685f3546c49cecc00b70715"
       }
+    },
+    {
+      "id": "zapret",
+      "module": "github.com/MalenkiySolovey/solovey-component-zapret",
+      "version": "v0.1.1",
+      "sourceCommit": "6c7fc61bf85d95aa9332ebb6e0c4babbfe2d94f9",
+      "sourceTree": "2c2887f696c25b1fbd90cef37f7f70de51889adf",
+      "moduleChecksum": "h1:dpA6Wn1FMcs/IPtv4mM1o5amAqoKTQl+lcMoTUmZAxY=",
+      "goModChecksum": "h1:S7y94+Jn2WlDE9KTdjqX8LZ+xutESUKDCtZFj3REn6E=",
+      "manifestSHA256": "ac4b701503b2954ffd4f66b1a0b85dcb0b2002b100fc474bc75190db74866c21",
+      "frontendSHA256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "files": {
+        "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+        "NOTICE": "ad0f199053d03e9e7dd8ee0a09ac8f73db459dfafbeed7fe3b1cc93c5a7309db",
+        "README.md": "ca1583fe213f51563e68967e62a901281e5e97f742ef93b53e9cd67c996036b1",
+        "SOURCE_PROVENANCE.json": "87227459ee28ff4e88d1be2cfbd03e7fddb176c72e741f37c1b14a22e545cab3",
+        "binding/resolve.go": "a74ec78b3f143c5b800f54ef571bfae345748060531cb8ffddeca53e917c320d",
+        "binding/resolve_test.go": "748dfd2539427137f5900024db00d7f1db94fa940e3b6427596c555ffe1d6aa3",
+        "component.json": "ac4b701503b2954ffd4f66b1a0b85dcb0b2002b100fc474bc75190db74866c21",
+        "go.mod": "32e63286ec7ffe93a3e1e15c43eafee3f55d65b5f33faf627088ecfb09d47e11",
+        "go.sum": "765aa2fc8c0dc439263d274d69e6fd4d32a03da43de85875ca64a52271ea3b98",
+        "lifecycle.go": "9f3005499ffc4bfced75e7946f722be3a95fb0e71d451e54dfc2e98b9f049a3e",
+        "lifecycle_test.go": "2b1d0c2de0eb8e6311fde1687216668189033b9fb688e3058d9d3c47a276e766",
+        "manifest.go": "deda6b911bc8979adbe0ad33ae831e47316880932c1b0db8deef303fa46da605",
+        "scripts/build-nfqws2.sh": "7f07649fad3bb10e05da9fc5dbca9cc4848b96b696c41069e737e51f3bd09e2d",
+        "scripts/check-source.mjs": "31d4086601d0093ae9b1496455c1095152c00e5031a745da02a05e218dde5a62",
+        "strategy/engine_linux_test.go": "59cb01465e699aefb2523a77f3423f22307da6327ca11e13f4dccf5b3d2f5449",
+        "strategy/static.go": "d758488149f2e1023eacbd879c1f102ad720f66b438f3574e12044611e52e1f2",
+        "strategy/static_test.go": "d70143ede6cb802cdad8ad97f55a609d4e3defd68b813c5ae8277de087fa7f59",
+        "upstream/zapret2.json": "6f33a3bdcae6ac4d1814412e04bc1f907fbf8ca1beb16ecd10ed0b373f783d5e"
+      }
     }
   ]
 }

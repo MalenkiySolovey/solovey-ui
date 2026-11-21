@@ -5,10 +5,60 @@ import path from 'node:path'
 import assert from 'node:assert/strict'
 import {execFileSync} from 'node:child_process'
 import {fileURLToPath} from 'node:url'
-import {digest, frontendDigest, safeSourcePath, validateSourceLock, verifySourceFiles, regularSourceTree, verifyUIAPIInputs} from './frontend-source.mjs'
+import {digest, frontendDigest, safeSourcePath, validateSourceLock as validateFrontendLock, verifySourceFiles as verifyFrontendSourceFiles, regularSourceTree, verifyUIAPIInputs} from './frontend-source.mjs'
 import {frontendSourceDirectory} from './frontend-source.mjs'
 
-export {digest, frontendDigest, safeSourcePath, validateSourceLock, verifySourceFiles, regularSourceTree}
+export {digest, frontendDigest, safeSourcePath, regularSourceTree}
+
+const emptyFrontendDigest = frontendDigest({})
+export const headlessSource = source => source.frontendSHA256 === emptyFrontendDigest
+
+export function validateSourceLock(lock) {
+  assert.deepEqual(Object.keys(lock).sort(), ['schema', 'sources'])
+  assert.ok(Array.isArray(lock.sources) && lock.sources.length <= 64, 'invalid source input count')
+  assert.equal(new Set(lock.sources.map(source => source.id)).size, lock.sources.length, 'duplicate component source')
+  validateFrontendLock({...lock, sources: lock.sources.filter(source => !headlessSource(source))})
+  for (const source of lock.sources.filter(headlessSource)) {
+    assert.deepEqual(Object.keys(source).sort(), ['id','module','version','sourceCommit','sourceTree','moduleChecksum','goModChecksum','manifestSHA256','frontendSHA256','files'].sort())
+    assert.match(source.id, /^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+    assert.equal(source.module, `github.com/MalenkiySolovey/solovey-component-${source.id}`)
+    assert.match(source.version, /^v[01]\.\d+\.\d+$/)
+    for (const field of ['sourceCommit', 'sourceTree']) assert.match(source[field], /^[0-9a-f]{40}$/)
+    for (const field of ['moduleChecksum', 'goModChecksum']) assert.match(source[field], /^h1:[A-Za-z0-9+/]{43}=$/)
+    assert.ok(source.files && Object.keys(source.files).length <= 1024)
+    for (const [name, hash] of Object.entries(source.files)) {
+      safeSourcePath(name)
+      assert.ok(!name.startsWith('frontend/') && name !== 'HOST_UI_PIN.json', 'headless module cannot declare Frontend inputs')
+      assert.match(hash, /^[0-9a-f]{64}$/)
+    }
+    for (const name of ['component.json','go.mod','go.sum','LICENSE','NOTICE','SOURCE_PROVENANCE.json'])
+      assert.ok(Object.hasOwn(source.files, name), `missing headless source provenance: ${name}`)
+    assert.equal(source.files['component.json'], source.manifestSHA256)
+  }
+  return lock
+}
+
+export function verifySourceFiles(directory, source) {
+  if (!headlessSource(source)) return verifyFrontendSourceFiles(directory, source)
+  assert.ok(fs.lstatSync(directory).isDirectory(), 'unsafe headless source directory')
+  assert.ok(!fs.lstatSync(path.join(directory, 'frontend'), {throwIfNoEntry:false}), 'unexpected headless Frontend source')
+  let total = 0
+  for (const [name, sha] of Object.entries(source.files)) {
+    let filename = directory
+    for (const part of safeSourcePath(name).split('/')) {
+      filename = path.join(filename, part)
+      assert.ok(!fs.lstatSync(filename).isSymbolicLink(), 'unsafe headless source path')
+    }
+    const stat = fs.statSync(filename)
+    total += stat.size
+    assert.ok(stat.isFile() && total <= 16 * 1024 * 1024, 'headless source exceeds build input bound')
+    assert.equal(digest(fs.readFileSync(filename)), sha, `component source drift: ${name}`)
+  }
+  const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'component.json'), 'utf8'))
+  assert.equal(manifest.id, source.id)
+  assert.deepEqual(manifest.frontend?.entries ?? [], [], 'headless manifest exposes a Frontend entry')
+  return source
+}
 
 export const productRoot = fileURLToPath(new URL('../', import.meta.url))
 export function readSourceLock(root = productRoot) {
@@ -67,7 +117,7 @@ export function componentSourceRoot(id, root = productRoot, frontendRoot = front
   const directory = path.join(stageRoot(root), id)
   verifySourceFiles(directory, source)
   verifyComponentManifest(id, path.join(root,'components',id,'component.json'), root)
-  verifyUIAPI(root, directory, frontendRoot)
+  if (!headlessSource(source)) verifyUIAPI(root, directory, frontendRoot)
   return directory
 }
 
@@ -94,7 +144,7 @@ export function prepareComponentSources(root = productRoot, frontendRoot = front
     const downloaded = go(['mod','download','-json',`${source.module}@${source.version}`])
     validateModuleResolution(downloaded, source)
     verifyModuleSource(downloaded.Dir, source)
-    verifyUIAPI(root, downloaded.Dir, frontendRoot)
+    if (!headlessSource(source)) verifyUIAPI(root, downloaded.Dir, frontendRoot)
     for (const modfile of ['go.mod','go.extended.mod'].filter(name => fs.existsSync(path.join(root,name)))) {
       validateModuleRequirement(go(['mod','edit','-json',`-modfile=${modfile}`]), source)
       const selected = go(['list','-m','-json','-mod=readonly',`-modfile=${modfile}`,source.module])

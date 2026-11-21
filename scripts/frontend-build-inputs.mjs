@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import assert from 'node:assert/strict'
 import {fileURLToPath} from 'node:url'
-import {productRoot, digest, safeSourcePath, frontendDigest, readSourceLock, prepareComponentSources, componentSourceRoot, regularSourceTree} from './component-source-inputs.mjs'
+import {productRoot, digest, safeSourcePath, frontendDigest, readSourceLock, headlessSource, prepareComponentSources, componentSourceRoot, regularSourceTree} from './component-source-inputs.mjs'
 import {historicalPanelUpdateID, readComponentFrontendEntries} from './component-frontend-manifest.mjs'
 import {readFrontendPin, unpackFrontendArchive} from './frontend-artifacts.mjs'
 import {buildInputSchema, frontendAPIFiles, frontendProjectionFiles, readFrontendBuildInputs, validateFrontendBuildInputs} from './frontend-source.mjs'
@@ -63,7 +63,9 @@ function projectHistoricalPanelInput(root, candidate, pin) {
 }
 
 export function projectFrontendBuildInputs(root = productRoot, options = {}) {
-  const sourceLock = readSourceLock(root), catalog = readComponentFrontendEntries(path.join(root, 'components'))
+  const fullLock = readSourceLock(root)
+  const sourceLock = {...fullLock, sources: fullLock.sources.filter(source => !headlessSource(source))}
+  const catalog = readComponentFrontendEntries(path.join(root, 'components'))
   const frontendRoot = fs.realpathSync.native(options.frontendRoot || frontendSourceDirectory)
   const pin = fs.existsSync(path.join(root, 'deploy/dependencies/solovey-frontend.json')) ? readFrontendPin(root) : null
   const target = path.resolve(options.directory || path.join(root, '.artifacts/frontend-inputs')), lock = target + '.lock'

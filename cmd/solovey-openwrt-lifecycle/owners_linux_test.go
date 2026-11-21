@@ -32,6 +32,14 @@ func TestPreservationExecutableContainsInstalledDurableOwners(t *testing.T) {
 			continue
 		}
 		actual, ok := durableowner.Lookup(item.ID)
+		// OpenWrt ships the extracted contribution packs, not every Full
+		// Panel descriptor. Do not count headless source-only registrations.
+		if len(item.Frontend.Entries) == 0 {
+			if ok {
+				t.Errorf("unpackaged owner %s is linked into the lifecycle executable", item.ID)
+			}
+			continue
+		}
 		if !ok || actual.Database.SchemaVersion != item.Normalized().Database.SchemaVersion {
 			t.Errorf("installed owner %s is unavailable in preservation executable", item.ID)
 		}

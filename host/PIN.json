@@ -2,10 +2,10 @@
   "schema": "solovey.host.consumer-pin/v1",
   "canonicalRepository": "MalenkiySolovey/solovey-host",
   "module": "github.com/MalenkiySolovey/solovey-host",
-  "version": "v0.11.0",
-  "sourceCommit": "e39dd1715715aa013bf81e10b07479c310421c88",
-  "sourceTree": "f5fd4dd04761e75d0e31aff008179d6182ad2176",
-  "moduleChecksum": "h1:3aS/lXMvn55HAQs6m8JU79KLToZX2jobs27QUOpr/j8=",
+  "version": "v0.12.1",
+  "sourceCommit": "f2f67b85cb772ca5145fedfcb152abb43be9d5e4",
+  "sourceTree": "52f53cd8954733772e7a8e830e3cae169f27c367",
+  "moduleChecksum": "h1:jaf33dRl5IAWgdIeJmKd9IBO3z3EFdeFIjxi/xb8xeY=",
   "goModChecksum": "h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=",
   "fixturesSHA256": "ff83fc9c0b5a7d64d35d37ede09b530aafa07d3fe420e3e0bd055278c15b8eb3",
   "valuesSHA256": "1d4d7f29ba8c1f3c57fd2c66ee3423ea45efe3947686f5c53de753362b865a0c",
@@ -48,7 +48,7 @@
     "go.mod": "ef51164a22ed0a25c894a038ddfb872d6c44aa4765806dd8ee8e7c78a8e62845",
     "go.sum": "623cd8fb33831e0d4bcfd81a5869833cac49e94d0ed84321453e9374b720c7c9",
     "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
-    "SOURCE_PROVENANCE.json": "13fa962cb731ff3b453cfeef5b4bb61257f58a9f5c594167623e9fd022eb3a4f",
+    "SOURCE_PROVENANCE.json": "64fc7d91d0f74c1c35f38202ec02d93647a137e93aef11bba6b099651a7fb70e",
     "networkidentity/testdata/snapshots.json": "ff83fc9c0b5a7d64d35d37ede09b530aafa07d3fe420e3e0bd055278c15b8eb3",
     "qualification/testdata/values.json": "1d4d7f29ba8c1f3c57fd2c66ee3423ea45efe3947686f5c53de753362b865a0c",
     "auditrecord/event.go": "98e2195668a32f8d03f8bec85578aafbbe1ee39d179abd7f3c1fc4870244159c",
@@ -121,7 +121,7 @@
     "componenthost/health/probe_value_fixtures_test.go": "43237b2105361c1b9ba683b03b421edc5d221330aca0a58a5a6da413290f0d77",
     "componenthost/health/probe_validation_test.go": "dbc127e215fd28ce2d1853b70f58386d1a06d829ba9634fe82f4ca5b18705252",
     "componenthost/resources/provider_validation.go": "39fa1731b5d86848537187e7d7767ea662d33d8a150353fc0d86d7f864b1bd22",
-    "network/planning/types.go": "190237ef3bae994135e77fc4c05ec67207699fcefe928a5ddd60c4b9f1563eae",
+    "network/planning/types.go": "696b61bcd59f8b83b8216e6506bea6ac1018c2c840a44b20b15142424950f0f9",
     "network/planning/ports.go": "bf9d41dfe2deaed52f63e7561646f0ae43d7256f152e08c60ab5ffc7ad94f877",
     "network/intent/endpoint.go": "09c142b70e907d797d22444b2bc8d45ce098273b9b20b6aa3f9c7390f194fedc",
     "network/intent/endpoint_test.go": "30ab5a8cca58dbed1eead24cad2c99b5137f253e2d9006f9736a8735b089caeb",
@@ -158,6 +158,8 @@
     "componenthost/catalog.go": "860a6873b72c211a5f94bb79afea4e9b20b794ba80f5f1fa9bb7b01a768a7b3f",
     "componenthost/management.go": "8461acead897abbc2d466bc51f6081b8070ee6760d990382637ad7650f491e4c",
     "componenthost/management_test.go": "a2c9db1a3ca32bd8f39020dae1d2e28c2704ab5fcc19c900621d9e05d1f6122b",
-    "componenthost/removal.go": "bb041676d35e69ecb2dcc8553db11d80f0fac778267e1312c4b1f8dabebcea18"
+    "componenthost/removal.go": "bb041676d35e69ecb2dcc8553db11d80f0fac778267e1312c4b1f8dabebcea18",
+    "network/intent/zapret.go": "ae3d2a8923f733f39e89ee03836e93c956a5821405a1061e5cb46ee51e13d473",
+    "outbounds/zapret.go": "0bcd76472e7d277c414ad146e2929db6e2335a8849b93d09e72a9da7c3a5191d"
   }
 }
