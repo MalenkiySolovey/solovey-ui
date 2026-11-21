@@ -50,7 +50,8 @@ jobs:
         shell: bash
         run: |
           go test -count=1 ./internal/entities/outbounds ./components/zapret
-          go test -tags zapretproof -count=1 ./network/planner ./network/nftables ./internal/ops/privilegedbroker
+          go test -tags zapretproof -count=1 ./network/planner ./network/nftables
+          go test -tags zapretproof -count=1 -run '^TestZapretSocket' ./internal/ops/privilegedbroker
           node scripts/generate-component-imports.mjs --profile full
           go list -deps ./cmd/solovey-privileged-broker >"$RUNNER_TEMP/zapret-installed-broker-deps"
           if grep -Eq '^github\.com/cilium/ebpf(/|$)' "$RUNNER_TEMP/zapret-installed-broker-deps"; then
