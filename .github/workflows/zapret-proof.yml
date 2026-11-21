@@ -42,6 +42,7 @@ jobs:
         run: |
           go test -count=1 ./network/planner ./network/nftables ./internal/entities/outbounds ./components/zapret
           go test -count=1 -run '^TestComponentImportsStayBehindCompositionPackages$' ./internal/components/architecture
+          go test -count=1 -run '^TestPreservationExecutableContainsInstalledDurableOwners$' ./cmd/solovey-openwrt-lifecycle ./cmd/solovey-openwrt-preservation
       - name: Build the exact component engine and namespace fixture
         shell: bash
         run: |
