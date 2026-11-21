@@ -19,13 +19,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-component-zapret/binding"
 	"github.com/MalenkiySolovey/solovey-component-zapret/strategy"
 	"github.com/MalenkiySolovey/solovey-host/hostref"
 	"github.com/MalenkiySolovey/solovey-host/network/intent"
-	"github.com/MalenkiySolovey/solovey-host/outbounds"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	platform "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
+	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/processevidence"
 	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
@@ -102,9 +103,15 @@ func TestZapretOutboundNamespace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	rowA := model.Outbound{Type: "direct", Tag: "direct-a", Options: json.RawMessage(`{"connect_timeout":"3s","zapret":{"outboundRef":"direct-a","enabled":true,"strategyRef":"passive-probe"}}`)}
+	rowB := model.Outbound{Type: "direct", Tag: "direct-b", Options: json.RawMessage(`{"zapret":{"outboundRef":"direct-b","enabled":false}}`)}
+	attachment, revision, err := entityoutbounds.ZapretProbeInput(rowA)
+	if err != nil {
+		t.Fatal(err)
+	}
 	digest := func(input string) string { return fmt.Sprintf("%x", sha256.Sum256([]byte(input))) }
-	resolved, err := binding.Resolve(outbounds.ZapretBinding{OutboundRef: "direct-a", Enabled: true, StrategyRef: value.ID},
-		binding.DirectOutbound{Host: hostref.Local(), Ref: "direct-a", Type: "direct", Revision: digest("direct-a unmarked")}, zapretFixtureSource{value}, true)
+	resolved, err := binding.Resolve(attachment, binding.DirectOutbound{Host: hostref.Local(), Ref: rowA.Tag,
+		Type: rowA.Type, Revision: revision}, zapretFixtureSource{value}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,8 +203,27 @@ func TestZapretOutboundNamespace(t *testing.T) {
 	nft("", "delete", "counter", "inet", "fixture_other", "intervening")
 	change.require(t, ctx, zapretApply, 3)
 
+	if _, err := entityoutbounds.ProjectZapretProbe(rowA, planner.ZapretPlan{}); !errors.Is(err, entityoutbounds.ErrZapretPacketPathUnqualified) {
+		t.Fatalf("enabled persisted Direct projected without the Planner: %v", err)
+	}
+	if _, err := entityoutbounds.ProjectZapretProbe(rowB, plan); !errors.Is(err, entityoutbounds.ErrZapretPacketPathUnqualified) {
+		t.Fatalf("an OFF binding borrowed the active mark: %v", err)
+	}
+	changedA := rowA
+	changedA.Options = bytes.ReplaceAll(rowA.Options, []byte(`"3s"`), []byte(`"2s"`))
+	if _, err := entityoutbounds.ProjectZapretProbe(changedA, plan); !errors.Is(err, entityoutbounds.ErrZapretPacketPathUnqualified) {
+		t.Fatalf("changed Direct reused the wrong Planner allocation: %v", err)
+	}
+	directA, err := entityoutbounds.ProjectZapretProbe(rowA, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	directB, err := entityoutbounds.ProjectZapretProbe(rowB, planner.ZapretPlan{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	core := coreruntime.NewCore()
-	configuration := fmt.Sprintf(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct-a","routing_mark":"0x%x"},{"type":"direct","tag":"direct-b"}],"route":{"final":"direct-b"}}`, plan.SocketMark())
+	configuration := fmt.Sprintf(`{"log":{"disabled":true},"outbounds":[%s,%s],"route":{"final":"direct-b"}}`, directA, directB)
 	if err := core.Start([]byte(configuration)); err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +243,11 @@ func TestZapretOutboundNamespace(t *testing.T) {
 			seenKey, captureKey := string(target.proto)+"_seen", string(target.proto)+"_captured"
 			seen, captured := after[seenKey]-before[seenKey], after[captureKey]-before[captureKey]
 			t.Logf("%s %s %s: captured=%d observed=%d queue=%d", target.proto, target.address, name, captured, seen, plan.Queue())
-			if seen < 1 || captured > seen || (captured > 0) != (name == "direct-a") {
+			var want uint64
+			if name == "direct-a" {
+				want = seen
+			}
+			if seen < 1 || captured != want {
 				t.Fatal("packet capture escaped its admitted Direct scope or the expected flow was lost")
 			}
 		}
@@ -290,6 +320,9 @@ func TestZapretOutboundNamespace(t *testing.T) {
 	if strings.Contains(string(nft("", "list", "tables")), planner.ZapretProbeTable) ||
 		!bytes.Equal(other, nft("", "list", "table", "inet", "fixture_other")) {
 		t.Fatalf("stop did not release the exact probe resources: %v", err)
+	}
+	if err := probe.VerifyCurrent(ctx, checkpoint); err == nil {
+		t.Fatal("the retired checkpoint still authorizes the missing table")
 	}
 	t.Log("PACKET_PATH_PROVEN: TCP/UDP IPv4/IPv6, failed apply atomic, stop scoped, no external traffic")
 }
