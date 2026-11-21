@@ -34,11 +34,17 @@ func restoreRecoveryRoot() string {
 
 func Restore(file multipart.File) error { return RestoreContext(context.Background(), file) }
 func RestoreContext(ctx context.Context, file multipart.File) error {
-	return backupRestorer(operatorRestore).Restore(ctx, file, restoreRecoveryRoot())
+	return backupRestorer(runtimeReady).Restore(ctx, file, restoreRecoveryRoot())
 }
 func RestoreContextDetailed(ctx context.Context, file io.ReadSeeker) (RestoreExecutionResult, error) {
-	return backupRestorer(runtimeReady).Detailed(ctx, file, restoreRecoveryRoot())
+	return RestoreContextDetailedWithRecoveryRoot(ctx, file, restoreRecoveryRoot())
 }
+func RestoreContextDetailedWithRecoveryRoot(ctx context.Context, file io.ReadSeeker, recoveryRoot string) (RestoreExecutionResult, error) {
+	return backupRestorer(runtimeReady).Detailed(ctx, file, recoveryRoot)
+}
+
+// RestoreOperatorDetailed is the supervised import path, not a recovery
+// readiness check for signed updates or platform preservation.
 func RestoreOperatorDetailed(ctx context.Context, file io.ReadSeeker, recoveryRoot string) (RestoreExecutionResult, error) {
 	return backupRestorer(operatorRestore).Detailed(ctx, file, recoveryRoot)
 }

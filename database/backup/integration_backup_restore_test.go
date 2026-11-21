@@ -107,6 +107,13 @@ func TestIntegrationRestoreRetainsUnresolvedZapretOnlyWithDeliberateCoreHold(t *
 	if _, err := settings.GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
+	// Reopen to run the normal migration before storing a current-schema binding.
+	if err := dbsqlite.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.Init(configstorage.GetDBPath()); err != nil {
+		t.Fatal(err)
+	}
 	db := dbsqlite.DB()
 	const tag = "restore-zapret-direct"
 	intent := json.RawMessage(`{"connect_timeout":"3s","zapret":{"outboundRef":"restore-zapret-direct","enabled":true,"strategyRef":"not-installed"}}`)
@@ -161,7 +168,14 @@ func TestIntegrationRestoreRetainsUnresolvedZapretOnlyWithDeliberateCoreHold(t *
 	}
 	dbbackup.SetSendSighupHook(func() error { return nil })
 	t.Cleanup(func() { dbbackup.SetSendSighupHook(nil) })
-	if err := dbbackup.Restore(integrationMemMultipartFile{Reader: bytes.NewReader(heldArchive)}); err != nil {
+	execution, err := dbbackup.RestoreOperatorDetailed(t.Context(), bytes.NewReader(heldArchive), filepath.Join(configstorage.GetDBFolderPath(), "recovery", "restore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if execution.Rehearsal.MigrationPlan != "REHEARSED_CORE_MAINTENANCE_HELD" {
+		t.Fatalf("execution dropped the preservation-only result: %s", execution.Rehearsal.MigrationPlan)
+	}
+	if _, _, err := dbbackup.CompletePendingRestore(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	var restored model.Outbound
