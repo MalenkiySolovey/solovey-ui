@@ -52,11 +52,14 @@ The staged generation has no kernel lease or socket authority. Before the
 first renewal it rechecks Planner facts, the real route, table owner, pinned
 guard IDs and programs, and authenticated queue consumer; it retains the
 checkpoint in the existing broker journal against the expected Panel process
-revision. Verification runs again after the durable write. A failed write
-retires the path even if a record can subsequently be read. Publication
-requires both the exact receipt and a lease held by the live path. A retained
-record blocks automatic replacement; restart does not adopt old pins or pass
-bits. Releasing the record still requires a verified old-socket drain.
+revision. A single completed row avoids leaving an active mutation that would
+block unrelated broker actions. Verification runs again after the durable write.
+A failed write retires the path even if a record can subsequently be read.
+Publication requires both the exact receipt and a lease held by the live path.
+A new generation can replace a prior-boot receipt only after verifying the
+current kernel boot ID. In the same boot broker restart does not adopt old pins
+or pass bits. Only the live owner can release a verified idle generation; after
+socket admission, same-boot replacement still needs a verified drain.
 
 Production activation remains closed. Before wiring it, the broker must prove
 Netfilter BPF load and a private writable bpffs directory under the installed

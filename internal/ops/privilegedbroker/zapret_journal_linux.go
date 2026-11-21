@@ -5,6 +5,7 @@ package privilegedbroker
 import (
 	"context"
 	"errors"
+	"regexp"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
@@ -17,6 +18,8 @@ const (
 	zapretPathRetire   Verb = "zapret.egress.retire"
 	zapretPathResource      = "zapret-native-egress"
 )
+
+var zapretKernelBootID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
 // CommitZapretPath verifies the staged generation and retains its checkpoint
 // in the existing file journal. peerRevision comes from the broker's attested
@@ -38,13 +41,20 @@ func (j *FileJournal) recordZapretPath(ctx context.Context, checkpoint nftables.
 		return errZapretSocket
 	}
 	j.mu.Lock()
-	_, retained := j.liveCompleted[completedMutationKey(zapretPathResource, zapretPathCommit, zapretPathResource)]
-	sequence := j.fences[zapretPathResource] + 1
-	j.mu.Unlock()
-	if retained || sequence == 0 {
-		return Failure(CodeRecoveryRequired, "previous Zapret egress generation requires guarded recovery")
+	defer j.mu.Unlock()
+	if prior, retained := j.liveCompleted[completedMutationKey(zapretPathResource, zapretPathCommit, zapretPathResource)]; retained {
+		// This broker's boot ID is read from procfs at native startup. A
+		// different kernel boot destroys the old sockets, tables and BPF
+		// links. A broker restart or Panel revision change does not.
+		boot, err := currentBootID()
+		var old nftables.ZapretPathCheckpoint
+		if err != nil || boot != j.bootID || !zapretKernelBootID.MatchString(boot) || prior.Receipt == nil ||
+			!zapretKernelBootID.MatchString(prior.Receipt.BrokerBootID) || prior.Receipt.BrokerBootID == boot ||
+			decodeStrict(prior.Payload, &old) != nil || old.Generation != prior.Receipt.RequestID || old.Generation == checkpoint.Generation {
+			return Failure(CodeRecoveryRequired, "previous Zapret egress generation requires guarded recovery")
+		}
 	}
-	return j.writeZapretPathRecord(checkpoint, zapretPathCommit, "zapret-commit-", checkpoint.Generation, peerRevision, sequence,
+	return j.writeZapretPathRecordLocked(ctx, checkpoint, zapretPathCommit, "zapret-commit-", checkpoint.Generation, peerRevision,
 		CompletionPolicy{RetainUntilRelease: true})
 }
 
@@ -58,28 +68,44 @@ func (j *FileJournal) RetireZapretBeforeAdmission(ctx context.Context, path *nft
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	key := completedMutationKey(zapretPathResource, zapretPathCommit, zapretPathResource)
 	j.mu.Lock()
-	retained, exists := j.liveCompleted[completedMutationKey(zapretPathResource, zapretPathCommit, zapretPathResource)]
-	sequence := j.fences[zapretPathResource] + 1
+	retained, exists := j.liveCompleted[key]
 	j.mu.Unlock()
 	generation := path.Generation()
 	var checkpoint nftables.ZapretPathCheckpoint
-	if !exists || sequence == 0 || retained.Receipt == nil || retained.Receipt.BrokerBootID != j.bootID ||
+	if !exists || retained.Receipt == nil || retained.Receipt.BrokerBootID != j.bootID ||
 		retained.Receipt.PeerRevision != peerRevision || decodeStrict(retained.Payload, &checkpoint) != nil || checkpoint.Generation != generation {
 		return Failure(CodeRecoveryRequired, "live Zapret generation does not match the retained receipt")
 	}
 	if err := path.AbortUnadmitted(generation); err != nil {
 		return errors.Join(Failure(CodeRecoveryRequired, "Zapret generation requires guarded recovery"), err)
 	}
-	if err := ctx.Err(); err != nil {
-		return err
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if current := j.liveCompleted[key]; current.Receipt == nil || current.Receipt.ReceiptDigest != retained.Receipt.ReceiptDigest {
+		return Failure(CodeRecoveryRequired, "retained Zapret egress generation changed during retirement")
 	}
 	retirement := struct{ Generation, CommitReceipt string }{generation, retained.Receipt.ReceiptDigest}
-	return j.writeZapretPathRecord(retirement, zapretPathRetire, "zapret-retire-", generation, peerRevision, sequence,
+	return j.writeZapretPathRecordLocked(ctx, retirement, zapretPathRetire, "zapret-retire-", generation, peerRevision,
 		CompletionPolicy{ReleasesVerb: zapretPathCommit})
 }
 
-func (j *FileJournal) writeZapretPathRecord(value any, verb Verb, prefix, generation, peerRevision string, sequence uint64, policy CompletionPolicy) error {
+// Stage and retirement run before the journal append and are already fail
+// closed. One complete row avoids leaving an active mutation that would
+// block unrelated broker actions after an interrupted checkpoint write.
+func (j *FileJournal) writeZapretPathRecordLocked(ctx context.Context, value any, verb Verb, prefix, generation, peerRevision string, policy CompletionPolicy) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	sequence := j.fences[zapretPathResource] + 1
+	if sequence == 0 || j.sequence+1 == 0 || len(j.unresolved) != 0 {
+		return Failure(CodeRecoveryRequired, "broker journal has unresolved or exhausted mutation authority")
+	}
+	idempotency := prefix + generation
+	if _, exists := j.replays[idempotency]; exists {
+		return Failure(CodeRecoveryRequired, "cannot reuse a Zapret egress receipt")
+	}
 	payload, digest, err := MarshalPayload(value)
 	if err != nil {
 		return err
@@ -87,19 +113,12 @@ func (j *FileJournal) writeZapretPathRecord(value any, verb Verb, prefix, genera
 	now := time.Now().UTC()
 	request := Request{ProtocolVersion: ProtocolVersion, CapabilityRevision: CapabilityRevision, BootID: j.bootID,
 		Role: RolePanel, Verb: verb, RequestID: generation, OperationID: zapretPathResource,
-		IdempotencyKey: prefix + generation, Fence: Fence{Resource: zapretPathResource, Sequence: sequence, Token: generation},
+		IdempotencyKey: idempotency, Fence: Fence{Resource: zapretPathResource, Sequence: sequence, Token: generation},
 		DeadlineAt: now.Add(30 * time.Second).UnixMilli(), Payload: payload, PayloadDigest: digest}
-	requestDigest := Digest(append(canonicalRequestAuthority(request), request.Payload...))
-	replay, active, err := j.Begin(request, PeerIdentity{Revision: peerRevision}, requestDigest, now)
-	if err != nil {
-		return err
-	}
-	if replay != nil || active == nil {
-		return Failure(CodeRecoveryRequired, "cannot reuse a Zapret egress receipt")
-	}
+	receipt := j.newMutationReceiptLocked(request, peerRevision, now)
 	response := successResponse(request)
 	response.Payload, response.PayloadDigest = payload, digest
-	_, err = j.Commit(request, active, response, policy, time.Now().UTC())
+	_, err = j.commitLocked(request, receipt, response, policy, now)
 	return err
 }
 

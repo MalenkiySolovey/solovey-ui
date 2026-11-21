@@ -4,7 +4,9 @@ package privilegedbroker
 
 import (
 	"errors"
+	"io"
 	"testing"
+	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
 )
@@ -60,28 +62,89 @@ func TestZapretSocketCommitJournal(t *testing.T) {
 		t.Fatalf("undrained generation did not fence replacement: %v", err)
 	}
 
-	t.Run("failed completion sync is not a successful commit", func(t *testing.T) {
-		journal, err := openTestJournal(testJournalRoot(t), "boot-one")
+	for _, fault := range []string{"short-write", "directory-sync"} {
+		t.Run(fault, func(t *testing.T) {
+			root := testJournalRoot(t)
+			journal, err := openTestJournal(root, "boot-one")
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := error(io.ErrShortWrite)
+			if fault == "short-write" {
+				journal.fs = journalFilesystemWithFileFault(journal.fs, journal.path, fault)
+			} else {
+				want = errors.New("injected directory sync failure")
+				journal.fs.syncDirectory = func(string) error { return want }
+			}
+			if err := journal.recordZapretPath(t.Context(), checkpoint, grant.PeerRevision); !errors.Is(err, want) {
+				t.Fatalf("failed commit was acknowledged: %v", err)
+			}
+			reopened, err := openTestJournal(root, "boot-one")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fault == "directory-sync" {
+				// A complete row can be visible despite the sync error. Do
+				// not issue a replacement grant from that ambiguous result.
+				if err := reopened.recordZapretPath(t.Context(), checkpoint, grant.PeerRevision); publicCode(err) != CodeRecoveryRequired {
+					t.Fatalf("ambiguously recorded generation did not fence replacement: %v", err)
+				}
+			}
+			now := time.Now().UTC()
+			foreign := brokerMutationRequest(t, now, 1, "unrelated-broker-mutation")
+			digest := Digest(append(canonicalRequestAuthority(foreign), foreign.Payload...))
+			if _, active, err := reopened.Begin(foreign, PeerIdentity{Revision: grant.PeerRevision}, digest, now); err != nil || active == nil {
+				t.Fatalf("Zapret write failure fenced an unrelated broker mutation: %v", err)
+			}
+		})
+	}
+
+	t.Run("only verified kernel boot change allows replacement", func(t *testing.T) {
+		boot, err := currentBootID()
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := errors.New("injected directory sync failure")
-		original := journal.fs.syncDirectory
-		writes := 0
-		journal.fs.syncDirectory = func(path string) error {
-			if path == journal.root {
-				writes++
-				if writes == 2 { // Begin reached disk; completion durability is uncertain.
-					return want
-				}
-			}
-			return original(path)
+		// A fixture receipt from a different boot; this test never reboots
+		// the runner, detaches kernel resources, or opens an admission path.
+		const previousBoot = "00000000-0000-4000-8000-000000000001"
+		const claimedBoot = "00000000-0000-4000-8000-000000000002"
+		root := testJournalRoot(t)
+		previous, err := openTestJournal(root, previousBoot)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if err := journal.recordZapretPath(t.Context(), checkpoint, grant.PeerRevision); !errors.Is(err, want) {
-			t.Fatalf("ambiguous completion was reported as committed: %v", err)
+		prior := checkpoint
+		prior.Generation = grant.Generation
+		if err := previous.recordZapretPath(t.Context(), prior, grant.PeerRevision); err != nil {
+			t.Fatal(err)
 		}
-		if err := journal.recordZapretPath(t.Context(), checkpoint, grant.PeerRevision); publicCode(err) != CodeRecoveryRequired {
-			t.Fatalf("ambiguous completion was allowed to replay: %v", err)
+		claimed, err := openTestJournal(root, claimedBoot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := claimed.recordZapretPath(t.Context(), checkpoint, newPeer.PeerRevision); publicCode(err) != CodeRecoveryRequired {
+			t.Fatalf("claimed boot change bypassed recovery: %v", err)
+		}
+		current, err := openTestJournal(root, boot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := current.recordZapretPath(t.Context(), checkpoint, newPeer.PeerRevision); err != nil {
+			t.Fatalf("verified new boot could not replace stale checkpoint: %v", err)
+		}
+		current, err = openTestJournal(root, boot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		newGrant := newGeneration
+		newGrant.PeerRevision = newPeer.PeerRevision
+		if current.checkZapretPath(grant) == nil || current.checkZapretPath(newGrant) != nil {
+			t.Fatal("reopened journal did not retain only the new authority")
+		}
+		different := checkpoint
+		different.Generation = Digest([]byte("replacement-in-same-boot"))
+		if err := current.recordZapretPath(t.Context(), different, grant.PeerRevision); publicCode(err) != CodeRecoveryRequired {
+			t.Fatalf("same-boot broker restart or peer change bypassed recovery: %v", err)
 		}
 	})
 }

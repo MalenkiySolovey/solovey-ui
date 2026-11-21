@@ -531,13 +531,7 @@ func (j *FileJournal) Begin(request Request, peer PeerIdentity, requestDigest st
 	if maximum := j.fences[request.Fence.Resource]; request.Fence.Sequence <= maximum {
 		return nil, nil, Failure(CodeFence, "broker fencing sequence is stale")
 	}
-	j.sequence++
-	receipt := &Receipt{Sequence: j.sequence, RequestID: request.RequestID, OperationID: request.OperationID,
-		IdempotencyKey: request.IdempotencyKey, Verb: request.Verb, FenceResource: request.Fence.Resource,
-		FenceSequence: request.Fence.Sequence, FenceTokenDigest: Digest([]byte(request.Fence.Token)),
-		PayloadDigest: request.PayloadDigest, PeerRevision: peer.Revision, BrokerBootID: j.bootID,
-		PreviousDigest: j.previous, Outcome: "active", StartedAt: now.UnixMilli()}
-	receipt.ReceiptDigest = receiptDigest(*receipt)
+	receipt := j.newMutationReceiptLocked(request, peer.Revision, now)
 	activeReceipt := *receipt
 	row := journalRow{Schema: 1, Phase: "active", IdempotencyKey: request.IdempotencyKey,
 		RequestDigest: requestDigest, FenceResource: request.Fence.Resource, FenceSequence: request.Fence.Sequence,
@@ -548,9 +542,23 @@ func (j *FileJournal) Begin(request Request, peer PeerIdentity, requestDigest st
 	return nil, receipt, nil
 }
 
+func (j *FileJournal) newMutationReceiptLocked(request Request, peerRevision string, now time.Time) *Receipt {
+	receipt := &Receipt{Sequence: j.sequence + 1, RequestID: request.RequestID, OperationID: request.OperationID,
+		IdempotencyKey: request.IdempotencyKey, Verb: request.Verb, FenceResource: request.Fence.Resource,
+		FenceSequence: request.Fence.Sequence, FenceTokenDigest: Digest([]byte(request.Fence.Token)),
+		PayloadDigest: request.PayloadDigest, PeerRevision: peerRevision, BrokerBootID: j.bootID,
+		PreviousDigest: j.previous, Outcome: "active", StartedAt: now.UnixMilli()}
+	receipt.ReceiptDigest = receiptDigest(*receipt)
+	return receipt
+}
+
 func (j *FileJournal) Commit(request Request, receipt *Receipt, response Response, policy CompletionPolicy, now time.Time) (Response, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	return j.commitLocked(request, receipt, response, policy, now)
+}
+
+func (j *FileJournal) commitLocked(request Request, receipt *Receipt, response Response, policy CompletionPolicy, now time.Time) (Response, error) {
 	if receipt == nil {
 		return response, errors.New("broker active receipt is required")
 	}

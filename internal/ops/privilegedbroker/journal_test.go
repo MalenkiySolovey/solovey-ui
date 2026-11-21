@@ -385,6 +385,9 @@ func (f *faultJournalFile) Write(data []byte) (int, error) {
 	if f.fault == "write" {
 		return 0, errors.New("injected file write failure")
 	}
+	if f.fault == "short-write" {
+		return f.journalFile.Write(data[:len(data)/2])
+	}
 	return f.journalFile.Write(data)
 }
 
