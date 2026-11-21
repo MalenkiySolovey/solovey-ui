@@ -9,24 +9,29 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"maps"
 	"math/big"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	settingcatalog "github.com/MalenkiySolovey/solovey-backend/settings/catalog"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	backupenvelope "github.com/MalenkiySolovey/solovey-ui/internal/backup/envelope"
 	deploymentdomain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
+	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/sshmanagement"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -93,6 +98,90 @@ func TestIntegrationBackupEnvelopeRestorePreservesBackupTableCounts(t *testing.T
 	}
 	if !reflect.DeepEqual(expected, after) {
 		t.Fatalf("backup table counts changed after restore:\nbefore=%v\nexpected=%v\nafter=%v", before, expected, after)
+	}
+}
+
+func TestIntegrationRestoreRetainsUnresolvedZapretOnlyWithDeliberateCoreHold(t *testing.T) {
+	initBackupRestoreIntegrationDB(t)
+	settings := &service.SettingService{}
+	if _, err := settings.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	db := dbsqlite.DB()
+	const tag = "restore-zapret-direct"
+	intent := json.RawMessage(`{"connect_timeout":"3s","zapret":{"outboundRef":"restore-zapret-direct","enabled":true,"strategyRef":"not-installed"}}`)
+	if err := db.Create(&model.Outbound{Tag: tag, Type: "direct", Options: intent}).Error; err != nil {
+		t.Fatal(err)
+	}
+	archive, err := dbbackup.Export("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := dbbackup.RehearseOperatorRestore(t.Context(), bytes.NewReader(archive))
+	if err != nil || preview.Possible || !slices.Contains(preview.ReasonCodes, "ZAPRET_RESTORE_REQUIRES_MAINTENANCE") {
+		t.Fatalf("unheld archive was not rejected explicitly: %v, %v", preview.ReasonCodes, err)
+	}
+	if err := db.Where("key = ?", settingcatalog.CoreMaintenanceKey).Assign(model.Setting{Value: "true"}).FirstOrCreate(&model.Setting{Key: settingcatalog.CoreMaintenanceKey}).Error; err != nil {
+		t.Fatal(err)
+	}
+	heldArchive, err := dbbackup.Export("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err = dbbackup.Rehearse(t.Context(), bytes.NewReader(heldArchive))
+	if err != nil || preview.Possible || !slices.Contains(preview.ReasonCodes, "ZAPRET_RESTORE_RUNTIME_UNQUALIFIED") {
+		t.Fatalf("automated recovery admitted preservation-only archive: %v %v", preview.ReasonCodes, err)
+	}
+	preview, err = dbbackup.RehearseOperatorRestore(t.Context(), bytes.NewReader(heldArchive))
+	if err != nil || !preview.Possible || preview.MigrationPlan != "REHEARSED_CORE_MAINTENANCE_HELD" {
+		t.Fatalf("held archive was not rehearsed offline with its dependent state: %s %v %v", preview.MigrationPlan, preview.ReasonCodes, err)
+	}
+	bad := model.Outbound{Tag: "unrelated-invalid", Type: "direct", Options: json.RawMessage(`{"connect_timeout":"not-a-duration"}`)}
+	if err := db.Create(&bad).Error; err != nil {
+		t.Fatal(err)
+	}
+	invalidArchive, err := dbbackup.Export("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err = dbbackup.RehearseOperatorRestore(t.Context(), bytes.NewReader(invalidArchive))
+	if err != nil || preview.Possible || !slices.Contains(preview.ReasonCodes, "RESTORE_COMPLETE_BUILD_REJECTED") {
+		t.Fatalf("held rehearsal skipped validation of another outbound: %v %v", preview.ReasonCodes, err)
+	}
+	if err := db.Delete(&bad).Error; err != nil {
+		t.Fatal(err)
+	}
+	// Prove the held data comes from committing the archive, not from leaving
+	// the old database unchanged. No live process is restarted by the fixture.
+	if err := db.Where("tag = ?", tag).Delete(&model.Outbound{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&model.Setting{}).Where("key = ?", settingcatalog.CoreMaintenanceKey).Update("value", "false").Error; err != nil {
+		t.Fatal(err)
+	}
+	dbbackup.SetSendSighupHook(func() error { return nil })
+	t.Cleanup(func() { dbbackup.SetSendSighupHook(nil) })
+	if err := dbbackup.Restore(integrationMemMultipartFile{Reader: bytes.NewReader(heldArchive)}); err != nil {
+		t.Fatal(err)
+	}
+	var restored model.Outbound
+	if err := dbsqlite.DB().Where("tag = ?", tag).First(&restored).Error; err != nil || !bytes.Equal(restored.Options, intent) {
+		t.Fatalf("restored desired binding changed: %s (%v)", restored.Options, err)
+	}
+	if held, err := settings.CoreMaintenance(); err != nil || !held {
+		t.Fatalf("restore did not retain the explicit Core hold: %v, %v", held, err)
+	}
+	if config, err := entityoutbounds.GetAllConfig(dbsqlite.DB()); !errors.Is(err, entityoutbounds.ErrZapretPacketPathUnqualified) || config != nil {
+		t.Fatalf("normal runtime projection did not reject restored intent: %v", err)
+	}
+	core := coreruntime.NewCore()
+	svc := service.NewConfigServiceWithRuntime(service.NewRuntime(core))
+	t.Cleanup(func() { _ = svc.StopCore() })
+	if err := svc.StartCore(); err != nil || core.IsRunning() {
+		t.Fatalf("boot after restore did not respect the hold: %v", err)
+	}
+	if err := svc.SetCoreMaintenance(t.Context(), "", false); !errors.Is(err, entityoutbounds.ErrZapretPacketPathUnqualified) || core.IsRunning() {
+		t.Fatalf("leaving maintenance silently activated an unmarked Direct: %v", err)
 	}
 }
 

@@ -33,6 +33,27 @@ type RuntimeProjection struct {
 }
 
 func BuildCandidateProjectionFromDB(db *gorm.DB, data string, upgrade bool) (RuntimeProjection, error) {
+	return buildCandidateProjectionFromDB(db, data, upgrade, entityoutbounds.GetAllConfig)
+}
+
+// ValidateHeldRestoreCandidate checks the complete offline provider config
+// without exporting a configuration that could be passed to Core.Start.
+func ValidateHeldRestoreCandidate(db *gorm.DB, projectFiles func([]byte) ([]byte, error)) error {
+	projection, err := buildCandidateProjectionFromDB(db, "", false, entityoutbounds.ProjectHeldRestoreForValidation)
+	if err != nil {
+		return err
+	}
+	if err := singboxvalidation.ValidateConfigShape(projection.Config); err != nil {
+		return err
+	}
+	config, err := projectFiles(projection.Config)
+	if err != nil {
+		return err
+	}
+	return singboxvalidation.ValidateConfig(config)
+}
+
+func buildCandidateProjectionFromDB(db *gorm.DB, data string, upgrade bool, renderOutbounds func(*gorm.DB) ([]json.RawMessage, error)) (RuntimeProjection, error) {
 	if db == nil {
 		return RuntimeProjection{}, errors.New("database is not initialized")
 	}
@@ -89,7 +110,7 @@ func BuildCandidateProjectionFromDB(db *gorm.DB, data string, upgrade bool) (Run
 		return RuntimeProjection{}, err
 	}
 
-	outbounds, err := optionalSection(db, &model.Outbound{}, func() ([]json.RawMessage, error) { return entityoutbounds.GetAllConfig(db) })
+	outbounds, err := optionalSection(db, &model.Outbound{}, func() ([]json.RawMessage, error) { return renderOutbounds(db) })
 	if err != nil {
 		return RuntimeProjection{}, err
 	}

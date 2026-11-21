@@ -23,6 +23,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	componentmanifest "github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
+	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/assembly"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
@@ -32,7 +33,27 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 )
 
+const zapretHeldRestoreCode = "ZAPRET_RESTORED_RUNTIME_HELD"
+
+type restoreAdmission uint8
+
+const (
+	runtimeReady restoreAdmission = iota
+	operatorRestore
+)
+
+// Rehearse is the strict check for automated release and platform recovery.
 func Rehearse(ctx context.Context, source io.ReadSeeker) (RestoreRehearsal, error) {
+	return rehearse(ctx, source, runtimeReady)
+}
+
+// RehearseOperatorRestore can also admit preservation of unresolved intent
+// when the archive explicitly holds Core in maintenance.
+func RehearseOperatorRestore(ctx context.Context, source io.ReadSeeker) (RestoreRehearsal, error) {
+	return rehearse(ctx, source, operatorRestore)
+}
+
+func rehearse(ctx context.Context, source io.ReadSeeker, admission restoreAdmission) (RestoreRehearsal, error) {
 	result := RestoreRehearsal{Schema: "solovey.restore-rehearsal/v1", State: "REJECTED", ManifestStatus: "UNVERIFIED",
 		Integrity: "NOT_CHECKED", SchemaCompatibility: "UNKNOWN", MigrationPlan: "UNKNOWN",
 		ReleaseCompatibility: "UNKNOWN", SpaceStatus: "UNKNOWN", Owners: []RestoreOwnerStatus{}, ReasonCodes: []string{},
@@ -107,9 +128,11 @@ func Rehearse(ctx context.Context, source io.ReadSeeker) (RestoreRehearsal, erro
 			}
 		}
 		if len(result.ReasonCodes) == 0 {
-			statuses, migrationErr := rehearseMigrationsAndOwnersWithFindings(ctx, staged, result.Owners, func(findings []diagnostics.Finding) {
+			var restoreHeld bool
+			statuses, migrationErr := rehearseMigrationsAndOwnersWithFindings(ctx, staged, result.Owners, admission, func(findings []diagnostics.Finding) {
 				for _, finding := range findings {
 					result.MigrationFindings = append(result.MigrationFindings, MigrationFinding(finding))
+					restoreHeld = restoreHeld || finding.Code == zapretHeldRestoreCode
 				}
 			}, manifest.Files)
 			result.Owners = statuses
@@ -125,6 +148,8 @@ func Rehearse(ctx context.Context, source io.ReadSeeker) (RestoreRehearsal, erro
 					result.MigrationFindings = append(result.MigrationFindings, MigrationFinding(ruleRejection.Finding))
 					result.ReasonCodes = append(result.ReasonCodes, ruleRejection.Finding.Code)
 				}
+			} else if restoreHeld {
+				result.MigrationPlan = "REHEARSED_CORE_MAINTENANCE_HELD"
 			} else if result.MigrationPlan == "REQUIRED" {
 				result.MigrationPlan = "REHEARSED"
 			} else {
@@ -369,23 +394,18 @@ func schemaSemver(value string) string {
 	return value
 }
 
-func rehearseMigrationsAndOwnersWithFindings(ctx context.Context, staged string, statuses []RestoreOwnerStatus, report func([]diagnostics.Finding), files ...*FileBackupManifest) ([]RestoreOwnerStatus, error) {
+func rehearseMigrationsAndOwnersWithFindings(ctx context.Context, staged string, statuses []RestoreOwnerStatus, admission restoreAdmission, report func([]diagnostics.Finding), files ...*FileBackupManifest) ([]RestoreOwnerStatus, error) {
 	copyPath := staged + ".migration"
 	cleanup := func() { canonical.CleanupStagedFile(copyPath) }
 	defer cleanup()
 	if err := cloneRestoreFile(ctx, staged, copyPath); err != nil {
 		return statuses, err
 	}
-	return migrateAndNormalizeRestoreOwnersWithFindings(ctx, copyPath, statuses, report, files...)
+	return migrateAndNormalizeRestoreOwners(ctx, copyPath, statuses, admission, report, files...)
 }
 
-// Rehearsal migrates a private candidate. Execution applies the same owner
-// normalization after open, within the existing rollback-protected boundary.
-func migrateAndNormalizeRestoreOwners(ctx context.Context, candidate string, statuses []RestoreOwnerStatus, files ...*FileBackupManifest) ([]RestoreOwnerStatus, error) {
-	return migrateAndNormalizeRestoreOwnersWithFindings(ctx, candidate, statuses, nil, files...)
-}
-
-func migrateAndNormalizeRestoreOwnersWithFindings(ctx context.Context, candidate string, statuses []RestoreOwnerStatus, report func([]diagnostics.Finding), files ...*FileBackupManifest) ([]RestoreOwnerStatus, error) {
+// Both rehearsal and execution qualify the staged data before publication.
+func migrateAndNormalizeRestoreOwners(ctx context.Context, candidate string, statuses []RestoreOwnerStatus, admission restoreAdmission, report func([]diagnostics.Finding), files ...*FileBackupManifest) ([]RestoreOwnerStatus, error) {
 	statuses = append([]RestoreOwnerStatus(nil), statuses...)
 	db, err := gorm.Open(gormsqlite.Open(candidate+"?_busy_timeout=10000&_foreign_keys=on"), &gorm.Config{Logger: gormlogger.Discard})
 	if err != nil {
@@ -410,7 +430,27 @@ func migrateAndNormalizeRestoreOwnersWithFindings(ctx context.Context, candidate
 	if err != nil {
 		return statuses, err
 	}
+	db = db.WithContext(ctx)
 	projection, err := assembly.BuildCandidateProjectionFromDB(db, "", false)
+	if errors.Is(err, entityoutbounds.ErrZapretPacketPathUnqualified) {
+		if admission != operatorRestore {
+			return statuses, restoreCandidateFinding(err, "outbound.options.zapret", "ZAPRET_RESTORE_RUNTIME_UNQUALIFIED", "Unresolved enabled Zapret is not eligible for automated runtime recovery.")
+		}
+		err = assembly.ValidateHeldRestoreCandidate(db, func(config []byte) ([]byte, error) {
+			return projectOwnerRuntimeFiles(ctx, db, fileManifest, config)
+		})
+		if errors.Is(err, entityoutbounds.ErrZapretPacketPathUnqualified) {
+			return statuses, restoreCandidateFinding(err, "outbound.options.zapret", "ZAPRET_RESTORE_REQUIRES_MAINTENANCE", "This archive has an unresolved enabled Zapret binding. Restore requires an archive with Core maintenance already enabled; the binding cannot be activated.")
+		}
+		if err != nil {
+			return statuses, restoreCandidateFinding(err, "config", "RESTORE_COMPLETE_BUILD_REJECTED", "The held archive is rejected by the complete pinned offline build. Correct entity options and required owner files before retrying.")
+		}
+		if report != nil {
+			report([]diagnostics.Finding{{Kind: "restore", Path: "outbound.options.zapret", Code: zapretHeldRestoreCode, Severity: diagnostics.Warn,
+				Message: "The enabled Zapret binding is retained unresolved. Core stays in the maintenance state recorded in this archive until the binding is resolved.", OperatorActionRequired: true}})
+		}
+		return statuses, nil
+	}
 	if err != nil {
 		return statuses, err
 	}

@@ -75,11 +75,15 @@ func requireExplicitZapretChange(previous, candidate model.Outbound) error {
 // error for ON is intentional: omitting A or passing its unmarked Direct to
 // sing-box could select a different outbound and silently change user intent.
 func projectZapretOutbound(row model.Outbound) (model.Outbound, error) {
+	return projectZapretOptions(row, false)
+}
+
+func projectZapretOptions(row model.Outbound, heldRestoreValidation bool) (model.Outbound, error) {
 	fields, binding, err := zapretOptions(row)
 	if err != nil || binding == nil {
 		return row, err
 	}
-	if binding.Enabled {
+	if binding.Enabled && !heldRestoreValidation {
 		return model.Outbound{}, ErrZapretPacketPathUnqualified
 	}
 	delete(fields, zapretOption)

@@ -10,14 +10,18 @@ import (
 	"path/filepath"
 )
 
-func backupRestorer() canonical.Restorer {
+func backupRestorer(admission restoreAdmission) canonical.Restorer {
 	return canonical.Restorer{
-		OpenDatabase:      dbsqlite.InitContext,
-		DatabasePath:      configstorage.GetDBPath,
-		Rehearse:          Rehearse,
-		ValidateBackup:    validateSQLiteBackup,
-		PrepareExport:     PrepareExportContext,
-		MigrateOwners:     migrateAndNormalizeRestoreOwners,
+		OpenDatabase: dbsqlite.InitContext,
+		DatabasePath: configstorage.GetDBPath,
+		Rehearse: func(ctx context.Context, file io.ReadSeeker) (RestoreRehearsal, error) {
+			return rehearse(ctx, file, admission)
+		},
+		ValidateBackup: validateSQLiteBackup,
+		PrepareExport:  PrepareExportContext,
+		MigrateOwners: func(ctx context.Context, candidate string, statuses []RestoreOwnerStatus, files ...*FileBackupManifest) ([]RestoreOwnerStatus, error) {
+			return migrateAndNormalizeRestoreOwners(ctx, candidate, statuses, admission, nil, files...)
+		},
 		NormalizeOwners:   normalizeRestoredOwners,
 		RestoreOwnerFiles: restoreOwnerFiles,
 		Restart:           SendSighup,
@@ -30,15 +34,15 @@ func restoreRecoveryRoot() string {
 
 func Restore(file multipart.File) error { return RestoreContext(context.Background(), file) }
 func RestoreContext(ctx context.Context, file multipart.File) error {
-	return backupRestorer().Restore(ctx, file, restoreRecoveryRoot())
+	return backupRestorer(operatorRestore).Restore(ctx, file, restoreRecoveryRoot())
 }
 func RestoreContextDetailed(ctx context.Context, file io.ReadSeeker) (RestoreExecutionResult, error) {
-	return backupRestorer().Detailed(ctx, file, restoreRecoveryRoot())
+	return backupRestorer(runtimeReady).Detailed(ctx, file, restoreRecoveryRoot())
 }
-func RestoreContextDetailedWithRecoveryRoot(ctx context.Context, file io.ReadSeeker, recoveryRoot string) (RestoreExecutionResult, error) {
-	return backupRestorer().Detailed(ctx, file, recoveryRoot)
+func RestoreOperatorDetailed(ctx context.Context, file io.ReadSeeker, recoveryRoot string) (RestoreExecutionResult, error) {
+	return backupRestorer(operatorRestore).Detailed(ctx, file, recoveryRoot)
 }
 func CompletePendingRestore(ctx context.Context) (bool, bool, error) {
-	return backupRestorer().Complete(ctx)
+	return backupRestorer(runtimeReady).Complete(ctx)
 }
-func AbortPendingRestore() error { return backupRestorer().Abort() }
+func AbortPendingRestore() error { return backupRestorer(runtimeReady).Abort() }
