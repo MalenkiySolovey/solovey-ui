@@ -346,7 +346,7 @@ func (s *ConfigService) save(obj string, act string, data json.RawMessage, initU
 	// continue serving if admission of a committed ON binding fails.
 	if plan.RequiresCoreQuiescence() {
 		if !coreLocked {
-			return nil, errors.New("Zapret mutation requires the Core lifecycle lock")
+			return nil, errors.New("changing the Zapret binding requires the Core lifecycle lock")
 		}
 		if err := s.stopCoreLocked(); err != nil {
 			return nil, err

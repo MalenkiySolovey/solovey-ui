@@ -323,7 +323,7 @@ func (z *installedZapret) openDeny(ctx context.Context, namespace uint64) (*nfta
 		address, err := unix.Getsockname(fd)
 		netlink, ok := address.(*unix.SockaddrNetlink)
 		if err != nil || !ok || netlink.Pid == 0 {
-			return errors.New("Zapret deny owner has no bound netlink port")
+			return errors.New("no bound netlink port for the Zapret deny owner")
 		}
 		if err := keepZapretDenyInSystemd(ctx, fd); err != nil {
 			return err

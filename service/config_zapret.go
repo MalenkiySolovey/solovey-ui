@@ -41,7 +41,7 @@ func (r *Runtime) retireZapretGrant() error {
 	client := broker.NewClient(broker.RolePanel)
 	_, err := client.Invoke(context.Background(), broker.Call{Verb: broker.VerbZapretRelease, OperationID: "zapret-core-stop", Payload: r.zapretGrant, Timeout: 5 * time.Second}, nil)
 	if err != nil {
-		return fmt.Errorf("Zapret generation retirement was not confirmed: %w", err)
+		return fmt.Errorf("could not confirm retirement of the Zapret generation: %w", err)
 	}
 	r.zapretGrant = nil
 	return nil

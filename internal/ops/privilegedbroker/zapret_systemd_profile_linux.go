@@ -53,7 +53,7 @@ type installedZapretProfile struct {
 func readInstalledZapretProfile(request zapretactivation.Request) (installedZapretProfile, error) {
 	mode, err := readZapretAsset("/etc/solovey-ui/deployment-profile", 256)
 	if err != nil || strings.TrimSpace(string(mode)) != "native-hardened" {
-		return installedZapretProfile{}, errors.New("Zapret requires the native-hardened systemd installation")
+		return installedZapretProfile{}, errors.New("the native-hardened systemd installation is required for Zapret")
 	}
 	data, err := readZapretAsset(zapretInventory, installstate.MaxInstalledMetadataBytes)
 	if err != nil {
@@ -68,7 +68,7 @@ func readInstalledZapretProfile(request zapretactivation.Request) (installedZapr
 		installed = installed || item.ID == "zapret" && item.Installed
 	}
 	if !installed {
-		return installedZapretProfile{}, errors.New("Zapret component is not installed")
+		return installedZapretProfile{}, errors.New("the Zapret component is not installed")
 	}
 	var profile installedZapretProfile
 	data, err = readZapretAsset(zapretProfilePath, 32<<10)

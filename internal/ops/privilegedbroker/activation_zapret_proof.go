@@ -16,6 +16,11 @@ import (
 
 const zapretDenyActivationEnabled = true
 
+type zapretDenyIdentity struct {
+	port  uint32
+	inode uint64
+}
+
 func closeInheritedZapretDeny(fd int) (zapretDenyIdentity, error) {
 	return inspectAndCloseZapretDeny(fd, systemdZapretFDStore)
 }

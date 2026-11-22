@@ -3,3 +3,5 @@
 package privilegedbroker
 
 const zapretDenyActivationEnabled = false
+
+type zapretDenyIdentity struct{}

@@ -48,7 +48,7 @@ func (t *ZapretOwnedTable) WithZapretDenyOwner(use func(int) error) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.conn == nil || t.name != planner.ZapretDenyTable {
-		return errors.New("Zapret deny owner is unavailable")
+		return errors.New("the Zapret deny owner is unavailable")
 	}
 	raw, err := t.conn.SyscallConn()
 	if err != nil {
@@ -68,7 +68,7 @@ func ObserveZapretDenyTable(ctx context.Context, namespace uint64, bootID string
 	}
 	inode, err := zapretQueueSocketInode(inventory, port)
 	if err != nil || inode != expectedInode {
-		return nil, errors.New("Zapret deny owner port no longer has the retained descriptor identity")
+		return nil, errors.New("the Zapret deny owner port no longer has the retained descriptor identity")
 	}
 	conn, err := netlink.Dial(unix.NETLINK_NETFILTER, nil)
 	if err != nil {
