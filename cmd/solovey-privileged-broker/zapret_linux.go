@@ -11,7 +11,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-component-zapret/binding"
 	"github.com/MalenkiySolovey/solovey-component-zapret/strategy"
 	"github.com/MalenkiySolovey/solovey-host/hostref"
-	"github.com/MalenkiySolovey/solovey-host/network/intent"
 	"github.com/MalenkiySolovey/solovey-host/outbounds"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
