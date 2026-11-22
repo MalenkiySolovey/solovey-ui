@@ -75,6 +75,27 @@ func TestParseRejectsMalformedOrUnboundedEvidence(t *testing.T) {
 	}
 }
 
+func TestParseToleratesUnrelatedNetworkNamespaceMount(t *testing.T) {
+	const netns = "50 44 0:4 net:[4026532568] /run/netns/r8b1 rw shared:12 - nsfs nsfs rw\n"
+	data := []byte(fixture + netns)
+	fact, err := ParseUniqueMount(data, "/run/solovey-ui/server-protection")
+	if err != nil || fact.MountID != 45 {
+		t.Fatalf("namespace mount changed runtime backing evidence: %#v, %v", fact, err)
+	}
+	if _, err := Parse(data, "/run/netns/r8b1"); err == nil {
+		t.Fatal("namespace handle was accepted as filesystem backing")
+	}
+	for _, record := range []string{
+		strings.Replace(netns, "- nsfs nsfs", "- ext4 /dev/root", 1),
+		strings.Replace(netns, "net:[4026532568]", "net:[0]", 1),
+		strings.Replace(netns, "net:[4026532568]", "net:[invalid]", 1),
+	} {
+		if _, err := Parse([]byte(fixture+record), "/run/solovey-ui"); err == nil {
+			t.Fatalf("malformed mount identity accepted: %q", record)
+		}
+	}
+}
+
 func TestFilesystemMountPointsReturnsExactCanonicalType(t *testing.T) {
 	data := fixture + "50 36 0:50 / /sys/fs/cgroup rw,nosuid,nodev,noexec,relatime - cgroup2 cgroup rw\n"
 	points, err := FilesystemMountPoints([]byte(data), "cgroup2")

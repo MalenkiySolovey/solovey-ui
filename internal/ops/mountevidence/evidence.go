@@ -255,7 +255,8 @@ func Parse(data []byte, target string) (Fact, error) {
 			selected, found = fact, true
 		}
 	}
-	if !found {
+	// Namespace handles are valid inventory, not filesystem backing.
+	if !found || !canonicalAbsoluteAllowRoot(selected.Root) {
 		return Fact{}, ErrUnavailable
 	}
 	return selected, nil
@@ -344,7 +345,7 @@ func parseLine(line, target string) (Fact, error) {
 	mountPoint, pointErr := unescape(fields[4])
 	source, sourceErr := unescape(fields[separator+2])
 	if mountErr != nil || parentErr != nil || rootErr != nil || pointErr != nil || sourceErr != nil ||
-		mountID == 0 || !validDevice(fields[2]) || !canonicalAbsoluteAllowRoot(root) || !canonicalAbsoluteAllowRoot(mountPoint) {
+		mountID == 0 || !validDevice(fields[2]) || !validMountInfoRoot(root, fields[separator+1]) || !canonicalAbsoluteAllowRoot(mountPoint) {
 		return Fact{}, errors.New("mountinfo identity is malformed")
 	}
 	mountOptions, err := parseOptions(fields[5])
@@ -358,6 +359,28 @@ func parseLine(line, target string) (Fact, error) {
 	return Fact{Schema: SchemaV1, Target: target, ResolvedTarget: target, MountID: mountID, ParentID: parentID,
 		Device: fields[2], Root: root, MountPoint: mountPoint, Filesystem: fields[separator+1], Source: source,
 		MountOptions: mountOptions, SuperOptions: superOptions, MountReadOnly: contains(mountOptions, "ro")}, nil
+}
+
+func validMountInfoRoot(root, filesystem string) bool {
+	if canonicalAbsoluteAllowRoot(root) {
+		return true
+	}
+	if filesystem != "nsfs" {
+		return false
+	}
+	// Linux nsfs_show_path prints a namespace type and inode, not a path.
+	kind, inode, ok := strings.Cut(root, ":[")
+	inode, closed := strings.CutSuffix(inode, "]")
+	if !ok || !closed {
+		return false
+	}
+	switch kind {
+	case "cgroup", "ipc", "mnt", "net", "pid", "pid_for_children", "time", "time_for_children", "user", "uts":
+		n, err := strconv.ParseUint(inode, 10, 64)
+		return err == nil && n != 0 && strconv.FormatUint(n, 10) == inode
+	default:
+		return false
+	}
 }
 
 func parseOptions(value string) ([]string, error) {
