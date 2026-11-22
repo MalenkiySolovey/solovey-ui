@@ -16,7 +16,6 @@ import (
 	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/assembly"
-	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
@@ -84,7 +83,7 @@ func (s *ConfigService) coreCandidateContext(ctx context.Context) ([]byte, []inb
 	return s.buildCoreCandidate(ctx, nil)
 }
 
-func (s *ConfigService) buildCoreCandidate(ctx context.Context, admit outbounds.ZapretAdmitter) ([]byte, []inboundidentity.Binding, error) {
+func (s *ConfigService) buildCoreCandidate(ctx context.Context, admit outbounds.ZapretBatchAdmitter) ([]byte, []inboundidentity.Binding, error) {
 	db := configDatabase()
 	if db == nil {
 		return nil, nil, errors.New("configuration database is not initialized")
@@ -153,16 +152,16 @@ func (s *ConfigService) startCoreLockedContext(ctx context.Context, force bool) 
 		return nil
 	}
 
-	if err := runtime.retireZapretGrant(); err != nil {
+	if err := runtime.retireZapretBatch(); err != nil {
 		runtime.markCoreStartFailed()
 		return err
 	}
 	logger.Info("starting core")
-	var admitted *zapretactivation.Grant
+	var admitted string
 	defer func() {
-		if admitted != nil {
-			runtime.zapretGrant = admitted
-			if err := runtime.retireZapretGrant(); err != nil {
+		if admitted != "" {
+			runtime.zapretBatch = admitted
+			if err := runtime.retireZapretBatch(); err != nil {
 				logger.Warning(err)
 			}
 		}
@@ -180,7 +179,7 @@ func (s *ConfigService) startCoreLockedContext(ctx context.Context, force bool) 
 		logger.Error("start sing-box err:", err.Error())
 		return err
 	}
-	runtime.zapretGrant, admitted = admitted, nil
+	runtime.zapretBatch, admitted = admitted, ""
 	runtime.markCoreStartSucceeded()
 	logger.Info("sing-box started")
 	realtime.Publish(realtime.TopicCoreState, map[string]any{"state": "running"})
@@ -219,6 +218,13 @@ func (s *ConfigService) restartCoreLocked() error {
 	if err := assembly.ValidateCoreRestartFromDB(db, s.runtime().zapretComponentStarted()); err != nil {
 		return err
 	}
+	if bound, err := outbounds.CheckZapretStartup(db, true); err != nil {
+		return err
+	} else if bound {
+		if err := validateInstalledZapret(db); err != nil {
+			return err
+		}
+	}
 	if err := s.stopCoreLocked(); err != nil {
 		return err
 	}
@@ -239,7 +245,7 @@ func (s *ConfigService) stopCoreLocked() error {
 		return common.NewError("core not initialized")
 	}
 	stopErr := coreInstance.Stop()
-	retireErr := s.runtime().retireZapretGrant()
+	retireErr := s.runtime().retireZapretBatch()
 	logger.Info("sing-box stopped")
 	realtime.Publish(realtime.TopicCoreState, map[string]any{"state": "stopped"})
 	return errors.Join(stopErr, retireErr)

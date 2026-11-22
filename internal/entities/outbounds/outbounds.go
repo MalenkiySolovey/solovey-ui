@@ -77,11 +77,11 @@ func getAllConfig(db *gorm.DB, heldRestoreValidation bool) ([]json.RawMessage, e
 	return getAllRuntimeConfig(db, heldRestoreValidation, nil)
 }
 
-func GetAllRuntimeConfig(db *gorm.DB, admit ZapretAdmitter) ([]json.RawMessage, error) {
+func GetAllRuntimeConfig(db *gorm.DB, admit ZapretBatchAdmitter) ([]json.RawMessage, error) {
 	return getAllRuntimeConfig(db, false, admit)
 }
 
-func getAllRuntimeConfig(db *gorm.DB, heldRestoreValidation bool, admit ZapretAdmitter) ([]json.RawMessage, error) {
+func getAllRuntimeConfig(db *gorm.DB, heldRestoreValidation bool, admit ZapretBatchAdmitter) ([]json.RawMessage, error) {
 	if err := validateTransportReferences(db); err != nil {
 		return nil, err
 	}
@@ -96,9 +96,23 @@ func getAllRuntimeConfig(db *gorm.DB, heldRestoreValidation bool, admit ZapretAd
 	if err != nil {
 		return nil, err
 	}
+	var grant ZapretAdmitter
+	if admit != nil {
+		for _, row := range rows {
+			if !view.facts[row.Tag].Available {
+				if _, bound, err := zapretRequest(*row); err != nil || bound {
+					return nil, fmt.Errorf("outbound %q: %w", row.Tag, ErrZapretPacketPathUnqualified)
+				}
+			}
+		}
+		grant, err = admitZapretRows(rows, admit)
+		if err != nil {
+			return nil, err
+		}
+	}
 	failoverRejectSupportAdded := false
 	for _, outbound := range rows {
-		native, err := projectZapretRuntime(*outbound, heldRestoreValidation, admit)
+		native, err := projectZapretRuntime(*outbound, heldRestoreValidation, grant)
 		if err != nil {
 			return nil, err
 		}

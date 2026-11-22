@@ -2,7 +2,10 @@
 // the authenticated broker. It contains no serialized sing-box options.
 package zapretactivation
 
-const SocketRoot = "/run/solovey-ui/zapret"
+const (
+	SocketRoot  = "/run/solovey-ui/zapret"
+	MaxBindings = 3
+)
 
 type Request struct {
 	OutboundRef      string `json:"outboundRef"`
@@ -14,6 +17,26 @@ type Grant struct {
 	Request
 	StrategyRevision string `json:"strategyRevision"`
 	Generation       string `json:"generation"`
+}
+
+// BatchID lets the Panel retire an ambiguous acquire (lost response) without
+// retiring a different generation. A batch is private to one Core startup.
+type BatchRequest struct {
+	BatchID  string    `json:"batchId"`
+	Bindings []Request `json:"bindings"`
+}
+
+type BatchGrant struct {
+	BatchID  string  `json:"batchId"`
+	Bindings []Grant `json:"bindings"`
+}
+
+type Retirement struct {
+	BatchID string `json:"batchId"`
+}
+
+type Validation struct {
+	Bindings []Request `json:"bindings"`
 }
 
 func (g Grant) ProtectPath(want Request) (string, bool) {

@@ -57,9 +57,10 @@ const (
 type Verb string
 
 const (
-	VerbCapabilities  Verb = "broker.capabilities.observe"
-	VerbZapretAcquire Verb = "zapret.path.acquire"
-	VerbZapretRelease Verb = "zapret.path.release"
+	VerbCapabilities   Verb = "broker.capabilities.observe"
+	VerbZapretAcquire  Verb = "zapret.path.acquire"
+	VerbZapretRelease  Verb = "zapret.path.release"
+	VerbZapretValidate Verb = "zapret.profile.validate"
 
 	VerbSSHObserve      Verb = "ssh.posture.observe"
 	VerbSSHPrepare      Verb = "ssh.policy.prepare"

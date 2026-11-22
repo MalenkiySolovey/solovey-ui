@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -33,24 +34,26 @@ const (
 	zapretInventory   = "/usr/local/solovey-ui/components/installed.json"
 )
 
-// InstalledZapretStrategy is resolved by the optional Zapret component at the
-// broker composition root. The broker keeps control of trusted input and argv execution.
-type InstalledZapretStrategy struct {
-	Intent  intent.ZapretPacketPathIntent
-	Compile func(engineRoot string, queue uint16, queueMark, loopMark uint32) ([]string, error)
+// The component resolves and compiles the ordered profiles. The broker still
+// owns the trusted inputs, Planner allocation and engine executable.
+type InstalledZapretStrategies struct {
+	Intents []intent.ZapretPacketPathIntent
+	Compile func(engineRoot string, queue uint16, loopMark uint32, queueMarks []uint32) ([]string, error)
 }
 
-type ResolveInstalledZapretStrategy func(json.RawMessage, zapretactivation.Request) (InstalledZapretStrategy, error)
+type ResolveInstalledZapretStrategies func([]json.RawMessage, []zapretactivation.Request) (InstalledZapretStrategies, error)
 
 type installedZapretProfile struct {
-	Schema       string          `json:"schema"`
-	OutboundRef  string          `json:"outboundRef"`
-	Interface    string          `json:"interface"`
-	EngineDigest string          `json:"engineSHA256"`
-	Strategy     json.RawMessage `json:"strategy"`
+	Schema       string            `json:"schema"`
+	OutboundRef  string            `json:"outboundRef,omitempty"`
+	OutboundRefs []string          `json:"outboundRefs,omitempty"`
+	Interface    string            `json:"interface"`
+	EngineDigest string            `json:"engineSHA256"`
+	Strategy     json.RawMessage   `json:"strategy,omitempty"`
+	Strategies   []json.RawMessage `json:"strategies,omitempty"`
 }
 
-func readInstalledZapretProfile(request zapretactivation.Request) (installedZapretProfile, error) {
+func readInstalledZapretProfile() (installedZapretProfile, error) {
 	mode, err := readZapretAsset("/etc/solovey-ui/deployment-profile", 256)
 	if err != nil || strings.TrimSpace(string(mode)) != "native-hardened" {
 		return installedZapretProfile{}, errors.New("the native-hardened systemd installation is required for Zapret")
@@ -73,10 +76,45 @@ func readInstalledZapretProfile(request zapretactivation.Request) (installedZapr
 	var profile installedZapretProfile
 	data, err = readZapretAsset(zapretProfilePath, 32<<10)
 	if err != nil || decodeStrict(data, &profile) != nil || profile.Schema != planner.ZapretSystemdBackend ||
-		profile.OutboundRef != request.OutboundRef || !digestPattern.MatchString(profile.EngineDigest) {
-		return installedZapretProfile{}, errors.New("the one-owner systemd Zapret profile does not authorize this binding")
+		!digestPattern.MatchString(profile.EngineDigest) {
+		return installedZapretProfile{}, errors.New("the systemd Zapret profile is invalid or unavailable")
 	}
 	return profile, nil
+}
+
+func (p installedZapretProfile) selectStrategies(requests []zapretactivation.Request) ([]json.RawMessage, error) {
+	refs, definitions := p.OutboundRefs, p.Strategies
+	if p.OutboundRef != "" || len(p.Strategy) != 0 {
+		if len(refs) != 0 || len(definitions) != 0 || len(p.Strategy) == 0 {
+			return nil, errors.New("ambiguous installed Zapret profile")
+		}
+		refs, definitions = []string{p.OutboundRef}, []json.RawMessage{p.Strategy}
+	}
+	allowed := make(map[string]bool, len(refs))
+	for _, ref := range refs {
+		if !safeIdentifier(ref) || allowed[ref] {
+			return nil, errors.New("invalid installed Zapret outbound allowlist")
+		}
+		allowed[ref] = true
+	}
+	catalog := make(map[string]json.RawMessage, len(definitions))
+	for _, raw := range definitions {
+		var item struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal(raw, &item) != nil || !safeIdentifier(item.ID) || catalog[item.ID] != nil {
+			return nil, errors.New("invalid installed Zapret strategy catalog")
+		}
+		catalog[item.ID] = raw
+	}
+	result := make([]json.RawMessage, len(requests))
+	for i, request := range requests {
+		if !allowed[request.OutboundRef] || catalog[request.StrategyRef] == nil {
+			return nil, fmt.Errorf("installed Zapret profile does not authorize Direct %q and Strategy %q", request.OutboundRef, request.StrategyRef)
+		}
+		result[i] = catalog[request.StrategyRef]
+	}
+	return result, nil
 }
 
 func (p installedZapretProfile) verifyEngine() error {
@@ -134,20 +172,20 @@ func rootOwnedZapretAsset(info os.FileInfo) bool {
 	return ok && stat.Uid == 0 && info.Mode()&(os.ModeSetuid|os.ModeSetgid|0o022) == 0
 }
 
-func planInstalledZapret(ctx context.Context, request zapretactivation.Request, interfaceName string, selected intent.ZapretPacketPathIntent, serial uint32) (planner.ZapretPlan, error) {
+func observeInstalledZapretNetwork(ctx context.Context, interfaceName string) (planner.ZapretEgress, []uint16, error) {
 	if err := checkZapretForeignHooks(); err != nil {
-		return planner.ZapretPlan{}, err
+		return planner.ZapretEgress{}, nil, err
 	}
 	iface, err := net.InterfaceByName(interfaceName)
 	if err != nil || iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
-		return planner.ZapretPlan{}, errors.New("the approved Zapret egress interface is unavailable")
+		return planner.ZapretEgress{}, nil, errors.New("the approved Zapret egress interface is unavailable")
 	}
 	if err := planner.CheckZapretEgressAdmission(ctx, iface.Index); err != nil {
-		return planner.ZapretPlan{}, err
+		return planner.ZapretEgress{}, nil, err
 	}
 	egress, err := planner.ObserveZapretLinuxEgress(ctx, int32(iface.Index), true, false)
 	if err != nil {
-		return planner.ZapretPlan{}, err
+		return planner.ZapretEgress{}, nil, err
 	}
 	var queues []uint16
 	if table, err := os.ReadFile("/proc/net/netfilter/nfnetlink_queue"); err == nil && len(table) <= 1<<20 {
@@ -158,20 +196,23 @@ func planInstalledZapret(ctx context.Context, request zapretactivation.Request, 
 			}
 			queue, err := strconv.ParseUint(fields[0], 10, 16)
 			if err != nil {
-				return planner.ZapretPlan{}, errors.New("NFQUEUE inventory is invalid")
+				return planner.ZapretEgress{}, nil, errors.New("NFQUEUE inventory is invalid")
 			}
 			queues = append(queues, uint16(queue))
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return planner.ZapretPlan{}, errors.New("NFQUEUE inventory is unavailable")
+		return planner.ZapretEgress{}, nil, errors.New("NFQUEUE inventory is unavailable")
 	}
-	facts := planner.Facts{HostRef: hostref.Local(), Revision: Digest([]byte(planner.ZapretSystemdBackend)),
+	return egress, slices.Clip(queues), nil
+}
+
+func installedZapretFacts(request zapretactivation.Request, egress *planner.ZapretEgress, queues []uint16, serial uint32) planner.Facts {
+	return planner.Facts{HostRef: hostref.Local(), Revision: Digest([]byte(planner.ZapretSystemdBackend)),
 		CapabilityRevision: Digest([]byte(planner.ZapretSystemdBackend)), InventoryComplete: true,
 		Capability: platform.PlatformFact{Availability: platform.Available, Backend: planner.ZapretSystemdBackend},
 		Zapret: &planner.ZapretFacts{OutboundRef: request.OutboundRef, OutboundRevision: request.OutboundRevision,
-			Provider: "sing-box", InstalledEgress: &egress, SystemdSerial: serial, OccupiedQueues: queues,
+			Provider: "sing-box", InstalledEgress: egress, SystemdSerial: serial, OccupiedQueues: queues,
 			DirectSocket: true, SocketMark: true, NFQueue: true, ConntrackAccounting: true, EgressGuard: true}}
-	return planner.CompileZapret(selected, facts)
 }
 
 func checkZapretForeignHooks() error {

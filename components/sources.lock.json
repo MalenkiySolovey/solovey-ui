@@ -646,10 +646,10 @@
     {
       "id": "zapret",
       "module": "github.com/MalenkiySolovey/solovey-component-zapret",
-      "version": "v0.1.2-0.20261121133845-e4a86f9c4973",
-      "sourceCommit": "e4a86f9c49732339cb71a760e74c4429a777c129",
-      "sourceTree": "1efa15cb52ef07e85891e421d9b95688fa49df64",
-      "moduleChecksum": "h1:cIV5jCEOcxMFEXnKLR8g5/0AI3bNvdaFifxkSUaGLOQ=",
+      "version": "v0.1.2-0.20261122211357-418b745c9141",
+      "sourceCommit": "418b745c9141c6ea6f99f3bca371208dd9b29cf0",
+      "sourceTree": "bfd51eee2870b0f179624f6b811d8238d2027d17",
+      "moduleChecksum": "h1:cL9+IRKfje5+tG8bsyA32nrIgf5cOTDn2r6psoXXcy8=",
       "goModChecksum": "h1:S7y94+Jn2WlDE9KTdjqX8LZ+xutESUKDCtZFj3REn6E=",
       "manifestSHA256": "ac4b701503b2954ffd4f66b1a0b85dcb0b2002b100fc474bc75190db74866c21",
       "frontendSHA256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
@@ -669,10 +669,10 @@
         "packaging/nfqueue-policy.c": "efccb2fb7b1495e9f74cded28a409f735d28dc6793b7bbfba19301bcbba06035",
         "scripts/build-nfqws2.sh": "ea54f048421ae22d9fff3bfe28eba5eaff81eb59eda73c4805f709af2459b99a",
         "scripts/check-source.mjs": "31d4086601d0093ae9b1496455c1095152c00e5031a745da02a05e218dde5a62",
-        "strategy/engine_linux_test.go": "59cb01465e699aefb2523a77f3423f22307da6327ca11e13f4dccf5b3d2f5449",
+        "strategy/engine_linux_test.go": "67a6d3629e7fd94251195437f2b3e9754c1534177c5222240594b2bd226b0058",
         "strategy/queue_linux_test.go": "a60f201744844286cf8902e1f445a53a48b852f3ff3dfd0fb0eea899118c51d8",
-        "strategy/static.go": "d758488149f2e1023eacbd879c1f102ad720f66b438f3574e12044611e52e1f2",
-        "strategy/static_test.go": "d70143ede6cb802cdad8ad97f55a609d4e3defd68b813c5ae8277de087fa7f59",
+        "strategy/static.go": "20908d49c4fa875e36c1d3dc1953172d7b696c871737a4932b9380e6cdfc2170",
+        "strategy/static_test.go": "fc11e647e22bd4d7393009f4f6f4789d194a5e3f7fdbef05a5e4f4a8eed62b52",
         "upstream/zapret2.json": "6f33a3bdcae6ac4d1814412e04bc1f907fbf8ca1beb16ecd10ed0b373f783d5e"
       }
     }

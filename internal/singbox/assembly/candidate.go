@@ -38,7 +38,7 @@ func BuildCandidateProjectionFromDB(db *gorm.DB, data string, upgrade bool) (Run
 	return buildCandidateProjectionFromDB(db, data, upgrade, entityoutbounds.GetAllConfig)
 }
 
-func BuildCoreStartupFromDB(db *gorm.DB, admit entityoutbounds.ZapretAdmitter) ([]byte, error) {
+func BuildCoreStartupFromDB(db *gorm.DB, admit entityoutbounds.ZapretBatchAdmitter) ([]byte, error) {
 	bound, err := entityoutbounds.CheckZapretStartup(db, admit != nil)
 	if err != nil {
 		return nil, err
