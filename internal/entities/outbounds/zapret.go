@@ -202,7 +202,11 @@ func admitZapretRows(rows []*model.Outbound, admit ZapretBatchAdmitter) (ZapretA
 	}
 	grants, err := admit(requests)
 	if err != nil {
-		return nil, err
+		refs := make([]string, len(requests))
+		for i, request := range requests {
+			refs[i] = fmt.Sprintf("outbound %q", request.OutboundRef)
+		}
+		return nil, fmt.Errorf("%s: %w", strings.Join(refs, ", "), err)
 	}
 	if len(grants) != len(requests) {
 		return nil, ErrZapretPacketPathUnqualified

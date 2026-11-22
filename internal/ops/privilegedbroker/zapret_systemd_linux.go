@@ -341,10 +341,14 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 				case <-path.ctx.Done():
 					return
 				case <-engine.done:
+					if path.ctx.Err() == nil {
+						fmt.Fprintln(os.Stderr, "installed Zapret batch lost its engine:", engine.waitErr)
+					}
 					release()
 					return
 				case <-ticker.C:
 					if !zapretPeerAlive(peerFD) {
+						fmt.Fprintln(os.Stderr, "installed Zapret batch lost its Panel peer")
 						release()
 						return
 					}
@@ -356,10 +360,12 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 			path.mu.Lock()
 			defer path.mu.Unlock()
 			if ctx.Err() != nil || !zapretPeerAlive(peerFD) || table.Verify(ctx) != nil || deny.Verify(ctx) != nil {
+				fmt.Fprintln(os.Stderr, "installed Zapret batch lost its socket admission fence")
 				release()
 				return errZapretSocket
 			}
 			if _, err := nftables.ObserveZapretQueueOwner(plans[0], fact); err != nil {
+				fmt.Fprintln(os.Stderr, "installed Zapret batch lost its queue owner:", err)
 				release()
 				return err
 			}
@@ -368,7 +374,10 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 		var listeners sync.WaitGroup
 		for i, endpoint := range endpoints {
 			listeners.Go(func() {
-				_ = z.server.serveZapretSockets(path.ctx, endpoint, socketGrants[i], fence, func(context.Context, string) error { return nil })
+				err := z.server.serveZapretSockets(path.ctx, endpoint, socketGrants[i], fence, func(context.Context, string) error { return nil })
+				if path.ctx.Err() == nil {
+					fmt.Fprintln(os.Stderr, "installed Zapret batch lost a socket listener:", err)
+				}
 				release() // The batch cannot advertise a subset of its bindings.
 			})
 		}
@@ -470,7 +479,7 @@ func startZapretEngine(ctx context.Context, plan planner.ZapretPlan, args []stri
 		return nil, processevidence.Fact{}, err
 	}
 	engine := &installedZapretEngine{process: cmd.Process, pidfd: os.NewFile(uintptr(pidfd), "nfqws2"), done: make(chan struct{})}
-	go func() { _ = cmd.Wait(); close(engine.done) }()
+	go func() { engine.waitErr = cmd.Wait(); close(engine.done) }()
 	defer func() {
 		if failure != nil {
 			failure = errors.Join(failure, engine.stop())
@@ -498,7 +507,7 @@ func startZapretEngine(ctx context.Context, plan planner.ZapretPlan, args []stri
 		}
 		select {
 		case <-engine.done:
-			return nil, processevidence.Fact{}, errors.Join(errors.New("pinned nfqws2 exited before binding NFQUEUE"), cause)
+			return nil, processevidence.Fact{}, errors.Join(errors.New("pinned nfqws2 exited before binding NFQUEUE"), engine.waitErr, cause)
 		case <-ready.Done():
 			return nil, processevidence.Fact{}, errors.Join(errors.New("pinned nfqws2 queue readiness could not be established"), cause)
 		case <-ticker.C:

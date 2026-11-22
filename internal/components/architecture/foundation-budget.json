@@ -2707,6 +2707,30 @@
       "path": "internal/ops/privilegedbroker/zapret_systemd_linux.go",
       "symbol": "startZapretEngine",
       "digest": "aa853dab518e2db4f34d5f4102d59e99a998b6532618367a957a4668e2fc627c"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "cmd/solovey-privileged-broker/zapret_linux.go",
+      "symbol": "resolveZapretStrategies",
+      "digest": "384639bf7350ab2f1945a8b4270dae6c8c6ef996b05d6c96a1c23a6b7e37eeab"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "internal/ops/privilegedbroker/zapret_systemd_linux.go",
+      "symbol": "*installedZapret.prepare",
+      "digest": "0de1991589b4f0a780e280c753544d1b0b9873e7cb696fdc8096afdb5f927712"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "internal/ops/privilegedbroker/zapret_systemd_linux.go",
+      "symbol": "*installedZapret.prepare",
+      "digest": "e8a388ea608ec9cffa4b9c35c9521dca30ae0a89c13724449288d81b14a0ba97"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "internal/ops/privilegedbroker/zapret_systemd_linux.go",
+      "symbol": "startZapretEngine",
+      "digest": "dd00b0b4d6ac8c680b31da31b1a56a6e6d4a6082428c07e74bd42c0578228c97"
     }
   ]
 }
