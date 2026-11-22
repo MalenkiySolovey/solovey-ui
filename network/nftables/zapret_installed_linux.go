@@ -300,7 +300,7 @@ func zapretOwnedBatch(plan planner.ZapretPlan, comment []byte) ([]netlink.Messag
 	}
 	for _, chain := range []string{zapretOutput, zapretPostRouting} {
 		if err := addRule(chain, []expr.Any{meta(unix.NFT_META_MARK),
-			&expr.Bitwise{SourceRegister: reg, DestRegister: reg, Len: 4, Mask: u32(plan.QueueMark() | plan.LoopMark() | plan.FinalRouteBit()), Xor: u32(0)},
+			&expr.Bitwise{SourceRegister: reg, DestRegister: reg, Len: 4, Mask: u32(plan.PacketMarkMask()), Xor: u32(0)},
 			&expr.Cmp{Op: expr.CmpOpNeq, Register: reg, Data: u32(0)}, &expr.Verdict{Kind: expr.VerdictDrop},
 		}); err != nil {
 			return nil, err

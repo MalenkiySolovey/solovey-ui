@@ -97,6 +97,16 @@ func (p ZapretPlan) RawOutputMark() uint32 { return p.loopMark | p.passMark }
 // POSTROUTING applies it, for both queued originals and generator output.
 // It is never inherited by NFQUEUE or the engine's sendto.
 func (p ZapretPlan) FinalRouteBit() uint32 { return p.finalBit }
+
+// PacketMarkMask identifies our packet domain, not an exact generation.
+// The systemd serial is meaningful only on marks with a Zapret flag.
+func (p ZapretPlan) PacketMarkMask() uint32 {
+	if p.plan.facts.Capability.Backend == ZapretSystemdBackend {
+		return ZapretReservedMask &^ ZapretMaxSerial
+	}
+	return p.QueueMark() | p.LoopMark() | p.FinalRouteBit()
+}
+
 func (p ZapretPlan) PacketScope() intent.ZapretPacketPathIntent {
 	return intent.CanonicalZapretPacketPathIntent(p.intent)
 }

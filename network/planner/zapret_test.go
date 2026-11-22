@@ -145,12 +145,31 @@ func TestInstalledZapretDoesNotReuseRoutingMarkSelectors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bits := plan.QueueMark() | plan.LoopMark() | plan.FinalRouteBit(); bits != 0x3c {
+	if bits := plan.PacketMarkMask(); bits != 0x3c {
 		t.Fatalf("expected only the four unclaimed bits, got %#x", bits)
 	}
 	facts.Zapret.InstalledEgress.RoutingMarkBits |= 4
 	_, err = CompileZapret(request, facts)
 	requireReason(t, err, AllocationUnavailable)
+}
+
+func TestSystemdZapretPacketMarkMaskExcludesSerial(t *testing.T) {
+	request, facts := zapretFixture()
+	facts.Capability.Backend = ZapretSystemdBackend
+	facts.Zapret.InstalledEgress = &ZapretEgress{
+		NamespaceCookie: 11, IfIndex: 2, IPv4Gateway: netip.MustParseAddr("192.0.2.1"), RouteRevision: hash("egress"),
+	}
+	facts.Zapret.SystemdSerial = ZapretMaxSerial
+	plan, err := CompileZapret(request, facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := plan.PacketMarkMask(); got != 0x0f000000 || got&ZapretMaxSerial != 0 {
+		t.Fatalf("protected flags must not catch an unrelated mark in the serial field: %#x", got)
+	}
+	if plan.SocketMark() != ZapretSocketMarkBit|ZapretMaxSerial {
+		t.Fatal("the exact socket mark lost its generation serial")
+	}
 }
 
 func TestZapretDriftChecksAllAllocationsBeforeAllowingRepair(t *testing.T) {
