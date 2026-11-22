@@ -3,6 +3,7 @@ package apply
 type Plan struct {
 	objects           []string
 	requiresCoreReset bool
+	quiesceCore       bool
 	restartReason     string
 
 	inboundIDs  []uint
@@ -18,6 +19,7 @@ type Plan struct {
 
 type Change struct {
 	NeedsRestart      bool
+	QuiesceCore       bool
 	RestartReason     string
 	ReloadIDs         []uint
 	RemoveTags        []string
@@ -45,6 +47,10 @@ func (p Plan) Objects() []string {
 
 func (p Plan) RequiresCoreRestart() bool {
 	return p.requiresCoreReset
+}
+
+func (p Plan) RequiresCoreQuiescence() bool {
+	return p.quiesceCore
 }
 
 func (p Plan) RestartReason() string {
@@ -105,6 +111,7 @@ func (p *Plan) MergeOutboundChange(change *Change) {
 		return
 	}
 	p.mergeCoreRestart(change)
+	p.quiesceCore = p.quiesceCore || change.QuiesceCore
 	p.outboundIDs = appendUniqueUint(p.outboundIDs, change.ReloadIDs...)
 	p.removedOutboundTags = appendUniqueString(p.removedOutboundTags, change.RemoveTags...)
 }

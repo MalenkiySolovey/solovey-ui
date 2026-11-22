@@ -9,8 +9,14 @@ import (
 // ListenerSet owns the listeners returned by one trusted transport
 // composition. Standalone sets also own the exact socket paths and remove
 // only the inode that they created.
+type zapretDenyIdentity struct {
+	port  uint32
+	inode uint64
+}
+
 type ListenerSet struct {
 	Listeners map[Role]*net.UnixListener
+	deny      zapretDenyIdentity
 	close     func() error
 }
 
@@ -29,11 +35,11 @@ func OpenTransport(mode TransportMode) (*ListenerSet, error) {
 		return nil, errors.New("privileged broker transport mode is invalid")
 	}
 	if mode == SystemdActivated {
-		listeners, err := ActivatedListeners()
+		listeners, deny, err := ActivatedListeners()
 		if err != nil {
 			return nil, err
 		}
-		set := &ListenerSet{Listeners: listeners}
+		set := &ListenerSet{Listeners: listeners, deny: deny}
 		var once sync.Once
 		set.close = func() error {
 			var closeErr error

@@ -1,4 +1,4 @@
-//go:build linux && !minimal && zapretproof
+//go:build linux && !minimal
 
 package privilegedbroker
 
@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"os"
 	"strconv"
 	"time"
 
@@ -15,11 +16,75 @@ import (
 
 const zapretDenyActivationEnabled = true
 
-func closeInheritedZapretDeny(fd int) error {
-	return checkAndCloseZapretDeny(fd, systemdZapretFDStore)
+func closeInheritedZapretDeny(fd int) (zapretDenyIdentity, error) {
+	return inspectAndCloseZapretDeny(fd, systemdZapretFDStore)
 }
 
-func checkAndCloseZapretDeny(fd int, dump func(context.Context) ([]systemdStoredFD, error)) error {
+func keepZapretDenyInSystemd(ctx context.Context, fd int) error {
+	var stat unix.Stat_t
+	if err := unix.Fstat(fd, &stat); err != nil {
+		return err
+	}
+	if err := notifySystemdZapret("FDSTORE=1\nFDNAME="+zapretDenyFDName+"\nFDPOLL=0", unix.UnixRights(fd)); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	for ctx.Err() == nil {
+		entries, err := systemdZapretFDStore(ctx)
+		if err == nil && len(entries) == 1 && entries[0].matchesZapretDeny(stat) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+	return errors.New("systemd did not retain the exact Zapret deny owner port")
+}
+
+func notifySystemdZapret(message string, rights []byte) error {
+	if os.Getenv("NOTIFY_SOCKET") != "/run/systemd/notify" {
+		return errors.New("systemd did not provide the broker notify socket")
+	}
+	notify, err := unix.Socket(unix.AF_UNIX, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC|unix.SOCK_NONBLOCK, 0)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(notify)
+	return unix.Sendmsg(notify, []byte(message), rights, &unix.SockaddrUnix{Name: "/run/systemd/notify"}, 0)
+}
+
+func removeZapretDenyFromSystemd(ctx context.Context, deny zapretDenyIdentity) error {
+	entries, err := systemdZapretFDStore(ctx)
+	if err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	if len(entries) != 1 || entries[0].Name != zapretDenyFDName || entries[0].Inode != deny.inode {
+		return errors.New("systemd deny descriptor no longer matches the retired Zapret path")
+	}
+	if err := notifySystemdZapret("FDSTOREREMOVE=1\nFDNAME="+zapretDenyFDName, nil); err != nil {
+		return err
+	}
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		entries, err := systemdZapretFDStore(ctx)
+		if err == nil && len(entries) == 0 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return errors.New("systemd did not confirm retirement of the Zapret deny owner")
+		case <-ticker.C:
+		}
+	}
+}
+
+func inspectAndCloseZapretDeny(fd int, dump func(context.Context) ([]systemdStoredFD, error)) (zapretDenyIdentity, error) {
 	unix.CloseOnExec(fd)
 	defer unix.Close(fd)
 	address, addrErr := unix.Getsockname(fd)
@@ -30,7 +95,7 @@ func checkAndCloseZapretDeny(fd int, dump func(context.Context) ([]systemdStored
 	if addrErr != nil || !ok || bound.Pid == 0 || bound.Groups != 0 || protoErr != nil ||
 		protocol != unix.NETLINK_NETFILTER || typeErr != nil || typ != unix.SOCK_RAW ||
 		unix.Fstat(fd, &stat) != nil || stat.Mode&unix.S_IFMT != unix.S_IFSOCK || stat.Ino == 0 {
-		return errors.New("stored Zapret deny descriptor is not a private netfilter owner port")
+		return zapretDenyIdentity{}, errors.New("stored Zapret deny descriptor is not a private netfilter owner port")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -38,10 +103,10 @@ func checkAndCloseZapretDeny(fd int, dump func(context.Context) ([]systemdStored
 	// This unit has one store slot. A name or a successful notify alone
 	// cannot show that PID 1 holds this same socket open.
 	if err != nil || len(entries) != 1 || !entries[0].matchesZapretDeny(stat) {
-		return errors.New("systemd did not confirm retention of the exact Zapret deny descriptor")
+		return zapretDenyIdentity{}, errors.New("systemd did not confirm retention of the exact Zapret deny descriptor")
 	}
 	// No table ownership or grant is adopted. Only the duplicate closes.
-	return nil
+	return zapretDenyIdentity{port: bound.Pid, inode: stat.Ino}, nil
 }
 
 // systemd v255 DumpUnitFileDescriptorStore has response type a(suuutuusu).

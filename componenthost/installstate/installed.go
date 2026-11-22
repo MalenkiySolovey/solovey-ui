@@ -143,19 +143,29 @@ func Load(path string) (Metadata, bool, error) {
 	if err != nil {
 		return Metadata{}, true, err
 	}
+	metadata, err := Decode(data)
+	return metadata, true, err
+}
+
+// Decode is also used by privileged consumers that verify and open the
+// installer-owned file themselves, with no environment path override.
+func Decode(data []byte) (Metadata, error) {
+	if len(data) == 0 || len(data) > MaxInstalledMetadataBytes {
+		return Metadata{}, errors.New("component installed metadata file is invalid")
+	}
 	var metadata Metadata
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&metadata); err != nil {
-		return Metadata{}, true, err
+		return Metadata{}, err
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		return Metadata{}, true, errors.New("component installed metadata contains multiple JSON values")
+		return Metadata{}, errors.New("component installed metadata contains multiple JSON values")
 	}
 	if err := validateMetadata(metadata); err != nil {
-		return Metadata{}, true, err
+		return Metadata{}, err
 	}
-	return metadata, true, nil
+	return metadata, nil
 }
 
 func SetInstalled(path string, available []manifest.Manifest, id string, installed bool) (Metadata, error) {

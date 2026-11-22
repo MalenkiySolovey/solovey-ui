@@ -57,7 +57,9 @@ const (
 type Verb string
 
 const (
-	VerbCapabilities Verb = "broker.capabilities.observe"
+	VerbCapabilities  Verb = "broker.capabilities.observe"
+	VerbZapretAcquire Verb = "zapret.path.acquire"
+	VerbZapretRelease Verb = "zapret.path.release"
 
 	VerbSSHObserve      Verb = "ssh.posture.observe"
 	VerbSSHPrepare      Verb = "ssh.policy.prepare"
@@ -218,8 +220,12 @@ type WriterCredentials struct {
 type Handler func(context.Context, Request, PeerIdentity) (any, error)
 
 type Definition struct {
-	Role                       Role
-	Mutation                   bool
+	Role     Role
+	Mutation bool
+	// LocalPathAuthority is limited to the Zapret generation owner. It
+	// serializes against broker mutations but uses broker-generated fences
+	// because an expiring, live grant must never be replayed from a receipt.
+	LocalPathAuthority         bool
 	RetainResultUntilRelease   bool
 	ReleasesRetainedResultVerb Verb
 	Handler                    Handler
@@ -232,6 +238,8 @@ func NewRegistry() *Registry { return &Registry{definitions: make(map[Verb]Defin
 func (r *Registry) Register(verb Verb, definition Definition) error {
 	if r == nil || !validVerb(string(verb)) || definition.Handler == nil ||
 		definition.Role != RolePanel && definition.Role != RoleSSHProof ||
+		definition.LocalPathAuthority != (verb == VerbZapretAcquire || verb == VerbZapretRelease) ||
+		definition.LocalPathAuthority && (definition.Role != RolePanel || definition.Mutation) ||
 		(!definition.Mutation && (definition.RetainResultUntilRelease || definition.ReleasesRetainedResultVerb != "")) ||
 		(definition.ReleasesRetainedResultVerb != "" && !validVerb(string(definition.ReleasesRetainedResultVerb))) {
 		return errors.New("invalid broker handler definition")

@@ -4,6 +4,8 @@ package assembly
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbschema "github.com/MalenkiySolovey/solovey-ui/database/schema"
@@ -34,6 +36,85 @@ type RuntimeProjection struct {
 
 func BuildCandidateProjectionFromDB(db *gorm.DB, data string, upgrade bool) (RuntimeProjection, error) {
 	return buildCandidateProjectionFromDB(db, data, upgrade, entityoutbounds.GetAllConfig)
+}
+
+func BuildCoreStartupFromDB(db *gorm.DB, admit entityoutbounds.ZapretAdmitter) ([]byte, error) {
+	bound, err := entityoutbounds.CheckZapretStartup(db, admit != nil)
+	if err != nil {
+		return nil, err
+	}
+	render := entityoutbounds.GetAllConfig
+	if bound {
+		render = func(tx *gorm.DB) ([]json.RawMessage, error) { return entityoutbounds.GetAllRuntimeConfig(tx, admit) }
+	}
+	projection, err := buildCandidateProjectionFromDB(db, "", true, render)
+	if err != nil {
+		return nil, err
+	}
+	if bound {
+		if err := validateZapretCoreProfile(projection.Config); err != nil {
+			return nil, err
+		}
+	}
+	return singboxconfig.PrepareRuntimeAssets(projection.Config)
+}
+
+// ValidateCoreRestartFromDB checks the same desired candidate without starting
+// a Core, acquiring a Zapret generation or returning a runnable config.
+func ValidateCoreRestartFromDB(db *gorm.DB, zapretReady bool) error {
+	bound, err := entityoutbounds.CheckZapretStartup(db, zapretReady)
+	if err != nil {
+		return err
+	}
+	render := entityoutbounds.GetAllConfig
+	if bound {
+		render = entityoutbounds.ProjectZapretForValidation
+	}
+	projection, err := buildCandidateProjectionFromDB(db, "", true, render)
+	if err != nil {
+		return err
+	}
+	if bound {
+		if err := validateZapretCoreProfile(projection.Config); err != nil {
+			return err
+		}
+		if singboxvalidation.ValidateConfigShape(projection.Config) != nil {
+			return fmt.Errorf("%w: the pinned Core rejected the candidate", entityoutbounds.ErrZapretPacketPathUnqualified)
+		}
+	}
+	_, err = singboxconfig.PrepareRuntimeAssets(projection.Config)
+	return err
+}
+
+func validateZapretCoreProfile(config []byte) error {
+	var candidate struct {
+		Inbounds  []struct{ Type string }
+		Route     map[string]json.RawMessage
+		Outbounds []map[string]json.RawMessage
+		Endpoints []map[string]json.RawMessage
+	}
+	if err := json.Unmarshal(config, &candidate); err != nil {
+		return err
+	}
+	for _, inbound := range candidate.Inbounds {
+		if inbound.Type == "tun" {
+			return fmt.Errorf("%w: TUN cannot share this installed profile", entityoutbounds.ErrZapretPacketPathUnqualified)
+		}
+	}
+	for key := range candidate.Route {
+		switch strings.ToLower(key) {
+		case "default_mark", "default_network_namespace", "network_namespaces", "default_interface", "auto_detect_interface":
+			return fmt.Errorf("%w: conflicting Core route control %s", entityoutbounds.ErrZapretPacketPathUnqualified, key)
+		}
+	}
+	for _, options := range append(candidate.Outbounds, candidate.Endpoints...) {
+		for key := range options {
+			if strings.EqualFold(key, "routing_mark") {
+				return fmt.Errorf("%w: another Core socket mark owner is configured", entityoutbounds.ErrZapretPacketPathUnqualified)
+			}
+		}
+	}
+	return nil
 }
 
 // ValidateHeldRestoreCandidate checks the complete offline provider config

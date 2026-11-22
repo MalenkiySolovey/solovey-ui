@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	netentitysvc "github.com/MalenkiySolovey/solovey-ui/service/netentity"
 
@@ -75,8 +76,15 @@ func (s *OutboundService) Save(tx *gorm.DB, action string, data json.RawMessage)
 	return err
 }
 func (s *OutboundService) SaveWithCoreChange(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply.Change, error) {
-	backend := s.backend()
-	change, err := backend.SaveWithCoreChange(tx, action, data)
+	return s.saveWithCoreChange(tx, action, data, false)
+}
+
+func (s *OutboundService) saveWithCoreChange(tx *gorm.DB, action string, data json.RawMessage, coreLifecycle bool) (*singboxapply.Change, error) {
+	save := outbounds.Save
+	if coreLifecycle {
+		save = outbounds.SaveForCoreLifecycle
+	}
+	change, err := save(tx, action, data)
 	if err != nil {
 		return nil, err
 	}

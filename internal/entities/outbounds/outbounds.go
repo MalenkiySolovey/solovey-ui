@@ -74,6 +74,14 @@ func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 }
 
 func getAllConfig(db *gorm.DB, heldRestoreValidation bool) ([]json.RawMessage, error) {
+	return getAllRuntimeConfig(db, heldRestoreValidation, nil)
+}
+
+func GetAllRuntimeConfig(db *gorm.DB, admit ZapretAdmitter) ([]json.RawMessage, error) {
+	return getAllRuntimeConfig(db, false, admit)
+}
+
+func getAllRuntimeConfig(db *gorm.DB, heldRestoreValidation bool, admit ZapretAdmitter) ([]json.RawMessage, error) {
 	if err := validateTransportReferences(db); err != nil {
 		return nil, err
 	}
@@ -90,7 +98,7 @@ func getAllConfig(db *gorm.DB, heldRestoreValidation bool) ([]json.RawMessage, e
 	}
 	failoverRejectSupportAdded := false
 	for _, outbound := range rows {
-		native, err := projectZapretOptions(*outbound, heldRestoreValidation)
+		native, err := projectZapretRuntime(*outbound, heldRestoreValidation, admit)
 		if err != nil {
 			return nil, err
 		}
@@ -154,22 +162,32 @@ func ValidateStored(db *gorm.DB) error {
 }
 
 func Save(tx *gorm.DB, act string, data json.RawMessage) (*singboxapply.Change, error) {
+	return save(tx, act, data, false)
+}
+
+// SaveForCoreLifecycle is only for the ConfigService transaction that
+// retires the old Core before publishing a new binding.
+func SaveForCoreLifecycle(tx *gorm.DB, act string, data json.RawMessage) (*singboxapply.Change, error) {
+	return save(tx, act, data, true)
+}
+
+func save(tx *gorm.DB, act string, data json.RawMessage, coreLifecycle bool) (*singboxapply.Change, error) {
 	switch act {
 	case "new", "edit":
-		return saveUpsert(tx, act, data)
+		return saveUpsert(tx, act, data, coreLifecycle)
 	case "del":
-		return saveDelete(tx, data)
+		return saveDelete(tx, data, coreLifecycle)
 	default:
 		return nil, common.NewErrorf("unknown action: %s", act)
 	}
 }
 
-func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply.Change, error) {
+func saveUpsert(tx *gorm.DB, action string, data json.RawMessage, coreLifecycle bool) (*singboxapply.Change, error) {
 	outbound, err := decodeSaveOutbound(data)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := projectZapretOutbound(outbound); err != nil {
+	if _, _, err := zapretOptions(outbound); err != nil {
 		return nil, err
 	}
 	if err := saveeligibility.Validate(tx, action, outbound.Id, &model.Outbound{}, "outbounds", outbound.Type); err != nil {
@@ -234,6 +252,10 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 	if err := requireExplicitZapretChange(previous, outbound); err != nil {
 		return nil, err
 	}
+	bindingChange, err := zapretLifecycleChange(coreLifecycle, previous, outbound)
+	if err != nil {
+		return nil, err
+	}
 	oldTag := previous.Tag
 	renamed := oldTag != "" && oldTag != outbound.Tag
 	if renamed {
@@ -255,6 +277,9 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 	}
 	if err := validateTransportReferences(tx); err != nil {
 		return nil, err
+	}
+	if bindingChange != nil {
+		return bindingChange, nil
 	}
 	if outbound.Type == FailoverType || composition.IsGroup(outbound.Type) || composition.IsLimiter(outbound.Type) {
 		return &singboxapply.Change{
@@ -289,7 +314,7 @@ func previousOutbound(tx *gorm.DB, id uint) (model.Outbound, error) {
 	return previous, err
 }
 
-func saveDelete(tx *gorm.DB, data json.RawMessage) (*singboxapply.Change, error) {
+func saveDelete(tx *gorm.DB, data json.RawMessage, coreLifecycle bool) (*singboxapply.Change, error) {
 	var tag string
 	if err := json.Unmarshal(data, &tag); err != nil {
 		return nil, err
@@ -308,11 +333,22 @@ func saveDelete(tx *gorm.DB, data json.RawMessage) (*singboxapply.Change, error)
 	if len(refs) > 0 {
 		return nil, tagrefs.FormatError("outbound", tag, refs)
 	}
+	previous, err := previousOutbound(tx, ownID)
+	if err != nil {
+		return nil, err
+	}
+	bindingChange, err := zapretLifecycleChange(coreLifecycle, previous)
+	if err != nil {
+		return nil, err
+	}
 	if err := runDeleteHooks(tx, tag); err != nil {
 		return nil, err
 	}
 	if err := tx.Where("tag = ?", tag).Delete(model.Outbound{}).Error; err != nil {
 		return nil, err
+	}
+	if bindingChange != nil {
+		return bindingChange, nil
 	}
 	return &singboxapply.Change{RemoveTags: []string{tag}}, nil
 }

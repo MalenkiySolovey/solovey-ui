@@ -58,7 +58,7 @@ func TestInheritedZapretDenyConsumesOnlyLocalOwnerCopy(t *testing.T) {
 				}
 				return []systemdStoredFD{entry}, nil
 			}
-			if err := checkAndCloseZapretDeny(inherited, dump); (err == nil) != tc.want {
+			if _, err := inspectAndCloseZapretDeny(inherited, dump); (err == nil) != tc.want {
 				t.Errorf("unexpected inherited owner validation: %v", err)
 			}
 			if _, err := unix.FcntlInt(uintptr(inherited), unix.F_GETFD, 0); !errors.Is(err, unix.EBADF) {

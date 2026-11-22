@@ -1,4 +1,4 @@
-//go:build !linux || minimal || !zapretproof
+//go:build !linux || minimal
 
 package privilegedbroker
 

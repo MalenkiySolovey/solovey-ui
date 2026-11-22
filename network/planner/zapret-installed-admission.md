@@ -1,5 +1,40 @@
 # R8B1 installed admission decision
 
+## Installed Linux systemd profile
+
+R8B1 qualifies one enabled Direct binding on a Full Official native-hardened
+installation, with a verified pinned `nfqws2` and a static IPv4/TCP Strategy.
+The administrator provisions the root-owned `/etc/solovey-ui/zapret.json`
+profile (`native-linux-systemd-nft-nfqueue/v1`, outbound, interface, engine
+SHA-256 and revisioned Strategy), the source-locked `nfqws2` payload under
+`/usr/local/lib/solovey-ui/zapret-engine`, and enables the installed Zapret
+component before saving the Direct binding. Switch that binding explicitly
+OFF before disabling the component. Unsupported configurations fail admission.
+
+The trusted administrator and network manager reserve the selected egress,
+queue and mark resources while enabled. Admission rejects foreign nftables
+output and egress hooks, legacy iptables rules, foreign tc/TCX owners on the
+selected interface, and competing Core TUN or mark configuration. Retire the
+binding before changing privileged hooks or remapping the egress device.
+The active owned table checks the selected next hop and device both before
+queueing and in postrouting. This profile does not support administrators or
+other privileged services attaching new hooks to the protected path while ON.
+
+Systemd holds the separate deny table's exact netlink owner descriptor. The
+broker consumes a journaled mark serial before it builds a new path. It only
+publishes the authenticated pre-connect FD admission after the listener,
+owned table and independent deny are verified. Engine or broker loss retires
+admission and retains the deny for previously marked sockets. OFF closes the
+old Core, retires the owned queue and engine, and releases the deny after
+proving that protected TCP sockets have drained. The ordinary framed broker
+and capless Panel retain their existing privilege boundaries.
+
+## Historical proof paths
+
+The following notes record the earlier `zapretproof` build and rejected
+architecture candidates. They are separate from the installed profile above.
+
+
 Outbounds owns the binding and Routing selects Direct A. Zapret owns the
 revisioned Strategy and compiles it; the Network Planner alone allocates the
 queue, packet marks and egress resources. The existing broker is the only

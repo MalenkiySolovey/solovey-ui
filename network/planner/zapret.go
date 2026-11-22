@@ -20,6 +20,21 @@ const ZapretProbeGuard = "tc:lo:clsact:egress"
 const ZapretInstalledBackend = "native-linux-bpf-nft-nfqueue/v2"
 const ZapretInstalledTable = "solovey_zapret"
 
+// ZapretSystemdBackend reserves a mark domain under the trusted single-owner
+// Linux profile. A serial in that domain must not be reused within one boot.
+const ZapretSystemdBackend = "native-linux-systemd-nft-nfqueue/v1"
+const ZapretDenyTable = "solovey_zapret_deny"
+
+const (
+	ZapretSocketMarkBit   uint32 = 1 << 24
+	zapretSystemdLoopMark uint32 = 1 << 25
+	zapretSystemdPassMark uint32 = 1 << 26
+	ZapretSystemdFinal    uint32 = 1 << 27
+	ZapretMaxSerial       uint32 = (1 << 24) - 1
+	ZapretDenyMask               = ZapretSocketMarkBit | zapretSystemdLoopMark
+	ZapretReservedMask           = ZapretDenyMask | zapretSystemdPassMark | ZapretSystemdFinal | ZapretMaxSerial
+)
+
 // ZapretFacts are supplied under the same operation fence as Facts. An owner
 // must account for kernel and core mark/queue users, including masked rules and
 // dynamic policies, in the namespace where the socket will be created.
@@ -31,6 +46,7 @@ type ZapretFacts struct {
 	ReservedMarkBits, ConfiguredSocketMark    uint32
 	OccupiedQueues                            []uint16
 	InstalledEgress                           *ZapretEgress `json:",omitempty"`
+	SystemdSerial                             uint32        `json:",omitempty"`
 }
 
 type ZapretEgress struct {
@@ -90,7 +106,8 @@ func (p ZapretPlan) PacketScope() intent.ZapretPacketPathIntent {
 type ZapretSocketScope struct{ plan ZapretPlan }
 
 func (p ZapretPlan) SocketScope() (ZapretSocketScope, error) {
-	if p.plan.facts.Capability.Backend != ZapretInstalledBackend || p.plan.facts.Zapret == nil ||
+	backend := p.plan.facts.Capability.Backend
+	if backend != ZapretInstalledBackend && backend != ZapretSystemdBackend || p.plan.facts.Zapret == nil ||
 		p.plan.facts.Zapret.InstalledEgress == nil || p.mark == 0 {
 		return ZapretSocketScope{}, conflict(CapabilityUnavailable, p.intent.ResourceRef)
 	}
@@ -146,6 +163,13 @@ func CompileZapret(request intent.ZapretPacketPathIntent, facts Facts) (ZapretPl
 		}
 		table = "inet:" + ZapretInstalledTable
 		guard = fmt.Sprintf("nf-postrouting:netns:%d", z.InstalledEgress.NamespaceCookie)
+	case ZapretSystemdBackend:
+		if z.InstalledEgress == nil || !z.InstalledEgress.valid() || !z.InstalledEgress.IPv4Gateway.IsValid() || z.InstalledEgress.IPv6Gateway.IsValid() ||
+			z.SystemdSerial == 0 || z.SystemdSerial > ZapretMaxSerial || len(request.TCPPorts) == 0 || len(request.UDPPorts) != 0 ||
+			(z.InstalledEgress.RoutingMarkBits|z.ReservedMarkBits)&ZapretReservedMask != 0 {
+			return ZapretPlan{}, conflict(CapabilityUnavailable, ref)
+		}
+		table, guard = "inet:"+ZapretInstalledTable, "inet:"+ZapretDenyTable
 	default:
 		return ZapretPlan{}, conflict(CapabilityUnavailable, ref)
 	}
@@ -210,6 +234,9 @@ func CompileZapret(request intent.ZapretPacketPathIntent, facts Facts) (ZapretPl
 			finalBit = bit
 			break
 		}
+	}
+	if facts.Capability.Backend == ZapretSystemdBackend {
+		mark, loopMark, passMark, finalBit = ZapretSocketMarkBit|z.SystemdSerial, zapretSystemdLoopMark, zapretSystemdPassMark, ZapretSystemdFinal
 	}
 	if queue == 0 || passMark == 0 || z.InstalledEgress != nil && finalBit == 0 {
 		return ZapretPlan{}, conflict(AllocationUnavailable, ref)

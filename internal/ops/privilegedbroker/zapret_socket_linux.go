@@ -1,4 +1,4 @@
-//go:build linux && !minimal && zapretproof
+//go:build linux && !minimal
 
 package privilegedbroker
 
@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-host/network/intent"
-	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
 	"github.com/MalenkiySolovey/solovey-ui/network/planner"
 	"golang.org/x/sys/unix"
 	"golang.org/x/time/rate"
@@ -35,70 +34,6 @@ type ZapretSocketGrant struct {
 // disables traffic for enrolled sockets, not just new admissions.
 type zapretSocketFence func(ctx context.Context, grant ZapretSocketGrant, fd int, admit func() error) error
 
-// ServeZapretSockets creates and publishes a root-owned socket after the
-// committed generation is ready. The peer comes from the current manifest
-// attestor and the generation supplies the grant expiry.
-// publish runs before accept and must not dial the socket. observe is broker-local
-// and supplies fresh Planner facts. Once publication is claimed, this call retires
-// the generation on any exit, including failure before the listener is bound.
-func (s *Server) ServeZapretSockets(ctx context.Context, scope planner.ZapretSocketScope, peer PeerIdentity,
-	path *nftables.ZapretNativePath, observe func(context.Context) (planner.Facts, error), publish func(context.Context, string) error,
-) (failure error) {
-	if s == nil || path == nil || observe == nil || publish == nil || !path.ClaimSocketPublication(scope) {
-		return errZapretSocket
-	}
-	var authority *authorityLease
-	defer func() {
-		failure = errors.Join(failure, path.Close())
-		authority.Release()
-	}()
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	expires, ok := path.Lifetime().Deadline()
-	if !ok || !time.Now().Before(expires) {
-		return errZapretSocket
-	}
-	grant := ZapretSocketGrant{Scope: scope, Generation: path.Generation(), PeerRevision: peer.Revision, Expires: expires}
-	journal, ok := s.Journal.(*FileJournal)
-	if !ok || journal == nil || journal.bootID != s.BootID || peer.BootID != s.BootID || journal.checkZapretPath(grant) != nil {
-		return errZapretSocket
-	}
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	stop := context.AfterFunc(path.Lifetime(), cancel)
-	defer stop()
-	var err error
-	authority, err = s.beginAuthority(ctx)
-	if err != nil {
-		return err
-	}
-	if _, ok := authority.Attestor.(ManifestAttestor); !ok || !authority.Revisioned || authority.Revision != peer.ManifestRevision {
-		return errZapretSocket
-	}
-	// Rotation must revoke existing traffic, not just deny the next FD.
-	// Retire even if publication or a client handler has not returned yet.
-	ctx = authority.Context
-	stopRetirement := context.AfterFunc(ctx, func() { _ = path.Close() })
-	defer stopRetirement()
-	gid, err := lookupBrokerGroup()
-	if err != nil {
-		return err
-	}
-	endpoint, err := bindZapretSocket(ctx, zapretSocketRoot, gid, grant.Generation)
-	if err != nil {
-		return err
-	}
-	return s.serveZapretSockets(ctx, endpoint, grant, func(ctx context.Context, expected ZapretSocketGrant, fd int, admit func() error) error {
-		return path.WithSocket(ctx, observe, expected.Scope, expected.Generation, fd, admit)
-	}, func(ctx context.Context, name string) error {
-		if ctx.Err() != nil || !path.AdmissionReady(grant.Scope, grant.Generation) || journal.checkZapretPath(grant) != nil {
-			return errZapretSocket
-		}
-		return publish(ctx, name)
-	})
-}
-
 func (s *Server) serveZapretSockets(ctx context.Context, endpoint *standaloneSocket, grant ZapretSocketGrant, fence zapretSocketFence,
 	publish func(context.Context, string) error,
 ) (failure error) {
@@ -107,11 +42,16 @@ func (s *Server) serveZapretSockets(ctx context.Context, endpoint *standaloneSoc
 	}
 	defer func() { failure = errors.Join(failure, endpoint.close()) }()
 	if s == nil || fence == nil || publish == nil || !grant.Scope.Valid() || !digestPattern.MatchString(grant.Generation) ||
-		!digestPattern.MatchString(grant.PeerRevision) || !time.Now().Before(grant.Expires) {
+		!digestPattern.MatchString(grant.PeerRevision) || !grant.current() {
 		return errZapretSocket
 	}
 	listener := endpoint.listener
-	ctx, cancel := context.WithDeadline(ctx, grant.Expires)
+	var cancel context.CancelFunc
+	if grant.Expires.IsZero() {
+		ctx, cancel = context.WithCancel(ctx)
+	} else {
+		ctx, cancel = context.WithDeadline(ctx, grant.Expires)
+	}
 	var workers sync.WaitGroup
 	defer workers.Wait()
 	defer cancel()
@@ -201,7 +141,7 @@ func (s *Server) serveZapretSocket(ctx context.Context, conn *net.UnixConn, gran
 	event.ResultClass = "denied_stale_fence"
 	used := false
 	_ = fence(lease.Context, grant, fd, func() error {
-		if used || lease.Context.Err() != nil || !time.Now().Before(grant.Expires) || !s.authorityCurrent(lease.Revision) {
+		if used || lease.Context.Err() != nil || !grant.current() || !s.authorityCurrent(lease.Revision) {
 			return errZapretSocket
 		}
 		used = true
@@ -215,7 +155,7 @@ func (s *Server) serveZapretSocket(ctx context.Context, conn *net.UnixConn, gran
 		}
 		s.authorityMu.Lock()
 		defer s.authorityMu.Unlock()
-		if s.retiring || s.authorityRevision != lease.Revision || lease.Context.Err() != nil || !time.Now().Before(grant.Expires) {
+		if s.retiring || s.authorityRevision != lease.Revision || lease.Context.Err() != nil || !grant.current() {
 			return errZapretSocket
 		}
 		event.Phase = AuditPhaseDispatchGate
@@ -234,6 +174,10 @@ func (s *Server) serveZapretSocket(ctx context.Context, conn *net.UnixConn, gran
 		event.ResultClass = "success"
 		return nil
 	})
+}
+
+func (g ZapretSocketGrant) current() bool {
+	return g.Expires.IsZero() || time.Now().Before(g.Expires)
 }
 
 func readZapretSocket(conn *net.UnixConn) (WriterCredentials, int, error) {

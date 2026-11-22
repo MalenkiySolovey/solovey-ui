@@ -21,8 +21,7 @@ import (
 )
 
 const (
-	zapretGuardPriority = math.MaxInt32 - 1
-	zapretSocketLimit   = 1 << 16
+	zapretSocketLimit = 1 << 16
 )
 
 // ZapretNativeGuard is owned by the installed Planner adapter. It starts

@@ -158,6 +158,16 @@ func (s *Supervisor) Start(ctx context.Context) error {
 	return s.Reconcile(ctx)
 }
 
+// ComponentStarted reads this supervisor's observation without re-entering the
+// settings database. Feature-specific readiness must still be checked separately.
+func (s *Supervisor) ComponentStarted(id string) bool {
+	if s == nil {
+		return false
+	}
+	result, current := s.observations.Snapshot(id)
+	return current && result.Phase == state.LifecycleStarted
+}
+
 func (s *Supervisor) Reconcile(ctx context.Context) error {
 	if s == nil {
 		return nil

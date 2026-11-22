@@ -1,4 +1,4 @@
-//go:build linux && !minimal && zapretproof
+//go:build linux && !minimal
 
 package privilegedbroker
 
@@ -11,10 +11,11 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 	"golang.org/x/sys/unix"
 )
 
-const zapretSocketRoot = StandaloneSocketRoot + "/zapret"
+const zapretSocketRoot = zapretactivation.SocketRoot
 
 func zapretSocketPath(root, generation string) string {
 	return filepath.Join(root, "z-"+generation)

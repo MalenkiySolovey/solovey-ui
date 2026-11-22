@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 )
 
 func TestZapretDesiredIntentSurvivesUnavailableProjection(t *testing.T) {
@@ -30,6 +31,7 @@ func TestZapretDesiredIntentSurvivesUnavailableProjection(t *testing.T) {
 
 func TestZapretAttachmentRejectsAmbiguousOptions(t *testing.T) {
 	for _, raw := range []string{
+		`{"protect_path":"/run/solovey-ui/zapret/z-stale"}`,
 		`{"zapret": null}`,
 		`{"zapret":{"outboundRef":"a"}}`,
 		`{"zapret":{"outboundRef":"a","enabled":null}}`,
@@ -42,6 +44,34 @@ func TestZapretAttachmentRejectsAmbiguousOptions(t *testing.T) {
 		if _, err := projectZapretOutbound(model.Outbound{Tag: "a", Type: "direct", Options: json.RawMessage(raw)}); err == nil {
 			t.Errorf("invalid attachment was accepted: %s", raw)
 		}
+	}
+}
+
+func TestZapretProjectionRequiresMatchingGenerationGrant(t *testing.T) {
+	row := model.Outbound{Tag: "direct-a", Type: "direct", Options: json.RawMessage(
+		`{"zapret":{"outboundRef":"direct-a","enabled":true,"strategyRef":"proof"}}`)}
+	before := string(row.Options)
+	grant := func(request zapretactivation.Request) zapretactivation.Grant {
+		t.Helper()
+		if request.OutboundRef != row.Tag || request.StrategyRef != "proof" || !zapretactivation.ValidDigest(request.OutboundRevision) {
+			t.Fatalf("unexpected grant request: %+v", request)
+		}
+		return zapretactivation.Grant{Request: request, StrategyRevision: strings.Repeat("a", 64), Generation: strings.Repeat("b", 64)}
+	}
+	_, err := projectZapretRuntime(row, false, func(request zapretactivation.Request) (zapretactivation.Grant, error) {
+		stale := grant(request)
+		stale.OutboundRevision = strings.Repeat("c", 64)
+		return stale, nil
+	})
+	if !errors.Is(err, ErrZapretPacketPathUnqualified) {
+		t.Fatalf("an unmatched grant entered the runtime config: %v", err)
+	}
+	projected, err := projectZapretRuntime(row, false, func(request zapretactivation.Request) (zapretactivation.Grant, error) {
+		return grant(request), nil
+	})
+	want := `{"protect_path":"` + zapretactivation.SocketRoot + "/z-" + strings.Repeat("b", 64) + `"}`
+	if err != nil || string(projected.Options) != want || string(row.Options) != before {
+		t.Fatalf("expected a runtime-only socket path, got %s, %v", projected.Options, err)
 	}
 }
 

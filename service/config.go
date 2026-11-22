@@ -12,8 +12,11 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/core/inboundidentity"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/sessionidentity"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/assembly"
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
@@ -78,6 +81,10 @@ func (s *ConfigService) coreCandidate() ([]byte, []inboundidentity.Binding, erro
 }
 
 func (s *ConfigService) coreCandidateContext(ctx context.Context) ([]byte, []inboundidentity.Binding, error) {
+	return s.buildCoreCandidate(ctx, nil)
+}
+
+func (s *ConfigService) buildCoreCandidate(ctx context.Context, admit outbounds.ZapretAdmitter) ([]byte, []inboundidentity.Binding, error) {
 	db := configDatabase()
 	if db == nil {
 		return nil, nil, errors.New("configuration database is not initialized")
@@ -89,7 +96,7 @@ func (s *ConfigService) coreCandidateContext(ctx context.Context) ([]byte, []inb
 			return err
 		}
 		var err error
-		config, err = s.singBoxConfigBuilder().BuildFromDB(tx, "")
+		config, err = assembly.BuildCoreStartupFromDB(tx, admit)
 		if err != nil {
 			return err
 		}
@@ -146,8 +153,21 @@ func (s *ConfigService) startCoreLockedContext(ctx context.Context, force bool) 
 		return nil
 	}
 
+	if err := runtime.retireZapretGrant(); err != nil {
+		runtime.markCoreStartFailed()
+		return err
+	}
 	logger.Info("starting core")
-	rawConfig, bindings, err := s.coreCandidateContext(ctx)
+	var admitted *zapretactivation.Grant
+	defer func() {
+		if admitted != nil {
+			runtime.zapretGrant = admitted
+			if err := runtime.retireZapretGrant(); err != nil {
+				logger.Warning(err)
+			}
+		}
+	}()
+	rawConfig, bindings, err := s.buildCoreCandidate(ctx, runtime.installedZapretAdmitter(ctx, &admitted))
 	if err != nil {
 		if ctx.Err() == nil {
 			runtime.markCoreStartFailed()
@@ -160,6 +180,7 @@ func (s *ConfigService) startCoreLockedContext(ctx context.Context, force bool) 
 		logger.Error("start sing-box err:", err.Error())
 		return err
 	}
+	runtime.zapretGrant, admitted = admitted, nil
 	runtime.markCoreStartSucceeded()
 	logger.Info("sing-box started")
 	realtime.Publish(realtime.TopicCoreState, map[string]any{"state": "running"})
@@ -191,7 +212,11 @@ func (s *ConfigService) restartCoreLocked() error {
 		return err
 	}
 	// Reject an unavailable dependency before stopping the currently running core.
-	if _, err := s.GetConfig(""); err != nil {
+	db := configDatabase()
+	if db == nil {
+		return errors.New("configuration database is not initialized")
+	}
+	if err := assembly.ValidateCoreRestartFromDB(db, s.runtime().zapretComponentStarted()); err != nil {
 		return err
 	}
 	if err := s.stopCoreLocked(); err != nil {
@@ -213,13 +238,11 @@ func (s *ConfigService) stopCoreLocked() error {
 	if coreInstance == nil {
 		return common.NewError("core not initialized")
 	}
-	err := coreInstance.Stop()
-	if err != nil {
-		return err
-	}
+	stopErr := coreInstance.Stop()
+	retireErr := s.runtime().retireZapretGrant()
 	logger.Info("sing-box stopped")
 	realtime.Publish(realtime.TopicCoreState, map[string]any{"state": "stopped"})
-	return nil
+	return errors.Join(stopErr, retireErr)
 }
 
 func (s *ConfigService) IsCoreRunning() bool {
@@ -247,6 +270,23 @@ func (s *ConfigService) CheckOutboundWithSource(ctx context.Context, tag string,
 }
 
 func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initUsers string, loginUser string, hostname string) (objs []string, err error) {
+	if obj != "outbounds" {
+		return s.save(obj, act, data, initUsers, loginUser, hostname, false)
+	}
+	manager := s.runtime().restart()
+	if manager == nil {
+		return nil, errors.New("outbound configuration lifecycle is unavailable")
+	}
+	returnObjs := []string(nil)
+	err = manager.RunBlocking(func() error {
+		var saveErr error
+		returnObjs, saveErr = s.save(obj, act, data, initUsers, loginUser, hostname, true)
+		return saveErr
+	})
+	return returnObjs, err
+}
+
+func (s *ConfigService) save(obj string, act string, data json.RawMessage, initUsers string, loginUser string, hostname string, coreLocked bool) (objs []string, err error) {
 	plan := newConfigSavePlan(obj)
 	afterCommitEffects, err := s.prepareConfigSaveObserverEffects(obj, data, loginUser)
 	if err != nil {
@@ -288,7 +328,7 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 		if _, err = runtimeprojection.ValidateReferences(tx, nil); err != nil {
 			return nil, err
 		}
-		if err = s.validateNativeInboundCandidate(tx); err != nil {
+		if err = s.validateCoreSaveCandidate(tx, obj, plan); err != nil {
 			return nil, err
 		}
 	}
@@ -296,15 +336,28 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 		return nil, err
 	}
 
+	if componentSettingsChanged {
+		if err = validateZapretDisable(tx, data); err != nil {
+			return nil, err
+		}
+	}
+	// On a binding change, close the previous serving Core before the new
+	// desired row can be observed. In particular an OFF dialer must never
+	// continue serving if admission of a committed ON binding fails.
+	if plan.RequiresCoreQuiescence() {
+		if !coreLocked {
+			return nil, errors.New("Zapret mutation requires the Core lifecycle lock")
+		}
+		if err := s.stopCoreLocked(); err != nil {
+			return nil, err
+		}
+	}
 	if err = tx.Commit().Error; err != nil {
 		return plan.Objects(), err
 	}
 	committed = true
 	s.setLastUpdate(time.Now().Unix())
 
-	if err = s.applyConfigSaveEffects(plan, afterCommitEffects); err != nil {
-		return plan.Objects(), err
-	}
 	if componentSettingsChanged {
 		reconcileCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -312,8 +365,13 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 			logger.Warning("component settings reconcile failed: ", reconcileErr)
 		}
 	}
-
-	return plan.Objects(), nil
+	publishConfigSaveEffects(afterCommitEffects)
+	if coreLocked {
+		err = s.applyCoreSaveEffectLocked(plan)
+	} else {
+		err = s.applyCoreSaveEffect(plan)
+	}
+	return plan.Objects(), err
 }
 
 func (s *ConfigService) coreInstance() *coreruntime.Core {
