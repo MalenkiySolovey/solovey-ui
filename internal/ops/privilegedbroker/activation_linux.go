@@ -10,10 +10,11 @@ import (
 	"strconv"
 )
 
-// ActivatedListeners consumes exactly the two systemd-owned AF_UNIX sockets.
+// ActivatedListeners consumes the two systemd-owned AF_UNIX sockets. A proof
+// build can also verify and discard its copy of a deny port retained by PID 1.
 // There is deliberately no path-listening fallback and no caller-controlled
 // file descriptor or socket path.
-func ActivatedListeners() (map[Role]*net.UnixListener, error) {
+func ActivatedListeners() (_ map[Role]*net.UnixListener, failure error) {
 	pid, err := strconv.Atoi(os.Getenv("LISTEN_PID"))
 	if err != nil {
 		return nil, errors.New("privileged broker systemd socket activation PID is invalid")
@@ -23,14 +24,28 @@ func ActivatedListeners() (map[Role]*net.UnixListener, error) {
 		return nil, err
 	}
 	result := make(map[Role]*net.UnixListener, 2)
+	defer func() {
+		if failure != nil {
+			for _, listener := range result {
+				_ = listener.Close()
+			}
+		}
+	}()
 	for index, name := range names {
+		fd := 3 + index
+		if name == zapretDenyFDName {
+			if err := closeInheritedZapretDeny(fd); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		role := RolePanel
 		if name == "proof" {
 			role = RoleSSHProof
 		}
-		file := os.NewFile(uintptr(3+index), names[index])
+		file := os.NewFile(uintptr(fd), name)
 		if file == nil {
-			return nil, fmt.Errorf("systemd socket descriptor %d is absent", 3+index)
+			return nil, fmt.Errorf("systemd socket descriptor %d is absent", fd)
 		}
 		listener, listenErr := net.FileListener(file)
 		_ = file.Close()

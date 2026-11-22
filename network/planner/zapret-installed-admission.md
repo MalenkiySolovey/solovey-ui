@@ -131,7 +131,21 @@ An already-open marked UDP test socket was blocked after engine and admission
 loss, but reached the receiver untreated after the stock `nftables.service`
 reload flushed the deny table. The unmarked control continued throughout.
 This was not a Core Direct socket. A live port-owned table is exempt from
-other ports' flushes, but the current broker's table disappears when that
-port closes. An orphaned persistent table does not retain live ownership.
-Do not enable socket admission until containment survives both faults with
-issued sockets, or those sockets are proven drained before containment ends.
+other ports' flushes, but the kernel releases it on the last close of its
+owner port. An orphaned persistent table does not retain live ownership.
+
+A `zapretproof` broker can verify and close its inherited copy of a
+deny-only owner port. It requires both original RPC listeners and verifies
+that PID 1's store for the fixed broker unit holds the same name, device,
+inode and mode. A notify send or a matching name alone is not that proof.
+It neither adopts nor removes the stored port and does not issue a grant.
+Ordinary binaries and service units do not enable this path.
+
+Retaining the deny port solves a different problem from retaining admission.
+Linux queues by number in the network namespace, not by the attested engine
+port ID. After an unbind, the same number can be bound by another privileged
+listener. Keeping an open copy of the engine FD would not prevent an explicit
+unbind, and polling cannot make a queue lookup atomic with the attestation.
+Nor does retaining the deny table constrain later transmit hooks. Keep ON
+closed until the supported deployment enforces exclusive queue and egress
+authority and qualifies recovery with real issued Direct sockets.

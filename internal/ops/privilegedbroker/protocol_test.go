@@ -304,6 +304,23 @@ func TestActivationContractRequiresExactlyBothNamedDescriptors(t *testing.T) {
 	}
 }
 
+func TestActivationContractScopesStoredZapretDenyDescriptor(t *testing.T) {
+	for _, names := range []string{"main:proof:zapret-deny", "zapret-deny:proof:main"} {
+		got, err := activatedDescriptorNames(42, 42, "3", names)
+		if zapretDenyActivationEnabled && (err != nil || len(got) != 3) || !zapretDenyActivationEnabled && err == nil {
+			t.Fatalf("descriptor contract mismatch: names=%q got=%v err=%v", names, got, err)
+		}
+	}
+	for _, names := range []string{"main:zapret-deny:zapret-deny", "main:main:zapret-deny", "main:proof:netlink", "main:zapret-deny"} {
+		if _, err := activatedDescriptorNames(42, 42, "3", names); err == nil {
+			t.Fatalf("invalid descriptor names accepted: %q", names)
+		}
+	}
+	if _, err := activatedDescriptorNames(42, 42, "2", "main:zapret-deny"); err == nil {
+		t.Fatal("deny port displaced a required RPC listener")
+	}
+}
+
 func TestManifestMatchingRejectsIdentityDriftAndAcceptsSetgidProof(t *testing.T) {
 	digest := Digest([]byte("executable"))
 	manifest := Manifest{Revision: Digest([]byte("manifest")), Clients: []ClientManifest{
