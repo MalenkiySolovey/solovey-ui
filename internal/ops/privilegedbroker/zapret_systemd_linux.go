@@ -385,7 +385,9 @@ func startZapretEngine(ctx context.Context, plan planner.ZapretPlan, selected In
 		return nil, processevidence.Fact{}, err
 	}
 	credential := fmt.Sprintf("--uid=%d:%d", zapretEngineUID, zapretEngineUID)
-	cmd := exec.Command(zapretEnginePath, append(args, credential)...)
+	// Match the admitted socket's egress for generated IPv4 packets. A raw
+	// send via an alternate route can fail and make nfqws2 pass the original.
+	cmd := exec.Command(zapretEnginePath, append(args, "--bind-fix4", credential)...)
 	cmd.Dir = zapretEngineRoot
 	cmd.Env = []string{"LANG=C", "LC_ALL=C"}
 	pidfd := -1

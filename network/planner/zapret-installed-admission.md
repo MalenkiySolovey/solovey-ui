@@ -17,8 +17,10 @@ output and egress hooks, legacy iptables rules, foreign tc/TCX owners on the
 selected interface, and competing Core TUN or mark configuration. Retire the
 binding before changing privileged hooks or remapping the egress device.
 The active owned table checks the selected next hop and device both before
-queueing and in postrouting. This profile does not support administrators or
-other privileged services attaching new hooks to the protected path while ON.
+queueing and in postrouting. The broker starts the pinned engine with
+`--bind-fix4` so its generated packets use the admitted NFQUEUE output device,
+not an alternate route available to unbound sockets. This profile does not
+support privileged services attaching new hooks to the protected path while ON.
 
 Systemd holds the separate deny table's exact netlink owner descriptor. The
 broker consumes a journaled mark serial before it builds a new path. It only
