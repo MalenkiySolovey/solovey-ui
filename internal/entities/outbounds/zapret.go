@@ -1,18 +1,24 @@
 package outbounds
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	hostoutbounds "github.com/MalenkiySolovey/solovey-host/outbounds"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
+	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
+	"gorm.io/gorm"
 )
 
 const zapretOption = "zapret"
 
 var (
-	ErrZapretPacketPathUnqualified = errors.New("ZAPRET_PACKET_PATH_UNQUALIFIED: disable the binding before activating this outbound")
+	ErrZapretPacketPathUnqualified = errors.New("ZAPRET_PACKET_PATH_UNQUALIFIED: a ready installed Zapret profile is required for this outbound")
 	errZapretBindingInvalid        = errors.New("ZAPRET_BINDING_INVALID: expected a Direct outbound binding")
 	errZapretChangeRequired        = errors.New("ZAPRET_BINDING_EDIT_REQUIRED: include the binding explicitly when editing the outbound")
 )
@@ -26,6 +32,11 @@ func zapretOptions(row model.Outbound) (map[string]json.RawMessage, *hostoutboun
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(row.Options, &fields); err != nil {
 		return nil, nil, err
+	}
+	for key := range fields {
+		if strings.EqualFold(key, "protect_path") {
+			return nil, nil, errors.New("protect_path is reserved for installed Core socket admission")
+		}
 	}
 	raw, present := fields[zapretOption]
 	if !present {
@@ -71,7 +82,60 @@ func requireExplicitZapretChange(previous, candidate model.Outbound) error {
 	return nil
 }
 
-// projectZapretOutbound is used before any candidate/live write. Returning an
+func zapretLifecycleChange(allowed bool, rows ...model.Outbound) (*singboxapply.Change, error) {
+	for _, row := range rows {
+		_, binding, err := zapretOptions(row)
+		if err != nil {
+			return nil, err
+		}
+		if binding != nil && binding.Enabled {
+			if !allowed {
+				return nil, ErrZapretPacketPathUnqualified
+			}
+			return &singboxapply.Change{NeedsRestart: true, QuiesceCore: true, RestartReason: "Zapret binding changed"}, nil
+		}
+	}
+	return nil, nil
+}
+
+// CheckZapretStartup validates desired intent without reserving a broker
+// generation. It is also used by the component disable dependency check.
+func CheckZapretStartup(db *gorm.DB, ready bool) (bool, error) {
+	if !db.Migrator().HasTable(&model.Outbound{}) {
+		return false, nil
+	}
+	var rows []model.Outbound
+	if err := db.Find(&rows).Error; err != nil {
+		return false, err
+	}
+	found := false
+	for _, row := range rows {
+		fields, binding, err := zapretOptions(row)
+		if err != nil {
+			return false, err
+		}
+		if binding == nil || !binding.Enabled {
+			continue
+		}
+		if found || !ready || row.RemoteMissing || zapretDialConflict(fields) {
+			return false, fmt.Errorf("outbound %q: %w", binding.OutboundRef, ErrZapretPacketPathUnqualified)
+		}
+		found = true
+	}
+	return found, nil
+}
+
+func zapretDialConflict(fields map[string]json.RawMessage) bool {
+	for key := range fields {
+		switch strings.ToLower(key) {
+		case "protect_path", "routing_mark", "bind_interface", "netns", "inet4_bind_address", "inet6_bind_address":
+			return true
+		}
+	}
+	return false
+}
+
+// projectZapretOutbound is used outside authorized Core startup. Returning an
 // error for ON is intentional: omitting A or passing its unmarked Direct to
 // sing-box could select a different outbound and silently change user intent.
 func projectZapretOutbound(row model.Outbound) (model.Outbound, error) {
@@ -79,12 +143,40 @@ func projectZapretOutbound(row model.Outbound) (model.Outbound, error) {
 }
 
 func projectZapretOptions(row model.Outbound, heldRestoreValidation bool) (model.Outbound, error) {
+	return projectZapretRuntime(row, heldRestoreValidation, nil)
+}
+
+// ZapretAdmitter is used only for installed Core startup. Offline and hot
+// reload projections cannot turn an enabled binding into a provider dialer.
+type ZapretAdmitter func(zapretactivation.Request) (zapretactivation.Grant, error)
+
+func projectZapretRuntime(row model.Outbound, heldRestoreValidation bool, admit ZapretAdmitter) (model.Outbound, error) {
 	fields, binding, err := zapretOptions(row)
 	if err != nil || binding == nil {
 		return row, err
 	}
 	if binding.Enabled && !heldRestoreValidation {
-		return model.Outbound{}, ErrZapretPacketPathUnqualified
+		fail := func(cause error) (model.Outbound, error) {
+			return model.Outbound{}, fmt.Errorf("outbound %q: %w", binding.OutboundRef, cause)
+		}
+		// Only a fresh socket in the normal namespace can enter the broker.
+		if admit == nil || row.RemoteMissing || zapretDialConflict(fields) {
+			return fail(ErrZapretPacketPathUnqualified)
+		}
+		serialized, err := json.Marshal(row)
+		if err != nil {
+			return fail(err)
+		}
+		request := zapretactivation.Request{OutboundRef: binding.OutboundRef, OutboundRevision: fmt.Sprintf("%x", sha256.Sum256(serialized)), StrategyRef: binding.StrategyRef}
+		grant, err := admit(request)
+		if err != nil {
+			return fail(err)
+		}
+		path, ok := grant.ProtectPath(request)
+		if !ok {
+			return fail(ErrZapretPacketPathUnqualified)
+		}
+		fields["protect_path"], _ = json.Marshal(path)
 	}
 	delete(fields, zapretOption)
 	row.Options, err = json.Marshal(fields)

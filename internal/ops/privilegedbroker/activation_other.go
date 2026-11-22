@@ -7,6 +7,6 @@ import (
 	"net"
 )
 
-func ActivatedListeners() (map[Role]*net.UnixListener, error) {
-	return nil, errors.New("privileged broker requires Linux systemd socket activation")
+func ActivatedListeners() (map[Role]*net.UnixListener, zapretDenyIdentity, error) {
+	return nil, zapretDenyIdentity{}, errors.New("privileged broker requires Linux systemd socket activation")
 }

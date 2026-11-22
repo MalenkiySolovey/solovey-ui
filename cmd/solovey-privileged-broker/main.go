@@ -26,6 +26,9 @@ func main() {
 }
 
 func run() error {
+	if handled, err := broker.RunZapretEngineStop(os.Args[1:]); handled {
+		return err
+	}
 	composition, err := parseRuntimeComposition(os.Args[1:])
 	if err != nil {
 		return err
@@ -78,6 +81,10 @@ func run() error {
 	listeners := listenerSet.Listeners
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
+	if err := registerInstalledZapret(ctx, server, composition.transport, listenerSet); err != nil {
+		_ = listenerSet.Close()
+		return err
+	}
 	auditQueue := make(chan broker.AuditEvent, 128)
 	var droppedAuditEvents atomic.Uint64
 	auditDone := make(chan struct{})

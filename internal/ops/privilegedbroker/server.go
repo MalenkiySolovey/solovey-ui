@@ -362,6 +362,10 @@ func (s *Server) handle(ctx context.Context, request Request, peer PeerIdentity,
 		}
 		return true
 	}
+	if definition.LocalPathAuthority {
+		s.mutation.Lock()
+		defer s.mutation.Unlock()
+	}
 	if definition.Mutation {
 		s.mutation.Lock()
 		defer s.mutation.Unlock()
@@ -575,6 +579,8 @@ func sanitizeHandlerDiagnostic(value string) string {
 
 func ownerDomain(verb Verb) string {
 	switch sanitizeAuditVerb(verb) {
+	case auditZapretSocket, VerbZapretAcquire, VerbZapretRelease:
+		return "zapret"
 	case VerbSSHObserve, VerbSSHPrepare, VerbSSHStage, VerbSSHRecoverStage, VerbSSHReleaseStage, VerbSSHValidate, VerbSSHReload, VerbSSHArm, VerbSSHRestore, VerbSSHInspect, VerbSSHVerify, VerbSSHProof:
 		return "ssh"
 	case VerbDeploymentObserve, VerbDeploymentDoctor, VerbDeploymentPrepare, VerbDeploymentApply, VerbDeploymentVerify, VerbDeploymentRollback:

@@ -22,8 +22,12 @@ export function validateSourceLock(lock) {
     assert.deepEqual(Object.keys(source).sort(), ['id','module','version','sourceCommit','sourceTree','moduleChecksum','goModChecksum','manifestSHA256','frontendSHA256','files'].sort())
     assert.match(source.id, /^[a-z0-9]+(?:-[a-z0-9]+)*$/)
     assert.equal(source.module, `github.com/MalenkiySolovey/solovey-component-${source.id}`)
-    assert.match(source.version, /^v[01]\.\d+\.\d+$/)
     for (const field of ['sourceCommit', 'sourceTree']) assert.match(source[field], /^[0-9a-f]{40}$/)
+    // A headless producer can be pinned after source acceptance without a tag.
+    // The Go resolver still verifies the canonical timestamp and full origin.
+    const version = /^v[01]\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:(?:-0\.|-)\d{14}-([0-9a-f]{12}))?$/.exec(source.version)
+    assert.ok(version && version[0] === source.version, 'immutable headless module version required')
+    if (version[1]) assert.equal(version[1], source.sourceCommit.slice(0, 12), 'headless pseudo-version commit mismatch')
     for (const field of ['moduleChecksum', 'goModChecksum']) assert.match(source[field], /^h1:[A-Za-z0-9+/]{43}=$/)
     assert.ok(source.files && Object.keys(source.files).length <= 1024)
     for (const [name, hash] of Object.entries(source.files)) {

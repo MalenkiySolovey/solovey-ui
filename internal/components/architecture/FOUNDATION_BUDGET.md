@@ -433,3 +433,18 @@ worker/ticker entries from `api/realtime/handler.go` to
 `5db1967d4d1b154855eb569b58bee8ecbee60560dfc7a20a5c776887725bad99`. The request-linked cancellation, deferred stop/join,
 bounded ping context and connection close behavior are unchanged. No worker is
 added; the base, cardinality and every unrelated budget entry remain unchanged.
+
+## R8B1 installed Zapret
+
+The broker resolver's Direct literal labels the one already selected outbound
+for the Component's strategy validator; it creates no outbound or fallback.
+The existing broker owns at most one admitted generation. Its endpoint worker
+drains before retirement completes, joining its cancellation/peer watcher and
+stopping that watcher's ticker. The pinned engine has one Wait reaper and a
+three-second readiness poll; an error retires the engine before retry. The
+one-shot same-UID stop helper only signals the inherited pidfd and is reaped
+even if the caller's two-second wait expires. If engine retirement cannot be
+confirmed, the generation does not release its independent deny. The PID 1
+FD-store retirement poll stops at the broker operation's deadline. None of
+these workers starts without an enabled binding. This admits only the eight
+exact reviewed sites; the R1 baseline and unrelated entries are unchanged.

@@ -10,8 +10,10 @@ import (
 	dbhooks "github.com/MalenkiySolovey/solovey-backend/storage/hooks"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/restart"
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	auditsvc "github.com/MalenkiySolovey/solovey-ui/service/audit"
 )
@@ -65,6 +67,8 @@ type Runtime struct {
 
 	coreStartCooldown time.Duration
 	lastStartFailTime time.Time
+	zapretGrant       *zapretactivation.Grant // Core restart-manager lock
+	zapretStarted     func() bool
 }
 
 func NewRuntime(coreInstance *coreruntime.Core) *Runtime {
@@ -101,6 +105,23 @@ func (r *Runtime) SetCoreProvider(provider CoreProvider) {
 	r.mu.Lock()
 	r.coreProvider = provider
 	r.mu.Unlock()
+}
+
+func (r *Runtime) SetZapretComponentStarted(started func() bool) {
+	r.mu.Lock()
+	r.zapretStarted = started
+	r.mu.Unlock()
+}
+
+func (r *Runtime) zapretComponentStarted() bool {
+	r.mu.RLock()
+	started := r.zapretStarted
+	r.mu.RUnlock()
+	if started == nil || !started() {
+		return false
+	}
+	provider := coreprovider.Current()
+	return provider.State == coreprovider.Verified && provider.ID == "sing-box"
 }
 
 func (r *Runtime) Core() *coreruntime.Core {

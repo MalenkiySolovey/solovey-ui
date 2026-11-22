@@ -2659,6 +2659,54 @@
       "path": "web/web.go",
       "symbol": "*Server.Start",
       "digest": "98ed5edf3302ab99e96dae2cdcb8b2fddf4cf65d87a57927de06813d4916ff9d"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "cmd/solovey-privileged-broker/zapret_linux.go",
+      "symbol": "resolveZapretStrategy",
+      "digest": "7c87cc62857760094a907afcccf4023aa9c2a8fc287f0f8bbc6c796f484fde58"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "internal/ops/privilegedbroker/activation_zapret_proof.go",
+      "symbol": "removeZapretDenyFromSystemd",
+      "digest": "03b44e2341636d3246d57b865957b3ddac70c6730c9bbeb681ec1ec06c9842c1"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "internal/ops/privilegedbroker/zapret_systemd_engine_stop_linux.go",
+      "symbol": "*installedZapretEngine.stop",
+      "digest": "c3ce1e80060fa12e71875254a3777bb6136acc0b1b99aace243aa123839082e9"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "internal/ops/privilegedbroker/zapret_systemd_linux.go",
+      "symbol": "*installedZapret.prepare",
+      "digest": "9061ff1b11e6b347bfd62d596f30f57458c6b0b8bdda71fb753829690242df35"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "internal/ops/privilegedbroker/zapret_systemd_linux.go",
+      "symbol": "*installedZapret.prepare",
+      "digest": "9e2b094c2c0738204000d9c9b06ec4414f6f44db4a3007a828e20c2102e4cc7f"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "internal/ops/privilegedbroker/zapret_systemd_linux.go",
+      "symbol": "*installedZapret.prepare",
+      "digest": "dfe507cebd26ab2d37a69a4aa23c04ad59efeaf8650b228a52b192a2e3859283"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "internal/ops/privilegedbroker/zapret_systemd_linux.go",
+      "symbol": "startZapretEngine",
+      "digest": "2c5b1a4a1fe83d7e78e14a6465463a3457c3eb53a75cc399281b4ba811181991"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "internal/ops/privilegedbroker/zapret_systemd_linux.go",
+      "symbol": "startZapretEngine",
+      "digest": "aa853dab518e2db4f34d5f4102d59e99a998b6532618367a957a4668e2fc627c"
     }
   ]
 }

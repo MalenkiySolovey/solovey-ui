@@ -138,6 +138,8 @@ func (a *APP) Init() (err error) {
 		Scheduler:         a.cronScheduler,
 		DropOwnedSettings: (&service.SettingService{}).DropOwnedComponentSettings,
 	})
+	supervisor := a.components
+	a.runtime.SetZapretComponentStarted(func() bool { return supervisor.ComponentStarted("zapret") })
 	service.RegisterComponentSettingsReconciler(a.components.Reconcile)
 	service.RegisterComponentMigrator(a.components.Migrate)
 	service.RegisterComponentDataDropper(a.components.DropData)

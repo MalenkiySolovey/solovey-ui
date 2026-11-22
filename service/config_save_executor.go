@@ -45,7 +45,7 @@ func (e configSaveExecutor) SaveInbounds(tx *gorm.DB, action string, data json.R
 }
 
 func (e configSaveExecutor) SaveOutbounds(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply.Change, error) {
-	return e.service.OutboundService.SaveWithCoreChange(tx, action, data)
+	return e.service.OutboundService.saveWithCoreChange(tx, action, data, true)
 }
 
 func (e configSaveExecutor) SaveServices(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply.Change, error) {

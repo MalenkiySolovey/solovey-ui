@@ -106,6 +106,11 @@ func (s *ConfigService) ApplyComponentConfigChangeEffects(effects ComponentConfi
 }
 
 func (s *ConfigService) applyConfigSaveEffects(plan configSavePlan, afterCommitEffects []ConfigSaveAfterCommit) error {
+	publishConfigSaveEffects(afterCommitEffects)
+	return s.applyCoreSaveEffect(plan)
+}
+
+func publishConfigSaveEffects(afterCommitEffects []ConfigSaveAfterCommit) {
 	for _, effect := range afterCommitEffects {
 		if effect != nil {
 			effect()
@@ -113,7 +118,6 @@ func (s *ConfigService) applyConfigSaveEffects(plan configSavePlan, afterCommitE
 	}
 	realtime.Publish(realtime.TopicConfigInvalidated, nil)
 	InvalidateSubscriptionCaches()
-	return s.applyCoreSaveEffect(plan)
 }
 
 func (s *ConfigService) applyCoreSaveEffect(plan configSavePlan) error {

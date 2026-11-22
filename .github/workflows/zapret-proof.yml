@@ -9,10 +9,21 @@ on:
       - 'network/planner/**'
       - 'network/nftables/zapret_*.go'
       - 'network/nftables/nft_backend.go'
+      - 'internal/ops/privilegedbroker/activation_*.go'
+      - 'internal/ops/privilegedbroker/zapret_*.go'
+      - 'cmd/solovey-privileged-broker/zapret_*.go'
+      - 'internal/zapretactivation/**'
+      - 'service/config_zapret.go'
+      - 'tests/installer/zapret-socket-runtime.sh'
+      - 'deploy/systemd/solovey-ui-native-hardened.service'
+      - 'deploy/systemd/solovey-privileged-broker.service'
       - 'scripts/generate-component-imports.mjs'
+      - 'scripts/component-source-inputs.mjs'
       - 'internal/entities/outbounds/**'
       - 'go.mod'
       - 'go.sum'
+      - 'go.extended.mod'
+      - 'go.extended.sum'
   workflow_dispatch:
 
 permissions:
@@ -40,19 +51,34 @@ jobs:
         with:
           node-version-file: .node-version
       - name: Verify bounded planner and canonical Outbound rejection
+        shell: bash
         run: |
-          go test -count=1 ./network/planner ./network/nftables ./internal/entities/outbounds ./components/zapret
+          go test -count=1 ./internal/entities/outbounds ./components/zapret
+          go test -tags zapretproof -count=1 ./network/planner ./network/nftables
+          go test -tags zapretproof -count=1 -run '^Test(ActivationContract|InheritedZapretDeny|ZapretSocket|RetiredZapretTCPID)' ./internal/ops/privilegedbroker
+          go test -tags zapretproof,minimal -count=1 -run '^TestActivationContract' ./internal/ops/privilegedbroker
+          node scripts/generate-component-imports.mjs --profile full
+          go list -deps ./cmd/solovey-privileged-broker >"$RUNNER_TEMP/zapret-installed-broker-deps"
+          if grep -Eq '^github\.com/cilium/ebpf(/|$)' "$RUNNER_TEMP/zapret-installed-broker-deps"; then
+            echo 'The ordinary broker must not include the unqualified Zapret BPF path.' >&2
+            exit 1
+          fi
           go test -count=1 -run '^TestComponentImportsStayBehindCompositionPackages$' ./internal/components/architecture
           go test -count=1 -run '^TestPreservationExecutableContainsInstalledDurableOwners$' ./cmd/solovey-openwrt-lifecycle ./cmd/solovey-openwrt-preservation
+      - name: Prove provider handoff and probe the installed broker BPF boundary
+        shell: bash
+        run: bash tests/installer/zapret-socket-runtime.sh | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Build the exact component engine and namespace fixture
+        id: zapret-engine
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y nftables libcap-dev libnetfilter-queue-dev libnfnetlink-dev libmnl-dev liblua5.4-dev zlib1g-dev
+          sudo apt-get install --no-install-recommends -y nftables ethtool libcap-dev libnetfilter-queue-dev libnfnetlink-dev libmnl-dev liblua5.4-dev zlib1g-dev
           node scripts/component-source-inputs.mjs prepare
           bash .component-sources/zapret/scripts/build-nfqws2.sh "$RUNNER_TEMP/zapret-engine"
           go test -c -tags zapretproof -o "$RUNNER_TEMP/zapret-proof" ./components/zapret
+          go test -c -tags zapretproof -o "$RUNNER_TEMP/zapret-egress-proof" ./network/nftables
       - name: Exercise only loopback inside a disposable network namespace
         shell: bash
         run: |
@@ -83,3 +109,50 @@ jobs:
               ip link set lo up
               exec "$1" -test.run "^TestZapretOutboundNamespace$" -test.v -test.timeout=60s
             ' _ "$RUNNER_TEMP/zapret-proof" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Prove the independent guard on disposable routed egress
+        if: ${{ !cancelled() && steps.zapret-engine.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_ACTIONS" = true
+          mountpoint="$RUNNER_TEMP/zapret-bpffs"
+          mkdir -m 0700 "$mountpoint"
+          # nfqws2 loads Lua after dropping its UID. The runner's home is not
+          # a traverseable installed-artifact root for that user.
+          engine="$(sudo mktemp -d /usr/local/lib/solovey-zapret-r8b1.XXXXXXXX)"
+          trap 'sudo rm -f -- "$engine/nfqws2" "$engine/LICENSE.upstream" "$engine/source.json" "$engine/nfqueue-policy.c" "$engine/SHA256SUMS" "$engine/lua/zapret-lib.lua" "$engine/lua/zapret-antidpi.lua"; sudo rmdir -- "$engine/lua" "$engine"' EXIT
+          sudo install -d -m 0755 "$engine/lua"
+          sudo install -m 0755 "$RUNNER_TEMP/zapret-engine/nfqws2" "$engine/nfqws2"
+          sudo install -m 0644 "$RUNNER_TEMP/zapret-engine/"{LICENSE.upstream,source.json,nfqueue-policy.c,SHA256SUMS} "$engine/"
+          sudo install -m 0644 "$RUNNER_TEMP/zapret-engine/lua/"{zapret-lib.lua,zapret-antidpi.lua} "$engine/lua/"
+          sudo chmod 0755 "$engine"
+          (cd -- "$engine" && sha256sum --check --strict SHA256SUMS)
+          exercise() {
+            sudo unshare --mount --propagation private --net -- env \
+              SOLOVEY_TEST_PARENT_NETNS="$(readlink /proc/self/ns/net)" \
+              SOLOVEY_TEST_ENGINE_ROOT="$engine" \
+              SOLOVEY_TEST_GUARD_ROOT="$mountpoint" bash -euc '
+                mount -t bpf bpf -o mode=0700 "$SOLOVEY_TEST_GUARD_ROOT"
+                sysctl -w net.netfilter.nf_conntrack_acct=1
+                if [[ $2 == TestZapretRoutedAuthorityRotation ]]; then
+                  # Give the production binder its own /run and group lookup.
+                  # Neither mount is visible outside this fixture namespace.
+                  mount -t tmpfs -o mode=0755,nodev,nosuid tmpfs /run
+                  cp -- /etc/group /run/zapret-test-group
+                  if ! getent group solovey-ui >/dev/null; then
+                    printf "%s\n" "solovey-ui:x:65534:" >> /run/zapret-test-group
+                  fi
+                  mount --bind /run/zapret-test-group /etc/group
+                  install -d -m 0755 /run/solovey-ui
+                  install -d -o 0 -g solovey-ui -m 0750 /run/solovey-ui/zapret
+                fi
+                exec "$1" -test.run "^$2$" -test.v -test.timeout=45s
+              ' _ "$1" "$2" | tee -a "$GITHUB_STEP_SUMMARY"
+          }
+          guard_result=0
+          exercise "$RUNNER_TEMP/zapret-egress-proof" TestZapretLinuxGatewaySnapshot || guard_result=$?
+          exercise "$RUNNER_TEMP/zapret-egress-proof" TestZapretNativeGuardRoutedEgress || guard_result=$?
+          exercise "$RUNNER_TEMP/zapret-proof" TestZapretRoutedStrategyWire
+          exercise "$RUNNER_TEMP/zapret-proof" TestZapretRoutedPublicationFailure
+          exercise "$RUNNER_TEMP/zapret-proof" TestZapretRoutedAuthorityRotation
+          test "$guard_result" -eq 0

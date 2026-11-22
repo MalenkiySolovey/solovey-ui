@@ -2,6 +2,7 @@ package planner
 
 import (
 	"errors"
+	"net/netip"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-host/hostref"
@@ -61,6 +62,44 @@ func TestCompileZapretAllocatesFreshBoundedResources(t *testing.T) {
 	}
 }
 
+func TestInstalledZapretScopeBindsEgressAndRejectsProbe(t *testing.T) {
+	request, facts := zapretFixture()
+	probe, err := CompileZapret(request, facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = probe.SocketScope()
+	requireReason(t, err, CapabilityUnavailable)
+	facts.Capability.Backend = ZapretInstalledBackend
+	_, err = CompileZapret(request, facts)
+	requireReason(t, err, CapabilityUnavailable)
+	facts.Zapret.InstalledEgress = &ZapretEgress{NamespaceCookie: 11, IfIndex: 2, IPv4Gateway: netip.MustParseAddr("192.0.2.1"), RouteRevision: hash("egress")}
+	plan, err := CompileZapret(request, facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope, err := plan.SocketScope()
+	if err != nil || !scope.Valid() || scope.Mark() != plan.SocketMark() || scope.PlanRevision() != plan.Plan().Revision() ||
+		scope.OutboundRef() != request.OutboundRef || scope.StrategyRevision() != request.StrategyRevision ||
+		!scope.AllowsProtocol(intent.PacketProtocolTCP) || scope.AllowsProtocol(intent.PacketProtocolUDP) {
+		t.Fatalf("wrong installed scope: %#v (%v)", scope, err)
+	}
+	facts.Zapret.InstalledEgress.IfIndex = 3
+	if scope.Egress().IfIndex != 2 {
+		t.Fatal("observed egress mutation changed existing allocation")
+	}
+	requireReason(t, CheckCurrent(plan.Plan(), facts), StalePlan)
+	facts.Zapret.InstalledEgress.IfIndex = 2
+	facts.Zapret.InstalledEgress.IPv4Gateway = netip.MustParseAddr("192.0.2.2")
+	requireReason(t, CheckCurrent(plan.Plan(), facts), StalePlan)
+	facts.Zapret.InstalledEgress.IPv4Gateway = netip.MustParseAddr("192.0.2.1")
+	facts.Zapret.InstalledEgress.RouteRevision = hash("new route, same link")
+	requireReason(t, CheckCurrent(plan.Plan(), facts), StalePlan)
+	facts.Zapret.InstalledEgress.IPv4Gateway = netip.MustParseAddr("::ffff:192.0.2.1")
+	_, err = CompileZapret(request, facts)
+	requireReason(t, err, CapabilityUnavailable)
+}
+
 func TestCompileZapretFailsClosedForUnsupportedPathAndCollision(t *testing.T) {
 	for name, edit := range map[string]func(*intent.ZapretPacketPathIntent, *Facts){
 		"tun auto redirect": func(_ *intent.ZapretPacketPathIntent, f *Facts) { f.Zapret.TUNAutoRedirect = true },
@@ -91,6 +130,45 @@ func TestCompileZapretFailsClosedForUnsupportedPathAndCollision(t *testing.T) {
 				t.Fatalf("untyped planner error: %v", err)
 			}
 		})
+	}
+}
+
+func TestInstalledZapretDoesNotReuseRoutingMarkSelectors(t *testing.T) {
+	request, facts := zapretFixture()
+	facts.Capability.Backend = ZapretInstalledBackend
+	facts.Zapret.ReservedMarkBits = ^uint32(0x3f)
+	facts.Zapret.InstalledEgress = &ZapretEgress{
+		NamespaceCookie: 11, IfIndex: 2, IPv4Gateway: netip.MustParseAddr("192.0.2.1"),
+		RouteRevision: hash("egress"), RoutingMarkBits: 3,
+	}
+	plan, err := CompileZapret(request, facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bits := plan.PacketMarkMask(); bits != 0x3c {
+		t.Fatalf("expected only the four unclaimed bits, got %#x", bits)
+	}
+	facts.Zapret.InstalledEgress.RoutingMarkBits |= 4
+	_, err = CompileZapret(request, facts)
+	requireReason(t, err, AllocationUnavailable)
+}
+
+func TestSystemdZapretPacketMarkMaskExcludesSerial(t *testing.T) {
+	request, facts := zapretFixture()
+	facts.Capability.Backend = ZapretSystemdBackend
+	facts.Zapret.InstalledEgress = &ZapretEgress{
+		NamespaceCookie: 11, IfIndex: 2, IPv4Gateway: netip.MustParseAddr("192.0.2.1"), RouteRevision: hash("egress"),
+	}
+	facts.Zapret.SystemdSerial = ZapretMaxSerial
+	plan, err := CompileZapret(request, facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := plan.PacketMarkMask(); got != 0x0f000000 || got&ZapretMaxSerial != 0 {
+		t.Fatalf("protected flags must not catch an unrelated mark in the serial field: %#x", got)
+	}
+	if plan.SocketMark() != ZapretSocketMarkBit|ZapretMaxSerial {
+		t.Fatal("the exact socket mark lost its generation serial")
 	}
 }
 

@@ -9,6 +9,9 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
+NotifyAccess=main
+FileDescriptorStoreMax=1
+FileDescriptorStorePreserve=yes
 User=root
 Group=root
 WorkingDirectory=/var/lib/solovey-ui-broker
@@ -42,7 +45,7 @@ SystemCallArchitectures=native
 # Cross-UID peer attestation reads /proc/<pid>/exe under the kernel's ptrace access check.
 CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_FSETID CAP_NET_ADMIN CAP_NET_RAW CAP_SETGID CAP_SETUID CAP_SYS_PTRACE
 AmbientCapabilities=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_FSETID CAP_NET_ADMIN CAP_NET_RAW CAP_SETGID CAP_SETUID CAP_SYS_PTRACE
-ReadWritePaths=/var/lib/solovey-ui-broker /var/lib/solovey-ui /usr/local/solovey-ui/releases /usr/local/solovey-ui/.runtime/server-protection /etc/solovey-ui /etc/systemd/system /etc/ssh/sshd_config.d -/etc/nginx -/run/nginx -/var/lib/nginx -/var/log/nginx /run/systemd
+ReadWritePaths=/var/lib/solovey-ui-broker /var/lib/solovey-ui /usr/local/solovey-ui/releases /usr/local/solovey-ui/.runtime/server-protection /etc/solovey-ui /etc/systemd/system /etc/ssh/sshd_config.d -/etc/nginx -/run/nginx -/var/lib/nginx -/var/log/nginx /run/systemd /run/solovey-ui
 ReadOnlyPaths=/etc/ssh /usr/local/solovey-ui /usr/local/lib/solovey-ui/systemd
 LimitNOFILE=4096
 TasksMax=128
