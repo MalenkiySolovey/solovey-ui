@@ -33,7 +33,8 @@ func TestUnqualifiedZapretStartUsesCoreRetryCooldown(t *testing.T) {
 	if err := dbsqlite.DB().Create(&row).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := s.StartCore(); !errors.Is(err, outbounds.ErrZapretPacketPathUnqualified) || core.IsRunning() {
+	if err := s.StartCore(); !errors.Is(err, outbounds.ErrZapretPacketPathUnqualified) ||
+		!strings.Contains(err.Error(), `outbound "direct-a"`) || core.IsRunning() {
 		t.Fatalf("first start must report the blocked binding without starting Core: %v", err)
 	}
 	if err := s.StartCore(); err != nil || core.IsRunning() {

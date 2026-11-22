@@ -3,6 +3,7 @@ package outbounds
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	hostoutbounds "github.com/MalenkiySolovey/solovey-host/outbounds"
@@ -84,7 +85,7 @@ func projectZapretOptions(row model.Outbound, heldRestoreValidation bool) (model
 		return row, err
 	}
 	if binding.Enabled && !heldRestoreValidation {
-		return model.Outbound{}, ErrZapretPacketPathUnqualified
+		return model.Outbound{}, fmt.Errorf("outbound %q: %w", binding.OutboundRef, ErrZapretPacketPathUnqualified)
 	}
 	delete(fields, zapretOption)
 	row.Options, err = json.Marshal(fields)
