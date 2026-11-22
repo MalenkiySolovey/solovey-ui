@@ -123,3 +123,15 @@ prerequisite is an enforceable owner of the protected path through the last
 egress decision, including exclusive queue and mark authority. Operators and
 the narrow broker are trusted; if co-resident networking services can modify
 these resources, observing their current state is not admission evidence.
+
+A separate unowned nftables deny table is not a substitute for that owner.
+In a disposable Ubuntu 24.04.5 guest (Linux 6.8.0-147-generic), the pinned
+engine bound its queue in the installed broker's sandbox via a test drop-in.
+An already-open marked UDP test socket was blocked after engine and admission
+loss, but reached the receiver untreated after the stock `nftables.service`
+reload flushed the deny table. The unmarked control continued throughout.
+This was not a Core Direct socket. A live port-owned table is exempt from
+other ports' flushes, but the current broker's table disappears when that
+port closes. An orphaned persistent table does not retain live ownership.
+Do not enable socket admission until containment survives both faults with
+issued sockets, or those sockets are proven drained before containment ends.
