@@ -105,7 +105,7 @@ func getAllRuntimeConfig(db *gorm.DB, heldRestoreValidation bool, admit ZapretBa
 				}
 			}
 		}
-		grant, err = admitZapretRows(rows, admit)
+		grant, err = admitZapretRows(db, rows, admit)
 		if err != nil {
 			return nil, err
 		}

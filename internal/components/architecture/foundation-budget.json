@@ -2712,7 +2712,13 @@
       "rule": "direct-policy",
       "path": "cmd/solovey-privileged-broker/zapret_linux.go",
       "symbol": "resolveZapretStrategies",
-      "digest": "384639bf7350ab2f1945a8b4270dae6c8c6ef996b05d6c96a1c23a6b7e37eeab"
+      "digest": "7c903a49943e885c979d2f1dbe3ef09a0908469405dcb50b802bbfc5956175ad"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "internal/ops/privilegedbroker/zapret_systemd_linux.go",
+      "symbol": "*installedZapret.prepare",
+      "digest": "abbc91d1fd948786123846d1e8277b56947fee07e02646fa556fdaa5bcca2479"
     },
     {
       "rule": "worker-lifetime",

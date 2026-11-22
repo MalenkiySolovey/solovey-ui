@@ -11,4 +11,5 @@ import (
 	_ "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions"
 	_ "github.com/MalenkiySolovey/solovey-ui/components/server-protection"
 	_ "github.com/MalenkiySolovey/solovey-ui/components/telegram"
+	_ "github.com/MalenkiySolovey/solovey-ui/components/zapret"
 )

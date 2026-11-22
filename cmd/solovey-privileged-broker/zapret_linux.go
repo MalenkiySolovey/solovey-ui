@@ -3,7 +3,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -34,9 +33,7 @@ func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivati
 	strategies := make([]strategy.Strategy, len(inputs))
 	for i, request := range requests {
 		var source installedStrategy
-		decoder := json.NewDecoder(bytes.NewReader(inputs[i]))
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&source.Strategy); err != nil {
+		if err := broker.DecodeRawPayload(inputs[i], &source.Strategy); err != nil {
 			return broker.InstalledZapretStrategies{}, err
 		}
 		selected, err := binding.Resolve(outbounds.ZapretBinding{OutboundRef: request.OutboundRef, StrategyRef: request.StrategyRef, Enabled: true},

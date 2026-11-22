@@ -51,6 +51,8 @@ type installedZapretProfile struct {
 	EngineDigest string            `json:"engineSHA256"`
 	Strategy     json.RawMessage   `json:"strategy,omitempty"`
 	Strategies   []json.RawMessage `json:"strategies,omitempty"`
+	// An operator may delegate bounded profiles, not egress, engine, or Lua authority.
+	AllowManagedStrategies bool `json:"allowManagedStrategies,omitempty"`
 }
 
 func readInstalledZapretProfile() (installedZapretProfile, error) {
@@ -82,7 +84,7 @@ func readInstalledZapretProfile() (installedZapretProfile, error) {
 	return profile, nil
 }
 
-func (p installedZapretProfile) selectStrategies(requests []zapretactivation.Request) ([]json.RawMessage, error) {
+func (p installedZapretProfile) selectStrategies(input zapretactivation.Validation) ([]json.RawMessage, error) {
 	refs, definitions := p.OutboundRefs, p.Strategies
 	if p.OutboundRef != "" || len(p.Strategy) != 0 {
 		if len(refs) != 0 || len(definitions) != 0 || len(p.Strategy) == 0 {
@@ -102,17 +104,30 @@ func (p installedZapretProfile) selectStrategies(requests []zapretactivation.Req
 		var item struct {
 			ID string `json:"id"`
 		}
-		if json.Unmarshal(raw, &item) != nil || !safeIdentifier(item.ID) || catalog[item.ID] != nil {
+		if json.Unmarshal(raw, &item) != nil || !safeIdentifier(item.ID) ||
+			zapretactivation.ManagedStrategyRef(item.ID) || catalog[item.ID] != nil {
 			return nil, errors.New("invalid installed Zapret strategy catalog")
 		}
 		catalog[item.ID] = raw
 	}
-	result := make([]json.RawMessage, len(requests))
-	for i, request := range requests {
-		if !allowed[request.OutboundRef] || catalog[request.StrategyRef] == nil {
+	if len(input.Definitions) != 0 && !p.AllowManagedStrategies {
+		return nil, errors.New("installed Zapret profile does not allow editor-managed strategies")
+	}
+	used := make(map[string]bool, len(input.Definitions))
+	result := make([]json.RawMessage, len(input.Bindings))
+	for i, request := range input.Bindings {
+		definition := catalog[request.StrategyRef]
+		if zapretactivation.ManagedStrategyRef(request.StrategyRef) {
+			definition = input.Definitions[request.StrategyRef]
+			used[request.StrategyRef] = true
+		}
+		if !allowed[request.OutboundRef] || len(definition) == 0 || len(definition) > zapretactivation.MaxDefinitionBytes {
 			return nil, fmt.Errorf("installed Zapret profile does not authorize Direct %q and Strategy %q", request.OutboundRef, request.StrategyRef)
 		}
-		result[i] = catalog[request.StrategyRef]
+		result[i] = definition
+	}
+	if len(used) != len(input.Definitions) {
+		return nil, errors.New("installed Zapret received unselected strategy definitions")
 	}
 	return result, nil
 }

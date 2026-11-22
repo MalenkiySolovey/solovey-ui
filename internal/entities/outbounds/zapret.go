@@ -151,7 +151,7 @@ func projectZapretOptions(row model.Outbound, heldRestoreValidation bool) (model
 
 // The installed broker admits the complete set in one operation. Projection
 // reads the resulting grants; offline and hot reload do not receive them.
-type ZapretBatchAdmitter func([]zapretactivation.Request) ([]zapretactivation.Grant, error)
+type ZapretBatchAdmitter func(zapretactivation.Validation) ([]zapretactivation.Grant, error)
 
 type ZapretAdmitter func(zapretactivation.Request) (zapretactivation.Grant, error)
 
@@ -195,12 +195,16 @@ func zapretRequests(rows []*model.Outbound) ([]zapretactivation.Request, error) 
 	return requests, nil
 }
 
-func admitZapretRows(rows []*model.Outbound, admit ZapretBatchAdmitter) (ZapretAdmitter, error) {
+func admitZapretRows(db *gorm.DB, rows []*model.Outbound, admit ZapretBatchAdmitter) (ZapretAdmitter, error) {
 	requests, err := zapretRequests(rows)
 	if err != nil || len(requests) == 0 {
 		return nil, err
 	}
-	grants, err := admit(requests)
+	input, err := ZapretValidation(db, requests)
+	if err != nil {
+		return nil, err
+	}
+	grants, err := admit(input)
 	if err != nil {
 		refs := make([]string, len(requests))
 		for i, request := range requests {
@@ -216,6 +220,12 @@ func admitZapretRows(rows []*model.Outbound, admit ZapretBatchAdmitter) (ZapretA
 	for i, grant := range grants {
 		if _, ok := grant.ProtectPath(requests[i]); !ok || generations[grant.Generation] {
 			return nil, ErrZapretPacketPathUnqualified
+		}
+		if raw := input.Definitions[requests[i].StrategyRef]; raw != nil {
+			var definition struct{ Revision string }
+			if json.Unmarshal(raw, &definition) != nil || definition.Revision != grant.StrategyRevision {
+				return nil, ErrZapretPacketPathUnqualified
+			}
 		}
 		generations[grant.Generation] = true
 		byRequest[requests[i]] = grant

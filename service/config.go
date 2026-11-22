@@ -293,6 +293,14 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 }
 
 func (s *ConfigService) save(obj string, act string, data json.RawMessage, initUsers string, loginUser string, hostname string, coreLocked bool) (objs []string, err error) {
+	return s.saveWithMutation(obj, act, data, loginUser, coreLocked, func(tx *gorm.DB, plan *configSavePlan) error {
+		return s.applyConfigSaveMutation(tx, plan, obj, act, data, initUsers, hostname)
+	})
+}
+
+func (s *ConfigService) saveWithMutation(obj, act string, data json.RawMessage, loginUser string, coreLocked bool,
+	mutate func(*gorm.DB, *configSavePlan) error,
+) (objs []string, err error) {
 	plan := newConfigSavePlan(obj)
 	afterCommitEffects, err := s.prepareConfigSaveObserverEffects(obj, data, loginUser)
 	if err != nil {
@@ -327,7 +335,7 @@ func (s *ConfigService) save(obj string, act string, data json.RawMessage, initU
 	if err = dbsqlite.ReserveWrite(tx); err != nil {
 		return nil, err
 	}
-	if err = s.applyConfigSaveMutation(tx, &plan, obj, act, data, initUsers, hostname); err != nil {
+	if err = mutate(tx, &plan); err != nil {
 		return nil, err
 	}
 	if obj != "settings" && (plan.HasObjectChanges() || plan.RequiresCoreRestart()) {
@@ -372,6 +380,9 @@ func (s *ConfigService) save(obj string, act string, data json.RawMessage, initU
 		}
 	}
 	publishConfigSaveEffects(afterCommitEffects)
+	if obj == zapretCatalogObject && !plan.RequiresCoreRestart() {
+		return plan.Objects(), nil
+	}
 	if coreLocked {
 		err = s.applyCoreSaveEffectLocked(plan)
 	} else {

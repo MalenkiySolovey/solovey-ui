@@ -2,10 +2,24 @@
 // the authenticated broker. It contains no serialized sing-box options.
 package zapretactivation
 
-const (
-	SocketRoot  = "/run/solovey-ui/zapret"
-	MaxBindings = 3
+import (
+	"encoding/json"
+	"strings"
 )
+
+const (
+	SocketRoot            = "/run/solovey-ui/zapret"
+	MaxBindings           = 3
+	CatalogKey            = "zapret.strategies"
+	MaxCatalogBytes       = 256 << 10
+	MaxDefinitionBytes    = 8 << 10
+	ManagedStrategyPrefix = "ui-zapret-"
+)
+
+// Keep operator-owned profile IDs and editable IDs in separate namespaces.
+func ManagedStrategyRef(ref string) bool {
+	return strings.HasPrefix(ref, ManagedStrategyPrefix)
+}
 
 type Request struct {
 	OutboundRef      string `json:"outboundRef"`
@@ -22,8 +36,8 @@ type Grant struct {
 // BatchID lets the Panel retire an ambiguous acquire (lost response) without
 // retiring a different generation. A batch is private to one Core startup.
 type BatchRequest struct {
-	BatchID  string    `json:"batchId"`
-	Bindings []Request `json:"bindings"`
+	BatchID string `json:"batchId"`
+	Validation
 }
 
 type BatchGrant struct {
@@ -31,12 +45,21 @@ type BatchGrant struct {
 	Bindings []Grant `json:"bindings"`
 }
 
-type Retirement struct {
+type BatchIdentity struct {
 	BatchID string `json:"batchId"`
 }
 
+type Retirement = BatchIdentity
+
+type AppliedBinding struct {
+	Request
+	StrategyRevision string `json:"strategyRevision"`
+}
+
 type Validation struct {
-	Bindings []Request `json:"bindings"`
+	Bindings    []Request                  `json:"bindings"`
+	Definitions map[string]json.RawMessage `json:"definitions,omitempty"`
+	DNSPorts    map[string][]uint16        `json:"dnsPorts,omitempty"`
 }
 
 func (g Grant) ProtectPath(want Request) (string, bool) {

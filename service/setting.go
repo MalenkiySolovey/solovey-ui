@@ -1,6 +1,11 @@
 package service
 
-import "gorm.io/gorm"
+import (
+	"github.com/MalenkiySolovey/solovey-backend/settings/store"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
+	"gorm.io/gorm"
+)
 
 type SettingService struct {
 	// Only a temporary restore-local service supplies a context-bound DB.
@@ -26,8 +31,17 @@ func (s *SettingService) ResetSettings() error {
 		if err != nil {
 			return err
 		}
+		catalog, err := outbounds.ReadZapretCatalog(tx)
+		if err != nil {
+			return err
+		}
 		if err := local.settingsManager().Reset(); err != nil {
 			return err
+		}
+		if catalog != nil {
+			if err := store.UpsertValue(tx, zapretactivation.CatalogKey, string(catalog)); err != nil {
+				return err
+			}
 		}
 		value := "false"
 		if held {

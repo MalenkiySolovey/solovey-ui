@@ -19,8 +19,10 @@ import (
 	"gorm.io/gorm"
 )
 
+const zapretCatalogObject = "zapret-strategies"
+
 func (r *Runtime) installedZapretAdmitter(ctx context.Context, admitted *string) outbounds.ZapretBatchAdmitter {
-	return func(targets []zapretactivation.Request) ([]zapretactivation.Grant, error) {
+	return func(input zapretactivation.Validation) ([]zapretactivation.Grant, error) {
 		if *admitted != "" || !r.zapretComponentStarted() {
 			return nil, outbounds.ErrZapretPacketPathUnqualified
 		}
@@ -30,7 +32,7 @@ func (r *Runtime) installedZapretAdmitter(ctx context.Context, admitted *string)
 		}
 		// Retain the batch identity if the broker publishes but the reply is lost.
 		*admitted = hex.EncodeToString(token[:])
-		target := zapretactivation.BatchRequest{BatchID: *admitted, Bindings: targets}
+		target := zapretactivation.BatchRequest{BatchID: *admitted, Validation: input}
 		var grant zapretactivation.BatchGrant
 		client := broker.NewClient(broker.RolePanel)
 		if _, err := client.Invoke(ctx, broker.Call{Verb: broker.VerbZapretAcquire, OperationID: "zapret-core-start", Payload: target, Timeout: 10 * time.Second}, &grant); err != nil {
@@ -60,7 +62,7 @@ func (r *Runtime) retireZapretBatch() error {
 
 func (s *ConfigService) validateCoreSaveCandidate(tx *gorm.DB, obj string, plan configSavePlan) error {
 	switch obj {
-	case "inbounds", "outbounds", "endpoints", "config":
+	case "inbounds", "outbounds", "endpoints", "config", zapretCatalogObject:
 		bound, err := outbounds.CheckZapretStartup(tx, true)
 		if err != nil {
 			return err
@@ -92,9 +94,13 @@ func validateInstalledZapret(tx *gorm.DB) error {
 	if err != nil || len(requests) == 0 {
 		return err
 	}
+	input, err := outbounds.ZapretValidation(tx, requests)
+	if err != nil {
+		return err
+	}
 	client := broker.NewClient(broker.RolePanel)
 	_, err = client.Invoke(tx.Statement.Context, broker.Call{Verb: broker.VerbZapretValidate, OperationID: "zapret-preflight",
-		Payload: zapretactivation.Validation{Bindings: requests}, Timeout: 5 * time.Second}, nil)
+		Payload: input, Timeout: 5 * time.Second}, nil)
 	if err != nil {
 		return errors.Join(outbounds.ErrZapretPacketPathUnqualified, err)
 	}

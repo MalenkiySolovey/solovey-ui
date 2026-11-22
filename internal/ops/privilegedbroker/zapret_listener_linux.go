@@ -21,6 +21,22 @@ func zapretSocketPath(root, generation string) string {
 	return filepath.Join(root, "z-"+generation)
 }
 
+func bindZapretSocketBatch(ctx context.Context, root string, gid uint32, grants []ZapretSocketGrant) ([]*standaloneSocket, error) {
+	endpoints := make([]*standaloneSocket, 0, len(grants))
+	for i, grant := range grants {
+		endpoint, err := bindZapretSocket(ctx, root, gid, grant.Generation)
+		if err != nil {
+			err = fmt.Errorf("Zapret socket %d: %w", i+1, err)
+			for _, bound := range endpoints {
+				err = errors.Join(err, bound.close())
+			}
+			return nil, err
+		}
+		endpoints = append(endpoints, endpoint)
+	}
+	return endpoints, nil
+}
+
 // bindZapretSocket only creates a fresh endpoint. A previous Direct config
 // may still refer to an existing path, including a path with no live owner.
 func bindZapretSocket(ctx context.Context, root string, gid uint32, generation string) (*standaloneSocket, error) {
