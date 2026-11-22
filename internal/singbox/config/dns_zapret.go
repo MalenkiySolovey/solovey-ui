@@ -4,10 +4,59 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/netip"
+	"reflect"
 	"slices"
 
+	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
+	"github.com/sagernet/sing-box/option"
 )
+
+// ValidateEncryptedDNSDetours checks the completed candidate without starting
+// transports. The dry Outbounds projection omits broker paths; selected names
+// denote only the Directs that would receive one after actual admission.
+func ValidateEncryptedDNSDetours(config []byte, selected map[string]bool) error {
+	return validateEncryptedDNSDetours(config, selected, coreprovider.Current().ID == "shtorm-extended")
+}
+
+func validateEncryptedDNSDetours(config []byte, selected map[string]bool, allowEmptyDirect bool) error {
+	var root, dns dnsObject
+	var servers []dnsObject
+	_ = json.Unmarshal(config, &root)
+	_ = json.Unmarshal(root["dns"], &dns)
+	_ = json.Unmarshal(dns["servers"], &servers)
+	targets := make(map[string][]dnsObject)
+	for _, section := range []string{"outbounds", "endpoints"} {
+		var rows []dnsObject
+		_ = json.Unmarshal(root[section], &rows)
+		for _, row := range rows {
+			if tag := dnsString(row, "tag"); tag != "" {
+				targets[tag] = append(targets[tag], row)
+			}
+		}
+	}
+	for i, server := range servers {
+		kind, ref := dnsString(server, "type"), dnsString(server, "detour")
+		if ref == "" || kind != "https" && kind != "tls" {
+			continue
+		}
+		fail := func(code, message string) error {
+			return diagnostics.FirstError([]diagnostics.Finding{dnsFailure(fmt.Sprintf("dns.servers[%d].detour", i), code, message, diagnostics.ManualRequired)})
+		}
+		rows := targets[ref]
+		if len(rows) != 1 {
+			return fail("dns_detour_missing", "Select one existing outbound or endpoint for this DNS transport.")
+		}
+		// Pinned Official rejects an empty Direct lazily, not on JSON decode.
+		if !allowEmptyDirect && !selected[ref] && dnsString(rows[0], "type") == "direct" {
+			var dial option.DialerOptions
+			if json.Unmarshal(dnsJSON(rows[0]), &dial) == nil && reflect.DeepEqual(dial, option.DialerOptions{}) {
+				return fail("dns_detour_empty_direct", "This Core cannot use an empty Direct as an explicit DNS detour. Update the DNS transport before removing its dial settings or disabling its Zapret binding.")
+			}
+		}
+	}
+	return nil
+}
 
 // ZapretDNSPorts derives requirements for existing native detours, without
 // creating DNS-specific bindings or modifying TLS, bootstrap, or DNS rules.

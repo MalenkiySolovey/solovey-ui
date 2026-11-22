@@ -70,6 +70,10 @@ export function validateFrontendPin(pin) {
     if(name!=='core-empty-inputs')assert.equal(item.inputManifestSHA256,pin.input.manifestSHA256)
   }
   const selections = {'full': ['full', ['fallback-html','import-xui','observability-extra','paid-subscriptions','remote-outbound-subscriptions','server-protection','telegram']], 'core': ['core', []], 'minimal': ['minimal', []], 'core-empty-inputs': ['core', []], 'custom-fallback-html': ['full', ['fallback-html']], 'custom-server-protection': ['full', ['server-protection']], 'custom-remote-outbound-subscriptions': ['full', ['remote-outbound-subscriptions']]}
+  // The regular Full profile adds Zapret from the 0.1.7 producer onward.
+  // Historical 0.1.x pins through 0.1.6 retain their exact old tuple.
+  const [, minor, patch] = pin.version.split('.').map(Number)
+  if (minor > 1 || minor === 1 && patch >= 7) selections.full[1].push('zapret')
   for(const [name,[profile,ids]] of Object.entries(selections)) { assert.equal(pin.profiles[name].profile,profile); assert.deepEqual(pin.profiles[name].componentIDs,ids) }
   assert.notEqual(pin.profiles['core-empty-inputs'].inputManifestSHA256,pin.input.manifestSHA256)
   return pin
