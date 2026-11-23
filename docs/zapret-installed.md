@@ -37,9 +37,21 @@ earlier matching pass-through profile can prevent coverage. Keep authentication
 and explicit nonrecursive hostname bootstrap enabled. The broker rejects an
 uncovered DNS detour before replacing the current batch.
 
-Use the existing Strategy editor for ordered profiles and bounded inline host
-and IP filters. The only QUIC blob is the original engine's pinned default;
-arbitrary host paths, uploaded Lua and return-dependent Circular are not admitted.
+Use the existing Strategy editor for ordered profiles and bounded native
+filters. Under **Shared native lists**, create a HostList (domains) or an
+IPSet (addresses or prefixes). Select it by ID in a profile's **Native
+filters**, either to include or to exclude matches. Each filter uses inline
+entries or one shared list, not both. These lists affect the selected
+Strategy's native match only; they do not select an outbound or change DNS.
+
+Editing a referenced list revalidates all its Strategies in the same catalog
+transaction. A changed active Strategy is reapplied as a new revision; an
+unused list edit does not restart the engine. Remove the references before
+deleting a list. Strategy export includes the referenced lists; import rejects
+an existing list ID with different contents rather than overwriting it.
+
+The only QUIC blob is the original engine's pinned default; arbitrary host
+paths, uploaded Lua and return-dependent Circular are not admitted.
 
 The systemd retained deny table is not a procd activation contract, and the
 current guard rejects fw4's foreign output and postrouting hooks.
