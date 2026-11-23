@@ -50,6 +50,8 @@ type installedZapretPath struct {
 	verify      func(context.Context) error
 }
 
+var errZapretCustomBlobsDenied = errors.New("the installed Zapret profile does not allow custom QUIC blobs")
+
 func RegisterInstalledZapret(ctx context.Context, server *Server, transport TransportMode, listeners *ListenerSet, resolve ResolveInstalledZapretStrategies) error {
 	if transport != SystemdActivated {
 		return nil
@@ -107,6 +109,9 @@ func (z *installedZapret) validate(ctx context.Context, call Request, peer PeerI
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "installed Zapret profile validation:", err)
+		if errors.Is(err, errZapretCustomBlobsDenied) {
+			return nil, Failure(CodeValidation, errZapretCustomBlobsDenied.Error())
+		}
 		return nil, Failure(CodeValidation, "installed Zapret does not authorize the selected binding or Strategy")
 	}
 	return nil, nil
@@ -222,6 +227,9 @@ func (z *installedZapret) selectStrategies(input zapretactivation.Validation) (i
 	}
 	if len(selected.Intents) != len(input.Bindings) || len(selected.Families) != len(input.Bindings) {
 		return profile, InstalledZapretStrategies{}, errors.New("installed Zapret did not resolve all packet scopes")
+	}
+	if selected.UsesCustomBlobs && !profile.AllowCustomBlobs {
+		return profile, InstalledZapretStrategies{}, errZapretCustomBlobsDenied
 	}
 	used := 0
 	for i, request := range input.Bindings {
