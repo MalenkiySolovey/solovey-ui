@@ -50,8 +50,16 @@ unused list edit does not restart the engine. Remove the references before
 deleting a list. Strategy export includes the referenced lists; import rejects
 an existing list ID with different contents rather than overwriting it.
 
-The only QUIC blob is the original engine's pinned default; arbitrary host
-paths, uploaded Lua and return-dependent Circular are not admitted.
+The QUIC action defaults to the original engine's pinned blob. An operator
+may add `"allowCustomBlobs": true` to the root-owned installed profile to
+admit bounded catalog QUIC decoys, in addition to the existing delegation
+required for editor-managed strategies. The editor stores hex bytes under a
+stable ID, not a path or Lua variable. Asset edits re-seal the referencing
+strategies; the broker reads the permission on admission of each generation
+and denies those strategies without it. Only the built-in blob qualifies as QUIC DNS
+coverage. Do not put secrets in an asset: these bytes are transmitted as
+configured. Host file paths, uploaded Lua and return-dependent Circular are
+not admitted.
 
 The systemd retained deny table is not a procd activation contract, and the
 current guard rejects fw4's foreign output and postrouting hooks.
@@ -105,6 +113,9 @@ The architecture budget entries for the batch are reviewed individually:
   pre-checked Direct. The Direct type is an assertion about the attached
   outbound, not a routing default. R8C adds the resolver's family-specific
   packet scope; the existing Network Planner still allocates the resources.
+  The blob-aware resolver adds only an aggregate capability requirement from
+  the already-verified definitions. The root-owned broker profile authorizes
+  that requirement, without changing Direct selection or packet scope.
 - `validateEncryptedDNSDetours` extends the DNS owner's existing detour
   check to DoQ and DoH3. It validates the explicit transport and bootstrap
   reference; it does not select an outbound or provide a fallback resolver.

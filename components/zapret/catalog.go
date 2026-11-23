@@ -42,6 +42,7 @@ type catalogChange struct {
 	Draft            *strategy.Draft     `json:"draft,omitempty"`
 	Transfer         *strategy.Transfer  `json:"transfer,omitempty"`
 	List             *strategy.NamedList `json:"list,omitempty"`
+	Blob             *string             `json:"blob,omitempty"`
 }
 
 type diagnosticRequest struct {
@@ -121,12 +122,18 @@ func (c *catalogChange) prepare() error {
 		return errors.New("missing Zapret catalog revision")
 	}
 	if c.Action == "create-list" || c.Action == "edit-list" || c.Action == "delete-list" {
-		if c.ID != "" && c.Draft == nil && c.Transfer == nil && (c.List != nil) == (c.Action != "delete-list") {
+		if c.ID != "" && c.Draft == nil && c.Transfer == nil && c.Blob == nil && (c.List != nil) == (c.Action != "delete-list") {
 			return nil // The strategy catalog validates the list ID and content.
 		}
 		return errors.New("invalid Zapret native list change")
 	}
-	if c.List != nil || c.ID != "" && !zapretactivation.ManagedStrategyRef(c.ID) {
+	if c.Action == "create-blob" || c.Action == "edit-blob" || c.Action == "delete-blob" {
+		if c.ID != "" && c.Draft == nil && c.Transfer == nil && c.List == nil && (c.Blob != nil) == (c.Action != "delete-blob") {
+			return nil // The strategy catalog validates the asset ID and data.
+		}
+		return errors.New("invalid Zapret native blob change")
+	}
+	if c.List != nil || c.Blob != nil || c.ID != "" && !zapretactivation.ManagedStrategyRef(c.ID) {
 		return errors.New("invalid Zapret strategy change")
 	}
 	allocate := false
@@ -171,6 +178,11 @@ func (c catalogChange) mutate(raw json.RawMessage, refs []outbounds.ZapretRefere
 			return nil, false, errors.New("the Zapret native list ID is already in use or does not exist")
 		}
 		next, err = previous.WithNamedList(c.ID, c.List)
+	case "create-blob", "edit-blob", "delete-blob":
+		if _, exists := previous.BlobAssets[c.ID]; exists != (c.Action != "create-blob") {
+			return nil, false, errors.New("the Zapret native blob ID is already in use or does not exist")
+		}
+		next, err = previous.WithNamedBlob(c.ID, c.Blob)
 	case "import":
 		next, err = previous.WithTransfer(c.ID, *c.Transfer)
 	case "delete", "edit", "create":

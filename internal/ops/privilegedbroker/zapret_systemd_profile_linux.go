@@ -37,10 +37,11 @@ const (
 // The component resolves and compiles the ordered profiles. The broker still
 // owns the trusted inputs, Planner allocation and engine executable.
 type InstalledZapretStrategies struct {
-	Intents     []intent.ZapretPacketPathIntent
-	Families    []planner.ZapretFamilies
-	HandlesQUIC func(binding int, ipv6 bool, port uint16) bool
-	Compile     func(engineRoot string, queue uint16, loopMark uint32, queueMarks []uint32) ([]string, error)
+	Intents         []intent.ZapretPacketPathIntent
+	Families        []planner.ZapretFamilies
+	UsesCustomBlobs bool
+	HandlesQUIC     func(binding int, ipv6 bool, port uint16) bool
+	Compile         func(engineRoot string, queue uint16, loopMark uint32, queueMarks []uint32) ([]string, error)
 }
 
 type ResolveInstalledZapretStrategies func([]json.RawMessage, []zapretactivation.Request) (InstalledZapretStrategies, error)
@@ -56,6 +57,7 @@ type installedZapretProfile struct {
 	Strategies   []json.RawMessage `json:"strategies,omitempty"`
 	// An operator may delegate bounded profiles, not egress, engine, or Lua authority.
 	AllowManagedStrategies bool                `json:"allowManagedStrategies,omitempty"`
+	AllowCustomBlobs       bool                `json:"allowCustomBlobs,omitempty"`
 	TUN                    *installedZapretTUN `json:"tun,omitempty"`
 }
 

@@ -60,6 +60,7 @@ func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivati
 			RequiresIPv6: slices.ContainsFunc(selected.Strategy.Profiles, func(p strategy.Profile) bool { return p.Family == strategy.IPv6 }),
 		})
 		strategies[i] = selected.Strategy
+		result.UsesCustomBlobs = result.UsesCustomBlobs || len(selected.Strategy.BlobData) != 0
 	}
 	result.HandlesQUIC = func(i int, ipv6 bool, port uint16) bool {
 		family := strategy.IPv4

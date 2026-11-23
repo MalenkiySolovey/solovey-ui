@@ -82,3 +82,50 @@ func TestZapretCatalogNamedListTransactions(t *testing.T) {
 	apply(catalogChange{Action: "import", Transfer: &transfer}, false, "")
 	apply(catalogChange{Action: "delete", ID: id}, false, "referenced by Direct")
 }
+
+func TestZapretCatalogBlobTransactions(t *testing.T) {
+	var raw json.RawMessage
+	var refs []outbounds.ZapretReference
+	apply := func(change catalogChange, rebind bool, wantError string) string {
+		t.Helper()
+		before, err := readCatalog(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		change.ExpectedRevision = before.Revision()
+		if err := change.prepare(); err != nil {
+			t.Fatal(err)
+		}
+		next, restart, err := change.mutate(raw, refs)
+		if wantError != "" {
+			if err == nil || !strings.Contains(err.Error(), wantError) || next != nil || restart {
+				t.Fatalf("%s did not reject the change atomically: restart=%t err=%v", change.Action, restart, err)
+			}
+			return ""
+		}
+		if err != nil || restart != rebind {
+			t.Fatalf("%s: restart=%t, want %t: %v", change.Action, restart, rebind, err)
+		}
+		raw = next
+		return change.ID
+	}
+	data := "405549"
+	apply(catalogChange{Action: "create-blob", ID: "decoy", Blob: &data}, false, "")
+	draft := strategy.Draft{Name: "QUIC profile", Profiles: []strategy.Profile{{ID: "quic", Protocol: "udp", Ports: []uint16{443},
+		Payload: strategy.QUICInitial, QUICRepeats: 1, QUICBlobRef: "decoy"}}}
+	id := apply(catalogChange{Action: "create", Draft: &draft}, false, "")
+	refs = []outbounds.ZapretReference{{OutboundRef: "chosen", StrategyRef: id, Enabled: true}}
+	apply(catalogChange{Action: "delete-blob", ID: "decoy"}, false, "is used by strategy")
+	apply(catalogChange{Action: "edit-blob", ID: "decoy", Blob: &data}, false, "")
+	apply(catalogChange{Action: "create-blob", ID: "unused", Blob: &data}, false, "")
+	data = "405550"
+	apply(catalogChange{Action: "edit-blob", ID: "unused", Blob: &data}, false, "")
+	apply(catalogChange{Action: "edit-blob", ID: "decoy", Blob: &data}, true, "")
+	after, err := readCatalog(raw)
+	if err != nil || after.Records[id].Definition.BlobData["decoy"] != data {
+		t.Fatalf("rebind did not project the resealed asset: %v", err)
+	}
+	refs[0].Enabled = false
+	data = "405551"
+	apply(catalogChange{Action: "edit-blob", ID: "decoy", Blob: &data}, false, "")
+}
