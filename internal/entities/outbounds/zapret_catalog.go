@@ -65,11 +65,11 @@ func ZapretValidation(db *gorm.DB, requests []zapretactivation.Request) (zapreta
 	for _, request := range requests {
 		tags[request.OutboundRef] = true
 	}
-	ports, err := singboxconfig.ZapretDNSPorts([]byte(base.Value), tags)
+	requirements, err := singboxconfig.ZapretDNSRequirements([]byte(base.Value), tags)
 	if err != nil {
 		return result, err
 	}
-	result.DNSPorts = ports
+	result.DNS = requirements
 	raw, err := ReadZapretCatalog(db)
 	if err != nil {
 		return result, err

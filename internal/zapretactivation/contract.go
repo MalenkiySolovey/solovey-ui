@@ -54,12 +54,27 @@ type Retirement = BatchIdentity
 type AppliedBinding struct {
 	Request
 	StrategyRevision string `json:"strategyRevision"`
+	Queue            uint16 `json:"queue,omitempty"`
 }
 
 type Validation struct {
-	Bindings    []Request                  `json:"bindings"`
-	Definitions map[string]json.RawMessage `json:"definitions,omitempty"`
-	DNSPorts    map[string][]uint16        `json:"dnsPorts,omitempty"`
+	Bindings    []Request                       `json:"bindings"`
+	Definitions map[string]json.RawMessage      `json:"definitions,omitempty"`
+	DNS         map[string][]DNSPathRequirement `json:"dns,omitempty"`
+}
+
+type DNSFamily uint8
+
+const (
+	DNSFamilyFromProfile DNSFamily = 0 // Bootstrap can return either supported family.
+	DNSFamilyIPv4        DNSFamily = 4
+	DNSFamilyIPv6        DNSFamily = 6
+)
+
+type DNSPathRequirement struct {
+	Port   uint16    `json:"port"`
+	Family DNSFamily `json:"family,omitempty"`
+	QUIC   bool      `json:"quic,omitempty"` // Otherwise authenticated TLS over TCP.
 }
 
 func (g Grant) ProtectPath(want Request) (string, bool) {

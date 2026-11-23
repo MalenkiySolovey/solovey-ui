@@ -1,6 +1,6 @@
 # Installed Zapret ownership
 
-# Multi-Direct and DNS (R8B2)
+## Multi-Direct and DNS (R8B2 baseline)
 
 The qualified runtime is an installed Linux systemd Official/Full profile for
 IPv4/TCP. Up to three explicit Directs share one queue and one pinned `nfqws2`.
@@ -20,6 +20,35 @@ Keep certificate verification enabled and provide a nonrecursive bootstrap
 resolver for hostname endpoints. Configure the strategy for the destination TCP
 port. Before changing or removing a referenced Direct, update its DNS detours.
 DoH3, DoQ, IPv6 and installed Extended/OpenWrt are outside this qualification.
+
+## R8C transport admission
+
+The Linux systemd broker can stage ordered TCP and UDP profiles against a
+single queue and engine. It matches the configured destination ports separately
+for IPv4 and IPv6. The root-owned installed profile must opt in with
+`"ipv6": true` and have a qualified IPv6 route on the same nominated egress.
+An explicitly IPv6-only Strategy is rejected if the profile cannot admit it.
+
+DoQ and DoH3 use the existing DNS **Transport via** setting and require a Core
+build with QUIC. Configure a native QUIC action for the DNS port in every
+admitted endpoint family. A conditional list match alone is not enough, and an
+earlier matching pass-through profile can prevent coverage. Keep authentication
+and explicit nonrecursive hostname bootstrap enabled. The broker rejects an
+uncovered DNS detour before replacing the current batch.
+
+Use the existing Strategy editor for ordered profiles and bounded inline host
+and IP filters. The only QUIC blob is the original engine's pinned default;
+arbitrary host paths, uploaded Lua and return-dependent Circular are not admitted.
+
+TUN is rejected for this installed profile. The capless service does not expose
+`/dev/net/tun`, and opening the device in a capless test context does not grant
+`TUNSETIFF`. Adopting a Planner-owned device would require a narrowly scoped
+broker FD handoff and explicit route ownership, not changes to the Panel's
+effective capabilities. The systemd retained deny table is not a procd
+activation contract, and the current guard rejects fw4's foreign output and
+postrouting hooks. OpenWrt/FriendlyWrt are not covered by the systemd profile.
+
+## Lifecycle ownership
 
 The Outbounds owner validates each explicit Direct binding and renders the
 candidate from one database view. It sends the complete batch to the broker.

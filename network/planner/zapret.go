@@ -45,9 +45,65 @@ type ZapretFacts struct {
 	EgressGuard                               bool
 	ReservedMarkBits, ConfiguredSocketMark    uint32
 	OccupiedQueues                            []uint16
-	InstalledEgress                           *ZapretEgress `json:",omitempty"`
-	SystemdSerial                             uint32        `json:",omitempty"`
-	SystemdQueue                              uint16        `json:",omitempty"` // assigned by CompileZapretSystemdBatch
+	InstalledEgress                           *ZapretEgress   `json:",omitempty"`
+	SystemdSerial                             uint32          `json:",omitempty"`
+	SystemdQueue                              uint16          `json:",omitempty"` // assigned by CompileZapretSystemdBatch
+	SystemdFamilies                           *ZapretFamilies `json:",omitempty"`
+}
+
+type ZapretPorts struct{ TCP, UDP []uint16 }
+
+// ZapretFamilies is the component's port scope for each family, before
+// intersection with the operator's installed egress capability.
+type ZapretFamilies struct {
+	IPv4, IPv6   ZapretPorts
+	RequiresIPv6 bool
+}
+
+func (p ZapretPorts) forProtocol(protocol intent.PacketProtocol) []uint16 {
+	switch protocol {
+	case intent.PacketProtocolTCP:
+		return p.TCP
+	case intent.PacketProtocolUDP:
+		return p.UDP
+	default:
+		return nil
+	}
+}
+
+func (p ZapretPorts) empty() bool { return len(p.TCP) == 0 && len(p.UDP) == 0 }
+
+func (p ZapretPorts) canonical() ZapretPorts {
+	p.TCP, p.UDP = slices.Clone(p.TCP), slices.Clone(p.UDP)
+	slices.Sort(p.TCP)
+	slices.Sort(p.UDP)
+	return p
+}
+
+func (f ZapretFamilies) valid(value intent.ZapretPacketPathIntent) bool {
+	if f.RequiresIPv6 && f.IPv6.empty() {
+		return false
+	}
+	for _, protocol := range []intent.PacketProtocol{intent.PacketProtocolTCP, intent.PacketProtocolUDP} {
+		v4, v6 := f.IPv4.forProtocol(protocol), f.IPv6.forProtocol(protocol)
+		union := (ZapretPorts{TCP: value.TCPPorts, UDP: value.UDPPorts}).forProtocol(protocol)
+		for _, subset := range [][]uint16{v4, v6} {
+			if len(subset) > len(union) {
+				return false
+			}
+			for i, port := range subset {
+				if !slices.Contains(union, port) || slices.Contains(subset[:i], port) {
+					return false
+				}
+			}
+		}
+		for _, port := range union {
+			if !slices.Contains(v4, port) && !slices.Contains(v6, port) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 type ZapretEgress struct {
@@ -112,6 +168,22 @@ func (p ZapretPlan) PacketScope() intent.ZapretPacketPathIntent {
 	return intent.CanonicalZapretPacketPathIntent(p.intent)
 }
 
+func (p ZapretPlan) PortsForFamily(protocol intent.PacketProtocol, ipv6 bool) []uint16 {
+	return slices.Clone(p.portsForFamily(protocol, ipv6))
+}
+
+func (p ZapretPlan) portsForFamily(protocol intent.PacketProtocol, ipv6 bool) []uint16 {
+	ports := ZapretPorts{TCP: p.intent.TCPPorts, UDP: p.intent.UDPPorts}
+	if p.plan.facts.Zapret != nil && p.plan.facts.Zapret.SystemdFamilies != nil {
+		families := p.plan.facts.Zapret.SystemdFamilies
+		ports = families.IPv4
+		if ipv6 {
+			ports = families.IPv6
+		}
+	}
+	return ports.forProtocol(protocol)
+}
+
 // ZapretSocketScope projects allocation data for the installed broker. It is
 // not an activation receipt: validation or compilation alone grants no rights.
 type ZapretSocketScope struct{ plan ZapretPlan }
@@ -144,6 +216,11 @@ func (s ZapretSocketScope) Egress() ZapretEgress {
 }
 func (s ZapretSocketScope) AllowsProtocol(p intent.PacketProtocol) bool {
 	return slices.Contains(s.plan.intent.Protocols, p)
+}
+
+func (s ZapretSocketScope) AllowsFamily(p intent.PacketProtocol, ipv6 bool) bool {
+	e := s.Egress()
+	return ((!ipv6 && e.IPv4Gateway.IsValid()) || (ipv6 && e.IPv6Gateway.IsValid())) && len(s.plan.portsForFamily(p, ipv6)) != 0
 }
 
 func CompileZapret(request intent.ZapretPacketPathIntent, facts Facts) (ZapretPlan, error) {
@@ -213,10 +290,20 @@ func compileZapret(request intent.ZapretPacketPathIntent, facts Facts, sharedQue
 		table = "inet:" + ZapretInstalledTable
 		guard = fmt.Sprintf("nf-postrouting:netns:%d", z.InstalledEgress.NamespaceCookie)
 	case ZapretSystemdBackend:
-		if z.InstalledEgress == nil || !z.InstalledEgress.valid() || !z.InstalledEgress.IPv4Gateway.IsValid() || z.InstalledEgress.IPv6Gateway.IsValid() ||
-			z.SystemdSerial == 0 || z.SystemdSerial > ZapretMaxSerial || len(request.TCPPorts) == 0 || len(request.UDPPorts) != 0 ||
+		if z.InstalledEgress == nil || !z.InstalledEgress.valid() || !z.InstalledEgress.IPv4Gateway.IsValid() ||
+			z.SystemdSerial == 0 || z.SystemdSerial > ZapretMaxSerial ||
 			(z.InstalledEgress.RoutingMarkBits|z.ReservedMarkBits)&ZapretReservedMask != 0 {
 			return ZapretPlan{}, conflict(CapabilityUnavailable, ref)
+		}
+		if f := z.SystemdFamilies; f != nil {
+			if !f.valid(request) {
+				return ZapretPlan{}, conflict(InvalidIntent, ref)
+			}
+			if !z.InstalledEgress.IPv6Gateway.IsValid() && (f.RequiresIPv6 || f.IPv4.empty()) {
+				return ZapretPlan{}, conflict(CapabilityUnavailable, ref)
+			}
+		} else if z.InstalledEgress.IPv6Gateway.IsValid() || len(request.UDPPorts) != 0 {
+			return ZapretPlan{}, conflict(InvalidIntent, ref)
 		}
 		table, guard = "inet:"+ZapretInstalledTable, "inet:"+ZapretDenyTable
 	default:
@@ -248,6 +335,9 @@ func compileZapret(request intent.ZapretPacketPathIntent, facts Facts, sharedQue
 	zapretFacts := *z
 	zapretFacts.OccupiedQueues = occupied
 	zapretFacts.SystemdQueue = sharedQueue
+	if f := z.SystemdFamilies; f != nil {
+		zapretFacts.SystemdFamilies = &ZapretFamilies{f.IPv4.canonical(), f.IPv6.canonical(), f.RequiresIPv6}
+	}
 	facts.Zapret = &zapretFacts
 	plan := newPlan(value, canonicalFacts(facts))
 	seed, _ := strconv.ParseUint(plan.revision[:4], 16, 16)

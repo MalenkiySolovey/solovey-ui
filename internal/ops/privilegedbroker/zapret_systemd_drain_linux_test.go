@@ -41,7 +41,7 @@ func TestRetiredZapretTCPIDRequiresExactOrphan(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			id, err := retiredZapretTCPID(append(entry, attributes...))
+			id, err := retiredZapretTCPID(append(entry, attributes...), unix.AF_INET)
 			if tc.ok && (err != nil || len(id) != 48 || id[40] != 77) {
 				t.Fatalf("exact kernel identifier was discarded: %x %v", id, err)
 			}

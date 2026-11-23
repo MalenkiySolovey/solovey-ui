@@ -22,8 +22,8 @@ import (
 // sockets still between protect_path and connect. The kernel TCP inventory
 // below also includes sockets that outlived their final userspace descriptor.
 func proveZapretDrain(ctx context.Context, peer PeerIdentity) error {
-	if !peer.hasLiveness || !zapretPeerAlive(peer.livenessFD) {
-		return errors.New("cannot prove the retiring Panel socket inventory")
+	if err := peerAlive(peer); err != nil {
+		return fmt.Errorf("cannot prove the retiring Panel socket inventory: %w", err)
 	}
 	snapshot, err := processevidence.ObserveDescriptorSnapshot(peer.PID)
 	if err != nil {
@@ -58,8 +58,8 @@ func proveZapretDrain(ctx context.Context, peer PeerIdentity) error {
 			return errors.New("the Panel still holds a marked Zapret socket")
 		}
 	}
-	if !zapretPeerAlive(peer.livenessFD) {
-		return errors.New("the retiring Panel identity changed during the socket inventory")
+	if err := peerAlive(peer); err != nil {
+		return fmt.Errorf("the retiring Panel identity changed during the socket inventory: %w", err)
 	}
 	return retireZapretTCPInKernel(ctx)
 }
@@ -77,6 +77,24 @@ const (
 // its descriptor. Abort only orphans bearing the exclusively reserved bit
 // and the exact kernel cookie, while the deny still holds.
 func retireZapretTCPInKernel(ctx context.Context) error {
+	if err := retireZapretTCPFamily(ctx, unix.AF_INET); err != nil {
+		return err
+	}
+	err := retireZapretTCPFamily(ctx, unix.AF_INET6)
+	if errors.Is(err, unix.EAFNOSUPPORT) {
+		// Skip the inventory only if the kernel cannot create IPv6 sockets.
+		fd, probeErr := unix.Socket(unix.AF_INET6, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, unix.IPPROTO_TCP)
+		if errors.Is(probeErr, unix.EAFNOSUPPORT) {
+			return nil
+		}
+		if probeErr == nil {
+			_ = unix.Close(fd)
+		}
+	}
+	return err
+}
+
+func retireZapretTCPFamily(ctx context.Context, family byte) error {
 	conn, err := socket.Socket(unix.AF_NETLINK, unix.SOCK_RAW, unix.NETLINK_SOCK_DIAG, "zapret-drain", nil)
 	if err != nil {
 		return err
@@ -86,7 +104,7 @@ func retireZapretTCPInKernel(ctx context.Context) error {
 		return err
 	}
 	request := make([]byte, 56) // struct inet_diag_req_v2
-	request[0], request[1] = unix.AF_INET, unix.IPPROTO_TCP
+	request[0], request[1] = family, unix.IPPROTO_TCP
 	binary.NativeEndian.PutUint32(request[4:], ^uint32(1<<tcpTimeWait|1<<tcpClose))
 	mark := planner.ZapretSocketMarkBit
 	filter := []byte{inetDiagBCMarkCond, 12, 0, 0}
@@ -103,7 +121,7 @@ func retireZapretTCPInKernel(ctx context.Context) error {
 		return fmt.Errorf("list draining Zapret sockets: %w", err)
 	}
 	for _, entry := range replies {
-		id, err := retiredZapretTCPID(entry)
+		id, err := retiredZapretTCPID(entry, family)
 		if err != nil {
 			return err
 		}
@@ -121,10 +139,10 @@ func retireZapretTCPInKernel(ctx context.Context) error {
 	return ctx.Err()
 }
 
-func retiredZapretTCPID(entry []byte) ([]byte, error) {
+func retiredZapretTCPID(entry []byte, family byte) ([]byte, error) {
 	// sock_i_uid and sock_i_ino report zero when the TCP socket has lost
 	// its userspace owner. Only the broker can issue the reserved mark.
-	if len(entry) < 72 || entry[0] != unix.AF_INET || binary.NativeEndian.Uint32(entry[64:68]) != 0 ||
+	if len(entry) < 72 || entry[0] != family || binary.NativeEndian.Uint32(entry[64:68]) != 0 ||
 		binary.NativeEndian.Uint32(entry[68:72]) != 0 {
 		return nil, errors.New("a marked Zapret socket still has a userspace owner")
 	}
