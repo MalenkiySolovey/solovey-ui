@@ -54,9 +54,10 @@ var pins = func() struct {
 	DefaultProvider string   `json:"defaultProvider"`
 	Sources         []Source `json:"sources"`
 	BuildFlavors    []struct {
-		ID          string   `json:"id"`
-		ProviderTag string   `json:"providerTag"`
-		BuildTags   []string `json:"buildTags"`
+		ID             string   `json:"id"`
+		ProviderTag    string   `json:"providerTag"`
+		BuildTags      []string `json:"buildTags"`
+		SourceRevision string   `json:"sourceRevision"`
 	} `json:"buildFlavors"`
 } {
 	var value struct {
@@ -64,9 +65,10 @@ var pins = func() struct {
 		DefaultProvider string   `json:"defaultProvider"`
 		Sources         []Source `json:"sources"`
 		BuildFlavors    []struct {
-			ID          string   `json:"id"`
-			ProviderTag string   `json:"providerTag"`
-			BuildTags   []string `json:"buildTags"`
+			ID             string   `json:"id"`
+			ProviderTag    string   `json:"providerTag"`
+			BuildTags      []string `json:"buildTags"`
+			SourceRevision string   `json:"sourceRevision"`
 		} `json:"buildFlavors"`
 	}
 	if err := json.Unmarshal(pinsJSON, &value); err != nil {
@@ -76,6 +78,20 @@ var pins = func() struct {
 }()
 
 func DefaultID() string { return pins.DefaultProvider }
+
+// MatchesProductBuildPin excludes recognized upstream sources that are not
+// the source pinned by a Product build flavor.
+func MatchesProductBuildPin(identity Identity) bool {
+	if !SourceIdentityVerified(identity) {
+		return false
+	}
+	for _, flavor := range pins.BuildFlavors {
+		if flavor.ID == identity.ID && flavor.SourceRevision == identity.SourceRevision {
+			return true
+		}
+	}
+	return false
+}
 
 // RequiredProviderName projects the provider selector into capability
 // explanations. Optional component tags in a build flavor do not change the
