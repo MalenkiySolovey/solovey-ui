@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/MalenkiySolovey/solovey-component-zapret/strategy"
@@ -35,11 +36,12 @@ type bindingStatus struct {
 }
 
 type catalogChange struct {
-	Action           string             `json:"action"`
-	ExpectedRevision string             `json:"expectedRevision"`
-	ID               string             `json:"id,omitempty"`
-	Draft            *strategy.Draft    `json:"draft,omitempty"`
-	Transfer         *strategy.Transfer `json:"transfer,omitempty"`
+	Action           string              `json:"action"`
+	ExpectedRevision string              `json:"expectedRevision"`
+	ID               string              `json:"id,omitempty"`
+	Draft            *strategy.Draft     `json:"draft,omitempty"`
+	Transfer         *strategy.Transfer  `json:"transfer,omitempty"`
+	List             *strategy.NamedList `json:"list,omitempty"`
 }
 
 type diagnosticRequest struct {
@@ -114,81 +116,93 @@ func (r diagnosticRequest) authorize(snapshot service.ZapretCatalogSnapshot) err
 	return errors.New("selected Zapret binding is no longer enabled")
 }
 
-func (c *catalogChange) selectedDraft() (strategy.Draft, error) {
-	var draft strategy.Draft
-	if len(c.ExpectedRevision) != 64 || c.ID != "" && !zapretactivation.ManagedStrategyRef(c.ID) {
-		return draft, errors.New("missing catalog revision or invalid strategy identity")
+func (c *catalogChange) prepare() error {
+	if len(c.ExpectedRevision) != 64 {
+		return errors.New("missing Zapret catalog revision")
 	}
+	if c.Action == "create-list" || c.Action == "edit-list" || c.Action == "delete-list" {
+		if c.ID != "" && c.Draft == nil && c.Transfer == nil && (c.List != nil) == (c.Action != "delete-list") {
+			return nil // The strategy catalog validates the list ID and content.
+		}
+		return errors.New("invalid Zapret native list change")
+	}
+	if c.List != nil || c.ID != "" && !zapretactivation.ManagedStrategyRef(c.ID) {
+		return errors.New("invalid Zapret strategy change")
+	}
+	allocate := false
 	switch c.Action {
 	case "delete":
 		if c.ID != "" && c.Draft == nil && c.Transfer == nil {
-			return draft, nil
+			return nil
 		}
-	case "create", "edit", "import":
-		if c.Action == "import" {
-			if c.ID != "" || c.Draft != nil || c.Transfer == nil {
-				break
+	case "edit", "create":
+		if c.Draft != nil && c.Transfer == nil && c.Draft.ID == "" && (c.Action == "edit") == (c.ID != "") {
+			if c.Action == "edit" {
+				return nil
 			}
-			var err error
-			draft, err = c.Transfer.Import()
-			if err != nil {
-				return draft, err
-			}
-		} else {
-			if c.Draft == nil || c.Transfer != nil || c.Draft.ID != "" || (c.Action == "edit") != (c.ID != "") {
-				break
-			}
-			draft = *c.Draft
+			allocate = true
 		}
-		if c.ID == "" {
-			var id [16]byte
-			if _, err := rand.Read(id[:]); err != nil {
-				return draft, err
-			}
-			c.ID = zapretactivation.ManagedStrategyPrefix + hex.EncodeToString(id[:])
-		}
-		draft.ID = c.ID
-		return draft, nil
+	case "import":
+		allocate = c.ID == "" && c.Draft == nil && c.Transfer != nil
 	}
-	return draft, errors.New("invalid Zapret strategy change")
+	if !allocate {
+		return errors.New("invalid Zapret strategy change")
+	}
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return err
+	}
+	c.ID = zapretactivation.ManagedStrategyPrefix + hex.EncodeToString(id[:])
+	return nil
 }
 
-func (c catalogChange) mutate(raw json.RawMessage, refs []outbounds.ZapretReference, draft strategy.Draft) (json.RawMessage, bool, error) {
-	catalog, err := readCatalog(raw)
+func (c catalogChange) mutate(raw json.RawMessage, refs []outbounds.ZapretReference) (json.RawMessage, bool, error) {
+	previous, err := readCatalog(raw)
 	if err != nil {
 		return nil, false, err
 	}
-	if catalog.Revision() != c.ExpectedRevision {
+	if previous.Revision() != c.ExpectedRevision {
 		return nil, false, errors.New("the Zapret strategy catalog changed; reload before saving")
 	}
-	previous, exists := catalog.Records[c.ID]
-	if exists != (c.Action == "edit" || c.Action == "delete") {
-		return nil, false, errors.New("the Zapret strategy identity changed; reload before saving")
-	}
-	rebind := false
-	if c.Action == "delete" {
-		for _, ref := range refs {
-			if ref.StrategyRef == c.ID {
-				return nil, false, fmt.Errorf("strategy is referenced by Direct %q; clear or reassign its binding first", ref.OutboundRef)
+	next := previous
+	switch c.Action {
+	case "create-list", "edit-list", "delete-list":
+		if _, exists := previous.Lists[c.ID]; exists != (c.Action != "create-list") {
+			return nil, false, errors.New("the Zapret native list ID is already in use or does not exist")
+		}
+		next, err = previous.WithNamedList(c.ID, c.List)
+	case "import":
+		next, err = previous.WithTransfer(c.ID, *c.Transfer)
+	case "delete", "edit", "create":
+		_, exists := previous.Records[c.ID]
+		if exists != (c.Action != "create") {
+			return nil, false, errors.New("the Zapret strategy identity changed; reload before saving")
+		}
+		next.Records = maps.Clone(previous.Records)
+		if c.Action == "delete" {
+			for _, ref := range refs {
+				if ref.StrategyRef == c.ID {
+					return nil, false, fmt.Errorf("strategy is referenced by Direct %q; clear or reassign its binding first", ref.OutboundRef)
+				}
 			}
+			delete(next.Records, c.ID)
+		} else {
+			draft := *c.Draft
+			draft.ID = c.ID
+			next.Records[c.ID], err = previous.SealDraft(draft)
 		}
-		delete(catalog.Records, c.ID)
-	} else {
-		next, err := strategy.SealDraft(draft)
-		if err != nil {
-			return nil, false, err
-		}
-		catalog.Records[c.ID] = next
-		for _, ref := range refs {
-			if ref.Enabled && ref.StrategyRef == c.ID && next.Definition.Revision != previous.Definition.Revision {
-				rebind = true
-				break
-			}
-		}
+	default:
+		return nil, false, errors.New("invalid Zapret catalog change")
 	}
-	if err := catalog.Validate(); err != nil {
+	if err != nil {
 		return nil, false, err
 	}
-	data, err := json.Marshal(catalog)
+	if err := next.Validate(); err != nil {
+		return nil, false, err
+	}
+	rebind := slices.ContainsFunc(refs, func(ref outbounds.ZapretReference) bool {
+		return ref.Enabled && previous.Records[ref.StrategyRef].Definition.Revision != next.Records[ref.StrategyRef].Definition.Revision
+	})
+	data, err := json.Marshal(next)
 	return data, rebind, err
 }
