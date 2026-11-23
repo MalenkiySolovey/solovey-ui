@@ -308,11 +308,11 @@ func (batch *zapretBatch) addZapretPath(plan planner.ZapretPlan) error {
 			meta(unix.NFT_META_OIF), eq(u32(uint32(egress.IfIndex))),
 			&expr.Rt{Key: route.key, Register: reg}, eq(route.gateway.AsSlice())}
 		for _, protocol := range packet.Protocols {
-			l4, ports := byte(unix.IPPROTO_TCP), packet.TCPPorts
+			l4 := byte(unix.IPPROTO_TCP)
 			if protocol == intent.PacketProtocolUDP {
-				l4, ports = unix.IPPROTO_UDP, packet.UDPPorts
+				l4 = unix.IPPROTO_UDP
 			}
-			for _, port := range ports {
+			for _, port := range plan.PortsForFamily(protocol, route.family == unix.NFPROTO_IPV6) {
 				match := append(append([]expr.Any(nil), path...), meta(unix.NFT_META_L4PROTO), eq([]byte{l4}),
 					&expr.Payload{DestRegister: reg, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2},
 					eq(binary.BigEndian.AppendUint16(nil, port)))

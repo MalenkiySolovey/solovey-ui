@@ -30,6 +30,7 @@ type bindingStatus struct {
 	outbounds.ZapretReference
 	DesiredRevision string `json:"desiredRevision,omitempty"`
 	AppliedRevision string `json:"appliedRevision,omitempty"`
+	Queue           uint16 `json:"queue,omitempty"`
 	State           string `json:"state"`
 }
 
@@ -83,6 +84,7 @@ func makeCatalogView(snapshot service.ZapretCatalogSnapshot) (catalogView, error
 					continue
 				}
 				status.AppliedRevision = observation.StrategyRevision
+				status.Queue = observation.Queue
 				if slices.Contains(snapshot.Desired, observation.Request) && (status.DesiredRevision == observation.StrategyRevision ||
 					status.DesiredRevision == "" && !zapretactivation.ManagedStrategyRef(ref.StrategyRef)) {
 					status.State = "applied"

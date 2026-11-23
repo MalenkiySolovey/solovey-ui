@@ -37,8 +37,10 @@ const (
 // The component resolves and compiles the ordered profiles. The broker still
 // owns the trusted inputs, Planner allocation and engine executable.
 type InstalledZapretStrategies struct {
-	Intents []intent.ZapretPacketPathIntent
-	Compile func(engineRoot string, queue uint16, loopMark uint32, queueMarks []uint32) ([]string, error)
+	Intents     []intent.ZapretPacketPathIntent
+	Families    []planner.ZapretFamilies
+	HandlesQUIC func(binding int, ipv6 bool, port uint16) bool
+	Compile     func(engineRoot string, queue uint16, loopMark uint32, queueMarks []uint32) ([]string, error)
 }
 
 type ResolveInstalledZapretStrategies func([]json.RawMessage, []zapretactivation.Request) (InstalledZapretStrategies, error)
@@ -48,6 +50,7 @@ type installedZapretProfile struct {
 	OutboundRef  string            `json:"outboundRef,omitempty"`
 	OutboundRefs []string          `json:"outboundRefs,omitempty"`
 	Interface    string            `json:"interface"`
+	IPv6         bool              `json:"ipv6,omitempty"`
 	EngineDigest string            `json:"engineSHA256"`
 	Strategy     json.RawMessage   `json:"strategy,omitempty"`
 	Strategies   []json.RawMessage `json:"strategies,omitempty"`
@@ -187,7 +190,7 @@ func rootOwnedZapretAsset(info os.FileInfo) bool {
 	return ok && stat.Uid == 0 && info.Mode()&(os.ModeSetuid|os.ModeSetgid|0o022) == 0
 }
 
-func observeInstalledZapretNetwork(ctx context.Context, interfaceName string) (planner.ZapretEgress, []uint16, error) {
+func observeInstalledZapretNetwork(ctx context.Context, interfaceName string, ipv6 bool) (planner.ZapretEgress, []uint16, error) {
 	if err := checkZapretForeignHooks(); err != nil {
 		return planner.ZapretEgress{}, nil, err
 	}
@@ -198,7 +201,7 @@ func observeInstalledZapretNetwork(ctx context.Context, interfaceName string) (p
 	if err := planner.CheckZapretEgressAdmission(ctx, iface.Index); err != nil {
 		return planner.ZapretEgress{}, nil, err
 	}
-	egress, err := planner.ObserveZapretLinuxEgress(ctx, int32(iface.Index), true, false)
+	egress, err := planner.ObserveZapretLinuxEgress(ctx, int32(iface.Index), true, ipv6)
 	if err != nil {
 		return planner.ZapretEgress{}, nil, err
 	}

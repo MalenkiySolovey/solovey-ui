@@ -9,6 +9,8 @@ import (
 
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 )
 
@@ -37,7 +39,7 @@ func validateEncryptedDNSDetours(config []byte, selected map[string]bool, allowE
 	}
 	for i, server := range servers {
 		kind, ref := dnsString(server, "type"), dnsString(server, "detour")
-		if ref == "" || kind != "https" && kind != "tls" {
+		if ref == "" || kind != C.DNSTypeHTTPS && kind != C.DNSTypeTLS && kind != C.DNSTypeQUIC && kind != C.DNSTypeHTTP3 {
 			continue
 		}
 		fail := func(code, message string) error {
@@ -58,11 +60,15 @@ func validateEncryptedDNSDetours(config []byte, selected map[string]bool, allowE
 	return nil
 }
 
-// ZapretDNSPorts derives requirements for existing native detours, without
+// ZapretDNSRequirements derives requirements for existing native detours, without
 // creating DNS-specific bindings or modifying TLS, bootstrap, or DNS rules.
-func ZapretDNSPorts(config []byte, selected map[string]bool) (map[string][]uint16, error) {
+func ZapretDNSRequirements(config []byte, selected map[string]bool) (map[string][]zapretactivation.DNSPathRequirement, error) {
+	return zapretDNSRequirements(config, selected, C.WithQUIC)
+}
+
+func zapretDNSRequirements(config []byte, selected map[string]bool, withQUIC bool) (map[string][]zapretactivation.DNSPathRequirement, error) {
 	servers, _ := dnsTransportSections(config)
-	var ports map[string][]uint16
+	var requirements map[string][]zapretactivation.DNSPathRequirement
 	for i, server := range servers {
 		ref := dnsString(server, "detour")
 		if !selected[ref] {
@@ -71,42 +77,57 @@ func ZapretDNSPorts(config []byte, selected map[string]bool) (map[string][]uint1
 		fail := func(field, code, message string) error {
 			return diagnostics.FirstError([]diagnostics.Finding{dnsFailure(fmt.Sprintf("dns.servers[%d].%s", i, field), code, message, diagnostics.ManualRequired)})
 		}
-		var port uint16
-		switch dnsString(server, "type") {
-		case "https":
-			port = 443
-		case "tls":
-			port = 853
+		var need zapretactivation.DNSPathRequirement
+		kind := dnsString(server, "type")
+		switch kind {
+		case C.DNSTypeHTTPS, C.DNSTypeHTTP3:
+			need.Port = 443
+		case C.DNSTypeTLS, C.DNSTypeQUIC:
+			need.Port = 853
 		default:
-			return nil, fail("detour", "dns_zapret_transport_unsupported", "Only DoH over HTTPS/TCP and DoT are supported through an enabled Zapret Direct.")
+			return nil, fail("detour", "dns_zapret_transport_unsupported", "Select an encrypted DoH, DoT, DoQ or DoH3 transport for an enabled Zapret Direct.")
+		}
+		need.QUIC = kind == C.DNSTypeQUIC || kind == C.DNSTypeHTTP3
+		if need.QUIC && !withQUIC {
+			return nil, fail("detour", "dns_zapret_quic_unavailable", "This Core build does not support DoQ or DoH3.")
 		}
 		if raw, ok := server["server_port"]; ok {
 			var override uint16
 			if json.Unmarshal(raw, &override) != nil {
-				return nil, fail("server_port", "dns_zapret_port_invalid", "Select a valid TCP port for the protected DNS server.")
+				return nil, fail("server_port", "dns_zapret_port_invalid", "Select a valid port for the protected DNS server.")
 			}
 			if override != 0 {
-				port = override
+				need.Port = override
 			}
 		}
 		if ip, err := netip.ParseAddr(dnsString(server, "server")); err == nil {
-			if !ip.Is4() {
-				return nil, fail("server", "dns_zapret_ipv6_unsupported", "This installed Zapret profile supports IPv4 DNS endpoints only.")
+			need.Family = zapretactivation.DNSFamilyIPv4
+			if ip.Unmap().Is6() {
+				need.Family = zapretactivation.DNSFamilyIPv6
 			}
-		} else if dnsResolverTag(server["domain_resolver"]) == "" {
-			return nil, fail("domain_resolver", "dns_zapret_bootstrap_required", "Select an explicit nonrecursive bootstrap resolver for the DNS endpoint hostname.")
+		} else {
+			var resolver option.DomainResolveOptions
+			if json.Unmarshal(server["domain_resolver"], &resolver) != nil || resolver.Server == "" {
+				return nil, fail("domain_resolver", "dns_zapret_bootstrap_required", "Select an explicit nonrecursive bootstrap resolver for the DNS endpoint hostname.")
+			}
+			switch C.DomainStrategy(resolver.Strategy) {
+			case C.DomainStrategyIPv4Only:
+				need.Family = zapretactivation.DNSFamilyIPv4
+			case C.DomainStrategyIPv6Only:
+				need.Family = zapretactivation.DNSFamilyIPv6
+			}
 		}
 		var tls dnsObject
 		_ = json.Unmarshal(server["tls"], &tls)
 		if dnsBool(tls, "insecure") {
 			return nil, fail("tls.insecure", "dns_zapret_tls_required", "Certificate verification must remain enabled for protected DNS.")
 		}
-		if ports == nil {
-			ports = make(map[string][]uint16)
+		if requirements == nil {
+			requirements = make(map[string][]zapretactivation.DNSPathRequirement)
 		}
-		if !slices.Contains(ports[ref], port) {
-			ports[ref] = append(ports[ref], port)
+		if !slices.Contains(requirements[ref], need) {
+			requirements[ref] = append(requirements[ref], need)
 		}
 	}
-	return ports, nil
+	return requirements, nil
 }

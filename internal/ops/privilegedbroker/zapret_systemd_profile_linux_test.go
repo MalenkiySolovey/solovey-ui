@@ -3,6 +3,7 @@
 package privilegedbroker
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -10,7 +11,63 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
+	"github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
+
+func TestInstalledZapretObserveReturnsOnlyVerifiedQueue(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	peer := PeerIdentity{UID: 1000, Revision: strings.Repeat("1", 64)}
+	id := strings.Repeat("2", 64)
+	input, err := json.Marshal(zapretactivation.BatchIdentity{BatchID: id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := installedZapret{active: &installedZapretPath{
+		ctx: ctx, peer: peer.Revision, uid: peer.UID, queue: 401,
+		grant: zapretactivation.BatchGrant{BatchID: id, Bindings: []zapretactivation.Grant{{
+			Request:          zapretactivation.Request{OutboundRef: "a", StrategyRef: "strategy"},
+			StrategyRevision: strings.Repeat("3", 64),
+		}}},
+		verify: func(context.Context) error { return nil },
+	}}
+	value, err := owner.observe(ctx, Request{Payload: input}, peer)
+	got, ok := value.([]zapretactivation.AppliedBinding)
+	if err != nil || !ok || len(got) != 1 || got[0].Queue != 401 || got[0].OutboundRef != "a" {
+		t.Fatalf("wrong active queue status: %+v, %v", value, err)
+	}
+	owner.active.verify = func(context.Context) error { return errZapretSocket }
+	if value, err := owner.observe(ctx, Request{Payload: input}, peer); err == nil || value != nil {
+		t.Fatalf("observation reported an unverified queue: %+v, %v", value, err)
+	}
+}
+
+func TestInstalledZapretDNSRequiresFamilyAndEffectiveQUICProfile(t *testing.T) {
+	strategies := InstalledZapretStrategies{
+		Families: []planner.ZapretFamilies{{
+			IPv4: planner.ZapretPorts{TCP: []uint16{443}, UDP: []uint16{443}},
+			IPv6: planner.ZapretPorts{TCP: []uint16{443}, UDP: []uint16{443}},
+		}},
+		HandlesQUIC: func(binding int, ipv6 bool, port uint16) bool { return binding == 0 && ipv6 && port == 443 },
+	}
+	for _, tc := range []struct {
+		family              zapretactivation.DNSFamily
+		ipv6, quic, allowed bool
+	}{
+		{zapretactivation.DNSFamilyIPv4, true, false, true},
+		{zapretactivation.DNSFamilyIPv4, true, true, false},
+		{zapretactivation.DNSFamilyIPv6, true, true, true},
+		{zapretactivation.DNSFamilyIPv6, false, true, false},
+		{zapretactivation.DNSFamilyIPv6, false, false, false},
+		{zapretactivation.DNSFamilyFromProfile, true, true, false},
+		{zapretactivation.DNSFamilyFromProfile, true, false, true},
+	} {
+		need := zapretactivation.DNSPathRequirement{Family: tc.family, Port: 443, QUIC: tc.quic}
+		if strategies.handlesDNS(0, tc.ipv6, need) != tc.allowed {
+			t.Errorf("incorrect protected DNS coverage for %+v, ipv6=%t", need, tc.ipv6)
+		}
+	}
+}
 
 func TestInstalledZapretSecondSocketRollback(t *testing.T) {
 	if os.Geteuid() != 0 {

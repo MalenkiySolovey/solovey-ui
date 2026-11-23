@@ -39,6 +39,7 @@ type installedZapret struct {
 type installedZapretPath struct {
 	inputDigest string
 	grant       zapretactivation.BatchGrant
+	queue       uint16
 	peer        string
 	uid         uint32
 	ctx         context.Context
@@ -82,7 +83,7 @@ func (z *installedZapret) observe(ctx context.Context, call Request, peer PeerId
 	}
 	result := make([]zapretactivation.AppliedBinding, 0, len(path.grant.Bindings))
 	for _, g := range path.grant.Bindings {
-		result = append(result, zapretactivation.AppliedBinding{Request: g.Request, StrategyRevision: g.StrategyRevision})
+		result = append(result, zapretactivation.AppliedBinding{Request: g.Request, StrategyRevision: g.StrategyRevision, Queue: path.queue})
 	}
 	return result, nil
 }
@@ -203,24 +204,53 @@ func (z *installedZapret) selectStrategies(input zapretactivation.Validation) (i
 	if err != nil {
 		return profile, InstalledZapretStrategies{}, err
 	}
+	if len(selected.Intents) != len(input.Bindings) || len(selected.Families) != len(input.Bindings) {
+		return profile, InstalledZapretStrategies{}, errors.New("installed Zapret did not resolve all packet scopes")
+	}
 	used := 0
 	for i, request := range input.Bindings {
-		if ports, ok := input.DNSPorts[request.OutboundRef]; ok {
+		if selected.Families[i].RequiresIPv6 && !profile.IPv6 {
+			return profile, InstalledZapretStrategies{}, fmt.Errorf("strategy for Direct %q requires IPv6 in the installed Zapret profile", request.OutboundRef)
+		}
+		if requirements, ok := input.DNS[request.OutboundRef]; ok {
 			used++
-			if len(ports) == 0 || len(ports) > 64 {
-				return profile, InstalledZapretStrategies{}, errors.New("invalid protected DNS port set")
+			if len(requirements) == 0 || len(requirements) > 64 {
+				return profile, InstalledZapretStrategies{}, errors.New("invalid protected DNS packet requirements")
 			}
-			for _, port := range ports {
-				if !slices.Contains(selected.Intents[i].TCPPorts, port) {
-					return profile, InstalledZapretStrategies{}, fmt.Errorf("strategy for Direct %q does not cover DNS TCP port %d", request.OutboundRef, port)
+			for _, need := range requirements {
+				if !selected.handlesDNS(i, profile.IPv6, need) {
+					return profile, InstalledZapretStrategies{}, fmt.Errorf("strategy for Direct %q does not cover protected DNS (port %d, family %d, QUIC %t)", request.OutboundRef, need.Port, need.Family, need.QUIC)
 				}
 			}
 		}
 	}
-	if len(input.DNSPorts) != used {
+	if len(input.DNS) != used {
 		return profile, InstalledZapretStrategies{}, errors.New("protected DNS does not refer to a selected Direct")
 	}
 	return profile, selected, nil
+}
+
+func (s InstalledZapretStrategies) handlesDNS(binding int, ipv6 bool, need zapretactivation.DNSPathRequirement) bool {
+	covered := func(v6 bool) bool {
+		ports := s.Families[binding].IPv4
+		if v6 {
+			ports = s.Families[binding].IPv6
+		}
+		if need.QUIC {
+			return slices.Contains(ports.UDP, need.Port) && s.HandlesQUIC != nil && s.HandlesQUIC(binding, v6, need.Port)
+		}
+		return slices.Contains(ports.TCP, need.Port)
+	}
+	switch need.Family {
+	case zapretactivation.DNSFamilyFromProfile:
+		return covered(false) && (!ipv6 || covered(true))
+	case zapretactivation.DNSFamilyIPv4:
+		return covered(false)
+	case zapretactivation.DNSFamilyIPv6:
+		return ipv6 && covered(true)
+	default:
+		return false
+	}
 }
 
 func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.BatchRequest, peer PeerIdentity) (_ *installedZapretPath, failure error) {
@@ -228,7 +258,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 	if err != nil {
 		return nil, err
 	}
-	egress, occupied, err := observeInstalledZapretNetwork(ctx, profile.Interface)
+	egress, occupied, err := observeInstalledZapretNetwork(ctx, profile.Interface, profile.IPv6)
 	if err != nil {
 		return nil, err
 	}
@@ -245,6 +275,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 			return nil, err
 		}
 		facts[i] = installedZapretFacts(request, &egress, occupied, serial)
+		facts[i].Zapret.SystemdFamilies = &selected.Families[i]
 		grants[i] = zapretactivation.Grant{Request: request, StrategyRevision: selected.Intents[i].StrategyRevision, Generation: generation}
 	}
 	plans, err := planner.CompileZapretSystemdBatch(selected.Intents, facts)
@@ -302,6 +333,8 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 	if err != nil {
 		return nil, err
 	}
+	retainedPeer := peer
+	retainedPeer.livenessFD = peerFD
 	defer func() {
 		if failure != nil {
 			_ = unix.Close(peerFD)
@@ -357,6 +390,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 		return nil, errors.New("installed Zapret generation changed before publication")
 	}
 	path := &installedZapretPath{ctx: authority.Context, release: release, done: make(chan struct{}), peer: peer.Revision, uid: peer.UID,
+		queue: plans[0].Queue(),
 		grant: zapretactivation.BatchGrant{BatchID: batch.BatchID, Bindings: grants}}
 	// Observation and FD admission check the same table and queue owners.
 	// Observation never creates a lease or extends the batch lifetime.
@@ -397,8 +431,8 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 					release()
 					return
 				case <-ticker.C:
-					if !zapretPeerAlive(peerFD) {
-						fmt.Fprintln(os.Stderr, "installed Zapret batch lost its Panel peer")
+					if err := peerAlive(retainedPeer); err != nil {
+						fmt.Fprintln(os.Stderr, "installed Zapret batch lost its Panel peer:", err)
 						release()
 						return
 					}
@@ -409,7 +443,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 		fence := func(ctx context.Context, _ ZapretSocketGrant, _ int, admit func() error) error {
 			path.mu.Lock()
 			defer path.mu.Unlock()
-			if !zapretPeerAlive(peerFD) || path.verify(ctx) != nil {
+			if peerAlive(retainedPeer) != nil || path.verify(ctx) != nil {
 				fmt.Fprintln(os.Stderr, "installed Zapret batch lost its socket admission fence")
 				release()
 				return errZapretSocket
@@ -469,11 +503,6 @@ func (z *installedZapret) openDeny(ctx context.Context, namespace uint64) (*nfta
 	return owner, nil
 }
 
-func zapretPeerAlive(fd int) bool {
-	n, err := unix.Poll([]unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}, 0)
-	return n == 0 && err == nil
-}
-
 func makeZapretSocketRoot(gid uint32) error {
 	if err := os.Mkdir(zapretSocketRoot, 0o750); err == nil {
 		if err := os.Chown(zapretSocketRoot, 0, int(gid)); err != nil {
@@ -513,9 +542,17 @@ func makeZapretSocketRoot(gid uint32) error {
 
 func startZapretEngine(ctx context.Context, plan planner.ZapretPlan, args []string, engineDigest string) (_ *installedZapretEngine, _ processevidence.Fact, failure error) {
 	credential := fmt.Sprintf("--uid=%d:%d", zapretEngineUID, zapretEngineUID)
-	// Match the admitted socket's egress for generated IPv4 packets. A raw
+	// Match the admitted socket's egress for generated packets. A raw
 	// send via an alternate route can fail and make nfqws2 pass the original.
-	cmd := exec.Command(zapretEnginePath, append(args, "--bind-fix4", credential)...)
+	scope, err := plan.SocketScope()
+	if err != nil {
+		return nil, processevidence.Fact{}, err
+	}
+	args = append(args, "--bind-fix4")
+	if scope.Egress().IPv6Gateway.IsValid() {
+		args = append(args, "--bind-fix6")
+	}
+	cmd := exec.Command(zapretEnginePath, append(args, credential)...)
 	cmd.Dir = zapretEngineRoot
 	cmd.Env = []string{"LANG=C", "LC_ALL=C"}
 	pidfd := -1

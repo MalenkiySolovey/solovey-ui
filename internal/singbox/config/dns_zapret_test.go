@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 )
 
 func TestZapretEncryptedDNSDetourPreflight(t *testing.T) {
@@ -31,15 +33,16 @@ func TestZapretEncryptedDNSDetourPreflight(t *testing.T) {
 	}
 }
 
-func TestZapretDNSPortsRespectExplicitTransportAndTLS(t *testing.T) {
+func TestZapretDNSRequirementsRespectExplicitTransportAndTLS(t *testing.T) {
 	for _, tt := range []struct{ name, server, code string }{
-		{"unsupported", `{"type":"h3","detour":"a"}`, "dns_zapret_transport_unsupported"},
+		{"unsupported", `{"type":"udp","detour":"a"}`, "dns_zapret_transport_unsupported"},
+		{"no QUIC build capability", `{"type":"h3","detour":"a"}`, "dns_zapret_quic_unavailable"},
 		{"insecure", `{"type":"tls","server":"192.0.2.3","detour":"a","tls":{"insecure":true}}`, "dns_zapret_tls_required"},
 		{"no bootstrap", `{"type":"https","server":"dns.example","detour":"a"}`, "dns_zapret_bootstrap_required"},
-		{"ipv6", `{"type":"tls","server":"2001:db8::1","detour":"a"}`, "dns_zapret_ipv6_unsupported"},
+		{"invalid port", `{"type":"tls","server":"2001:db8::1","server_port":70000,"detour":"a"}`, "dns_zapret_port_invalid"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := ZapretDNSPorts(fmt.Appendf(nil, `{"dns":{"servers":[%s]}}`, tt.server), map[string]bool{"a": true})
+			_, err := zapretDNSRequirements(fmt.Appendf(nil, `{"dns":{"servers":[%s]}}`, tt.server), map[string]bool{"a": true}, false)
 			if err == nil || !strings.Contains(err.Error(), tt.code) {
 				t.Fatalf("want %q, got %v", tt.code, err)
 			}
@@ -48,11 +51,17 @@ func TestZapretDNSPortsRespectExplicitTransportAndTLS(t *testing.T) {
 	config := []byte(`{"dns":{"servers":[
 		{"type":"https","server":"dns.example","domain_resolver":"bootstrap","detour":"a"},
 		{"type":"tls","server":"192.0.2.1","server_port":18853,"detour":"b"},
+		{"type":"quic","server":"dns.example","domain_resolver":{"server":"bootstrap","strategy":"ipv4_only"},"detour":"a"},
+		{"type":"h3","server":"2001:db8::1","detour":"b"},
 		{"type":"https","server":"192.0.2.2"},{"type":"https","server":"192.0.2.3","detour":"proxy"}
 	]}}`)
-	got, err := ZapretDNSPorts(config, map[string]bool{"a": true, "b": true})
-	if err != nil || !reflect.DeepEqual(got, map[string][]uint16{"a": {443}, "b": {18853}}) {
-		t.Fatalf("unexpected protected DNS ports: %v, %v", got, err)
+	got, err := zapretDNSRequirements(config, map[string]bool{"a": true, "b": true}, true)
+	want := map[string][]zapretactivation.DNSPathRequirement{
+		"a": {{Port: 443}, {Port: 853, Family: zapretactivation.DNSFamilyIPv4, QUIC: true}},
+		"b": {{Port: 18853, Family: zapretactivation.DNSFamilyIPv4}, {Port: 443, Family: zapretactivation.DNSFamilyIPv6, QUIC: true}},
+	}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected protected DNS path requirements: %v, %v", got, err)
 	}
 }
 

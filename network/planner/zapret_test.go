@@ -92,6 +92,40 @@ func TestZapretSystemdBatchSharesOnlyQueueAndEgress(t *testing.T) {
 	}
 }
 
+func TestZapretSystemdScopesUDPAndIPv6ByFamily(t *testing.T) {
+	request, facts := zapretFixture()
+	request.Protocols = []intent.PacketProtocol{intent.PacketProtocolTCP, intent.PacketProtocolUDP}
+	request.TCPPorts, request.UDPPorts = []uint16{443}, []uint16{18443}
+	facts.Capability.Backend = ZapretSystemdBackend
+	facts.Zapret.SystemdSerial = 1
+	facts.Zapret.InstalledEgress = &ZapretEgress{NamespaceCookie: 11, IfIndex: 2,
+		IPv4Gateway: netip.MustParseAddr("192.0.2.1"), RouteRevision: hash("egress")}
+	facts.Zapret.SystemdFamilies = &ZapretFamilies{
+		IPv4: ZapretPorts{TCP: []uint16{443}}, IPv6: ZapretPorts{UDP: []uint16{18443}}, RequiresIPv6: true,
+	}
+	_, err := CompileZapret(request, facts)
+	requireReason(t, err, CapabilityUnavailable)
+	facts.Zapret.InstalledEgress.IPv6Gateway = netip.MustParseAddr("2001:db8::1")
+	plan, err := CompileZapret(request, facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope, err := plan.SocketScope()
+	if err != nil || !scope.AllowsFamily(intent.PacketProtocolTCP, false) || !scope.AllowsFamily(intent.PacketProtocolUDP, true) ||
+		scope.AllowsFamily(intent.PacketProtocolUDP, false) || scope.AllowsFamily(intent.PacketProtocolTCP, true) {
+		t.Fatal("protocol admission crossed families", err)
+	}
+	facts.Zapret.SystemdFamilies.IPv6.UDP[0] = 18444
+	if ports := plan.PortsForFamily(intent.PacketProtocolUDP, true); len(ports) != 1 || ports[0] != 18443 {
+		t.Fatal("caller mutated admitted ports", ports)
+	}
+	_, err = CompileZapret(request, facts)
+	requireReason(t, err, InvalidIntent)
+	facts.Zapret.SystemdFamilies = nil
+	_, err = CompileZapret(request, facts)
+	requireReason(t, err, InvalidIntent)
+}
+
 func TestInstalledZapretScopeBindsEgressAndRejectsProbe(t *testing.T) {
 	request, facts := zapretFixture()
 	probe, err := CompileZapret(request, facts)

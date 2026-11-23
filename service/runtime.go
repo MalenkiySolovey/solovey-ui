@@ -120,7 +120,7 @@ func (r *Runtime) zapretComponentStarted() bool {
 		return false
 	}
 	provider := coreprovider.Current()
-	return provider.State == coreprovider.Verified && provider.ID == "sing-box"
+	return (provider.ID == "sing-box" || provider.ID == "shtorm-extended") && coreprovider.MatchesProductBuildPin(provider)
 }
 
 func (r *Runtime) Core() *coreruntime.Core {

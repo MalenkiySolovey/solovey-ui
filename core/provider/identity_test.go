@@ -28,6 +28,20 @@ func TestRequiredProviderNameIgnoresOptionalComponentTags(t *testing.T) {
 	}
 }
 
+func TestMatchesProductBuildPin(t *testing.T) {
+	for _, source := range pins.Sources {
+		t.Run(source.Module, func(t *testing.T) {
+			want := source.Module == "github.com/MalenkiySolovey/sing-box" || source.Module == "github.com/MalenkiySolovey/sing-box-extended"
+			if got := MatchesProductBuildPin(Resolve(buildFor(source))); got != want {
+				t.Fatalf("Product build pin match = %t, want %t", got, want)
+			}
+		})
+	}
+	if MatchesProductBuildPin(Resolve(nil)) {
+		t.Fatal("unknown source matched a Product build pin")
+	}
+}
+
 func TestIdentityUsesActualReplacementAndSeparatesArtifactTrust(t *testing.T) {
 	for _, source := range pins.Sources {
 		t.Run(source.ID, func(t *testing.T) {

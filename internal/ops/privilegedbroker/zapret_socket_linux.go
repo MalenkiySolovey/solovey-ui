@@ -261,14 +261,17 @@ func checkZapretSocket(fd int, peer PeerIdentity, scope planner.ZapretSocketScop
 	if err != nil {
 		return errZapretSocket
 	}
-	egress := scope.Egress()
+	transport := intent.PacketProtocolTCP
+	if protocol == unix.IPPROTO_UDP {
+		transport = intent.PacketProtocolUDP
+	}
 	switch addr := address.(type) {
 	case *unix.SockaddrInet4:
-		if !egress.IPv4Gateway.IsValid() || addr.Port != 0 || addr.Addr != [4]byte{} {
+		if !scope.AllowsFamily(transport, false) || addr.Port != 0 || addr.Addr != [4]byte{} {
 			return errZapretSocket
 		}
 	case *unix.SockaddrInet6:
-		if !egress.IPv6Gateway.IsValid() || addr.Port != 0 || addr.Addr != [16]byte{} || addr.ZoneId != 0 {
+		if !scope.AllowsFamily(transport, true) || addr.Port != 0 || addr.Addr != [16]byte{} || addr.ZoneId != 0 {
 			return errZapretSocket
 		}
 	default:
@@ -278,7 +281,7 @@ func checkZapretSocket(fd int, peer PeerIdentity, scope planner.ZapretSocketScop
 		return errZapretSocket
 	}
 	cookie, err := socketNetNSCookie(fd)
-	if err != nil || cookie != egress.NamespaceCookie {
+	if err != nil || cookie != scope.Egress().NamespaceCookie {
 		return errZapretSocket
 	}
 	return nil

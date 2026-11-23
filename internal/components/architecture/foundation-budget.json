@@ -2743,6 +2743,30 @@
       "path": "internal/singbox/config/dns_zapret.go",
       "symbol": "validateEncryptedDNSDetours",
       "digest": "e77a7917e9abcad6d7a710537e618dc8b556f124dd4c14ef656b7761d260f8ad"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "cmd/solovey-privileged-broker/zapret_linux.go",
+      "symbol": "resolveZapretStrategies",
+      "digest": "644722680fd7e08e6bf6500e5397bb49efb8d8306fb412eadde48f9db36e132f"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/singbox/config/dns_zapret.go",
+      "symbol": "validateEncryptedDNSDetours",
+      "digest": "70f440e6f8a2074668b79e912709c1635f96f898aae79b8f344e33475762f989"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "internal/ops/privilegedbroker/zapret_systemd_linux.go",
+      "symbol": "*installedZapret.prepare",
+      "digest": "117babafe2ce618809e0f58ac88fe172bbe9f639b85fc6d3de6843d7848108a1"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "internal/ops/privilegedbroker/zapret_systemd_linux.go",
+      "symbol": "*installedZapret.prepare",
+      "digest": "4998d2fae785035573a8d2cbd81a96d216da264a788efa0f8a574396bb96cbb6"
     }
   ]
 }
