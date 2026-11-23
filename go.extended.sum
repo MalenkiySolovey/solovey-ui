@@ -82,8 +82,8 @@ github.com/MalenkiySolovey/solovey-component-server-protection v0.1.0 h1:gSzRUTp
 github.com/MalenkiySolovey/solovey-component-server-protection v0.1.0/go.mod h1:q4o5M/L2vVYNYcAEGzjwBNWSPb9ISPS6m4jPYAZk0co=
 github.com/MalenkiySolovey/solovey-component-telegram v0.1.0 h1:/Bbzfvkr7IxKnqxqPS64LQnbGNh2VeLmwBZxeGiMXCk=
 github.com/MalenkiySolovey/solovey-component-telegram v0.1.0/go.mod h1:kQRT0GfOrFxV6ITK+wXQaYshFvzBKEP01xY7CgY93jE=
-github.com/MalenkiySolovey/solovey-component-zapret v0.1.2-0.20261121133845-e4a86f9c4973 h1:cIV5jCEOcxMFEXnKLR8g5/0AI3bNvdaFifxkSUaGLOQ=
-github.com/MalenkiySolovey/solovey-component-zapret v0.1.2-0.20261121133845-e4a86f9c4973/go.mod h1:S7y94+Jn2WlDE9KTdjqX8LZ+xutESUKDCtZFj3REn6E=
+github.com/MalenkiySolovey/solovey-component-zapret v0.1.2 h1:IggksitGHIIS8j03symzADiQGK0H+77CqiUEuUT/fXY=
+github.com/MalenkiySolovey/solovey-component-zapret v0.1.2/go.mod h1:S7y94+Jn2WlDE9KTdjqX8LZ+xutESUKDCtZFj3REn6E=
 github.com/MalenkiySolovey/solovey-contracts v1.0.0 h1:me6uddB3lN19zfYkGp6iuOT46LOshbSelIECAt4Y7aY=
 github.com/MalenkiySolovey/solovey-contracts v1.0.0/go.mod h1:2fPj6/IiP0jvioVnW2OKurqGPwilJ+gcXNs74aX1VcI=
 github.com/MalenkiySolovey/solovey-contracts v1.0.1 h1:6ppOe1XckTKpIwIfvI/Bd9Z9uEPs9Woz4K0IBOeED5M=

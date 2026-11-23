@@ -5,6 +5,7 @@ package nftables
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -50,12 +51,37 @@ type ZapretOwnedTable struct {
 // CreateZapretOwnedTable applies exactly one create-only batch for a plan.
 // Partial or unconfirmed apply closes its port, never deletes by table name.
 func CreateZapretOwnedTable(ctx context.Context, plan planner.ZapretPlan) (_ *ZapretOwnedTable, failure error) {
+	return CreateZapretOwnedBatch(ctx, []planner.ZapretPlan{plan})
+}
+
+// CreateZapretOwnedBatch installs all protected selectors atomically, under
+// one owner port. No partial live table exists if any rule cannot be installed.
+func CreateZapretOwnedBatch(ctx context.Context, plans []planner.ZapretPlan) (*ZapretOwnedTable, error) {
+	if len(plans) == 0 || len(plans) > 3 {
+		return nil, errors.New("missing or excessive installed Zapret allocations")
+	}
+	plan := plans[0]
 	scope, err := plan.SocketScope()
 	if err != nil || plan.Queue() == 0 || plan.FinalRouteBit() == 0 {
 		return nil, errors.New("missing installed Zapret allocation")
 	}
 	comment := zapretTableComment(scope.PlanRevision())
-	batch, err := zapretOwnedBatch(plan, comment)
+	if len(plans) > 1 {
+		var revisions []byte
+		marks := make(map[uint32]bool, len(plans))
+		for _, member := range plans {
+			s, err := member.SocketScope()
+			if err != nil || s.Egress() != scope.Egress() || member.Queue() != plan.Queue() ||
+				member.LoopMark() != plan.LoopMark() || member.FinalRouteBit() != plan.FinalRouteBit() ||
+				member.PacketMarkMask() != plan.PacketMarkMask() || marks[member.SocketMark()] {
+				return nil, errors.New("inconsistent installed Zapret batch allocation")
+			}
+			marks[member.SocketMark()] = true
+			revisions = append(revisions, s.PlanRevision()...)
+		}
+		comment = zapretTableComment(fmt.Sprintf("%x", sha256.Sum256(revisions)))
+	}
+	batch, err := zapretOwnedBatch(plans, comment)
 	if err != nil {
 		return nil, err
 	}
@@ -224,11 +250,7 @@ func expectZapretBatchACKs(conn *netlink.Conn, requests []netlink.Message) error
 	return nil
 }
 
-func zapretOwnedBatch(plan planner.ZapretPlan, comment []byte) ([]netlink.Message, error) {
-	scope, err := plan.SocketScope()
-	if err != nil {
-		return nil, err
-	}
+func zapretOwnedBatch(plans []planner.ZapretPlan, comment []byte) ([]netlink.Message, error) {
 	batch, err := newZapretBatch(planner.ZapretInstalledTable, comment)
 	if err != nil {
 		return nil, err
@@ -238,6 +260,29 @@ func zapretOwnedBatch(plan planner.ZapretPlan, comment []byte) ([]netlink.Messag
 	}
 	if err := batch.addChain(zapretPostRouting, unix.NF_INET_POST_ROUTING, zapretGuardPriority-1); err != nil {
 		return nil, err
+	}
+	for _, plan := range plans {
+		if err := batch.addZapretPath(plan); err != nil {
+			return nil, err
+		}
+	}
+	const reg = unix.NFT_REG_1
+	u32 := func(value uint32) []byte { return binary.NativeEndian.AppendUint32(nil, value) }
+	for _, chain := range []string{zapretOutput, zapretPostRouting} {
+		if err := batch.addRule(chain, []expr.Any{&expr.Meta{Key: expr.MetaKeyMARK, Register: reg},
+			&expr.Bitwise{SourceRegister: reg, DestRegister: reg, Len: 4, Mask: u32(plans[0].PacketMarkMask()), Xor: u32(0)},
+			&expr.Cmp{Op: expr.CmpOpNeq, Register: reg, Data: u32(0)}, &expr.Verdict{Kind: expr.VerdictDrop},
+		}); err != nil {
+			return nil, err
+		}
+	}
+	return batch.finish(), nil
+}
+
+func (batch *zapretBatch) addZapretPath(plan planner.ZapretPlan) error {
+	scope, err := plan.SocketScope()
+	if err != nil {
+		return err
 	}
 	addRule := batch.addRule
 	const reg = unix.NFT_REG_1
@@ -276,13 +321,13 @@ func zapretOwnedBatch(plan planner.ZapretPlan, comment []byte) ([]netlink.Messag
 					meta(unix.NFT_META_MARK), eq(u32(plan.SocketMark())), socketMark, eq(u32(plan.SocketMark())))
 				original = append(original, setMark(plan.QueueMark())...)
 				if err := addRule(zapretOutput, append(original, &expr.Queue{Num: plan.Queue(), Total: 1})); err != nil {
-					return nil, err
+					return err
 				}
 				for _, mark := range generated {
 					raw := append(append([]expr.Any(nil), match...), meta(unix.NFT_META_MARK), eq(u32(mark)), socketMark, eq(u32(mark)))
 					raw = append(raw, setMark(plan.RawOutputMark())...)
 					if err := addRule(zapretOutput, append(raw, &expr.Verdict{Kind: expr.VerdictAccept})); err != nil {
-						return nil, err
+						return err
 					}
 				}
 			}
@@ -294,19 +339,11 @@ func zapretOwnedBatch(plan planner.ZapretPlan, comment []byte) ([]netlink.Messag
 			match := append(append([]expr.Any(nil), path...), meta(unix.NFT_META_MARK), eq(u32(mark)))
 			match = append(match, setMark(mark|plan.FinalRouteBit())...)
 			if err := addRule(zapretPostRouting, append(match, &expr.Verdict{Kind: expr.VerdictAccept})); err != nil {
-				return nil, err
+				return err
 			}
 		}
 	}
-	for _, chain := range []string{zapretOutput, zapretPostRouting} {
-		if err := addRule(chain, []expr.Any{meta(unix.NFT_META_MARK),
-			&expr.Bitwise{SourceRegister: reg, DestRegister: reg, Len: 4, Mask: u32(plan.PacketMarkMask()), Xor: u32(0)},
-			&expr.Cmp{Op: expr.CmpOpNeq, Register: reg, Data: u32(0)}, &expr.Verdict{Kind: expr.VerdictDrop},
-		}); err != nil {
-			return nil, err
-		}
-	}
-	return batch.finish(), nil
+	return nil
 }
 
 type zapretBatch struct {

@@ -62,6 +62,36 @@ func TestCompileZapretAllocatesFreshBoundedResources(t *testing.T) {
 	}
 }
 
+func TestZapretSystemdBatchSharesOnlyQueueAndEgress(t *testing.T) {
+	a, first := zapretFixture()
+	first.Capability.Backend = ZapretSystemdBackend
+	first.Zapret.InstalledEgress = &ZapretEgress{NamespaceCookie: 11, IfIndex: 2, IPv4Gateway: netip.MustParseAddr("192.0.2.1"), RouteRevision: hash("egress")}
+	first.Zapret.SystemdSerial = 15
+	first.Zapret.OccupiedQueues = []uint16{8, 17}
+	b := a
+	b.OutboundRef, b.ResourceRef, b.InputRevision = "direct-b", "outbound:direct-b", hash("outbound-b")
+	second := clone(first)
+	second.Zapret.OutboundRef, second.Zapret.OutboundRevision, second.Zapret.SystemdSerial = b.OutboundRef, b.InputRevision, 16
+	requests, facts := []intent.ZapretPacketPathIntent{a, b}, []Facts{first, second}
+	plans, err := CompileZapretSystemdBatch(requests, facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plans[0].Queue() != plans[1].Queue() || plans[0].LoopMark() != plans[1].LoopMark() ||
+		plans[0].SocketMark() == plans[1].SocketMark() || plans[0].QueueMark() == plans[1].QueueMark() {
+		t.Fatal("members do not have disjoint selectors on one queue")
+	}
+	facts[1].Zapret.SystemdSerial = 15
+	if batch, err := CompileZapretSystemdBatch(requests, facts); err == nil || batch != nil {
+		t.Fatal("planner accepted repeated generation mark in a shared queue")
+	}
+	facts[1].Zapret.SystemdSerial = 16
+	facts[1].Zapret.InstalledEgress.IfIndex = 3
+	if batch, err := CompileZapretSystemdBatch(requests, facts); err == nil || batch != nil {
+		t.Fatal("planner accepted inconsistent egress in a shared queue")
+	}
+}
+
 func TestInstalledZapretScopeBindsEgressAndRejectsProbe(t *testing.T) {
 	request, facts := zapretFixture()
 	probe, err := CompileZapret(request, facts)

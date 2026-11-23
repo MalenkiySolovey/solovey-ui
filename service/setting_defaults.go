@@ -4,6 +4,7 @@ import (
 	settingcatalog "github.com/MalenkiySolovey/solovey-backend/settings/catalog"
 	settingsschema "github.com/MalenkiySolovey/solovey-backend/settings/schema"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 )
 
 var defaultValueMap = settingcatalog.MergeDefaultMaps(
@@ -25,6 +26,7 @@ var internalSettingKeys = settingcatalog.MergeKeySets(
 		settingcatalog.ConfigKey,
 		settingcatalog.VersionKey,
 		settingcatalog.CoreMaintenanceKey,
+		zapretactivation.CatalogKey,
 	),
 	ipCertInternalSettingKeySet,
 )

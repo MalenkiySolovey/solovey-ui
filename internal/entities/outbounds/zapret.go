@@ -108,7 +108,7 @@ func CheckZapretStartup(db *gorm.DB, ready bool) (bool, error) {
 	if err := db.Find(&rows).Error; err != nil {
 		return false, err
 	}
-	found := false
+	found := 0
 	for _, row := range rows {
 		fields, binding, err := zapretOptions(row)
 		if err != nil {
@@ -117,12 +117,15 @@ func CheckZapretStartup(db *gorm.DB, ready bool) (bool, error) {
 		if binding == nil || !binding.Enabled {
 			continue
 		}
-		if found || !ready || row.RemoteMissing || zapretDialConflict(fields) {
+		if !ready || row.RemoteMissing || zapretDialConflict(fields) {
 			return false, fmt.Errorf("outbound %q: %w", binding.OutboundRef, ErrZapretPacketPathUnqualified)
 		}
-		found = true
+		found++
+		if found > zapretactivation.MaxBindings {
+			return false, fmt.Errorf("%w: at most %d Direct bindings", ErrZapretPacketPathUnqualified, zapretactivation.MaxBindings)
+		}
 	}
-	return found, nil
+	return found > 0, nil
 }
 
 func zapretDialConflict(fields map[string]json.RawMessage) bool {
@@ -146,9 +149,95 @@ func projectZapretOptions(row model.Outbound, heldRestoreValidation bool) (model
 	return projectZapretRuntime(row, heldRestoreValidation, nil)
 }
 
-// ZapretAdmitter is used only for installed Core startup. Offline and hot
-// reload projections cannot turn an enabled binding into a provider dialer.
+// The installed broker admits the complete set in one operation. Projection
+// reads the resulting grants; offline and hot reload do not receive them.
+type ZapretBatchAdmitter func(zapretactivation.Validation) ([]zapretactivation.Grant, error)
+
 type ZapretAdmitter func(zapretactivation.Request) (zapretactivation.Grant, error)
+
+func zapretRequest(row model.Outbound) (zapretactivation.Request, bool, error) {
+	fields, binding, err := zapretOptions(row)
+	if err != nil || binding == nil || !binding.Enabled {
+		return zapretactivation.Request{}, false, err
+	}
+	if row.RemoteMissing || zapretDialConflict(fields) {
+		return zapretactivation.Request{}, false, fmt.Errorf("outbound %q: %w", binding.OutboundRef, ErrZapretPacketPathUnqualified)
+	}
+	serialized, err := json.Marshal(row)
+	if err != nil {
+		return zapretactivation.Request{}, false, err
+	}
+	return zapretactivation.Request{OutboundRef: binding.OutboundRef, OutboundRevision: fmt.Sprintf("%x", sha256.Sum256(serialized)), StrategyRef: binding.StrategyRef}, true, nil
+}
+
+func ZapretRequests(db *gorm.DB) ([]zapretactivation.Request, error) {
+	var rows []*model.Outbound
+	if err := db.Order("id").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return zapretRequests(rows)
+}
+
+func zapretRequests(rows []*model.Outbound) ([]zapretactivation.Request, error) {
+	var requests []zapretactivation.Request
+	for _, row := range rows {
+		request, enabled, err := zapretRequest(*row)
+		if err != nil {
+			return nil, err
+		}
+		if enabled {
+			requests = append(requests, request)
+		}
+	}
+	if len(requests) > zapretactivation.MaxBindings {
+		return nil, ErrZapretPacketPathUnqualified
+	}
+	return requests, nil
+}
+
+func admitZapretRows(db *gorm.DB, rows []*model.Outbound, admit ZapretBatchAdmitter) (ZapretAdmitter, error) {
+	requests, err := zapretRequests(rows)
+	if err != nil || len(requests) == 0 {
+		return nil, err
+	}
+	input, err := ZapretValidation(db, requests)
+	if err != nil {
+		return nil, err
+	}
+	grants, err := admit(input)
+	if err != nil {
+		refs := make([]string, len(requests))
+		for i, request := range requests {
+			refs[i] = fmt.Sprintf("outbound %q", request.OutboundRef)
+		}
+		return nil, fmt.Errorf("%s: %w", strings.Join(refs, ", "), err)
+	}
+	if len(grants) != len(requests) {
+		return nil, ErrZapretPacketPathUnqualified
+	}
+	byRequest := make(map[zapretactivation.Request]zapretactivation.Grant, len(requests))
+	generations := make(map[string]bool, len(grants))
+	for i, grant := range grants {
+		if _, ok := grant.ProtectPath(requests[i]); !ok || generations[grant.Generation] {
+			return nil, ErrZapretPacketPathUnqualified
+		}
+		if raw := input.Definitions[requests[i].StrategyRef]; raw != nil {
+			var definition struct{ Revision string }
+			if json.Unmarshal(raw, &definition) != nil || definition.Revision != grant.StrategyRevision {
+				return nil, ErrZapretPacketPathUnqualified
+			}
+		}
+		generations[grant.Generation] = true
+		byRequest[requests[i]] = grant
+	}
+	return func(request zapretactivation.Request) (zapretactivation.Grant, error) {
+		grant, ok := byRequest[request]
+		if !ok {
+			return zapretactivation.Grant{}, ErrZapretPacketPathUnqualified
+		}
+		return grant, nil
+	}, nil
+}
 
 func projectZapretRuntime(row model.Outbound, heldRestoreValidation bool, admit ZapretAdmitter) (model.Outbound, error) {
 	fields, binding, err := zapretOptions(row)
@@ -160,14 +249,13 @@ func projectZapretRuntime(row model.Outbound, heldRestoreValidation bool, admit 
 			return model.Outbound{}, fmt.Errorf("outbound %q: %w", binding.OutboundRef, cause)
 		}
 		// Only a fresh socket in the normal namespace can enter the broker.
-		if admit == nil || row.RemoteMissing || zapretDialConflict(fields) {
+		if admit == nil {
 			return fail(ErrZapretPacketPathUnqualified)
 		}
-		serialized, err := json.Marshal(row)
-		if err != nil {
-			return fail(err)
+		request, enabled, err := zapretRequest(row)
+		if err != nil || !enabled {
+			return model.Outbound{}, errors.Join(ErrZapretPacketPathUnqualified, err)
 		}
-		request := zapretactivation.Request{OutboundRef: binding.OutboundRef, OutboundRevision: fmt.Sprintf("%x", sha256.Sum256(serialized)), StrategyRef: binding.StrategyRef}
 		grant, err := admit(request)
 		if err != nil {
 			return fail(err)

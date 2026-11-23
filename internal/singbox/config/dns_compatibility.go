@@ -228,12 +228,7 @@ func DNSReferenceFindings(config []byte) []diagnostics.Finding {
 		if !activeDNSRaw(raw) {
 			return
 		}
-		var tag string
-		if json.Unmarshal(raw, &tag) != nil {
-			var options dnsObject
-			_ = json.Unmarshal(raw, &options)
-			tag = dnsString(options, "server")
-		}
+		tag := dnsResolverTag(raw)
 		if tag == "" || !tags[tag] {
 			findings = append(findings, dnsFailure(path, "dns_resolver_reference_missing", "Select an existing named DNS server; a missing resolver cannot be inferred.", diagnostics.ManualRequired))
 		}
@@ -249,12 +244,54 @@ func DNSReferenceFindings(config []byte) []diagnostics.Finding {
 	for i, server := range servers {
 		check(server["domain_resolver"], fmt.Sprintf("dns.servers[%d].domain_resolver", i))
 	}
+	findings = append(findings, dnsBootstrapCycleFindings(servers)...)
 	var sets []dnsObject
 	_ = json.Unmarshal(route["rule_set"], &sets)
 	for i, set := range sets {
 		var client dnsObject
 		_ = json.Unmarshal(set["http_client"], &client)
 		check(client["domain_resolver"], fmt.Sprintf("route.rule_set[%d].http_client.domain_resolver", i))
+	}
+	return findings
+}
+
+func dnsResolverTag(raw json.RawMessage) string {
+	var tag string
+	if json.Unmarshal(raw, &tag) != nil {
+		var options dnsObject
+		_ = json.Unmarshal(raw, &options)
+		tag = dnsString(options, "server")
+	}
+	return tag
+}
+
+func dnsBootstrapCycleFindings(servers []dnsObject) []diagnostics.Finding {
+	index := make(map[string]int, len(servers))
+	for i, server := range servers {
+		if tag := dnsString(server, "tag"); tag != "" {
+			index[tag] = i
+		}
+	}
+	var findings []diagnostics.Finding
+	visited := make([]bool, len(servers))
+	for i := range servers {
+		if visited[i] {
+			continue
+		}
+		chain := make(map[int]bool)
+		for cursor := i; !visited[cursor]; {
+			visited[cursor], chain[cursor] = true, true
+			next, found := index[dnsResolverTag(servers[cursor]["domain_resolver"])]
+			if !found {
+				break
+			}
+			if chain[next] {
+				path := fmt.Sprintf("dns.servers[%d].domain_resolver", cursor)
+				findings = append(findings, dnsFailure(path, "dns_bootstrap_cycle", "Choose a bootstrap resolver that does not depend on this DNS server.", diagnostics.ManualRequired))
+				break
+			}
+			cursor = next
+		}
 	}
 	return findings
 }

@@ -47,6 +47,7 @@ type ZapretFacts struct {
 	OccupiedQueues                            []uint16
 	InstalledEgress                           *ZapretEgress `json:",omitempty"`
 	SystemdSerial                             uint32        `json:",omitempty"`
+	SystemdQueue                              uint16        `json:",omitempty"` // assigned by CompileZapretSystemdBatch
 }
 
 type ZapretEgress struct {
@@ -146,12 +147,50 @@ func (s ZapretSocketScope) AllowsProtocol(p intent.PacketProtocol) bool {
 }
 
 func CompileZapret(request intent.ZapretPacketPathIntent, facts Facts) (ZapretPlan, error) {
+	return compileZapret(request, facts, 0)
+}
+
+// CompileZapretSystemdBatch allocates one free queue using the first plan and
+// reuses it exclusively inside the batch. Socket marks are still unique per
+// binding; every plan must agree on the observed egress and queue inventory.
+func CompileZapretSystemdBatch(requests []intent.ZapretPacketPathIntent, facts []Facts) ([]ZapretPlan, error) {
+	if len(requests) == 0 || len(requests) > 3 || len(requests) != len(facts) {
+		return nil, conflict(InvalidIntent, "zapret")
+	}
+	var queue uint16
+	var egress ZapretEgress
+	plans := make([]ZapretPlan, 0, len(requests))
+	for i, request := range requests {
+		if facts[i].Capability.Backend != ZapretSystemdBackend {
+			return nil, conflict(CapabilityUnavailable, request.ResourceRef)
+		}
+		plan, err := compileZapret(request, facts[i], queue)
+		if err != nil {
+			return nil, err
+		}
+		if i == 0 {
+			queue, egress = plan.queue, *plan.plan.facts.Zapret.InstalledEgress
+		} else if *plan.plan.facts.Zapret.InstalledEgress != egress ||
+			!slices.Equal(plan.plan.facts.Zapret.OccupiedQueues, plans[0].plan.facts.Zapret.OccupiedQueues) {
+			return nil, conflict(StalePlan, request.ResourceRef)
+		}
+		for _, prior := range plans {
+			if prior.mark == plan.mark || prior.intent.OutboundRef == plan.intent.OutboundRef {
+				return nil, conflict(ResourceConflict, request.ResourceRef)
+			}
+		}
+		plans = append(plans, plan)
+	}
+	return plans, nil
+}
+
+func compileZapret(request intent.ZapretPacketPathIntent, facts Facts, sharedQueue uint16) (ZapretPlan, error) {
 	if request.Validate() != nil {
 		return ZapretPlan{}, conflict(InvalidIntent, "zapret")
 	}
 	ref := request.ResourceRef
 	z := facts.Zapret
-	if z == nil || len(z.OccupiedQueues) > 8192 || facts.HostRef != request.HostRef {
+	if z == nil || z.SystemdQueue != 0 || len(z.OccupiedQueues) > 8192 || facts.HostRef != request.HostRef {
 		return ZapretPlan{}, conflict(ObservationUnknown, ref)
 	}
 	if z.OutboundRef != request.OutboundRef || z.OutboundRevision != request.InputRevision {
@@ -208,15 +247,22 @@ func CompileZapret(request intent.ZapretPacketPathIntent, facts Facts) (ZapretPl
 	occupied = slices.Compact(occupied)
 	zapretFacts := *z
 	zapretFacts.OccupiedQueues = occupied
+	zapretFacts.SystemdQueue = sharedQueue
 	facts.Zapret = &zapretFacts
 	plan := newPlan(value, canonicalFacts(facts))
 	seed, _ := strconv.ParseUint(plan.revision[:4], 16, 16)
-	var queue uint16
-	for offset := uint64(0); offset <= uint64(len(occupied)); offset++ {
-		candidate := uint16(1 + (seed+offset)%65535)
-		if _, found := slices.BinarySearch(occupied, candidate); !found {
-			queue = candidate
-			break
+	queue := sharedQueue
+	if queue != 0 {
+		if _, occupied := slices.BinarySearch(occupied, queue); occupied {
+			return ZapretPlan{}, conflict(ResourceConflict, ref)
+		}
+	} else {
+		for offset := uint64(0); offset <= uint64(len(occupied)); offset++ {
+			candidate := uint16(1 + (seed+offset)%65535)
+			if _, found := slices.BinarySearch(occupied, candidate); !found {
+				queue = candidate
+				break
+			}
 		}
 	}
 	var mark, loopMark, passMark, finalBit uint32

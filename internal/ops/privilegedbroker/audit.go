@@ -5,7 +5,7 @@ const auditZapretSocket Verb = "zapret.socket_admission"
 
 func sanitizeAuditVerb(verb Verb) Verb {
 	switch verb {
-	case VerbCapabilities, auditZapretSocket, VerbZapretAcquire, VerbZapretRelease,
+	case VerbCapabilities, auditZapretSocket, VerbZapretAcquire, VerbZapretRelease, VerbZapretValidate, VerbZapretObserve,
 		VerbSSHObserve, VerbSSHPrepare, VerbSSHStage, VerbSSHRecoverStage, VerbSSHReleaseStage, VerbSSHValidate, VerbSSHReload, VerbSSHArm, VerbSSHRestore, VerbSSHInspect, VerbSSHVerify, VerbSSHProof,
 		VerbDeploymentObserve, VerbDeploymentDoctor, VerbDeploymentPrepare, VerbDeploymentRelease, VerbDeploymentApply, VerbDeploymentVerify, VerbDeploymentRollback,
 		VerbUpdateObserve, VerbUpdateStage, VerbUpdateRelease, VerbUpdatePrepare, VerbUpdateActivate, VerbUpdateVerify, VerbUpdateRollback:

@@ -16,7 +16,6 @@ import (
 	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/assembly"
-	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
@@ -84,7 +83,7 @@ func (s *ConfigService) coreCandidateContext(ctx context.Context) ([]byte, []inb
 	return s.buildCoreCandidate(ctx, nil)
 }
 
-func (s *ConfigService) buildCoreCandidate(ctx context.Context, admit outbounds.ZapretAdmitter) ([]byte, []inboundidentity.Binding, error) {
+func (s *ConfigService) buildCoreCandidate(ctx context.Context, admit outbounds.ZapretBatchAdmitter) ([]byte, []inboundidentity.Binding, error) {
 	db := configDatabase()
 	if db == nil {
 		return nil, nil, errors.New("configuration database is not initialized")
@@ -153,16 +152,16 @@ func (s *ConfigService) startCoreLockedContext(ctx context.Context, force bool) 
 		return nil
 	}
 
-	if err := runtime.retireZapretGrant(); err != nil {
+	if err := runtime.retireZapretBatch(); err != nil {
 		runtime.markCoreStartFailed()
 		return err
 	}
 	logger.Info("starting core")
-	var admitted *zapretactivation.Grant
+	var admitted string
 	defer func() {
-		if admitted != nil {
-			runtime.zapretGrant = admitted
-			if err := runtime.retireZapretGrant(); err != nil {
+		if admitted != "" {
+			runtime.zapretBatch = admitted
+			if err := runtime.retireZapretBatch(); err != nil {
 				logger.Warning(err)
 			}
 		}
@@ -180,7 +179,7 @@ func (s *ConfigService) startCoreLockedContext(ctx context.Context, force bool) 
 		logger.Error("start sing-box err:", err.Error())
 		return err
 	}
-	runtime.zapretGrant, admitted = admitted, nil
+	runtime.zapretBatch, admitted = admitted, ""
 	runtime.markCoreStartSucceeded()
 	logger.Info("sing-box started")
 	realtime.Publish(realtime.TopicCoreState, map[string]any{"state": "running"})
@@ -219,6 +218,13 @@ func (s *ConfigService) restartCoreLocked() error {
 	if err := assembly.ValidateCoreRestartFromDB(db, s.runtime().zapretComponentStarted()); err != nil {
 		return err
 	}
+	if bound, err := outbounds.CheckZapretStartup(db, true); err != nil {
+		return err
+	} else if bound {
+		if err := validateInstalledZapret(db); err != nil {
+			return err
+		}
+	}
 	if err := s.stopCoreLocked(); err != nil {
 		return err
 	}
@@ -239,7 +245,7 @@ func (s *ConfigService) stopCoreLocked() error {
 		return common.NewError("core not initialized")
 	}
 	stopErr := coreInstance.Stop()
-	retireErr := s.runtime().retireZapretGrant()
+	retireErr := s.runtime().retireZapretBatch()
 	logger.Info("sing-box stopped")
 	realtime.Publish(realtime.TopicCoreState, map[string]any{"state": "stopped"})
 	return errors.Join(stopErr, retireErr)
@@ -287,6 +293,14 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 }
 
 func (s *ConfigService) save(obj string, act string, data json.RawMessage, initUsers string, loginUser string, hostname string, coreLocked bool) (objs []string, err error) {
+	return s.saveWithMutation(obj, act, data, loginUser, coreLocked, func(tx *gorm.DB, plan *configSavePlan) error {
+		return s.applyConfigSaveMutation(tx, plan, obj, act, data, initUsers, hostname)
+	})
+}
+
+func (s *ConfigService) saveWithMutation(obj, act string, data json.RawMessage, loginUser string, coreLocked bool,
+	mutate func(*gorm.DB, *configSavePlan) error,
+) (objs []string, err error) {
 	plan := newConfigSavePlan(obj)
 	afterCommitEffects, err := s.prepareConfigSaveObserverEffects(obj, data, loginUser)
 	if err != nil {
@@ -321,7 +335,7 @@ func (s *ConfigService) save(obj string, act string, data json.RawMessage, initU
 	if err = dbsqlite.ReserveWrite(tx); err != nil {
 		return nil, err
 	}
-	if err = s.applyConfigSaveMutation(tx, &plan, obj, act, data, initUsers, hostname); err != nil {
+	if err = mutate(tx, &plan); err != nil {
 		return nil, err
 	}
 	if obj != "settings" && (plan.HasObjectChanges() || plan.RequiresCoreRestart()) {
@@ -366,6 +380,9 @@ func (s *ConfigService) save(obj string, act string, data json.RawMessage, initU
 		}
 	}
 	publishConfigSaveEffects(afterCommitEffects)
+	if obj == zapretCatalogObject && !plan.RequiresCoreRestart() {
+		return plan.Objects(), nil
+	}
 	if coreLocked {
 		err = s.applyCoreSaveEffectLocked(plan)
 	} else {

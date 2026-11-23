@@ -13,7 +13,6 @@ import (
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/restart"
-	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	auditsvc "github.com/MalenkiySolovey/solovey-ui/service/audit"
 )
@@ -67,7 +66,7 @@ type Runtime struct {
 
 	coreStartCooldown time.Duration
 	lastStartFailTime time.Time
-	zapretGrant       *zapretactivation.Grant // Core restart-manager lock
+	zapretBatch       string // Core restart-manager lock
 	zapretStarted     func() bool
 }
 

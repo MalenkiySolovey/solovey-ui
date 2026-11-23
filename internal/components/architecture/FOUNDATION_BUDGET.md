@@ -1,5 +1,12 @@
 # Foundation regression budget
 
+The R8B2 `validateEncryptedDNSDetours` entry is a read-only DNS-owner check:
+the pinned Official dialer rejects an empty Direct at first use. Detect this
+before committing an edit that would retire the serving generation. A selected
+Zapret binding gets its nonempty dialer from actual broker admission at startup;
+the dry candidate does not gain a path, grant, or permission from this check.
+The Extended pin does not perform Official's empty-Direct rejection.
+
 R7-D12 physical qualification reviews one new owner-local mutation in
 `fallback-html/service.(*Service).SaveSite` (`ecd8fd5a...`). The existing Fallback
 service owns the `fallbackdomain.Site` row; its existing mutation lock and SQL

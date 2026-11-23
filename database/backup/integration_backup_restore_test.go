@@ -34,6 +34,7 @@ import (
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/sshmanagement"
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	deploymentservice "github.com/MalenkiySolovey/solovey-ui/service/deployment"
 	sshservice "github.com/MalenkiySolovey/solovey-ui/service/sshmanagement"
@@ -120,6 +121,25 @@ func TestIntegrationRestoreRetainsUnresolvedZapretOnlyWithDeliberateCoreHold(t *
 	if err := db.Create(&model.Outbound{Tag: tag, Type: "direct", Options: intent}).Error; err != nil {
 		t.Fatal(err)
 	}
+	const managedID = "ui-zapret-99a040856f7b4c8997be781020f5d81b"
+	const catalog = `{"schema":"solovey.zapret-catalog/v1","records":{"` + managedID + `":{"name":"Restore test","raw":"--filter-tcp=443  \n","definition":{"schema":"solovey.zapret-strategy/v1","id":"` + managedID + `","revision":"2bc8d23f0d06b32e1783463758a4e9b06ce108d1260f7f51add5b98a9e1022c5","profiles":[{"id":"profile-1","protocol":"tcp","ports":[443]}]}}}}`
+	const offTag = "restore-zapret-managed"
+	offIntent := json.RawMessage(`{"zapret":{"outboundRef":"` + offTag + `","enabled":false,"strategyRef":"` + managedID + `"}}`)
+	if err := db.Create(&model.Outbound{Tag: offTag, Type: "direct", Options: offIntent}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.Setting{Key: zapretactivation.CatalogKey, Value: catalog}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := settings.ResetSettings(); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := entityoutbounds.ReadZapretCatalog(db); err != nil || string(got) != catalog {
+		t.Fatalf("settings reset discarded or changed the catalog: %v", err)
+	}
+	if err := settings.Save(db, []byte(`{"zapret.strategies":"{}"}`)); err == nil {
+		t.Fatal("generic settings accepted a strategy catalog write")
+	}
 	archive, err := dbbackup.Export("")
 	if err != nil {
 		t.Fatal(err)
@@ -160,7 +180,10 @@ func TestIntegrationRestoreRetainsUnresolvedZapretOnlyWithDeliberateCoreHold(t *
 	}
 	// Prove the held data comes from committing the archive, not from leaving
 	// the old database unchanged. No live process is restarted by the fixture.
-	if err := db.Where("tag = ?", tag).Delete(&model.Outbound{}).Error; err != nil {
+	if err := db.Where("tag IN ?", []string{tag, offTag}).Delete(&model.Outbound{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Where("key = ?", zapretactivation.CatalogKey).Delete(&model.Setting{}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Model(&model.Setting{}).Where("key = ?", settingcatalog.CoreMaintenanceKey).Update("value", "false").Error; err != nil {
@@ -181,6 +204,13 @@ func TestIntegrationRestoreRetainsUnresolvedZapretOnlyWithDeliberateCoreHold(t *
 	var restored model.Outbound
 	if err := dbsqlite.DB().Where("tag = ?", tag).First(&restored).Error; err != nil || !bytes.Equal(restored.Options, intent) {
 		t.Fatalf("restored desired binding changed: %s (%v)", restored.Options, err)
+	}
+	if got, err := entityoutbounds.ReadZapretCatalog(dbsqlite.DB()); err != nil || string(got) != catalog {
+		t.Fatalf("backup/restore lost the sealed catalog or raw editor text: %v", err)
+	}
+	var restoredOff model.Outbound
+	if err := dbsqlite.DB().Where("tag = ?", offTag).First(&restoredOff).Error; err != nil || !bytes.Equal(restoredOff.Options, offIntent) {
+		t.Fatalf("restore changed the retained OFF strategy reference: %v", err)
 	}
 	if held, err := settings.CoreMaintenance(); err != nil || !held {
 		t.Fatalf("restore did not retain the explicit Core hold: %v, %v", held, err)

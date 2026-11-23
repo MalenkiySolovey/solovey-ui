@@ -271,8 +271,14 @@ process.on('SIGTERM', () => {
 process.on('exit', stopAll)
 
 const main = async () => {
-  const { prepareFrontendBuildInputs } = await import('../../scripts/frontend-build-inputs.mjs')
-  const frontendInputs = prepareFrontendBuildInputs(repoRoot, frontendDir ? {frontendRoot: frontendDir, directory: path.join(frontendDir, '.component-inputs')} : {})
+  const embedded = process.env.SUI_E2E_FRONTEND_MODE === 'embedded'
+  let frontendInputs
+  // Embedded tests use the artifact verified and published by the caller.
+  // Only Vite needs an editable checkout and a projected build-input tree.
+  if (!embedded) {
+    const { prepareFrontendBuildInputs } = await import('../../scripts/frontend-build-inputs.mjs')
+    frontendInputs = prepareFrontendBuildInputs(repoRoot, {frontendRoot: frontendDir, directory: path.join(frontendDir, '.component-inputs')})
+  }
   generateComponentOverlay()
 
   const backendEnv = {
@@ -317,7 +323,7 @@ const main = async () => {
   const password = await initializeAdminCredential(backendBaseURL, initialPassword)
 
   let baseURL = backendBaseURL, watchedChildren = backendWatch
-  if (process.env.SUI_E2E_FRONTEND_MODE !== 'embedded') {
+  if (!embedded) {
     const viteCLI = path.join(frontendDir, 'node_modules', 'vite', 'bin', 'vite.js')
     const frontend = spawnLogged('frontend', process.execPath, [viteCLI, '--host', '127.0.0.1', '--port', '3000', '--strictPort'], {
       cwd: frontendDir,

@@ -31,6 +31,25 @@ old Core, retires the owned queue and engine, and releases the deny after
 proving that protected TCP sockets have drained. The ordinary framed broker
 and capless Panel retain their existing privilege boundaries.
 
+## Multi-Direct candidate (R8B2)
+
+`Routing → Outbound binding → Zapret strategy revision → Planner → broker →
+Core protect_path → one NFQUEUE → mark-filtered nfqws2 profiles`.
+
+The root-owned authorization profile can use `outboundRefs` and `strategies`
+arrays instead of the legacy `outboundRef` and `strategy` pair. For up to three
+active IPv4/TCP Directs, the broker resolves every strategy before staging the
+batch; each member gets a journaled mark and a fresh FD admission endpoint.
+The Planner compiles one create-only nftables table and one shared queue.
+The pinned engine applies the ordered native profiles filtered by exact queue
+mark. Its checked upstream generator can emit only on the approved path.
+
+The Core publishes no partial batch. Loss of a member's admission endpoint,
+authority, engine, or queue fails the protected batch closed; the retained deny
+covers all previously issued marks. A rejected strategy preflight leaves the
+current Core running. An accepted binding change materializes a new batch at
+the usual Core restart boundary; this is not a seamless failover guarantee.
+
 ## Historical proof paths
 
 The following notes record the earlier `zapretproof` build and rejected

@@ -56,6 +56,8 @@ jobs:
           go test -count=1 ./internal/entities/outbounds ./components/zapret
           go test -tags zapretproof -count=1 ./network/planner ./network/nftables
           go test -tags zapretproof -count=1 -run '^Test(ActivationContract|InheritedZapretDeny|ZapretSocket|RetiredZapretTCPID)' ./internal/ops/privilegedbroker
+          go test -c -o "$RUNNER_TEMP/zapret-installed-socket-test" ./internal/ops/privilegedbroker
+          sudo "$RUNNER_TEMP/zapret-installed-socket-test" -test.run '^TestInstalledZapretSecondSocketRollback$' -test.v
           go test -tags zapretproof,minimal -count=1 -run '^TestActivationContract' ./internal/ops/privilegedbroker
           node scripts/generate-component-imports.mjs --profile full
           go list -deps ./cmd/solovey-privileged-broker >"$RUNNER_TEMP/zapret-installed-broker-deps"

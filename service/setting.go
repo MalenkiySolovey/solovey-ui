@@ -1,6 +1,13 @@
 package service
 
-import "gorm.io/gorm"
+import (
+	settingcatalog "github.com/MalenkiySolovey/solovey-backend/settings/catalog"
+	"github.com/MalenkiySolovey/solovey-backend/settings/store"
+	"github.com/MalenkiySolovey/solovey-backend/storage/model"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
+	"gorm.io/gorm"
+)
 
 type SettingService struct {
 	// Only a temporary restore-local service supplies a context-bound DB.
@@ -26,8 +33,29 @@ func (s *SettingService) ResetSettings() error {
 		if err != nil {
 			return err
 		}
+		catalog, err := outbounds.ReadZapretCatalog(tx)
+		if err != nil {
+			return err
+		}
+		// These markers describe the existing database, not resettable settings.
+		var migrationVersions []model.Setting
+		if err := tx.Select("key", "value").Where("key IN ?", []string{
+			settingcatalog.VersionKey, settingcatalog.CoreSchemaVersionKey,
+		}).Find(&migrationVersions).Error; err != nil {
+			return err
+		}
 		if err := local.settingsManager().Reset(); err != nil {
 			return err
+		}
+		for _, version := range migrationVersions {
+			if err := store.UpsertValue(tx, version.Key, version.Value); err != nil {
+				return err
+			}
+		}
+		if catalog != nil {
+			if err := store.UpsertValue(tx, zapretactivation.CatalogKey, string(catalog)); err != nil {
+				return err
+			}
 		}
 		value := "false"
 		if held {

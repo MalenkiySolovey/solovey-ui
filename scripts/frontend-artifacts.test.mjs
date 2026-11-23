@@ -20,6 +20,19 @@ test('Product profile selection rejects unqualified UI tuples and runtime URLs',
  former.profiles.full.componentIDs = [...former.profiles.full.componentIDs, 'panel-update-ui'].sort()
  assert.throws(() => validateFrontendPin(former))
 })
+test('Zapret is in new Full producer pins only; Core and rollback stay exact',()=>{
+ const previous=clone(pin)
+ previous.version='0.1.6'
+ previous.profiles.full.componentIDs=previous.profiles.full.componentIDs.filter(id=>id!=='zapret')
+ validateFrontendPin(previous)
+ const next=clone(previous)
+ next.version='0.1.7'
+ assert.throws(()=>validateFrontendPin(next))
+ next.profiles.full.componentIDs.push('zapret')
+ validateFrontendPin(next)
+ next.profiles.core.componentIDs.push('zapret')
+ assert.throws(()=>validateFrontendPin(next))
+})
 test('Product archive trust rejects missing/wrong digest and untrusted format',()=>{
  const bytes=encode({'dist/index.html':'YQ=='})
  assert.throws(()=>unpackFrontendArchive(bytes,undefined,'distribution'))

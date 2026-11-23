@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,29 +25,31 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// installedZapret has one generation and one retained deny owner. No Zapret
-// resources are prepared by registration or without a qualified binding.
+// One installed batch shares one engine, owned table, and retained deny.
+// Its members receive distinct, never-reused marks and admission endpoints.
 type installedZapret struct {
 	server  *Server
 	ctx     context.Context
 	journal *FileJournal
-	resolve ResolveInstalledZapretStrategy
+	resolve ResolveInstalledZapretStrategies
 	deny    zapretDenyIdentity
 	active  *installedZapretPath // accessed under the broker mutation fence
 }
 
 type installedZapretPath struct {
-	grant   zapretactivation.Grant
-	peer    string
-	uid     uint32
-	ctx     context.Context
-	release context.CancelFunc
-	done    chan struct{}
-	stopErr error // published by closing done
-	mu      sync.Mutex
+	inputDigest string
+	grant       zapretactivation.BatchGrant
+	peer        string
+	uid         uint32
+	ctx         context.Context
+	release     context.CancelFunc
+	done        chan struct{}
+	stopErr     error // published by closing done
+	mu          sync.Mutex
+	verify      func(context.Context) error
 }
 
-func RegisterInstalledZapret(ctx context.Context, server *Server, transport TransportMode, listeners *ListenerSet, resolve ResolveInstalledZapretStrategy) error {
+func RegisterInstalledZapret(ctx context.Context, server *Server, transport TransportMode, listeners *ListenerSet, resolve ResolveInstalledZapretStrategies) error {
 	if transport != SystemdActivated {
 		return nil
 	}
@@ -55,21 +58,57 @@ func RegisterInstalledZapret(ctx context.Context, server *Server, transport Tran
 		return errors.New("installed Zapret requires the broker file journal and socket activation")
 	}
 	owner := &installedZapret{ctx: ctx, server: server, journal: journal, resolve: resolve, deny: listeners.deny}
+	if err := server.Registry.Register(VerbZapretValidate, Definition{Role: RolePanel, Handler: owner.validate}); err != nil {
+		return err
+	}
 	if err := server.Registry.Register(VerbZapretAcquire, Definition{Role: RolePanel, LocalPathAuthority: true, Handler: owner.acquire}); err != nil {
+		return err
+	}
+	if err := server.Registry.Register(VerbZapretObserve, Definition{Role: RolePanel, LocalPathAuthority: true, Handler: owner.observe}); err != nil {
 		return err
 	}
 	return server.Registry.Register(VerbZapretRelease, Definition{Role: RolePanel, LocalPathAuthority: true, Handler: owner.retire})
 }
 
+func (z *installedZapret) observe(ctx context.Context, call Request, peer PeerIdentity) (any, error) {
+	var expected zapretactivation.BatchIdentity
+	if DecodePayload(call.Payload, &expected) != nil || !digestPattern.MatchString(expected.BatchID) {
+		return nil, Failure(CodeValidation, "invalid Zapret observation generation")
+	}
+	path := z.active
+	if path == nil || path.peer != peer.Revision || path.uid != peer.UID || path.grant.BatchID != expected.BatchID ||
+		path.ctx.Err() != nil || path.verify(ctx) != nil || path.ctx.Err() != nil {
+		return nil, Failure(CodeFence, "Zapret generation is not active")
+	}
+	result := make([]zapretactivation.AppliedBinding, 0, len(path.grant.Bindings))
+	for _, g := range path.grant.Bindings {
+		result = append(result, zapretactivation.AppliedBinding{Request: g.Request, StrategyRevision: g.StrategyRevision})
+	}
+	return result, nil
+}
+
+func (z *installedZapret) validate(_ context.Context, call Request, peer PeerIdentity) (any, error) {
+	var input zapretactivation.Validation
+	if DecodePayload(call.Payload, &input) != nil || !validZapretTargets(input.Bindings) ||
+		peer.UID == 0 || peer.Supervisor != "systemd" || peer.CgroupPolicy != CgroupRequired || !peer.hasLiveness {
+		return nil, Failure(CodeValidation, "invalid installed Zapret binding or Panel identity")
+	}
+	if _, _, err := z.selectStrategies(input); err != nil {
+		fmt.Fprintln(os.Stderr, "installed Zapret profile validation:", err)
+		return nil, Failure(CodeValidation, "installed Zapret does not authorize the selected binding or Strategy")
+	}
+	return nil, nil
+}
+
 func (z *installedZapret) acquire(ctx context.Context, call Request, peer PeerIdentity) (any, error) {
-	var target zapretactivation.Request
-	if err := DecodePayload(call.Payload, &target); err != nil || !safeIdentifier(target.OutboundRef) ||
-		!safeIdentifier(target.StrategyRef) || !digestPattern.MatchString(target.OutboundRevision) ||
+	var target zapretactivation.BatchRequest
+	if err := DecodePayload(call.Payload, &target); err != nil || !digestPattern.MatchString(target.BatchID) ||
+		!validZapretTargets(target.Bindings) ||
 		peer.UID == 0 || peer.Supervisor != "systemd" || peer.CgroupPolicy != CgroupRequired || !peer.hasLiveness {
 		return nil, Failure(CodeValidation, "invalid installed Zapret binding or Panel identity")
 	}
 	if existing := z.active; existing != nil && existing.ctx.Err() == nil {
-		if existing.peer == peer.Revision && existing.grant.Request == target {
+		if existing.peer == peer.Revision && existing.grant.BatchID == target.BatchID && existing.inputDigest == Digest(call.Payload) {
 			return existing.grant, nil
 		}
 		return nil, Failure(CodeRecoveryRequired, "the previous Zapret generation must be retired")
@@ -80,6 +119,7 @@ func (z *installedZapret) acquire(ctx context.Context, call Request, peer PeerId
 			if z.active.stopErr != nil {
 				return nil, Failure(CodeRecoveryRequired, "the previous Zapret engine did not stop")
 			}
+			z.active = nil
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -90,17 +130,33 @@ func (z *installedZapret) acquire(ctx context.Context, call Request, peer PeerId
 		fmt.Fprintln(os.Stderr, "installed Zapret activation:", err)
 		return nil, Failure(CodeExecution, "Zapret packet path not ready; see privileged broker journal")
 	}
+	path.inputDigest = Digest(call.Payload)
 	z.active = path
 	return path.grant, nil
 }
 
+func validZapretTargets(targets []zapretactivation.Request) bool {
+	if len(targets) == 0 || len(targets) > zapretactivation.MaxBindings {
+		return false
+	}
+	seen := make(map[string]bool, len(targets))
+	for _, target := range targets {
+		if !safeIdentifier(target.OutboundRef) || !safeIdentifier(target.StrategyRef) ||
+			!digestPattern.MatchString(target.OutboundRevision) || seen[target.OutboundRef] {
+			return false
+		}
+		seen[target.OutboundRef] = true
+	}
+	return true
+}
+
 func (z *installedZapret) retire(ctx context.Context, call Request, peer PeerIdentity) (any, error) {
-	var expected zapretactivation.Grant
-	if DecodePayload(call.Payload, &expected) != nil || !digestPattern.MatchString(expected.Generation) {
+	var expected zapretactivation.Retirement
+	if DecodePayload(call.Payload, &expected) != nil || !digestPattern.MatchString(expected.BatchID) {
 		return nil, Failure(CodeValidation, "invalid Zapret retirement generation")
 	}
 	if z.active != nil {
-		if z.active.grant != expected || z.active.uid != peer.UID ||
+		if z.active.grant.BatchID != expected.BatchID || z.active.uid != peer.UID ||
 			z.active.ctx.Err() == nil && z.active.peer != peer.Revision {
 			return nil, Failure(CodeFence, "Zapret retirement generation changed")
 		}
@@ -131,35 +187,80 @@ func (z *installedZapret) retire(ctx context.Context, call Request, peer PeerIde
 	return nil, nil
 }
 
-func (z *installedZapret) prepare(ctx context.Context, target zapretactivation.Request, peer PeerIdentity) (_ *installedZapretPath, failure error) {
-	profile, err := readInstalledZapretProfile(target)
+func (z *installedZapret) selectStrategies(input zapretactivation.Validation) (installedZapretProfile, InstalledZapretStrategies, error) {
+	profile, err := readInstalledZapretProfile()
 	if err != nil {
-		return nil, err
+		return profile, InstalledZapretStrategies{}, err
 	}
-	selected, err := z.resolve(profile.Strategy, target)
+	definitions, err := profile.selectStrategies(input)
 	if err != nil {
-		return nil, err
+		return profile, InstalledZapretStrategies{}, err
 	}
 	if err := profile.verifyEngine(); err != nil {
-		return nil, err
+		return profile, InstalledZapretStrategies{}, err
 	}
-	var token [32]byte
-	_, _ = rand.Read(token[:])
-	generation := hex.EncodeToString(token[:])
-	serial, err := z.journal.reserveZapretMark(ctx, peer, target, generation)
+	selected, err := z.resolve(definitions, input.Bindings)
+	if err != nil {
+		return profile, InstalledZapretStrategies{}, err
+	}
+	used := 0
+	for i, request := range input.Bindings {
+		if ports, ok := input.DNSPorts[request.OutboundRef]; ok {
+			used++
+			if len(ports) == 0 || len(ports) > 64 {
+				return profile, InstalledZapretStrategies{}, errors.New("invalid protected DNS port set")
+			}
+			for _, port := range ports {
+				if !slices.Contains(selected.Intents[i].TCPPorts, port) {
+					return profile, InstalledZapretStrategies{}, fmt.Errorf("strategy for Direct %q does not cover DNS TCP port %d", request.OutboundRef, port)
+				}
+			}
+		}
+	}
+	if len(input.DNSPorts) != used {
+		return profile, InstalledZapretStrategies{}, errors.New("protected DNS does not refer to a selected Direct")
+	}
+	return profile, selected, nil
+}
+
+func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.BatchRequest, peer PeerIdentity) (_ *installedZapretPath, failure error) {
+	profile, selected, err := z.selectStrategies(batch.Validation)
 	if err != nil {
 		return nil, err
 	}
-	plan, err := planInstalledZapret(ctx, target, profile.Interface, selected.Intent, serial)
+	egress, occupied, err := observeInstalledZapretNetwork(ctx, profile.Interface)
 	if err != nil {
 		return nil, err
 	}
-	scope, err := plan.SocketScope()
+	grants := make([]zapretactivation.Grant, len(batch.Bindings))
+	facts := make([]planner.Facts, len(batch.Bindings))
+	for i, request := range batch.Bindings {
+		var token [32]byte
+		if _, err := rand.Read(token[:]); err != nil {
+			return nil, err
+		}
+		generation := hex.EncodeToString(token[:])
+		serial, err := z.journal.reserveZapretMark(ctx, peer, request, generation)
+		if err != nil {
+			return nil, err
+		}
+		facts[i] = installedZapretFacts(request, &egress, occupied, serial)
+		grants[i] = zapretactivation.Grant{Request: request, StrategyRevision: selected.Intents[i].StrategyRevision, Generation: generation}
+	}
+	plans, err := planner.CompileZapretSystemdBatch(selected.Intents, facts)
+	if err != nil {
+		return nil, err
+	}
+	marks := make([]uint32, len(plans))
+	for i, plan := range plans {
+		marks[i] = plan.QueueMark()
+	}
+	args, err := selected.Compile(zapretEngineRoot, plans[0].Queue(), plans[0].LoopMark(), marks)
 	if err != nil {
 		return nil, err
 	}
 	hadDeny := z.deny.port != 0
-	deny, err := z.openDeny(ctx, scope.Egress().NamespaceCookie)
+	deny, err := z.openDeny(ctx, egress.NamespaceCookie)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +280,7 @@ func (z *installedZapret) prepare(ctx context.Context, target zapretactivation.R
 			}
 		}
 	}()
-	engine, fact, err := startZapretEngine(ctx, plan, selected, profile.EngineDigest)
+	engine, fact, err := startZapretEngine(ctx, plans[0], args, profile.EngineDigest)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +289,7 @@ func (z *installedZapret) prepare(ctx context.Context, target zapretactivation.R
 			failure = errors.Join(failure, engine.stop())
 		}
 	}()
-	table, err := nftables.CreateZapretOwnedTable(ctx, plan)
+	table, err := nftables.CreateZapretOwnedBatch(ctx, plans)
 	if err != nil {
 		return nil, err
 	}
@@ -231,20 +332,41 @@ func (z *installedZapret) prepare(ctx context.Context, target zapretactivation.R
 	if err := makeZapretSocketRoot(gid); err != nil {
 		return nil, err
 	}
-	endpoint, err := bindZapretSocket(ctx, zapretSocketRoot, gid, generation)
+	var endpoints []*standaloneSocket
+	defer func() {
+		if failure != nil {
+			for _, endpoint := range endpoints {
+				failure = errors.Join(failure, endpoint.close())
+			}
+			_ = os.Remove(zapretSocketRoot) // only removes an empty owned directory
+		}
+	}()
+	socketGrants := make([]ZapretSocketGrant, len(grants))
+	for i, grant := range grants {
+		scope, err := plans[i].SocketScope()
+		if err != nil {
+			return nil, err
+		}
+		socketGrants[i] = ZapretSocketGrant{Scope: scope, Generation: grant.Generation, PeerRevision: peer.Revision}
+	}
+	endpoints, err = bindZapretSocketBatch(ctx, zapretSocketRoot, gid, socketGrants)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if failure != nil {
-			failure = errors.Join(failure, endpoint.close())
-		}
-	}()
 	if ctx.Err() != nil || authority.Context.Err() != nil || table.Verify(ctx) != nil || deny.Verify(ctx) != nil {
 		return nil, errors.New("installed Zapret generation changed before publication")
 	}
 	path := &installedZapretPath{ctx: authority.Context, release: release, done: make(chan struct{}), peer: peer.Revision, uid: peer.UID,
-		grant: zapretactivation.Grant{Request: target, StrategyRevision: selected.Intent.StrategyRevision, Generation: generation}}
+		grant: zapretactivation.BatchGrant{BatchID: batch.BatchID, Bindings: grants}}
+	// Observation and FD admission check the same table and queue owners.
+	// Observation never creates a lease or extends the batch lifetime.
+	path.verify = func(ctx context.Context) error {
+		if ctx.Err() != nil || table.Verify(ctx) != nil || deny.Verify(ctx) != nil {
+			return errZapretSocket
+		}
+		_, err := nftables.ObserveZapretQueueOwner(plans[0], fact)
+		return err
+	}
 	go func() {
 		defer close(path.done)
 		defer authority.Release()
@@ -269,10 +391,14 @@ func (z *installedZapret) prepare(ctx context.Context, target zapretactivation.R
 				case <-path.ctx.Done():
 					return
 				case <-engine.done:
+					if path.ctx.Err() == nil {
+						fmt.Fprintln(os.Stderr, "installed Zapret batch lost its engine:", engine.waitErr)
+					}
 					release()
 					return
 				case <-ticker.C:
 					if !zapretPeerAlive(peerFD) {
+						fmt.Fprintln(os.Stderr, "installed Zapret batch lost its Panel peer")
 						release()
 						return
 					}
@@ -280,21 +406,27 @@ func (z *installedZapret) prepare(ctx context.Context, target zapretactivation.R
 			}
 		}()
 		stop := context.AfterFunc(path.ctx, func() { _ = table.Close() })
-		socketGrant := ZapretSocketGrant{Scope: scope, Generation: generation, PeerRevision: peer.Revision}
 		fence := func(ctx context.Context, _ ZapretSocketGrant, _ int, admit func() error) error {
 			path.mu.Lock()
 			defer path.mu.Unlock()
-			if ctx.Err() != nil || !zapretPeerAlive(peerFD) || table.Verify(ctx) != nil || deny.Verify(ctx) != nil {
+			if !zapretPeerAlive(peerFD) || path.verify(ctx) != nil {
+				fmt.Fprintln(os.Stderr, "installed Zapret batch lost its socket admission fence")
 				release()
 				return errZapretSocket
 			}
-			if _, err := nftables.ObserveZapretQueueOwner(plan, fact); err != nil {
-				release()
-				return err
-			}
 			return admit()
 		}
-		_ = z.server.serveZapretSockets(path.ctx, endpoint, socketGrant, fence, func(context.Context, string) error { return nil })
+		var listeners sync.WaitGroup
+		for i, endpoint := range endpoints {
+			listeners.Go(func() {
+				err := z.server.serveZapretSockets(path.ctx, endpoint, socketGrants[i], fence, func(context.Context, string) error { return nil })
+				if path.ctx.Err() == nil {
+					fmt.Fprintln(os.Stderr, "installed Zapret batch lost a socket listener:", err)
+				}
+				release() // The batch cannot advertise a subset of its bindings.
+			})
+		}
+		listeners.Wait()
 		release()
 		<-watch
 		stop()
@@ -379,11 +511,7 @@ func makeZapretSocketRoot(gid uint32) error {
 	return nil
 }
 
-func startZapretEngine(ctx context.Context, plan planner.ZapretPlan, selected InstalledZapretStrategy, engineDigest string) (_ *installedZapretEngine, _ processevidence.Fact, failure error) {
-	args, err := selected.Compile(zapretEngineRoot, plan.Queue(), plan.QueueMark(), plan.LoopMark())
-	if err != nil {
-		return nil, processevidence.Fact{}, err
-	}
+func startZapretEngine(ctx context.Context, plan planner.ZapretPlan, args []string, engineDigest string) (_ *installedZapretEngine, _ processevidence.Fact, failure error) {
 	credential := fmt.Sprintf("--uid=%d:%d", zapretEngineUID, zapretEngineUID)
 	// Match the admitted socket's egress for generated IPv4 packets. A raw
 	// send via an alternate route can fail and make nfqws2 pass the original.
@@ -396,7 +524,7 @@ func startZapretEngine(ctx context.Context, plan planner.ZapretPlan, selected In
 		return nil, processevidence.Fact{}, err
 	}
 	engine := &installedZapretEngine{process: cmd.Process, pidfd: os.NewFile(uintptr(pidfd), "nfqws2"), done: make(chan struct{})}
-	go func() { _ = cmd.Wait(); close(engine.done) }()
+	go func() { engine.waitErr = cmd.Wait(); close(engine.done) }()
 	defer func() {
 		if failure != nil {
 			failure = errors.Join(failure, engine.stop())
@@ -424,7 +552,7 @@ func startZapretEngine(ctx context.Context, plan planner.ZapretPlan, selected In
 		}
 		select {
 		case <-engine.done:
-			return nil, processevidence.Fact{}, errors.Join(errors.New("pinned nfqws2 exited before binding NFQUEUE"), cause)
+			return nil, processevidence.Fact{}, errors.Join(errors.New("pinned nfqws2 exited before binding NFQUEUE"), engine.waitErr, cause)
 		case <-ready.Done():
 			return nil, processevidence.Fact{}, errors.Join(errors.New("pinned nfqws2 queue readiness could not be established"), cause)
 		case <-ticker.C:

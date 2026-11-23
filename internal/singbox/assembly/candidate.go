@@ -38,7 +38,7 @@ func BuildCandidateProjectionFromDB(db *gorm.DB, data string, upgrade bool) (Run
 	return buildCandidateProjectionFromDB(db, data, upgrade, entityoutbounds.GetAllConfig)
 }
 
-func BuildCoreStartupFromDB(db *gorm.DB, admit entityoutbounds.ZapretAdmitter) ([]byte, error) {
+func BuildCoreStartupFromDB(db *gorm.DB, admit entityoutbounds.ZapretBatchAdmitter) ([]byte, error) {
 	bound, err := entityoutbounds.CheckZapretStartup(db, admit != nil)
 	if err != nil {
 		return nil, err
@@ -74,13 +74,25 @@ func ValidateCoreRestartFromDB(db *gorm.DB, zapretReady bool) error {
 	if err != nil {
 		return err
 	}
+	var selected map[string]bool
 	if bound {
+		requests, err := entityoutbounds.ZapretRequests(db)
+		if err != nil {
+			return err
+		}
+		selected = make(map[string]bool, len(requests))
+		for _, request := range requests {
+			selected[request.OutboundRef] = true
+		}
 		if err := validateZapretCoreProfile(projection.Config); err != nil {
 			return err
 		}
 		if singboxvalidation.ValidateConfigShape(projection.Config) != nil {
 			return fmt.Errorf("%w: the pinned Core rejected the candidate", entityoutbounds.ErrZapretPacketPathUnqualified)
 		}
+	}
+	if err := singboxconfig.ValidateEncryptedDNSDetours(projection.Config, selected); err != nil {
+		return err
 	}
 	_, err = singboxconfig.PrepareRuntimeAssets(projection.Config)
 	return err

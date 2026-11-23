@@ -55,6 +55,7 @@ func TestSysupgradeProductionOwnerChild(t *testing.T) {
 		t.Setenv(installstate.InstalledFileEnv, openwrt.DefaultInstallRoot+"/components/installed.json")
 	}
 	installed := installstate.Metadata{Version: 1, Profile: "full"}
+	var installedIDs []string
 	for _, owner := range registry.Components() {
 		if owner.Manifest.ID == installstate.FormerPanelUpdateID {
 			t.Fatal("intrinsic Panel Update must not register a package owner")
@@ -65,9 +66,12 @@ func TestSysupgradeProductionOwnerChild(t *testing.T) {
 			continue
 		}
 		installed.Components = append(installed.Components, installstate.InstalledComponent{ID: owner.Manifest.ID, Delivery: owner.Manifest.Delivery, Installed: true})
+		installedIDs = append(installedIDs, owner.Manifest.ID)
 	}
-	if len(installed.Components) != 7 {
-		t.Fatalf("full package owner inventory has %d entries, want 7", len(installed.Components))
+	slices.Sort(installedIDs)
+	wantInstalled := []string{"fallback-html", "import-xui", "observability-extra", "paid-subscriptions", "remote-outbound-subscriptions", "server-protection", "telegram", "zapret"}
+	if !slices.Equal(installedIDs, wantInstalled) {
+		t.Fatalf("full package owner inventory = %v, want %v", installedIDs, wantInstalled)
 	}
 	// Models the package's exact installed-owner declaration being available
 	// again after reinstall; no runtime component is started in this process.

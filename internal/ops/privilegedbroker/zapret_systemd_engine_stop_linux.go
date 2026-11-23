@@ -39,6 +39,7 @@ type installedZapretEngine struct {
 	process *os.Process
 	pidfd   *os.File
 	done    chan struct{}
+	waitErr error // published by closing done
 }
 
 func (e *installedZapretEngine) stop() error {
