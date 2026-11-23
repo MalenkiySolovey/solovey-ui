@@ -60,13 +60,22 @@ The architecture budget entries for the batch are reviewed individually:
 
 - `resolveZapretStrategies` uses the component's binding resolver for each
   pre-checked Direct. The Direct type is an assertion about the attached
-  outbound, not a routing default.
+  outbound, not a routing default. R8C adds the resolver's family-specific
+  packet scope; the existing Network Planner still allocates the resources.
+- `validateEncryptedDNSDetours` extends the DNS owner's existing detour
+  check to DoQ and DoH3. It validates the explicit transport and bootstrap
+  reference; it does not select an outbound or provide a fallback resolver.
 - `installedZapret.prepare` owns one batch worker and one watcher, started
   only after all endpoints and the owned table are ready. The watcher exits
   with the batch authority. At most three listeners are joined; losing any
   listener or the engine cancels the batch. Closing the admission table and
   joining the listeners precede engine retirement. PID 1 retains the deny
   table until the broker can prove all previously marked sockets have drained.
+  The R8C worker and watcher use the existing peer liveness check on a
+  duplicated close-on-exec pidfd. The batch owns the duplicate and closes it
+  only after the watcher and listeners have exited; preparation failure
+  closes it before returning. An interrupted poll is retried with the same
+  descriptor; an unobservable or dead peer still cancels admission.
 - `startZapretEngine` has one waiter per actual child. It reaps the child and
   reports its result before closing `done`. Failed preparation and normal
   retirement use the same bounded pidfd-backed stop path.
