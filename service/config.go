@@ -9,6 +9,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-backend/realtime"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
+	corebox "github.com/MalenkiySolovey/solovey-ui/core/box"
 	"github.com/MalenkiySolovey/solovey-ui/core/inboundidentity"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/sessionidentity"
@@ -166,14 +167,15 @@ func (s *ConfigService) startCoreLockedContext(ctx context.Context, force bool) 
 			}
 		}
 	}()
-	rawConfig, bindings, err := s.buildCoreCandidate(ctx, runtime.installedZapretAdmitter(ctx, &admitted))
+	var device *corebox.PreparedTUN
+	rawConfig, bindings, err := s.buildCoreCandidate(ctx, runtime.installedZapretAdmitter(ctx, &admitted, &device))
 	if err != nil {
 		if ctx.Err() == nil {
 			runtime.markCoreStartFailed()
 		}
 		return err
 	}
-	err = coreInstance.StartWithBindings(rawConfig, bindings)
+	err = coreInstance.StartPrepared(rawConfig, bindings, device)
 	if err != nil {
 		runtime.markCoreStartFailed()
 		logger.Error("start sing-box err:", err.Error())

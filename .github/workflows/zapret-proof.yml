@@ -13,9 +13,15 @@ on:
       - 'internal/ops/privilegedbroker/zapret_*.go'
       - 'cmd/solovey-privileged-broker/zapret_*.go'
       - 'internal/zapretactivation/**'
+      - 'internal/singbox/assembly/**'
       - 'internal/singbox/config/dns_zapret*.go'
+      - 'internal/entities/inbounds/**'
+      - 'service/config.go'
       - 'service/config_zapret.go'
       - 'service/runtime.go'
+      - 'core/box/box.go'
+      - 'core/box/prepared_tun*.go'
+      - 'core/runtime/**'
       - 'core/provider/**'
       - 'tests/installer/zapret-socket-runtime.sh'
       - 'deploy/systemd/solovey-ui-native-hardened.service'
@@ -58,6 +64,8 @@ jobs:
         run: |
           go test -count=1 ./core/provider ./internal/entities/outbounds ./components/zapret
           go test -tags with_quic -count=1 -run 'Zapret|DNSBootstrapCycle' ./internal/singbox/config
+          go test -tags with_gvisor -ldflags=-checklinkname=0 -count=1 -run '^(TestZapretTUN|TestPreparedTUNRejects)' \
+            ./internal/entities/inbounds ./internal/singbox/assembly ./core/runtime
           go test -tags zapretproof -count=1 ./network/planner ./network/nftables
           go test -tags zapretproof -count=1 -run '^Test(ActivationContract|InheritedZapretDeny|ZapretSocket|RetiredZapretTCPID)' ./internal/ops/privilegedbroker
           go test -c -o "$RUNNER_TEMP/zapret-installed-socket-test" ./internal/ops/privilegedbroker

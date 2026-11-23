@@ -55,7 +55,34 @@ type installedZapretProfile struct {
 	Strategy     json.RawMessage   `json:"strategy,omitempty"`
 	Strategies   []json.RawMessage `json:"strategies,omitempty"`
 	// An operator may delegate bounded profiles, not egress, engine, or Lua authority.
-	AllowManagedStrategies bool `json:"allowManagedStrategies,omitempty"`
+	AllowManagedStrategies bool                `json:"allowManagedStrategies,omitempty"`
+	TUN                    *installedZapretTUN `json:"tun,omitempty"`
+}
+
+type installedZapretTUN struct {
+	Inbound zapretactivation.TUNRequest `json:"inbound"`
+	Scope   planner.ZapretTUNScope      `json:"scope"`
+}
+
+func (p installedZapretProfile) verifyTUN(ctx context.Context, req *zapretactivation.TUNRequest) error {
+	if req == nil {
+		return nil
+	}
+	if p.TUN == nil || !req.Valid() || !safeIdentifier(req.Tag) || *req != p.TUN.Inbound {
+		return errors.New("installed Zapret TUN inbound does not match the operator profile")
+	}
+	if err := checkZapretTUNDevice(); err != nil {
+		return fmt.Errorf("broker TUN capability: %w", err)
+	}
+	iface, err := net.InterfaceByName(p.Interface)
+	if err != nil {
+		return err
+	}
+	ingress, err := planner.CheckZapretTUNScope(ctx, p.TUN.Scope, iface.Index)
+	if err != nil {
+		return err
+	}
+	return planner.CheckZapretEgressAdmission(ctx, ingress)
 }
 
 func readInstalledZapretProfile() (installedZapretProfile, error) {
@@ -190,8 +217,8 @@ func rootOwnedZapretAsset(info os.FileInfo) bool {
 	return ok && stat.Uid == 0 && info.Mode()&(os.ModeSetuid|os.ModeSetgid|0o022) == 0
 }
 
-func observeInstalledZapretNetwork(ctx context.Context, interfaceName string, ipv6 bool) (planner.ZapretEgress, []uint16, error) {
-	if err := checkZapretForeignHooks(); err != nil {
+func observeInstalledZapretNetwork(ctx context.Context, interfaceName string, ipv6, tun bool) (planner.ZapretEgress, []uint16, error) {
+	if err := checkZapretForeignHooks(ctx, tun, nil); err != nil {
 		return planner.ZapretEgress{}, nil, err
 	}
 	iface, err := net.InterfaceByName(interfaceName)
@@ -233,7 +260,7 @@ func installedZapretFacts(request zapretactivation.Request, egress *planner.Zapr
 			DirectSocket: true, SocketMark: true, NFQueue: true, ConntrackAccounting: true, EgressGuard: true}}
 }
 
-func checkZapretForeignHooks() error {
+func checkZapretForeignHooks(ctx context.Context, tun bool, verifyActive func(context.Context) error) error {
 	for _, path := range []string{"/proc/net/ip_tables_names", "/proc/net/ip6_tables_names"} {
 		data, err := os.ReadFile(path)
 		if err != nil && !errors.Is(err, os.ErrNotExist) || len(strings.TrimSpace(string(data))) != 0 {
@@ -244,6 +271,7 @@ func checkZapretForeignHooks() error {
 	if err != nil {
 		return err
 	}
+	var sawActive bool
 	for _, chain := range chains {
 		if chain.Hooknum == nil {
 			continue
@@ -251,15 +279,31 @@ func checkZapretForeignHooks() error {
 		// Netdev egress and inet input both have hook number 1.
 		switch chain.Table.Family {
 		case nftables.TableFamilyINet, nftables.TableFamilyIPv4, nftables.TableFamilyIPv6:
-			if *chain.Hooknum == *nftables.ChainHookInput || *chain.Hooknum == *nftables.ChainHookForward {
+			if *chain.Hooknum == *nftables.ChainHookInput || !tun && *chain.Hooknum == *nftables.ChainHookForward {
 				continue
 			}
 		}
-		if chain.Table.Family == nftables.TableFamilyINet && chain.Table.Name == planner.ZapretDenyTable &&
-			*chain.Hooknum == *nftables.ChainHookPostrouting {
-			continue
+		if chain.Table.Family == nftables.TableFamilyINet {
+			switch chain.Table.Name {
+			case planner.ZapretDenyTable:
+				if chain.Name == "deny_unadmitted" && *chain.Hooknum == *nftables.ChainHookPostrouting ||
+					chain.Name == "deny_retired_tun" && *chain.Hooknum == *nftables.ChainHookForward {
+					continue
+				}
+			case planner.ZapretInstalledTable:
+				if verifyActive != nil {
+					sawActive = true
+					continue
+				}
+			}
 		}
 		return errors.New("foreign packet hooks conflict with the Zapret profile")
 	}
-	return nil
+	// Only preflight on the current Panel can see its live batch. The
+	// immutable owner port must still match; a reserved table name alone
+	// does not establish ownership.
+	if sawActive {
+		return verifyActive(ctx)
+	}
+	return ctx.Err()
 }

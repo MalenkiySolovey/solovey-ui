@@ -2039,7 +2039,7 @@
       "rule": "direct-policy",
       "path": "core/box/box.go",
       "symbol": "NewBox",
-      "digest": "b387c953b855cd080b8bd29f90fbfcc6a6a6344a99d3c7b472438c6a036f5900"
+      "digest": "ea499251a982983f2d0ee07ab960690ba0a004a59d89b2317b845b622a396b5c"
     },
     {
       "rule": "direct-policy",
@@ -2767,6 +2767,12 @@
       "path": "internal/ops/privilegedbroker/zapret_systemd_linux.go",
       "symbol": "*installedZapret.prepare",
       "digest": "4998d2fae785035573a8d2cbd81a96d216da264a788efa0f8a574396bb96cbb6"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "internal/ops/privilegedbroker/zapret_systemd_linux.go",
+      "symbol": "*installedZapret.prepare",
+      "digest": "c593964c846ddd5ec9111791e8bd90a90835d2b19edfc6320f1f4bd5f80a0e38"
     }
   ]
 }

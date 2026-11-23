@@ -17,7 +17,11 @@ import (
 // caller must give PID 1 a retained copy of this owner port before allowing
 // any plan to mark sockets. No live queue or engine is needed to deny.
 func CreateZapretDenyTable(ctx context.Context, namespace uint64, bootID string) (*ZapretOwnedTable, error) {
-	comment := zapretTableComment("deny:" + bootID)
+	return CreateZapretDenyTableForIngress(ctx, namespace, bootID, nil)
+}
+
+func CreateZapretDenyTableForIngress(ctx context.Context, namespace uint64, bootID string, tun *planner.ZapretTUNScope) (*ZapretOwnedTable, error) {
+	comment, chains := zapretDenyShape(bootID, tun)
 	const chain = "deny_unadmitted"
 	batch, err := newZapretBatch(planner.ZapretDenyTable, comment)
 	if err != nil {
@@ -40,7 +44,19 @@ func CreateZapretDenyTable(ctx context.Context, namespace uint64, bootID string)
 	}); err != nil {
 		return nil, err
 	}
-	return createZapretTable(ctx, namespace, planner.ZapretDenyTable, 1, comment, batch.finish())
+	if tun != nil {
+		if err := batch.addZapretTUNDeny(*tun); err != nil {
+			return nil, err
+		}
+	}
+	return createZapretTable(ctx, namespace, planner.ZapretDenyTable, chains, comment, batch.finish())
+}
+
+func zapretDenyShape(bootID string, tun *planner.ZapretTUNScope) ([]byte, uint32) {
+	if tun != nil {
+		return zapretTableComment("deny-tun:" + tun.Revision(bootID)), 3
+	}
+	return zapretTableComment("deny:" + bootID), 1
 }
 
 // WithZapretDenyOwner is only used for the broker-to-PID-1 FD store handoff.
@@ -62,6 +78,10 @@ func (t *ZapretOwnedTable) WithZapretDenyOwner(use func(int) error) error {
 // descriptor was previously verified in the systemd FD store. This connection
 // cannot modify the table and its close does not retire the owner.
 func ObserveZapretDenyTable(ctx context.Context, namespace uint64, bootID string, port uint32, expectedInode uint64) (_ *ZapretOwnedTable, failure error) {
+	return ObserveZapretDenyTableForIngress(ctx, namespace, bootID, port, expectedInode, nil)
+}
+
+func ObserveZapretDenyTableForIngress(ctx context.Context, namespace uint64, bootID string, port uint32, expectedInode uint64, tun *planner.ZapretTUNScope) (_ *ZapretOwnedTable, failure error) {
 	inventory, err := readZapretQueueInventory("/proc/net/netlink")
 	if err != nil {
 		return nil, err
@@ -82,7 +102,8 @@ func ObserveZapretDenyTable(ctx context.Context, namespace uint64, bootID string
 	if err := checkZapretTableNamespace(conn, namespace); err != nil {
 		return nil, err
 	}
-	table := &ZapretOwnedTable{conn: conn, port: port, name: planner.ZapretDenyTable, chains: 1, comment: zapretTableComment("deny:" + bootID)}
+	comment, chains := zapretDenyShape(bootID, tun)
+	table := &ZapretOwnedTable{conn: conn, port: port, name: planner.ZapretDenyTable, chains: chains, comment: comment}
 	if err := table.setDeadline(ctx); err != nil {
 		return nil, err
 	}

@@ -18,6 +18,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
 )
@@ -80,10 +81,11 @@ func saveEdited(req SaveRequest) (*singboxapply.Change, error) {
 	if err := saveeligibility.Validate(req.Tx, string(ActionEdit), inbound.Id, &model.Inbound{}, "inbounds", inbound.Type); err != nil {
 		return nil, err
 	}
-	oldTag, err := TagByID(req.Tx, inbound.Id)
-	if err != nil {
+	var previous model.Inbound
+	if err := req.Tx.Select("tag", "type", "options").Where("id = ?", inbound.Id).Find(&previous).Error; err != nil {
 		return nil, err
 	}
+	oldTag := previous.Tag
 	if oldTag != "" && oldTag != inbound.Tag {
 		refs, err := tagrefs.Inbound(req.Tx, oldTag)
 		if err != nil {
@@ -101,7 +103,11 @@ func saveEdited(req SaveRequest) (*singboxapply.Change, error) {
 			return nil, err
 		}
 	}
-	return CoreChangeForSavedRow(req.Tx, inbound.Id, inbound.Tag, oldTag)
+	change, err := CoreChangeForSavedRow(req.Tx, inbound.Id, inbound.Tag, oldTag)
+	if err == nil {
+		applyManagedTUNChange(change, previous)
+	}
+	return change, err
 }
 func DecodeForSave(tx *gorm.DB, data json.RawMessage) (model.Inbound, error) {
 	var inbound model.Inbound
@@ -322,6 +328,7 @@ func saveDeleted(req SaveRequest) (*singboxapply.Change, error) {
 	if composition.IsGroup(previous.Type) {
 		change.NeedsRestart, change.RestartReason = true, "inbound group membership changed"
 	}
+	applyManagedTUNChange(change, previous)
 	return change, nil
 }
 func IDByTag(tx *gorm.DB, tag string) (uint, error) {
@@ -332,12 +339,13 @@ func IDByTag(tx *gorm.DB, tag string) (uint, error) {
 func CoreChangeForSavedRow(tx *gorm.DB, id uint, tag string, oldTag string) (*singboxapply.Change, error) {
 	change := &singboxapply.Change{ReloadIDs: []uint{id}}
 	var row model.Inbound
-	if err := tx.Select("id", "type").First(&row, id).Error; err != nil {
+	if err := tx.Select("id", "type", "options").First(&row, id).Error; err != nil {
 		return nil, err
 	}
 	if composition.IsGroup(row.Type) {
 		change.NeedsRestart, change.RestartReason = true, "inbound group membership changed"
 	}
+	applyManagedTUNChange(change, row)
 	if oldTag != "" && oldTag != tag {
 		change.RemoveTags = []string{oldTag}
 	}
@@ -347,4 +355,16 @@ func CoreChangeForSavedRow(tx *gorm.DB, id uint, tag string, oldTag string) (*si
 	}
 	change.CascadeServiceIDs = serviceIDs
 	return change, nil
+}
+
+func applyManagedTUNChange(change *singboxapply.Change, row model.Inbound) {
+	if row.Type != "tun" {
+		return
+	}
+	var opts struct {
+		Interface string `json:"interface_name"`
+	}
+	if json.Unmarshal(row.Options, &opts) == nil && opts.Interface == zapretactivation.TUNInterface {
+		change.NeedsRestart, change.RestartReason = true, "broker-managed TUN requires a fresh Core generation"
+	}
 }
