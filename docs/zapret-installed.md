@@ -113,6 +113,9 @@ The architecture budget entries for the batch are reviewed individually:
   pre-checked Direct. The Direct type is an assertion about the attached
   outbound, not a routing default. R8C adds the resolver's family-specific
   packet scope; the existing Network Planner still allocates the resources.
+  The blob-aware resolver adds only an aggregate capability requirement from
+  the already-verified definitions. The root-owned broker profile authorizes
+  that requirement, without changing Direct selection or packet scope.
 - `validateEncryptedDNSDetours` extends the DNS owner's existing detour
   check to DoQ and DoH3. It validates the explicit transport and bootstrap
   reference; it does not select an outbound or provide a fallback resolver.
