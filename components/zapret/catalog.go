@@ -29,10 +29,11 @@ type catalogView struct {
 
 type bindingStatus struct {
 	outbounds.ZapretReference
-	DesiredRevision string `json:"desiredRevision,omitempty"`
-	AppliedRevision string `json:"appliedRevision,omitempty"`
-	Queue           uint16 `json:"queue,omitempty"`
-	State           string `json:"state"`
+	DesiredRevision string                          `json:"desiredRevision,omitempty"`
+	AppliedRevision string                          `json:"appliedRevision,omitempty"`
+	Queue           uint16                          `json:"queue,omitempty"`
+	NativeMatches   *zapretactivation.NativeMatches `json:"nativeMatches,omitempty"`
+	State           string                          `json:"state"`
 }
 
 type catalogChange struct {
@@ -88,9 +89,10 @@ func makeCatalogView(snapshot service.ZapretCatalogSnapshot) (catalogView, error
 				}
 				status.AppliedRevision = observation.StrategyRevision
 				status.Queue = observation.Queue
-				if slices.Contains(snapshot.Desired, observation.Request) && (status.DesiredRevision == observation.StrategyRevision ||
+				if observation.StrategyRef == ref.StrategyRef && slices.Contains(snapshot.Desired, observation.Request) && (status.DesiredRevision == observation.StrategyRevision ||
 					status.DesiredRevision == "" && !zapretactivation.ManagedStrategyRef(ref.StrategyRef)) {
 					status.State = "applied"
+					status.NativeMatches = observation.NativeMatches
 				} else {
 					status.State = "pending"
 				}

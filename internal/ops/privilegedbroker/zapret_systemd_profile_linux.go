@@ -41,7 +41,12 @@ type InstalledZapretStrategies struct {
 	Families        []planner.ZapretFamilies
 	UsesCustomBlobs bool
 	HandlesQUIC     func(binding int, ipv6 bool, port uint16) bool
-	Compile         func(engineRoot string, queue uint16, loopMark uint32, queueMarks []uint32) ([]string, error)
+	Compile         func(engineRoot string, queue uint16, loopMark uint32, queueMarks []uint32, trace bool) ([]string, ZapretNativeTrace, error)
+}
+
+type ZapretNativeTrace interface {
+	io.Writer
+	MatchedProfiles(binding int) []string
 }
 
 type ResolveInstalledZapretStrategies func([]json.RawMessage, []zapretactivation.Request) (InstalledZapretStrategies, error)
@@ -58,6 +63,7 @@ type installedZapretProfile struct {
 	// An operator may delegate bounded profiles, not egress, engine, or Lua authority.
 	AllowManagedStrategies bool                `json:"allowManagedStrategies,omitempty"`
 	AllowCustomBlobs       bool                `json:"allowCustomBlobs,omitempty"`
+	ObserveNativeProfiles  bool                `json:"observeNativeProfiles,omitempty"`
 	TUN                    *installedZapretTUN `json:"tun,omitempty"`
 }
 

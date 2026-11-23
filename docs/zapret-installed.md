@@ -61,6 +61,14 @@ coverage. Do not put secrets in an asset: these bytes are transmitted as
 configured. Host file paths, uploaded Lua and return-dependent Circular are
 not admitted.
 
+Set `"observeNativeProfiles": true` in the root-owned installed profile to
+record native profile matches for the next engine generation. Refresh the
+Direct bindings view to see the profile IDs that ran. The engine reports each
+matched profile at most once per binding per generation; a match does not
+report a packet verdict or prove that an action changed traffic. No packet
+contents, destinations or debug output are logged. This is off by default and
+adds no work when there is no active engine.
+
 The systemd retained deny table is not a procd activation contract, and the
 current guard rejects fw4's foreign output and postrouting hooks.
 OpenWrt/FriendlyWrt are not covered by the systemd profile.
@@ -116,6 +124,9 @@ The architecture budget entries for the batch are reviewed individually:
   The blob-aware resolver adds only an aggregate capability requirement from
   the already-verified definitions. The root-owned broker profile authorizes
   that requirement, without changing Direct selection or packet scope.
+  Native profile evidence compiles the same verified bindings and marks with
+  an optional observation callback. Its private sink belongs to the installed
+  engine generation; only the existing verified observation verb reads it.
 - `validateEncryptedDNSDetours` extends the DNS owner's existing detour
   check to DoQ and DoH3. It validates the explicit transport and bootstrap
   reference; it does not select an outbound or provide a fallback resolver.
