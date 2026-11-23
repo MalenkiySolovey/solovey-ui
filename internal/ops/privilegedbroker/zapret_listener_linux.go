@@ -26,7 +26,7 @@ func bindZapretSocketBatch(ctx context.Context, root string, gid uint32, grants 
 	for i, grant := range grants {
 		endpoint, err := bindZapretSocket(ctx, root, gid, grant.Generation)
 		if err != nil {
-			err = fmt.Errorf("Zapret socket %d: %w", i+1, err)
+			err = fmt.Errorf("cannot publish Zapret socket %d: %w", i+1, err)
 			for _, bound := range endpoints {
 				err = errors.Join(err, bound.close())
 			}

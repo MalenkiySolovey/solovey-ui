@@ -212,7 +212,7 @@ func (z *installedZapret) selectStrategies(input zapretactivation.Validation) (i
 			}
 			for _, port := range ports {
 				if !slices.Contains(selected.Intents[i].TCPPorts, port) {
-					return profile, InstalledZapretStrategies{}, fmt.Errorf("Direct %q strategy does not cover DNS TCP port %d", request.OutboundRef, port)
+					return profile, InstalledZapretStrategies{}, fmt.Errorf("strategy for Direct %q does not cover DNS TCP port %d", request.OutboundRef, port)
 				}
 			}
 		}

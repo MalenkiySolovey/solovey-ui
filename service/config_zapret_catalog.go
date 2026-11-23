@@ -125,7 +125,7 @@ func (s *ConfigService) SaveZapretCatalog(action, id, revision, actor string,
 					return err
 				}
 				if len(next) > zapretactivation.MaxCatalogBytes || !json.Valid(next) {
-					return errors.New("Zapret strategy catalog exceeds its storage limit or is invalid")
+					return errors.New("the Zapret strategy catalog exceeds its storage limit or is invalid")
 				}
 				if rebind {
 					plan.MergeOutboundChange(&singboxapply.Change{NeedsRestart: true, QuiesceCore: true, RestartReason: "A bound Zapret strategy changed"})

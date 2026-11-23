@@ -2742,7 +2742,7 @@
       "rule": "direct-policy",
       "path": "internal/singbox/config/dns_zapret.go",
       "symbol": "validateEncryptedDNSDetours",
-      "digest": "e77a7917e9abcad6d7a710537e618dc8b556f124ef656b7761d260f8ad"
+      "digest": "e77a7917e9abcad6d7a710537e618dc8b556f124dd4c14ef656b7761d260f8ad"
     }
   ]
 }

@@ -102,7 +102,7 @@ func (r diagnosticRequest) authorize(snapshot service.ZapretCatalogSnapshot) err
 		return err
 	}
 	if !view.Ready || view.Revision != r.ExpectedRevision {
-		return errors.New("Zapret batch is unavailable or the strategy catalog changed")
+		return errors.New("the Zapret batch is unavailable or the strategy catalog changed")
 	}
 	for _, ref := range view.References {
 		if ref.State == "applied" && ref.OutboundRef == r.OutboundRef && ref.StrategyRef == r.StrategyRef {
@@ -157,11 +157,11 @@ func (c catalogChange) mutate(raw json.RawMessage, refs []outbounds.ZapretRefere
 		return nil, false, err
 	}
 	if catalog.Revision() != c.ExpectedRevision {
-		return nil, false, errors.New("Zapret strategy catalog changed; reload before saving")
+		return nil, false, errors.New("the Zapret strategy catalog changed; reload before saving")
 	}
 	previous, exists := catalog.Records[c.ID]
 	if exists != (c.Action == "edit" || c.Action == "delete") {
-		return nil, false, errors.New("Zapret strategy identity changed; reload before saving")
+		return nil, false, errors.New("the Zapret strategy identity changed; reload before saving")
 	}
 	rebind := false
 	if c.Action == "delete" {
