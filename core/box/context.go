@@ -12,6 +12,7 @@ import (
 
 type Options struct {
 	IdentityBindings []inboundidentity.Binding
+	PreparedTUN      *PreparedTUN
 	option.Options
 	Context    context.Context
 	IPObserver tracker.IPObserver

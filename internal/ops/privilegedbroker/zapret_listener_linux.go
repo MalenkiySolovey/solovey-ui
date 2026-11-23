@@ -40,7 +40,11 @@ func bindZapretSocketBatch(ctx context.Context, root string, gid uint32, grants 
 // bindZapretSocket only creates a fresh endpoint. A previous Direct config
 // may still refer to an existing path, including a path with no live owner.
 func bindZapretSocket(ctx context.Context, root string, gid uint32, generation string) (*standaloneSocket, error) {
-	if gid == 0 || !digestPattern.MatchString(generation) || !canonicalStandaloneRoot(root) {
+	return bindZapretEndpoint(ctx, root, gid, "z-", generation)
+}
+
+func bindZapretEndpoint(ctx context.Context, root string, gid uint32, prefix, generation string) (*standaloneSocket, error) {
+	if gid == 0 || (prefix != "z-" && prefix != "t-") || !digestPattern.MatchString(generation) || !canonicalStandaloneRoot(root) {
 		return nil, errZapretSocket
 	}
 	if err := verifyStandaloneDirectory(root, gid); err != nil {
@@ -55,7 +59,7 @@ func bindZapretSocket(ctx context.Context, root string, gid uint32, generation s
 			break
 		}
 	}
-	path := zapretSocketPath(root, generation)
+	path := filepath.Join(root, prefix+generation)
 	if len(path) >= len(unix.RawSockaddrUnix{}.Path) {
 		return nil, errors.New("socket path for Zapret exceeds the Unix address limit")
 	}

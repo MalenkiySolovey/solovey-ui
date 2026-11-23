@@ -7,11 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
+	corebox "github.com/MalenkiySolovey/solovey-ui/core/box"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/assembly"
@@ -21,7 +23,7 @@ import (
 
 const zapretCatalogObject = "zapret-strategies"
 
-func (r *Runtime) installedZapretAdmitter(ctx context.Context, admitted *string) outbounds.ZapretBatchAdmitter {
+func (r *Runtime) installedZapretAdmitter(ctx context.Context, admitted *string, device **corebox.PreparedTUN) outbounds.ZapretBatchAdmitter {
 	return func(input zapretactivation.Validation) ([]zapretactivation.Grant, error) {
 		if *admitted != "" || !r.zapretComponentStarted() {
 			return nil, outbounds.ErrZapretPacketPathUnqualified
@@ -38,8 +40,17 @@ func (r *Runtime) installedZapretAdmitter(ctx context.Context, admitted *string)
 		if _, err := client.Invoke(ctx, broker.Call{Verb: broker.VerbZapretAcquire, OperationID: "zapret-core-start", Payload: target, Timeout: 10 * time.Second}, &grant); err != nil {
 			return nil, errors.Join(outbounds.ErrZapretPacketPathUnqualified, err)
 		}
-		if grant.BatchID != *admitted {
+		if grant.BatchID != *admitted || (input.TUN == nil) != (grant.TUN == nil) {
 			return nil, outbounds.ErrZapretPacketPathUnqualified
+		}
+		if grant.TUN != nil {
+			if *input.TUN != *grant.TUN {
+				return nil, outbounds.ErrZapretPacketPathUnqualified
+			}
+			batch := grant.BatchID
+			*device = corebox.NewPreparedTUN(grant.TUN.Tag, zapretactivation.TUNInterface, func(start context.Context) (*os.File, error) {
+				return broker.ReceiveZapretTUN(start, batch)
+			})
 		}
 		return grant.Bindings, nil
 	}
@@ -85,6 +96,11 @@ func (s *ConfigService) validateCoreSaveCandidate(tx *gorm.DB, obj string, plan 
 			}
 			return nil
 		}
+		if obj == "inbounds" {
+			if err := assembly.ValidateUnboundZapretTUN(tx); err != nil {
+				return err
+			}
+		}
 	}
 	return s.validateNativeInboundCandidate(tx)
 }
@@ -95,6 +111,10 @@ func validateInstalledZapret(tx *gorm.DB) error {
 		return err
 	}
 	input, err := outbounds.ZapretValidation(tx, requests)
+	if err != nil {
+		return err
+	}
+	input.TUN, err = assembly.InstalledZapretTUNRequest(tx)
 	if err != nil {
 		return err
 	}

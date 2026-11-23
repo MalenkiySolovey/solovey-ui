@@ -21,6 +21,11 @@ func (c *Core) Start(sbConfig []byte) error {
 // Stable client bindings are supplied by the configuration semantic owner.
 // Core never queries a database or infers identity from names or addresses.
 func (c *Core) StartWithBindings(sbConfig []byte, bindings []inboundidentity.Binding) error {
+	return c.StartPrepared(sbConfig, bindings, nil)
+}
+
+// StartPrepared adds runtime-only inputs furnished by the existing owners.
+func (c *Core) StartPrepared(sbConfig []byte, bindings []inboundidentity.Binding, tun *corebox.PreparedTUN) error {
 	c.lifecycle.Lock()
 	defer c.lifecycle.Unlock()
 
@@ -76,6 +81,7 @@ func (c *Core) StartWithBindings(sbConfig []byte, bindings []inboundidentity.Bin
 		Options:          opt,
 		IPObserver:       c.ipObserver,
 		IdentityBindings: bindings,
+		PreparedTUN:      tun,
 	})
 	if err != nil {
 		return api.safeError(err)
