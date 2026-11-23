@@ -3,12 +3,14 @@
 package zapret
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 
 	"github.com/MalenkiySolovey/solovey-component-zapret/strategy"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
@@ -20,20 +22,32 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports) {
 		if !ports.Auth.RequireScope(c, "zapret.strategies.read", "read", "admin") {
 			return
 		}
-		view, err := service.NewConfigServiceWithRuntime(nil).ZapretCatalog()
-		ports.HTTP.JSONObj(c, view, err)
+		writeCatalog(c, ports, service.NewConfigServiceWithRuntime(nil))
 	})
 	group.POST("/strategies", func(c *gin.Context) {
 		if !ports.Auth.RequireScope(c, "zapret.strategies.write", "admin") {
 			return
 		}
-		var change service.ZapretCatalogChange
+		var change catalogChange
 		if err := readRequest(c, &change); err != nil {
 			ports.HTTP.JSONObj(c, nil, err)
 			return
 		}
-		view, err := service.NewConfigServiceWithRuntime(nil).SaveZapretCatalog(change, ports.Request.Actor(c))
-		ports.HTTP.JSONObj(c, view, err)
+		draft, err := change.selectedDraft()
+		if err != nil {
+			ports.HTTP.JSONObj(c, nil, err)
+			return
+		}
+		config := service.NewConfigServiceWithRuntime(nil)
+		err = config.SaveZapretCatalog(change.Action, change.ID, change.ExpectedRevision, ports.Request.Actor(c),
+			func(raw json.RawMessage, refs []outbounds.ZapretReference) (json.RawMessage, bool, error) {
+				return change.mutate(raw, refs, draft)
+			})
+		if err != nil {
+			ports.HTTP.JSONObj(c, nil, err)
+			return
+		}
+		writeCatalog(c, ports, config)
 	})
 	group.POST("/strategies/preview", func(c *gin.Context) {
 		if !ports.Auth.RequireScope(c, "zapret.strategies.preview", "admin") {
@@ -60,14 +74,24 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports) {
 			ports.HTTP.JSONObj(c, nil, err)
 			return
 		}
-		var request service.ZapretDiagnosticRequest
+		var request diagnosticRequest
 		if err := readRequest(c, &request); err != nil {
 			ports.HTTP.JSONObj(c, nil, err)
 			return
 		}
-		result, err := service.NewConfigServiceWithRuntime(nil).DiagnoseZapret(c.Request.Context(), request)
+		result, err := service.NewConfigServiceWithRuntime(nil).DiagnoseZapret(c.Request.Context(), request.OutboundRef, request.authorize)
 		ports.HTTP.JSONObj(c, result, err)
 	})
+}
+
+func writeCatalog(c *gin.Context, ports componenthost.Ports, config *service.ConfigService) {
+	snapshot, err := config.ZapretCatalog()
+	if err != nil {
+		ports.HTTP.JSONObj(c, nil, err)
+		return
+	}
+	view, err := makeCatalogView(snapshot)
+	ports.HTTP.JSONObj(c, view, err)
 }
 
 func readRequest(c *gin.Context, target any) error {
