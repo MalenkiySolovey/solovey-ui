@@ -3,14 +3,12 @@
 package zapret
 
 import (
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 
 	"github.com/MalenkiySolovey/solovey-component-zapret/strategy"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
-	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
@@ -33,16 +31,12 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports) {
 			ports.HTTP.JSONObj(c, nil, err)
 			return
 		}
-		draft, err := change.selectedDraft()
-		if err != nil {
+		if err := change.prepare(); err != nil {
 			ports.HTTP.JSONObj(c, nil, err)
 			return
 		}
 		config := service.NewConfigServiceWithRuntime(nil)
-		err = config.SaveZapretCatalog(change.Action, change.ID, change.ExpectedRevision, ports.Request.Actor(c),
-			func(raw json.RawMessage, refs []outbounds.ZapretReference) (json.RawMessage, bool, error) {
-				return change.mutate(raw, refs, draft)
-			})
+		err := config.SaveZapretCatalog(change.Action, change.ID, change.ExpectedRevision, ports.Request.Actor(c), change.mutate)
 		if err != nil {
 			ports.HTTP.JSONObj(c, nil, err)
 			return
@@ -53,14 +47,38 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports) {
 		if !ports.Auth.RequireScope(c, "zapret.strategies.preview", "admin") {
 			return
 		}
-		var draft strategy.Draft
-		if err := readRequest(c, &draft); err != nil {
+		var request struct {
+			strategy.Draft
+			ExpectedRevision string `json:"expectedRevision,omitempty"`
+		}
+		if err := readRequest(c, &request); err != nil {
 			ports.HTTP.JSONObj(c, nil, err)
 			return
 		}
-		draft.ID = "ui-zapret-preview"
-		value, err := strategy.SealDraft(draft)
+		request.Draft.ID = "ui-zapret-preview"
+		var catalog strategy.Catalog
+		if request.ExpectedRevision != "" || len(request.ListRefs) > 0 {
+			var err error
+			catalog, err = readCatalogAtRevision(request.ExpectedRevision)
+			if err != nil {
+				ports.HTTP.JSONObj(c, nil, err)
+				return
+			}
+		}
+		value, err := catalog.SealDraft(request.Draft)
 		ports.HTTP.JSONObj(c, value, err)
+	})
+	group.GET("/strategies/:id/export", func(c *gin.Context) {
+		if !ports.Auth.RequireScope(c, "zapret.strategies.read", "read", "admin") {
+			return
+		}
+		catalog, err := readCatalogAtRevision(c.Query("expectedRevision"))
+		if err != nil {
+			ports.HTTP.JSONObj(c, nil, err)
+			return
+		}
+		transfer, err := catalog.Export(c.Param("id"))
+		ports.HTTP.JSONObj(c, transfer, err)
 	})
 	group.POST("/diagnose", func(c *gin.Context) {
 		if !ports.Auth.RequireScope(c, "zapret.diagnose", "admin") {
@@ -82,6 +100,21 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports) {
 		result, err := service.NewConfigServiceWithRuntime(nil).DiagnoseZapret(c.Request.Context(), request.OutboundRef, request.authorize)
 		ports.HTTP.JSONObj(c, result, err)
 	})
+}
+
+func readCatalogAtRevision(revision string) (strategy.Catalog, error) {
+	if len(revision) != 64 {
+		return strategy.Catalog{}, errors.New("missing Zapret catalog revision")
+	}
+	snapshot, err := service.NewConfigServiceWithRuntime(nil).ZapretCatalog()
+	if err != nil {
+		return strategy.Catalog{}, err
+	}
+	catalog, err := readCatalog(snapshot.Catalog)
+	if err == nil && catalog.Revision() != revision {
+		err = errors.New("the Zapret strategy catalog changed; reload before continuing")
+	}
+	return catalog, err
 }
 
 func writeCatalog(c *gin.Context, ports componenthost.Ports, config *service.ConfigService) {
