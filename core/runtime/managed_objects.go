@@ -5,6 +5,7 @@ import (
 
 	corebox "github.com/MalenkiySolovey/solovey-ui/core/box"
 	"github.com/MalenkiySolovey/solovey-ui/core/inboundidentity"
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 
@@ -24,6 +25,9 @@ func (c *Core) AddInboundWithBindings(config []byte, bindings []inboundidentity.
 		}
 		if inboundConfig.Tag == privateAPITag {
 			return errors.New("reserved runtime tag")
+		}
+		if tun, ok := inboundConfig.Options.(*option.TunInboundOptions); ok && tun.InterfaceName == zapretactivation.TUNInterface {
+			return errors.New("broker-managed TUN requires a full Core restart")
 		}
 		records, recorded := inboundRuntimeRecords(rt.ctx, inboundConfig, 0)
 		if !recorded {

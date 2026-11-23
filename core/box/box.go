@@ -114,6 +114,9 @@ func NewBox(options Options) (_ *Box, err error) {
 	if err = validateConfiguredTags(options.Options); err != nil {
 		return nil, err
 	}
+	if err = options.PreparedTUN.validate(options.Inbounds); err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(ctx)
 
 	ctx = pause.WithDefaultManager(ctx)
@@ -131,6 +134,10 @@ func NewBox(options Options) (_ *Box, err error) {
 		needV2RayAPI = true
 	}
 	platformInterface := service.FromContext[adapter.PlatformInterface](ctx)
+	if options.PreparedTUN != nil && platformInterface != nil {
+		cancel()
+		return nil, common.NewError("runtime TUN conflicts with an existing platform interface")
+	}
 	var defaultLogWriter io.Writer
 	if platformInterface != nil {
 		defaultLogWriter = io.Discard
@@ -274,14 +281,11 @@ func NewBox(options Options) (_ *Box, err error) {
 		if bindErr != nil {
 			return nil, bindErr
 		}
-		err = inboundManager.Create(
-			ctx,
-			boundRouter,
-			logFactory.NewLogger(F.ToString("inbound/", inboundOptions.Type, "[", tag, "]")),
-			tag,
-			inboundOptions.Type,
-			inboundOptions.Options,
-		)
+		err = options.PreparedTUN.createInbound(ctx, tag, func(inboundCtx context.Context) error {
+			return inboundManager.Create(inboundCtx, boundRouter,
+				logFactory.NewLogger(F.ToString("inbound/", inboundOptions.Type, "[", tag, "]")),
+				tag, inboundOptions.Type, inboundOptions.Options)
+		})
 		if err != nil {
 			return nil, common.NewError("initialize inbound[", i, "] ", tag, err)
 		}

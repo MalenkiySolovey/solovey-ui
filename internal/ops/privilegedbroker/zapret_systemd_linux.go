@@ -59,7 +59,7 @@ func RegisterInstalledZapret(ctx context.Context, server *Server, transport Tran
 		return errors.New("installed Zapret requires the broker file journal and socket activation")
 	}
 	owner := &installedZapret{ctx: ctx, server: server, journal: journal, resolve: resolve, deny: listeners.deny}
-	if err := server.Registry.Register(VerbZapretValidate, Definition{Role: RolePanel, Handler: owner.validate}); err != nil {
+	if err := server.Registry.Register(VerbZapretValidate, Definition{Role: RolePanel, LocalPathAuthority: true, Handler: owner.validate}); err != nil {
 		return err
 	}
 	if err := server.Registry.Register(VerbZapretAcquire, Definition{Role: RolePanel, LocalPathAuthority: true, Handler: owner.acquire}); err != nil {
@@ -88,13 +88,24 @@ func (z *installedZapret) observe(ctx context.Context, call Request, peer PeerId
 	return result, nil
 }
 
-func (z *installedZapret) validate(_ context.Context, call Request, peer PeerIdentity) (any, error) {
+func (z *installedZapret) validate(ctx context.Context, call Request, peer PeerIdentity) (any, error) {
 	var input zapretactivation.Validation
 	if DecodePayload(call.Payload, &input) != nil || !validZapretTargets(input.Bindings) ||
 		peer.UID == 0 || peer.Supervisor != "systemd" || peer.CgroupPolicy != CgroupRequired || !peer.hasLiveness {
 		return nil, Failure(CodeValidation, "invalid installed Zapret binding or Panel identity")
 	}
-	if _, _, err := z.selectStrategies(input); err != nil {
+	profile, _, err := z.selectStrategies(input)
+	if err == nil {
+		err = profile.verifyTUN(ctx, input.TUN)
+	}
+	if err == nil && input.TUN != nil {
+		var verifyActive func(context.Context) error
+		if path := z.active; path != nil && path.peer == peer.Revision && path.ctx.Err() == nil {
+			verifyActive = path.verify
+		}
+		err = checkZapretForeignHooks(ctx, true, verifyActive)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "installed Zapret profile validation:", err)
 		return nil, Failure(CodeValidation, "installed Zapret does not authorize the selected binding or Strategy")
 	}
@@ -173,6 +184,11 @@ func (z *installedZapret) retire(ctx context.Context, call Request, peer PeerIde
 		}
 	}
 	if z.deny.port != 0 {
+		// A stopped broker may have left a descriptor in a still-running
+		// Core. Never remove the retained ingress filter while it exists.
+		if _, err := os.Lstat("/sys/class/net/" + zapretactivation.TUNInterface); !errors.Is(err, os.ErrNotExist) {
+			return nil, Failure(CodeRecoveryRequired, "Zapret TUN deny remains until the old device is gone")
+		}
 		// Successful Core.Stop normally drains its tracked connections. If a
 		// descriptor or a kernel retransmission survives, retain the deny
 		// even when the current generation, broker or engine has stopped.
@@ -258,9 +274,19 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 	if err != nil {
 		return nil, err
 	}
-	egress, occupied, err := observeInstalledZapretNetwork(ctx, profile.Interface, profile.IPv6)
+	if err := profile.verifyTUN(ctx, batch.TUN); err != nil {
+		return nil, err
+	}
+	egress, occupied, err := observeInstalledZapretNetwork(ctx, profile.Interface, profile.IPv6, batch.TUN != nil)
 	if err != nil {
 		return nil, err
+	}
+	var tunScope *planner.ZapretTUNScope
+	if batch.TUN != nil {
+		if egress.RoutingMarkBits&planner.ZapretTUNForwardBit != 0 {
+			return nil, errors.New("a foreign routing rule claims the Zapret TUN forward bit")
+		}
+		tunScope = &profile.TUN.Scope
 	}
 	grants := make([]zapretactivation.Grant, len(batch.Bindings))
 	facts := make([]planner.Facts, len(batch.Bindings))
@@ -291,7 +317,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 		return nil, err
 	}
 	hadDeny := z.deny.port != 0
-	deny, err := z.openDeny(ctx, egress.NamespaceCookie)
+	deny, err := z.openDeny(ctx, egress.NamespaceCookie, tunScope)
 	if err != nil {
 		return nil, err
 	}
@@ -311,6 +337,18 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 			}
 		}
 	}()
+	var tun *planner.PreparedZapretTUN
+	if tunScope != nil {
+		tun, err = planner.PrepareZapretTUN(ctx, *tunScope, int(egress.IfIndex), batch.TUN.MTU, batch.BatchID)
+		if err != nil {
+			return nil, err
+		}
+		defer func() {
+			if failure != nil {
+				failure = errors.Join(failure, tun.Close())
+			}
+		}()
+	}
 	engine, fact, err := startZapretEngine(ctx, plans[0], args, profile.EngineDigest)
 	if err != nil {
 		return nil, err
@@ -320,7 +358,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 			failure = errors.Join(failure, engine.stop())
 		}
 	}()
-	table, err := nftables.CreateZapretOwnedBatch(ctx, plans)
+	table, err := nftables.CreateZapretOwnedBatchForIngress(ctx, plans, tun)
 	if err != nil {
 		return nil, err
 	}
@@ -329,6 +367,11 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 			failure = errors.Join(failure, table.Close())
 		}
 	}()
+	if tun != nil {
+		if err := tun.Activate(); err != nil {
+			return nil, err
+		}
+	}
 	peerFD, err := unix.FcntlInt(uintptr(peer.livenessFD), unix.F_DUPFD_CLOEXEC, 0)
 	if err != nil {
 		return nil, err
@@ -366,8 +409,12 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 		return nil, err
 	}
 	var endpoints []*standaloneSocket
+	var tunEndpoint *standaloneSocket
 	defer func() {
 		if failure != nil {
+			if tunEndpoint != nil {
+				failure = errors.Join(failure, tunEndpoint.close())
+			}
 			for _, endpoint := range endpoints {
 				failure = errors.Join(failure, endpoint.close())
 			}
@@ -386,12 +433,18 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 	if err != nil {
 		return nil, err
 	}
+	if tun != nil {
+		tunEndpoint, err = bindZapretEndpoint(ctx, zapretSocketRoot, gid, "t-", batch.BatchID)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if ctx.Err() != nil || authority.Context.Err() != nil || table.Verify(ctx) != nil || deny.Verify(ctx) != nil {
 		return nil, errors.New("installed Zapret generation changed before publication")
 	}
 	path := &installedZapretPath{ctx: authority.Context, release: release, done: make(chan struct{}), peer: peer.Revision, uid: peer.UID,
 		queue: plans[0].Queue(),
-		grant: zapretactivation.BatchGrant{BatchID: batch.BatchID, Bindings: grants}}
+		grant: zapretactivation.BatchGrant{BatchID: batch.BatchID, Bindings: grants, TUN: batch.TUN}}
 	// Observation and FD admission check the same table and queue owners.
 	// Observation never creates a lease or extends the batch lifetime.
 	path.verify = func(ctx context.Context) error {
@@ -408,7 +461,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 		defer release()
 		defer deny.Close()
 		defer func() {
-			path.stopErr = engine.stop()
+			path.stopErr = errors.Join(path.stopErr, engine.stop())
 			if path.stopErr != nil {
 				fmt.Fprintln(os.Stderr, "installed Zapret engine retirement:", path.stopErr)
 			}
@@ -451,6 +504,14 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 			return admit()
 		}
 		var listeners sync.WaitGroup
+		if tunEndpoint != nil {
+			listeners.Go(func() {
+				if err := z.server.serveZapretTUN(path.ctx, tunEndpoint, retainedPeer, tun.File(), path.verify); err != nil && path.ctx.Err() == nil {
+					fmt.Fprintln(os.Stderr, "installed Zapret TUN handoff:", err)
+					release()
+				}
+			})
+		}
 		for i, endpoint := range endpoints {
 			listeners.Go(func() {
 				err := z.server.serveZapretSockets(path.ctx, endpoint, socketGrants[i], fence, func(context.Context, string) error { return nil })
@@ -465,6 +526,9 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 		<-watch
 		stop()
 		_ = table.Close()
+		if tun != nil {
+			path.stopErr = tun.Close()
+		}
 		_ = os.Remove(zapretSocketRoot) // only succeeds after the last socket has been unlinked
 	}()
 	return path, nil
@@ -473,11 +537,11 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 // openDeny reuses only the exact kernel owner socket retained by PID 1.
 // A new generation grants a new mark while the same deny continues to fence
 // marks issued by previous generations, including across broker death.
-func (z *installedZapret) openDeny(ctx context.Context, namespace uint64) (*nftables.ZapretOwnedTable, error) {
+func (z *installedZapret) openDeny(ctx context.Context, namespace uint64, tun *planner.ZapretTUNScope) (*nftables.ZapretOwnedTable, error) {
 	if z.deny.port != 0 {
-		return nftables.ObserveZapretDenyTable(ctx, namespace, z.server.BootID, z.deny.port, z.deny.inode)
+		return nftables.ObserveZapretDenyTableForIngress(ctx, namespace, z.server.BootID, z.deny.port, z.deny.inode, tun)
 	}
-	owner, err := nftables.CreateZapretDenyTable(ctx, namespace, z.server.BootID)
+	owner, err := nftables.CreateZapretDenyTableForIngress(ctx, namespace, z.server.BootID, tun)
 	if err != nil {
 		return nil, err
 	}
@@ -525,6 +589,9 @@ func makeZapretSocketRoot(gid uint32) error {
 	}
 	for _, entry := range entries {
 		generation, ok := strings.CutPrefix(entry.Name(), "z-")
+		if !ok {
+			generation, ok = strings.CutPrefix(entry.Name(), "t-")
+		}
 		if !ok || !digestPattern.MatchString(generation) {
 			return errors.New("unexpected path in the Zapret socket directory")
 		}

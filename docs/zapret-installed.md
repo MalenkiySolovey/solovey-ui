@@ -19,7 +19,8 @@ For DoH over HTTPS/TCP or DoT, select the bound Direct as **Transport via**.
 Keep certificate verification enabled and provide a nonrecursive bootstrap
 resolver for hostname endpoints. Configure the strategy for the destination TCP
 port. Before changing or removing a referenced Direct, update its DNS detours.
-DoH3, DoQ, IPv6 and installed Extended/OpenWrt are outside this qualification.
+DoH3, DoQ, IPv6 and Extended are separate from this R8B2 baseline. See the
+R8C admission requirements below.
 
 ## R8C transport admission
 
@@ -40,13 +41,42 @@ Use the existing Strategy editor for ordered profiles and bounded inline host
 and IP filters. The only QUIC blob is the original engine's pinned default;
 arbitrary host paths, uploaded Lua and return-dependent Circular are not admitted.
 
-TUN is rejected for this installed profile. The capless service does not expose
-`/dev/net/tun`, and opening the device in a capless test context does not grant
-`TUNSETIFF`. Adopting a Planner-owned device would require a narrowly scoped
-broker FD handoff and explicit route ownership, not changes to the Panel's
-effective capabilities. The systemd retained deny table is not a procd
-activation contract, and the current guard rejects fw4's foreign output and
-postrouting hooks. OpenWrt/FriendlyWrt are not covered by the systemd profile.
+The systemd retained deny table is not a procd activation contract, and the
+current guard rejects fw4's foreign output and postrouting hooks.
+OpenWrt/FriendlyWrt are not covered by the systemd profile.
+
+## Optional scoped TUN ingress
+
+TUN requires separate, administrator-owned provisioning. The normal installed
+broker unit does not expose `/dev/net/tun`; the operator must make the device
+available to that unit only. Panel and Core still have no network capabilities
+or device-node access. A Linux build with gVisor and exactly one TUN inbound
+named `svzap-tun0` is required. The inbound uses an explicit IPv4 address and
+MTU, `stack: gvisor`, `dns_mode: disabled`, and no automatic routes or redirects.
+Its tag, address and MTU must match the root-owned `tun.inbound` profile.
+
+The profile's `tun.scope` names one stable ingress interface, one IPv4 client,
+one destination prefix, a reserved route table, and a rule priority. The
+operator provisions the exact ingress/source/destination lookup followed by a
+terminal `prohibit`, after the standard `local` rule and before any competing
+policy rule. The table must be empty outside an active generation. The broker
+admits only its nonpersistent TUN route and rejects conflicting hooks. The
+operator must preserve the scope, reservation and terminal rule across restart;
+firewall managers or privileged software that can replace them are not a
+supported coexistence profile. No service changes the default route or
+automatically enables IP forwarding.
+
+Routing still chooses the outbound. A marked Zapret Direct shares the same
+engine and queue as other protected flows; ordinary outbounds are not converted
+to protected Directs by the TUN. Ingress and established return forwarding use
+an exact device/index and IPv4 endpoint match for TCP/UDP only. The retained
+deny blocks kernel forwarding or local delivery for the reserved ingress if
+admission is lost, even if Core still holds its descriptor. The separate
+one-shot descriptor endpoint is bound to the same Panel process and grant; the
+framed broker transport still denies generic descriptor transfer. Add, edit,
+or remove the managed TUN through a full Core generation. Remove it before the
+last Zapret binding is switched OFF. Ordinary Direct remains available after
+OFF; the administrator's independently provisioned ingress prohibit remains.
 
 ## Lifecycle ownership
 
@@ -65,6 +95,10 @@ The architecture budget entries for the batch are reviewed individually:
 - `validateEncryptedDNSDetours` extends the DNS owner's existing detour
   check to DoQ and DoH3. It validates the explicit transport and bootstrap
   reference; it does not select an outbound or provide a fallback resolver.
+- `NewBox` still registers the pinned Core's existing default Direct. The
+  source fingerprint changes because the inbound construction now passes a
+  transient device opener to the one prepared TUN; the default outbound and
+  Routing decision are unchanged.
 - `installedZapret.prepare` owns one batch worker and one watcher, started
   only after all endpoints and the owned table are ready. The watcher exits
   with the batch authority. At most three listeners are joined; losing any
@@ -76,6 +110,10 @@ The architecture budget entries for the batch are reviewed individually:
   only after the watcher and listeners have exited; preparation failure
   closes it before returning. An interrupted poll is retried with the same
   descriptor; an unobservable or dead peer still cancels admission.
+  The optional TUN adds at most one joined listener to that same batch. It
+  terminates after attempting the single attested handoff, or when the batch
+  retires. An unexpected listener failure cancels the batch. After closing the
+  admission table, the broker revokes the link before releasing its own FD.
 - `startZapretEngine` has one waiter per actual child. It reaps the child and
   reports its result before closing `done`. Failed preparation and normal
   retirement use the same bounded pidfd-backed stop path.

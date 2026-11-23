@@ -240,7 +240,7 @@ func NewRegistry() *Registry { return &Registry{definitions: make(map[Verb]Defin
 func (r *Registry) Register(verb Verb, definition Definition) error {
 	if r == nil || !validVerb(string(verb)) || definition.Handler == nil ||
 		definition.Role != RolePanel && definition.Role != RoleSSHProof ||
-		definition.LocalPathAuthority != (verb == VerbZapretAcquire || verb == VerbZapretRelease || verb == VerbZapretObserve) ||
+		definition.LocalPathAuthority != (verb == VerbZapretValidate || verb == VerbZapretAcquire || verb == VerbZapretRelease || verb == VerbZapretObserve) ||
 		definition.LocalPathAuthority && (definition.Role != RolePanel || definition.Mutation) ||
 		(!definition.Mutation && (definition.RetainResultUntilRelease || definition.ReleasesRetainedResultVerb != "")) ||
 		(definition.ReleasesRetainedResultVerb != "" && !validVerb(string(definition.ReleasesRetainedResultVerb))) {

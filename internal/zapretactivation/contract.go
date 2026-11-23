@@ -4,6 +4,7 @@ package zapretactivation
 
 import (
 	"encoding/json"
+	"net/netip"
 	"strings"
 )
 
@@ -14,6 +15,7 @@ const (
 	MaxCatalogBytes       = 256 << 10
 	MaxDefinitionBytes    = 8 << 10
 	ManagedStrategyPrefix = "ui-zapret-"
+	TUNInterface          = "svzap-tun0"
 )
 
 // Keep operator-owned profile IDs and editable IDs in separate namespaces.
@@ -41,8 +43,9 @@ type BatchRequest struct {
 }
 
 type BatchGrant struct {
-	BatchID  string  `json:"batchId"`
-	Bindings []Grant `json:"bindings"`
+	BatchID  string      `json:"batchId"`
+	Bindings []Grant     `json:"bindings"`
+	TUN      *TUNRequest `json:"tun,omitempty"`
 }
 
 type BatchIdentity struct {
@@ -61,6 +64,27 @@ type Validation struct {
 	Bindings    []Request                       `json:"bindings"`
 	Definitions map[string]json.RawMessage      `json:"definitions,omitempty"`
 	DNS         map[string][]DNSPathRequirement `json:"dns,omitempty"`
+	TUN         *TUNRequest                     `json:"tun,omitempty"`
+}
+
+// TUNRequest identifies one candidate inbound; only the installed broker
+// profile can authorize the privileged device and network route scope.
+type TUNRequest struct {
+	Tag     string       `json:"tag"`
+	Address netip.Prefix `json:"address"`
+	MTU     uint32       `json:"mtu"`
+}
+
+func (r TUNRequest) Valid() bool {
+	return r.Tag != "" && len(r.Tag) <= 64 && r.Address.Addr().Is4() &&
+		r.Address.Addr().IsGlobalUnicast() && r.Address.Bits() >= 24 && r.MTU >= 1280 && r.MTU <= 1500
+}
+
+func TUNSocketPath(batch string) (string, bool) {
+	if !ValidDigest(batch) {
+		return "", false
+	}
+	return SocketRoot + "/t-" + batch, true
 }
 
 type DNSFamily uint8

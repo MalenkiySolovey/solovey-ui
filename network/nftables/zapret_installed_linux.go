@@ -57,6 +57,10 @@ func CreateZapretOwnedTable(ctx context.Context, plan planner.ZapretPlan) (_ *Za
 // CreateZapretOwnedBatch installs all protected selectors atomically, under
 // one owner port. No partial live table exists if any rule cannot be installed.
 func CreateZapretOwnedBatch(ctx context.Context, plans []planner.ZapretPlan) (*ZapretOwnedTable, error) {
+	return CreateZapretOwnedBatchForIngress(ctx, plans, nil)
+}
+
+func CreateZapretOwnedBatchForIngress(ctx context.Context, plans []planner.ZapretPlan, tun *planner.PreparedZapretTUN) (*ZapretOwnedTable, error) {
 	if len(plans) == 0 || len(plans) > 3 {
 		return nil, errors.New("missing or excessive installed Zapret allocations")
 	}
@@ -81,11 +85,15 @@ func CreateZapretOwnedBatch(ctx context.Context, plans []planner.ZapretPlan) (*Z
 		}
 		comment = zapretTableComment(fmt.Sprintf("%x", sha256.Sum256(revisions)))
 	}
-	batch, err := zapretOwnedBatch(plans, comment)
+	batch, err := zapretOwnedBatch(plans, comment, tun)
 	if err != nil {
 		return nil, err
 	}
-	return createZapretTable(ctx, scope.Egress().NamespaceCookie, planner.ZapretInstalledTable, 2, comment, batch)
+	chains := uint32(2)
+	if tun != nil {
+		chains++
+	}
+	return createZapretTable(ctx, scope.Egress().NamespaceCookie, planner.ZapretInstalledTable, chains, comment, batch)
 }
 
 func createZapretTable(ctx context.Context, namespace uint64, name string, chains uint32, comment []byte, batch []netlink.Message) (_ *ZapretOwnedTable, failure error) {
@@ -250,7 +258,7 @@ func expectZapretBatchACKs(conn *netlink.Conn, requests []netlink.Message) error
 	return nil
 }
 
-func zapretOwnedBatch(plans []planner.ZapretPlan, comment []byte) ([]netlink.Message, error) {
+func zapretOwnedBatch(plans []planner.ZapretPlan, comment []byte, tun ...*planner.PreparedZapretTUN) ([]netlink.Message, error) {
 	batch, err := newZapretBatch(planner.ZapretInstalledTable, comment)
 	if err != nil {
 		return nil, err
@@ -273,6 +281,11 @@ func zapretOwnedBatch(plans []planner.ZapretPlan, comment []byte) ([]netlink.Mes
 			&expr.Bitwise{SourceRegister: reg, DestRegister: reg, Len: 4, Mask: u32(plans[0].PacketMarkMask()), Xor: u32(0)},
 			&expr.Cmp{Op: expr.CmpOpNeq, Register: reg, Data: u32(0)}, &expr.Verdict{Kind: expr.VerdictDrop},
 		}); err != nil {
+			return nil, err
+		}
+	}
+	if len(tun) == 1 && tun[0] != nil {
+		if err := batch.addZapretTUNForward(tun[0]); err != nil {
 			return nil, err
 		}
 	}
@@ -370,9 +383,9 @@ func (b *zapretBatch) add(op uint8, flags netlink.HeaderFlags, attrs ...netlink.
 	return err
 }
 
-func (b *zapretBatch) addChain(name string, hookNum, priority uint32) error {
+func (b *zapretBatch) addChain(name string, hookNum uint32, priority int32) error {
 	hook, err := netlink.MarshalAttributes([]netlink.Attribute{
-		zapretNftUint32(unix.NFTA_HOOK_HOOKNUM, hookNum), zapretNftUint32(unix.NFTA_HOOK_PRIORITY, priority),
+		zapretNftUint32(unix.NFTA_HOOK_HOOKNUM, hookNum), zapretNftUint32(unix.NFTA_HOOK_PRIORITY, uint32(priority)),
 	})
 	if err != nil {
 		return err

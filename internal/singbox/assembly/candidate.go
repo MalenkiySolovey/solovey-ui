@@ -19,6 +19,7 @@ import (
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 	"github.com/MalenkiySolovey/solovey-ui/logger"
 	"gorm.io/gorm"
 )
@@ -45,16 +46,23 @@ func BuildCoreStartupFromDB(db *gorm.DB, admit entityoutbounds.ZapretBatchAdmitt
 	}
 	render := entityoutbounds.GetAllConfig
 	if bound {
-		render = func(tx *gorm.DB) ([]json.RawMessage, error) { return entityoutbounds.GetAllRuntimeConfig(tx, admit) }
+		tun, err := InstalledZapretTUNRequest(db)
+		if err != nil {
+			return nil, err
+		}
+		render = func(tx *gorm.DB) ([]json.RawMessage, error) {
+			return entityoutbounds.GetAllRuntimeConfig(tx, func(input zapretactivation.Validation) ([]zapretactivation.Grant, error) {
+				input.TUN = tun
+				return admit(input)
+			})
+		}
 	}
 	projection, err := buildCandidateProjectionFromDB(db, "", true, render)
 	if err != nil {
 		return nil, err
 	}
-	if bound {
-		if err := validateZapretCoreProfile(projection.Config); err != nil {
-			return nil, err
-		}
+	if err := validateZapretCoreProfile(projection.Config, bound); err != nil {
+		return nil, err
 	}
 	return singboxconfig.PrepareRuntimeAssets(projection.Config)
 }
@@ -74,6 +82,9 @@ func ValidateCoreRestartFromDB(db *gorm.DB, zapretReady bool) error {
 	if err != nil {
 		return err
 	}
+	if err := validateZapretCoreProfile(projection.Config, bound); err != nil {
+		return err
+	}
 	var selected map[string]bool
 	if bound {
 		requests, err := entityoutbounds.ZapretRequests(db)
@@ -83,9 +94,6 @@ func ValidateCoreRestartFromDB(db *gorm.DB, zapretReady bool) error {
 		selected = make(map[string]bool, len(requests))
 		for _, request := range requests {
 			selected[request.OutboundRef] = true
-		}
-		if err := validateZapretCoreProfile(projection.Config); err != nil {
-			return err
 		}
 		if singboxvalidation.ValidateConfigShape(projection.Config) != nil {
 			return fmt.Errorf("%w: the pinned Core rejected the candidate", entityoutbounds.ErrZapretPacketPathUnqualified)
@@ -98,9 +106,9 @@ func ValidateCoreRestartFromDB(db *gorm.DB, zapretReady bool) error {
 	return err
 }
 
-func validateZapretCoreProfile(config []byte) error {
+func validateZapretCoreProfile(config []byte, bound bool) error {
 	var candidate struct {
-		Inbounds  []struct{ Type string }
+		Inbounds  []json.RawMessage
 		Route     map[string]json.RawMessage
 		Outbounds []map[string]json.RawMessage
 		Endpoints []map[string]json.RawMessage
@@ -108,10 +116,11 @@ func validateZapretCoreProfile(config []byte) error {
 	if err := json.Unmarshal(config, &candidate); err != nil {
 		return err
 	}
-	for _, inbound := range candidate.Inbounds {
-		if inbound.Type == "tun" {
-			return fmt.Errorf("%w: TUN cannot share this installed profile", entityoutbounds.ErrZapretPacketPathUnqualified)
-		}
+	if _, err := installedZapretTUNRequest(candidate.Inbounds, bound); err != nil {
+		return err
+	}
+	if !bound {
+		return nil
 	}
 	for key := range candidate.Route {
 		switch strings.ToLower(key) {
