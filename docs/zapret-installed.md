@@ -59,8 +59,9 @@ The profile's `tun.scope` names one stable ingress interface, one IPv4 client,
 one destination prefix, a reserved route table, and a rule priority. The
 operator provisions the exact ingress/source/destination lookup followed by a
 terminal `prohibit`, after the standard `local` rule and before any competing
-policy rule. The table must be empty outside an active generation. The broker
-admits only its nonpersistent TUN route and rejects conflicting hooks. The
+policy rule. The table must be empty outside an active generation. The Planner
+validates the scope and the broker is the only device/route writer. It admits
+only its nonpersistent TUN route and rejects conflicting hooks. The
 operator must preserve the scope, reservation and terminal rule across restart;
 firewall managers or privileged software that can replace them are not a
 supported coexistence profile. No service changes the default route or

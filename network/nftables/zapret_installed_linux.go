@@ -60,9 +60,12 @@ func CreateZapretOwnedBatch(ctx context.Context, plans []planner.ZapretPlan) (*Z
 	return CreateZapretOwnedBatchForIngress(ctx, plans, nil)
 }
 
-func CreateZapretOwnedBatchForIngress(ctx context.Context, plans []planner.ZapretPlan, tun *planner.PreparedZapretTUN) (*ZapretOwnedTable, error) {
+func CreateZapretOwnedBatchForIngress(ctx context.Context, plans []planner.ZapretPlan, tun *planner.ZapretTUNForward) (*ZapretOwnedTable, error) {
 	if len(plans) == 0 || len(plans) > 3 {
 		return nil, errors.New("missing or excessive installed Zapret allocations")
+	}
+	if tun != nil && !tun.Valid() {
+		return nil, errors.New("invalid Zapret TUN forwarding plan")
 	}
 	plan := plans[0]
 	scope, err := plan.SocketScope()
@@ -258,7 +261,7 @@ func expectZapretBatchACKs(conn *netlink.Conn, requests []netlink.Message) error
 	return nil
 }
 
-func zapretOwnedBatch(plans []planner.ZapretPlan, comment []byte, tun ...*planner.PreparedZapretTUN) ([]netlink.Message, error) {
+func zapretOwnedBatch(plans []planner.ZapretPlan, comment []byte, tun ...*planner.ZapretTUNForward) ([]netlink.Message, error) {
 	batch, err := newZapretBatch(planner.ZapretInstalledTable, comment)
 	if err != nil {
 		return nil, err

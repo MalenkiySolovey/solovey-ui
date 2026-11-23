@@ -71,7 +71,7 @@ func (p installedZapretProfile) verifyTUN(ctx context.Context, req *zapretactiva
 	if p.TUN == nil || !req.Valid() || !safeIdentifier(req.Tag) || *req != p.TUN.Inbound {
 		return errors.New("installed Zapret TUN inbound does not match the operator profile")
 	}
-	if err := planner.CheckZapretTUNDevice(); err != nil {
+	if err := checkZapretTUNDevice(); err != nil {
 		return fmt.Errorf("broker TUN capability: %w", err)
 	}
 	iface, err := net.InterfaceByName(p.Interface)

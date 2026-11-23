@@ -51,12 +51,12 @@ func (b *zapretBatch) addZapretTUNDeny(scope planner.ZapretTUNScope) error {
 	return nil
 }
 
-func (b *zapretBatch) addZapretTUNForward(tun *planner.PreparedZapretTUN) error {
+func (b *zapretBatch) addZapretTUNForward(tun *planner.ZapretTUNForward) error {
 	const chain = "scoped_tun_forward"
 	if err := b.addChain(chain, unix.NF_INET_FORWARD, zapretTUNAllowPriority); err != nil {
 		return err
 	}
-	scope, ingress := tun.Ingress()
+	scope, ingress, tunIndex := tun.Scope, tun.IngressIfIndex, tun.DeviceIfIndex
 	client := netip.PrefixFrom(scope.Client, 32)
 	name := make([]byte, unix.IFNAMSIZ)
 	copy(name, scope.Ingress)
@@ -67,8 +67,8 @@ func (b *zapretBatch) addZapretTUNForward(tun *planner.PreparedZapretTUN) error 
 		source, target  netip.Prefix
 		inName, outName []byte
 	}{
-		{ingress, tun.IfIndex(), client, scope.Destination, name, device},
-		{tun.IfIndex(), ingress, scope.Destination, client, device, name},
+		{ingress, tunIndex, client, scope.Destination, name, device},
+		{tunIndex, ingress, scope.Destination, client, device, name},
 	} {
 		for _, protocol := range []byte{unix.IPPROTO_TCP, unix.IPPROTO_UDP} {
 			rule := tunEndpoints(path.source, path.target)
@@ -77,7 +77,7 @@ func (b *zapretBatch) addZapretTUNForward(tun *planner.PreparedZapretTUN) error 
 			rule = append(rule, tunMetaEq(expr.MetaKeyIIFNAME, path.inName)...)
 			rule = append(rule, tunMetaEq(expr.MetaKeyOIFNAME, path.outName)...)
 			rule = append(rule, tunMetaEq(expr.MetaKeyL4PROTO, []byte{protocol})...)
-			if path.input == tun.IfIndex() {
+			if path.input == tunIndex {
 				rule = append(rule, &expr.Ct{Key: expr.CtKeySTATE, Register: 1},
 					&expr.Bitwise{SourceRegister: 1, DestRegister: 1, Len: 4, Mask: tunU32(expr.CtStateBitESTABLISHED), Xor: tunU32(0)},
 					&expr.Cmp{Op: expr.CmpOpNeq, Register: 1, Data: tunU32(0)})

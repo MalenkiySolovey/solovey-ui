@@ -337,15 +337,15 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 			}
 		}
 	}()
-	var tun *planner.PreparedZapretTUN
+	var tun *preparedZapretTUN
 	if tunScope != nil {
-		tun, err = planner.PrepareZapretTUN(ctx, *tunScope, int(egress.IfIndex), batch.TUN.MTU, batch.BatchID)
+		tun, err = prepareZapretTUN(ctx, *tunScope, int(egress.IfIndex), batch.TUN.MTU, batch.BatchID)
 		if err != nil {
 			return nil, err
 		}
 		defer func() {
 			if failure != nil {
-				failure = errors.Join(failure, tun.Close())
+				failure = errors.Join(failure, tun.close())
 			}
 		}()
 	}
@@ -358,7 +358,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 			failure = errors.Join(failure, engine.stop())
 		}
 	}()
-	table, err := nftables.CreateZapretOwnedBatchForIngress(ctx, plans, tun)
+	table, err := nftables.CreateZapretOwnedBatchForIngress(ctx, plans, tun.forwardPlan())
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +368,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 		}
 	}()
 	if tun != nil {
-		if err := tun.Activate(); err != nil {
+		if err := tun.activate(); err != nil {
 			return nil, err
 		}
 	}
@@ -506,7 +506,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 		var listeners sync.WaitGroup
 		if tunEndpoint != nil {
 			listeners.Go(func() {
-				if err := z.server.serveZapretTUN(path.ctx, tunEndpoint, retainedPeer, tun.File(), path.verify); err != nil && path.ctx.Err() == nil {
+				if err := z.server.serveZapretTUN(path.ctx, tunEndpoint, retainedPeer, tun.file, path.verify); err != nil && path.ctx.Err() == nil {
 					fmt.Fprintln(os.Stderr, "installed Zapret TUN handoff:", err)
 					release()
 				}
@@ -527,7 +527,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 		stop()
 		_ = table.Close()
 		if tun != nil {
-			path.stopErr = tun.Close()
+			path.stopErr = tun.close()
 		}
 		_ = os.Remove(zapretSocketRoot) // only succeeds after the last socket has been unlinked
 	}()

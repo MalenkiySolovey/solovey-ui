@@ -6,16 +6,13 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"net"
 	"net/netip"
-	"os"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 	"github.com/mdlayher/netlink"
 	"github.com/mdlayher/socket"
-	route "github.com/sagernet/netlink"
 	"golang.org/x/sys/unix"
 )
 
@@ -167,141 +164,13 @@ func classifyTUNPolicy(row []byte, s ZapretTUNScope) (uint8, error) {
 	return 0, invalid
 }
 
-// PreparedZapretTUN is private to a broker generation. No addresses, default
-// routes or sysctls are installed; the userspace stack deals with TUN packets.
-type PreparedZapretTUN struct {
-	file    *os.File
-	link    route.Link
-	route   route.Route
-	alias   string
-	scope   ZapretTUNScope
-	ingress int
+// ZapretTUNForward is the bounded rule input, with no link or FD authority.
+type ZapretTUNForward struct {
+	Scope          ZapretTUNScope
+	IngressIfIndex int
+	DeviceIfIndex  int
 }
 
-// CheckZapretTUNDevice fails preflight without creating a device or opening
-// the broker's privileged TUN node to the Panel mount namespace.
-func CheckZapretTUNDevice() error {
-	fd, err := openZapretTUNDevice()
-	if err != nil {
-		return err
-	}
-	features, err := unix.IoctlGetUint32(fd, unix.TUNGETFEATURES)
-	if err == nil && features&(unix.IFF_TUN|unix.IFF_NO_PI) != unix.IFF_TUN|unix.IFF_NO_PI {
-		err = errors.New("TUN layer-3 device without packet headers is unavailable")
-	}
-	return errors.Join(err, unix.Close(fd))
-}
-
-func openZapretTUNDevice() (int, error) {
-	fd, err := unix.Open("/dev/net/tun", unix.O_RDWR|unix.O_NONBLOCK|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
-	if err != nil {
-		return -1, fmt.Errorf("open broker TUN device: %w", err)
-	}
-	return fd, nil
-}
-
-func PrepareZapretTUN(ctx context.Context, s ZapretTUNScope, egress int, mtu uint32, generation string) (_ *PreparedZapretTUN, failure error) {
-	ingress, err := CheckZapretTUNScope(ctx, s, egress)
-	if err != nil {
-		return nil, err
-	}
-	if mtu < 1280 || mtu > 1500 || len(generation) != 64 {
-		return nil, errors.New("invalid installed Zapret TUN device parameters")
-	}
-	h, err := zapretTUNRouteHandle()
-	if err != nil {
-		return nil, err
-	}
-	defer h.Close()
-	table := route.Route{Table: int(s.Table)}
-	if rows, err := h.RouteListFiltered(route.FAMILY_V4, &table, route.RT_FILTER_TABLE); err != nil || len(rows) != 0 {
-		return nil, errors.Join(errors.New("reserved Zapret TUN route table is not empty"), err)
-	}
-	fd, err := openZapretTUNDevice()
-	if err != nil {
-		return nil, err
-	}
-	file := os.NewFile(uintptr(fd), "prepared-zapret-tun")
-	defer func() {
-		if failure != nil {
-			failure = errors.Join(failure, file.Close())
-		}
-	}()
-	request, err := unix.NewIfreq(ZapretTUNName)
-	if err != nil {
-		return nil, err
-	}
-	request.SetUint16(unix.IFF_TUN | unix.IFF_NO_PI | unix.IFF_TUN_EXCL)
-	if err := unix.IoctlIfreq(fd, unix.TUNSETIFF, request); err != nil {
-		return nil, fmt.Errorf("create exclusive Zapret TUN device: %w", err)
-	}
-	link, err := h.LinkByName(ZapretTUNName)
-	if err != nil {
-		return nil, err
-	}
-	alias := "solovey-zapret:" + generation
-	if err := h.LinkSetAlias(link, alias); err != nil {
-		return nil, err
-	}
-	if err := h.LinkSetMTU(link, int(mtu)); err != nil {
-		return nil, err
-	}
-	table.LinkIndex, table.Scope, table.Protocol = link.Attrs().Index, route.SCOPE_LINK, unix.RTPROT_STATIC
-	table.Dst = &net.IPNet{IP: s.Destination.Addr().AsSlice(), Mask: net.CIDRMask(s.Destination.Bits(), 32)}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	return &PreparedZapretTUN{file: file, link: link, route: table, alias: alias, scope: s, ingress: ingress}, nil
-}
-
-func zapretTUNRouteHandle() (*route.Handle, error) {
-	h, err := route.NewHandle(unix.NETLINK_ROUTE)
-	if err != nil {
-		return nil, err
-	}
-	if err := h.SetSocketTimeout(time.Second); err != nil {
-		h.Close()
-		return nil, err
-	}
-	return h, nil
-}
-
-func (t *PreparedZapretTUN) IfIndex() int { return t.link.Attrs().Index }
-
-func (t *PreparedZapretTUN) Ingress() (ZapretTUNScope, int) { return t.scope, t.ingress }
-
-// Activate is called only once the ingress and retained return guards are in
-// place. RouteAdd is exclusive; it must not replace another owner's route.
-func (t *PreparedZapretTUN) Activate() error {
-	h, err := zapretTUNRouteHandle()
-	if err != nil {
-		return err
-	}
-	defer h.Close()
-	if err := h.LinkSetUp(t.link); err != nil {
-		return err
-	}
-	return h.RouteAdd(&t.route)
-}
-
-func (t *PreparedZapretTUN) File() *os.File { return t.file }
-
-// Revoke the link, not merely the broker's copy of the FD. The retained
-// guard is required when broker death prevents this method from running.
-func (t *PreparedZapretTUN) Close() error {
-	h, err := zapretTUNRouteHandle()
-	if err != nil {
-		return errors.Join(err, t.file.Close())
-	}
-	defer h.Close()
-	live, err := h.LinkByIndex(t.IfIndex())
-	var missing route.LinkNotFoundError
-	if err == nil && (live.Attrs().Name != ZapretTUNName || live.Attrs().Alias != t.alias) {
-		err = errors.New("refusing to retire a replaced Zapret TUN link")
-	} else if err == nil {
-		err = h.LinkDel(live)
-	} else if errors.As(err, &missing) {
-		err = nil
-	}
-	return errors.Join(err, t.file.Close())
+func (p ZapretTUNForward) Valid() bool {
+	return p.Scope.valid() && p.IngressIfIndex > 0 && p.DeviceIfIndex > 0 && p.IngressIfIndex != p.DeviceIfIndex
 }
