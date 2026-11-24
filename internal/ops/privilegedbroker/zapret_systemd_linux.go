@@ -253,8 +253,8 @@ func (z *installedZapret) selectStrategies(input zapretactivation.Validation) (i
 			return profile, InstalledZapretStrategies{}, fmt.Errorf("strategy for outbound %q requires IPv6 in the installed Zapret profile", request.OutboundRef)
 		}
 		if request.Outer.Kind != "" && !selected.handlesOuter(i, profile.IPv6, request.Outer) {
-			return profile, InstalledZapretStrategies{}, fmt.Errorf("%w: %s outer port %d, family %d", errZapretOuterScope,
-				request.Outer.Kind, request.Outer.Port, request.Outer.Family)
+			return profile, InstalledZapretStrategies{}, fmt.Errorf("%w: %s %s outer port %d, family %d", errZapretOuterScope,
+				request.Outer.Kind, request.Outer.Transports(), request.Outer.Port, request.Outer.Family)
 		}
 		if requirements, ok := input.DNS[request.OutboundRef]; ok {
 			used++
@@ -305,10 +305,16 @@ func (s InstalledZapretStrategies) handlesOuter(binding int, ipv6 bool, need zap
 		if v6 {
 			ports = s.Families[binding].IPv6
 		}
-		if need.Kind == "hysteria2" {
+		switch need.Transports() {
+		case zapretactivation.OuterTCP:
+			return slices.Contains(ports.TCP, need.Port)
+		case zapretactivation.OuterUDP:
 			return slices.Contains(ports.UDP, need.Port)
+		case zapretactivation.OuterTCPUDP:
+			return slices.Contains(ports.TCP, need.Port) && slices.Contains(ports.UDP, need.Port)
+		default:
+			return false
 		}
-		return slices.Contains(ports.TCP, need.Port)
 	})
 }
 

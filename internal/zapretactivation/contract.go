@@ -33,20 +33,50 @@ type Request struct {
 // OuterSocket identifies the proxy transport, not its inner destinations.
 // The zero value represents the existing destination-dependent Direct path.
 type OuterSocket struct {
-	Kind   string   `json:"kind"`
-	Port   uint16   `json:"port"`
-	Family IPFamily `json:"family,omitempty"`
+	Kind    string       `json:"kind"`
+	Port    uint16       `json:"port"`
+	Family  IPFamily     `json:"family,omitempty"`
+	Network OuterNetwork `json:"network,omitempty"`
+}
+
+type OuterNetwork string
+
+const (
+	OuterTCP    OuterNetwork = "tcp"
+	OuterUDP    OuterNetwork = "udp"
+	OuterTCPUDP OuterNetwork = "tcp+udp"
+)
+
+// Transports() returns the network on the configured server socket, not the
+// logical network of a proxied request. The existing fixed kinds keep their
+// contract; variable transports are supplied by the provider projection.
+func (s OuterSocket) Transports() OuterNetwork {
+	switch s.Kind {
+	case "http", "anytls", "shadowtls", "ssh", "socks":
+		if s.Network == "" {
+			return OuterTCP
+		}
+	case "hysteria2", "tuic":
+		if s.Network == "" {
+			return OuterUDP
+		}
+	case "vless", "vmess", "trojan":
+		if s.Network == OuterTCP || s.Network == OuterUDP {
+			return s.Network
+		}
+	case "shadowsocks":
+		if s.Network == OuterTCP || s.Network == OuterTCPUDP {
+			return s.Network
+		}
+	}
+	return ""
 }
 
 func (s OuterSocket) Valid() bool {
-	switch s.Kind {
-	case "":
+	if s.Kind == "" {
 		return s == (OuterSocket{})
-	case "http", "hysteria2":
-		return s.Port != 0 && (s.Family == FamilyFromProfile || s.Family == FamilyIPv4 || s.Family == FamilyIPv6)
-	default:
-		return false
 	}
+	return s.Transports() != "" && s.Port != 0 && (s.Family == FamilyFromProfile || s.Family == FamilyIPv4 || s.Family == FamilyIPv6)
 }
 
 // DialBinding records the requested native settings, not a network grant.

@@ -1,5 +1,6 @@
-
 github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions v0.1.0 h1:UkSW5YE2EUhaBRuh8ZsNQ338iDR0GqcdzoYeeR/vgbk=
 github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions v0.1.0/go.mod h1:NFDUC3477K7w5woBBJLlzm1bh3Ah5CcnVE/SBAmrV2M=
 github.com/MalenkiySolovey/solovey-host v0.12.2 h1:6Aj30FzQvO9eSHPGv0Nu/VNiZQe58jCvG47n7S3qEDk=
 github.com/MalenkiySolovey/solovey-host v0.12.2/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
+github.com/MalenkiySolovey/solovey-host v0.12.3 h1:+92WMGufQOwxAILrzHtW6VjNlZkp3DwE+6YqGMlcitQ=
+github.com/MalenkiySolovey/solovey-host v0.12.3/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=

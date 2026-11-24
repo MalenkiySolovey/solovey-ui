@@ -113,6 +113,8 @@ github.com/MalenkiySolovey/solovey-host v0.11.0/go.mod h1:BUYlv5O5C9TrMoulPD+aNf
 github.com/MalenkiySolovey/solovey-host v0.12.1/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
 github.com/MalenkiySolovey/solovey-host v0.12.2 h1:6Aj30FzQvO9eSHPGv0Nu/VNiZQe58jCvG47n7S3qEDk=
 github.com/MalenkiySolovey/solovey-host v0.12.2/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
+github.com/MalenkiySolovey/solovey-host v0.12.3 h1:+92WMGufQOwxAILrzHtW6VjNlZkp3DwE+6YqGMlcitQ=
+github.com/MalenkiySolovey/solovey-host v0.12.3/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
 github.com/OneOfOne/xxhash v1.2.8 h1:31czK/TI9sNkxIKfaUfGlU47BAxQ0ztGgd9vPyqimf8=
 github.com/OneOfOne/xxhash v1.2.8/go.mod h1:eZbhyaAYD41SGSSsnmcpxVoRiQ/MPUTjUdIIOT9Um7Q=
 github.com/RyuaNerin/go-krypto v1.3.0 h1:smavTzSMAx8iuVlGb4pEwl9MD2qicqMzuXR2QWp2/Pg=
