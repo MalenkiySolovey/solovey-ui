@@ -11,6 +11,9 @@ import (
 )
 
 func TestZapretOuterSocketProjection(t *testing.T) {
+	domainTCP := func(kind string) zapretactivation.OuterSocket {
+		return zapretactivation.OuterSocket{Kind: kind, Port: 443, Network: zapretactivation.OuterTCP}
+	}
 	for _, tc := range []struct {
 		name, kind, fields string
 		want               zapretactivation.OuterSocket
@@ -26,9 +29,22 @@ func TestZapretOuterSocketProjection(t *testing.T) {
 		{"hysteria-ipv6", "hysteria2", `"server":"2001:db8::2","server_port":443`, zapretactivation.OuterSocket{Kind: "hysteria2", Port: 443, Family: zapretactivation.FamilyIPv6}, ""},
 		{"hysteria-realm", "hysteria2", `"realm":{}`, zapretactivation.OuterSocket{}, "dynamic peer sockets"},
 		{"hysteria-hop", "hysteria2", `"server":"198.18.0.2","server_port":443,"server_ports":["443:444"]`, zapretactivation.OuterSocket{}, "every hop"},
+		{"vless-logical-udp", "vless", `"server":"proxy.example","server_port":443,"network":"udp","multiplex":{"enabled":true}`, domainTCP("vless"), ""},
+		{"vmess-ws", "vmess", `"server":"proxy.example","server_port":443,"transport":{"type":"ws","path":"/socket"}`, domainTCP("vmess"), ""},
+		{"trojan-quic", "trojan", `"server":"proxy.example","server_port":443,"transport":{"type":"quic"}`, zapretactivation.OuterSocket{Kind: "trojan", Port: 443, Network: zapretactivation.OuterUDP}, ""},
+		{"vless-xhttp-download", "vless", `"server":"proxy.example","server_port":443,"transport":{"type":"xhttp","download":{"detour":"elsewhere"}}`, zapretactivation.OuterSocket{}, "separate download or peer sockets"},
+		{"tuic-ipv6", "tuic", `"server":"2001:db8::2","server_port":443,"network":"tcp"`, zapretactivation.OuterSocket{Kind: "tuic", Port: 443, Family: zapretactivation.FamilyIPv6}, ""},
+		{"tuic-intermediate", "tuic", `"server":"proxy.example","server_port":443,"detour":"other"`, zapretactivation.OuterSocket{}, "owns egress selection"},
+		{"shadowsocks-native", "shadowsocks", `"server":"proxy.example","server_port":443,"network":"tcp"`, zapretactivation.OuterSocket{Kind: "shadowsocks", Port: 443, Network: zapretactivation.OuterTCPUDP}, ""},
+		{"shadowsocks-uot", "shadowsocks", `"server":"proxy.example","server_port":443,"udp_over_tcp":true`, domainTCP("shadowsocks"), ""},
+		{"shadowsocks-multiplex", "shadowsocks", `"server":"proxy.example","server_port":443,"multiplex":{"enabled":true}`, domainTCP("shadowsocks"), ""},
+		{"shadowsocks-plugin", "shadowsocks", `"server":"proxy.example","server_port":443,"plugin":"v2ray-plugin"`, zapretactivation.OuterSocket{}, "plugin owns the TCP connection"},
+		{"socks4a", "socks", `"server":"proxy.example","server_port":443,"version":"4a"`, zapretactivation.OuterSocket{Kind: "socks", Port: 443}, ""},
+		{"socks5-uot", "socks", `"server":"proxy.example","server_port":443,"udp_over_tcp":{"enabled":true}`, zapretactivation.OuterSocket{Kind: "socks", Port: 443}, ""},
+		{"socks5-negotiated", "socks", `"server":"proxy.example","server_port":443,"network":"tcp"`, zapretactivation.OuterSocket{}, "server-selected relay"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if tc.kind == "hysteria2" && !C.WithQUIC {
+			if !C.WithQUIC && (tc.kind == "hysteria2" || tc.name == "tuic-ipv6" || tc.name == "trojan-quic") {
 				t.Skip("requires the QUIC Core build")
 			}
 			row := model.Outbound{Tag: "outer", Type: tc.kind, Options: json.RawMessage(`{` + tc.fields + `,"zapret":{"outboundRef":"outer","enabled":true,"strategyRef":"proof"}}`)}
@@ -48,14 +64,28 @@ func TestZapretOuterSocketProjection(t *testing.T) {
 			if err != nil || strings.Contains(string(projected.Options), `"zapret"`) || !strings.Contains(string(projected.Options), `"protect_path"`) {
 				t.Fatalf("runtime projection did not replace the attachment with admission: %s, %v", projected.Options, err)
 			}
+			var before, after map[string]json.RawMessage
+			if err := json.Unmarshal(row.Options, &before); err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(projected.Options, &after); err != nil {
+				t.Fatal(err)
+			}
+			for key, value := range before {
+				if key != "zapret" && string(after[key]) != string(value) {
+					t.Errorf("native option %q changed: %s -> %s", key, value, after[key])
+				}
+			}
 		})
 	}
 }
 
 func TestZapretProxyOffPreservesOrdinaryDetour(t *testing.T) {
-	row := model.Outbound{Tag: "outer", Type: "http", Options: json.RawMessage(`{"server":"proxy.example","server_port":443,"detour":"group","zapret":{"outboundRef":"outer","enabled":false,"strategyRef":"proof"}}`)}
-	projected, err := projectZapretOutbound(row)
-	if err != nil || string(projected.Options) != `{"detour":"group","server":"proxy.example","server_port":443}` {
-		t.Fatalf("OFF did not preserve the native detour: %s, %v", projected.Options, err)
+	for _, kind := range []string{"http", "vless", "tuic", "socks", "shadowsocks"} {
+		row := model.Outbound{Tag: "outer", Type: kind, Options: json.RawMessage(`{"server":"proxy.example","server_port":443,"detour":"group","zapret":{"outboundRef":"outer","enabled":false,"strategyRef":"proof"}}`)}
+		projected, err := projectZapretOutbound(row)
+		if err != nil || string(projected.Options) != `{"detour":"group","server":"proxy.example","server_port":443}` {
+			t.Fatalf("OFF did not preserve the %s native detour: %s, %v", kind, projected.Options, err)
+		}
 	}
 }
