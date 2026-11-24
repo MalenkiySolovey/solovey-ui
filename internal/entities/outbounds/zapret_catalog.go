@@ -63,7 +63,11 @@ func ZapretValidation(db *gorm.DB, requests []zapretactivation.Request) (zapreta
 	}
 	tags := make(map[string]bool, len(requests))
 	for _, request := range requests {
-		tags[request.OutboundRef] = true
+		// A proxy detour carries DNS inside its already admitted transport.
+		// The DNS server's port is the packet scope only when dialing directly.
+		if request.Outer.Kind == "" {
+			tags[request.OutboundRef] = true
+		}
 	}
 	requirements, err := singboxconfig.ZapretDNSRequirements([]byte(base.Value), tags)
 	if err != nil {

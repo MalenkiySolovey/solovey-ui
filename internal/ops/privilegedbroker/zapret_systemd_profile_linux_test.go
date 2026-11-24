@@ -106,6 +106,29 @@ func TestInstalledZapretPlainUDPIncludesTCPRetry(t *testing.T) {
 	}
 }
 
+func TestInstalledZapretOuterCoverageUsesTransportPortAndFamily(t *testing.T) {
+	strategies := InstalledZapretStrategies{Families: []planner.ZapretFamilies{{
+		IPv4: planner.ZapretPorts{TCP: []uint16{3128}, UDP: []uint16{443}},
+		IPv6: planner.ZapretPorts{UDP: []uint16{443}},
+	}}}
+	for _, tc := range []struct {
+		need       zapretactivation.OuterSocket
+		ipv6, want bool
+	}{
+		{zapretactivation.OuterSocket{Kind: "http", Port: 3128, Family: zapretactivation.FamilyIPv4}, true, true},
+		{zapretactivation.OuterSocket{Kind: "http", Port: 3128}, true, false},
+		{zapretactivation.OuterSocket{Kind: "http", Port: 443}, false, false},
+		{zapretactivation.OuterSocket{Kind: "hysteria2", Port: 3128}, false, false},
+		{zapretactivation.OuterSocket{Kind: "hysteria2", Port: 443}, true, true},
+		{zapretactivation.OuterSocket{Kind: "hysteria2", Port: 443, Family: zapretactivation.FamilyIPv6}, false, false},
+		{zapretactivation.OuterSocket{Kind: "selector", Port: 443}, true, false},
+	} {
+		if got := strategies.handlesOuter(0, tc.ipv6, tc.need); got != tc.want {
+			t.Errorf("outer=%+v ipv6=%t got=%t want=%t", tc.need, tc.ipv6, got, tc.want)
+		}
+	}
+}
+
 func TestInstalledZapretSecondSocketRollback(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("requires a disposable root-owned Unix socket directory")

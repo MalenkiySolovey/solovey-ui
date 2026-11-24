@@ -116,7 +116,7 @@ func (z *installedZapret) validate(ctx context.Context, call Request, peer PeerI
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "installed Zapret profile validation:", err)
-		if errors.Is(err, errZapretCustomBlobsDenied) || errors.Is(err, errZapretDialBinding) || zapretCapacityFailure(err) {
+		if errors.Is(err, errZapretCustomBlobsDenied) || errors.Is(err, errZapretDialBinding) || errors.Is(err, errZapretOuterScope) || zapretCapacityFailure(err) {
 			return nil, Failure(CodeValidation, err.Error())
 		}
 		return nil, Failure(CodeValidation, "installed Zapret does not authorize the selected binding or Strategy")
@@ -169,7 +169,7 @@ func validZapretTargets(targets []zapretactivation.Request) bool {
 	seen := make(map[string]bool, len(targets))
 	for _, target := range targets {
 		if !safeIdentifier(target.OutboundRef) || !safeIdentifier(target.StrategyRef) ||
-			!digestPattern.MatchString(target.OutboundRevision) || seen[target.OutboundRef] || !target.Dial.Valid() {
+			!digestPattern.MatchString(target.OutboundRevision) || seen[target.OutboundRef] || !target.Dial.Valid() || !target.Outer.Valid() {
 			return false
 		}
 		seen[target.OutboundRef] = true
@@ -244,11 +244,15 @@ func (z *installedZapret) selectStrategies(input zapretactivation.Validation) (i
 	used := 0
 	for i, request := range input.Bindings {
 		if selected.Families[i].RequiresIPv6 && !profile.IPv6 {
-			return profile, InstalledZapretStrategies{}, fmt.Errorf("strategy for Direct %q requires IPv6 in the installed Zapret profile", request.OutboundRef)
+			return profile, InstalledZapretStrategies{}, fmt.Errorf("strategy for outbound %q requires IPv6 in the installed Zapret profile", request.OutboundRef)
+		}
+		if request.Outer.Kind != "" && !selected.handlesOuter(i, profile.IPv6, request.Outer) {
+			return profile, InstalledZapretStrategies{}, fmt.Errorf("%w: %s outer port %d, family %d", errZapretOuterScope,
+				request.Outer.Kind, request.Outer.Port, request.Outer.Family)
 		}
 		if requirements, ok := input.DNS[request.OutboundRef]; ok {
 			used++
-			if len(requirements) == 0 || len(requirements) > 64 {
+			if request.Outer.Kind != "" || len(requirements) == 0 || len(requirements) > 64 {
 				return profile, InstalledZapretStrategies{}, errors.New("invalid protected DNS packet requirements")
 			}
 			for _, need := range requirements {
@@ -281,12 +285,34 @@ func (s InstalledZapretStrategies) handlesDNS(binding int, ipv6 bool, need zapre
 		}
 		return slices.Contains(ports.TCP, need.Port) && (!need.PlainUDP || slices.Contains(ports.UDP, need.Port))
 	}
-	switch need.Family {
-	case zapretactivation.DNSFamilyFromProfile:
+	return coversZapretFamily(need.Family, ipv6, covered)
+}
+
+var errZapretOuterScope = errors.New("selected Zapret strategy does not cover the proxy's outer transport")
+
+func (s InstalledZapretStrategies) handlesOuter(binding int, ipv6 bool, need zapretactivation.OuterSocket) bool {
+	if !need.Valid() || need.Kind == "" {
+		return false
+	}
+	return coversZapretFamily(need.Family, ipv6, func(v6 bool) bool {
+		ports := s.Families[binding].IPv4
+		if v6 {
+			ports = s.Families[binding].IPv6
+		}
+		if need.Kind == "hysteria2" {
+			return slices.Contains(ports.UDP, need.Port)
+		}
+		return slices.Contains(ports.TCP, need.Port)
+	})
+}
+
+func coversZapretFamily(family zapretactivation.IPFamily, ipv6 bool, covered func(bool) bool) bool {
+	switch family {
+	case zapretactivation.FamilyFromProfile:
 		return covered(false) && (!ipv6 || covered(true))
-	case zapretactivation.DNSFamilyIPv4:
+	case zapretactivation.FamilyIPv4:
 		return covered(false)
-	case zapretactivation.DNSFamilyIPv6:
+	case zapretactivation.FamilyIPv6:
 		return ipv6 && covered(true)
 	default:
 		return false

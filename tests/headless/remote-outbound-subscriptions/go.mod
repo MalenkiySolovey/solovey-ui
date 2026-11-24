@@ -4,5 +4,5 @@ go 1.26.11
 
 require (
 	github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions v0.1.0
-	github.com/MalenkiySolovey/solovey-host v0.12.1
+	github.com/MalenkiySolovey/solovey-host v0.12.2
 )

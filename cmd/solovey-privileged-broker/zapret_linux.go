@@ -16,6 +16,7 @@ import (
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 	"github.com/MalenkiySolovey/solovey-ui/network/planner"
+	C "github.com/sagernet/sing-box/constant"
 )
 
 func registerInstalledZapret(ctx context.Context, server *broker.Server, transport broker.TransportMode, listeners *broker.ListenerSet) error {
@@ -55,8 +56,12 @@ func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivati
 		if err := broker.DecodeRawPayload(inputs[i], &source.Strategy); err != nil {
 			return broker.InstalledZapretStrategies{}, err
 		}
+		outboundType := request.Outer.Kind
+		if outboundType == "" {
+			outboundType = C.TypeDirect
+		}
 		selected, err := binding.Resolve(outbounds.ZapretBinding{OutboundRef: request.OutboundRef, StrategyRef: request.StrategyRef, Enabled: true},
-			binding.DirectOutbound{Host: hostref.Local(), Ref: request.OutboundRef, Type: "direct", Revision: request.OutboundRevision}, source, true)
+			binding.DirectOutbound{Host: hostref.Local(), Ref: request.OutboundRef, Type: outboundType, Revision: request.OutboundRevision}, source, true)
 		if err != nil {
 			return broker.InstalledZapretStrategies{}, err
 		}

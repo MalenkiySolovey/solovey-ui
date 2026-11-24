@@ -2,10 +2,10 @@
   "schema": "solovey.host.consumer-pin/v1",
   "canonicalRepository": "MalenkiySolovey/solovey-host",
   "module": "github.com/MalenkiySolovey/solovey-host",
-  "version": "v0.12.1",
-  "sourceCommit": "f2f67b85cb772ca5145fedfcb152abb43be9d5e4",
-  "sourceTree": "52f53cd8954733772e7a8e830e3cae169f27c367",
-  "moduleChecksum": "h1:jaf33dRl5IAWgdIeJmKd9IBO3z3EFdeFIjxi/xb8xeY=",
+  "version": "v0.12.2",
+  "sourceCommit": "b8b8d566e6c5e6c14398ca9d408fccf4d0a243c7",
+  "sourceTree": "9e9790e8c4ed13b90d5bd23d3f95fc2209e1242f",
+  "moduleChecksum": "h1:6Aj30FzQvO9eSHPGv0Nu/VNiZQe58jCvG47n7S3qEDk=",
   "goModChecksum": "h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=",
   "fixturesSHA256": "ff83fc9c0b5a7d64d35d37ede09b530aafa07d3fe420e3e0bd055278c15b8eb3",
   "valuesSHA256": "1d4d7f29ba8c1f3c57fd2c66ee3423ea45efe3947686f5c53de753362b865a0c",
@@ -160,6 +160,6 @@
     "componenthost/management_test.go": "a2c9db1a3ca32bd8f39020dae1d2e28c2704ab5fcc19c900621d9e05d1f6122b",
     "componenthost/removal.go": "bb041676d35e69ecb2dcc8553db11d80f0fac778267e1312c4b1f8dabebcea18",
     "network/intent/zapret.go": "ae3d2a8923f733f39e89ee03836e93c956a5821405a1061e5cb46ee51e13d473",
-    "outbounds/zapret.go": "0bcd76472e7d277c414ad146e2929db6e2335a8849b93d09e72a9da7c3a5191d"
+    "outbounds/zapret.go": "a477f5052c846cf3b3fdf67076be38b3e7efd9487ad9a189e2f0e3bf68edb42e"
   }
 }
