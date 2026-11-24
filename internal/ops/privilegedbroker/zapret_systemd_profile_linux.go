@@ -198,7 +198,7 @@ func (p installedZapretProfile) selectStrategies(input zapretactivation.Validati
 			used[request.StrategyRef] = true
 		}
 		if !allowed[request.OutboundRef] || len(definition) == 0 || len(definition) > zapretactivation.MaxDefinitionBytes {
-			return nil, fmt.Errorf("installed Zapret profile does not authorize Direct %q and Strategy %q", request.OutboundRef, request.StrategyRef)
+			return nil, fmt.Errorf("installed Zapret profile does not authorize outbound %q and Strategy %q", request.OutboundRef, request.StrategyRef)
 		}
 		result[i] = definition
 	}

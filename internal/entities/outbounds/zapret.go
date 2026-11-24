@@ -20,7 +20,7 @@ const zapretOption = "zapret"
 
 var (
 	ErrZapretPacketPathUnqualified = errors.New("ZAPRET_PACKET_PATH_UNQUALIFIED: a ready installed Zapret profile is required for this outbound")
-	errZapretBindingInvalid        = errors.New("ZAPRET_BINDING_INVALID: expected a Direct outbound binding")
+	errZapretBindingInvalid        = errors.New("ZAPRET_BINDING_INVALID: expected an outbound strategy binding")
 	errZapretChangeRequired        = errors.New("ZAPRET_BINDING_EDIT_REQUIRED: include the binding explicitly when editing the outbound")
 )
 
@@ -42,6 +42,11 @@ func zapretOptions(row model.Outbound) (map[string]json.RawMessage, *hostoutboun
 	raw, present := fields[zapretOption]
 	if !present {
 		return nil, nil, nil
+	}
+	for key := range fields {
+		if key != "detour" && strings.EqualFold(key, "detour") {
+			return nil, nil, errZapretBindingInvalid
+		}
 	}
 	if len(raw) > 1024 || jsonvalue.StrictObject(row.Options) != nil {
 		return nil, nil, errZapretBindingInvalid
@@ -124,6 +129,9 @@ func CheckZapretStartup(db *gorm.DB, ready bool) (bool, error) {
 		if _, err := zapretDialBinding(fields); err != nil {
 			return false, fmt.Errorf("outbound %q: %w", binding.OutboundRef, err)
 		}
+		if _, err := zapretOuterSocket(row); err != nil {
+			return false, fmt.Errorf("outbound %q: %w", binding.OutboundRef, err)
+		}
 		found = true
 	}
 	return found, nil
@@ -201,7 +209,12 @@ func zapretRequest(row model.Outbound) (zapretactivation.Request, bool, error) {
 	if err != nil {
 		return zapretactivation.Request{}, false, err
 	}
-	return zapretactivation.Request{OutboundRef: binding.OutboundRef, OutboundRevision: fmt.Sprintf("%x", sha256.Sum256(serialized)), StrategyRef: binding.StrategyRef, Dial: dial}, true, nil
+	outer, err := zapretOuterSocket(row)
+	if err != nil {
+		return zapretactivation.Request{}, false, fmt.Errorf("outbound %q: %w", binding.OutboundRef, err)
+	}
+	return zapretactivation.Request{OutboundRef: binding.OutboundRef, OutboundRevision: fmt.Sprintf("%x", sha256.Sum256(serialized)),
+		StrategyRef: binding.StrategyRef, Dial: dial, Outer: outer}, true, nil
 }
 
 func ZapretRequests(db *gorm.DB) ([]zapretactivation.Request, error) {

@@ -38,6 +38,8 @@ const (
 // ZapretFacts are supplied under the same operation fence as Facts. An owner
 // must account for kernel and core mark/queue users, including masked rules and
 // dynamic policies, in the namespace where the socket will be created.
+// DirectSocket means the provider opens the egress socket, not that the
+// outbound's type is Direct.
 type ZapretFacts struct {
 	OutboundRef, OutboundRevision, Provider   string
 	DirectSocket, TUNAutoRedirect, SocketMark bool

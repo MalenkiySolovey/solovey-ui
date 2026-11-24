@@ -27,6 +27,26 @@ type Request struct {
 	OutboundRevision string      `json:"outboundRevision"`
 	StrategyRef      string      `json:"strategyRef"`
 	Dial             DialBinding `json:"dial,omitzero"`
+	Outer            OuterSocket `json:"outer,omitzero"`
+}
+
+// OuterSocket identifies the proxy transport, not its inner destinations.
+// The zero value represents the existing destination-dependent Direct path.
+type OuterSocket struct {
+	Kind   string   `json:"kind"`
+	Port   uint16   `json:"port"`
+	Family IPFamily `json:"family,omitempty"`
+}
+
+func (s OuterSocket) Valid() bool {
+	switch s.Kind {
+	case "":
+		return s == (OuterSocket{})
+	case "http", "hysteria2":
+		return s.Port != 0 && (s.Family == FamilyFromProfile || s.Family == FamilyIPv4 || s.Family == FamilyIPv6)
+	default:
+		return false
+	}
 }
 
 // DialBinding records the requested native settings, not a network grant.
@@ -108,13 +128,19 @@ func TUNSocketPath(batch string) (string, bool) {
 	return SocketRoot + "/t-" + batch, true
 }
 
-type DNSFamily uint8
+type IPFamily uint8
 
 const (
-	DNSFamilyFromProfile DNSFamily = 0 // Bootstrap can return either supported family.
-	DNSFamilyIPv4        DNSFamily = 4
-	DNSFamilyIPv6        DNSFamily = 6
+	FamilyFromProfile IPFamily = 0 // A hostname can use either admitted family.
+	FamilyIPv4        IPFamily = 4
+	FamilyIPv6        IPFamily = 6
+
+	DNSFamilyFromProfile = FamilyFromProfile
+	DNSFamilyIPv4        = FamilyIPv4
+	DNSFamilyIPv6        = FamilyIPv6
 )
+
+type DNSFamily = IPFamily
 
 type DNSPathRequirement struct {
 	Port     uint16    `json:"port"`
