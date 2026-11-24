@@ -56,8 +56,15 @@ type Retirement = BatchIdentity
 
 type AppliedBinding struct {
 	Request
-	StrategyRevision string `json:"strategyRevision"`
-	Queue            uint16 `json:"queue,omitempty"`
+	StrategyRevision string         `json:"strategyRevision"`
+	Queue            uint16         `json:"queue,omitempty"`
+	NativeMatches    *NativeMatches `json:"nativeMatches,omitempty"`
+}
+
+// NativeMatches is scoped to an applied binding and its current engine, and
+// says nothing about a packet verdict or the result of a native action.
+type NativeMatches struct {
+	Profiles []string `json:"profiles,omitempty"`
 }
 
 type Validation struct {

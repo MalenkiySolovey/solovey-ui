@@ -48,7 +48,7 @@ source delta, with the underlying shared/different authority stated explicitly:
 | B | sing-mux, sing-vmess, wireguard-go, tailscale | Official consumes SagerNet directly; Extended consumes the corresponding shtorm-7 repositories directly; no Solovey source delta |
 | C | shtorm-7/dnscrypt/v2 | Extended-only replacement for ameshkov/dnscrypt/v2; no Solovey source delta |
 | C | shtorm-7/mtg-multi | Extended-only replacement for dolonet/mtg-multi; no Solovey source delta |
-| C | gobwas/ws | Extended Sudoku transport dependency; upstream v1.4.0 consumed directly, no Solovey source delta |
+| C | gobwas/ws | Extended Sudoku transport dependency; upstream v1.5.0 (`8c96263a2512cdac5aa3f12b0130fcfdcf939427`) fixes GO-2026-6940, consumed directly |
 | C | kulikov0/headless-client | Extended Call HTTP/QUIC/WebRTC transport dependency; upstream v0.1.0 consumed directly, no Solovey source delta |
 | C | shtorm-7/connect-ip-go | Extended-only replacement for Diniboy1123/connect-ip-go; no Solovey source delta |
 | C | shtorm-7/go-cache/v2, shtorm-7/rmux, shtorm-7/workerpool | Extended-only selected authorities; no Solovey source delta |

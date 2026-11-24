@@ -2758,6 +2758,12 @@
     },
     {
       "rule": "direct-policy",
+      "path": "cmd/solovey-privileged-broker/zapret_linux.go",
+      "symbol": "resolveZapretStrategies",
+      "digest": "3a9933e7cd1f9da9e349894f4f72677b24dcafeb747d7545eea8ff83e5fe91a8"
+    },
+    {
+      "rule": "direct-policy",
       "path": "internal/singbox/config/dns_zapret.go",
       "symbol": "validateEncryptedDNSDetours",
       "digest": "70f440e6f8a2074668b79e912709c1635f96f898aae79b8f344e33475762f989"

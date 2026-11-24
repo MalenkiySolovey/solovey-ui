@@ -69,15 +69,19 @@ func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivati
 		}
 		return strategies[i].HandlesQUIC(family, port)
 	}
-	result.Compile = func(root string, queue uint16, loopMark uint32, marks []uint32) ([]string, error) {
+	result.Compile = func(root string, queue uint16, loopMark uint32, marks []uint32, trace bool) ([]string, broker.ZapretNativeTrace, error) {
 		if len(marks) != len(strategies) {
-			return nil, errors.New("incomplete Zapret mark allocation")
+			return nil, nil, errors.New("incomplete Zapret mark allocation")
 		}
 		marked := make([]strategy.MarkedStrategy, len(marks))
 		for i, mark := range marks {
 			marked[i] = strategy.MarkedStrategy{Strategy: strategies[i], QueueMark: mark}
 		}
-		return strategy.CompileBindings(root, queue, loopMark, marked)
+		if trace {
+			return strategy.CompileBindingsWithNativeTrace(root, queue, loopMark, marked)
+		}
+		args, err := strategy.CompileBindings(root, queue, loopMark, marked)
+		return args, nil, err
 	}
 	return result, nil
 }

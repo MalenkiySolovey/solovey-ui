@@ -48,6 +48,7 @@ type installedZapretPath struct {
 	stopErr     error // published by closing done
 	mu          sync.Mutex
 	verify      func(context.Context) error
+	trace       ZapretNativeTrace
 }
 
 var errZapretCustomBlobsDenied = errors.New("the installed Zapret profile does not allow custom QUIC blobs")
@@ -84,8 +85,12 @@ func (z *installedZapret) observe(ctx context.Context, call Request, peer PeerId
 		return nil, Failure(CodeFence, "Zapret generation is not active")
 	}
 	result := make([]zapretactivation.AppliedBinding, 0, len(path.grant.Bindings))
-	for _, g := range path.grant.Bindings {
-		result = append(result, zapretactivation.AppliedBinding{Request: g.Request, StrategyRevision: g.StrategyRevision, Queue: path.queue})
+	for i, g := range path.grant.Bindings {
+		binding := zapretactivation.AppliedBinding{Request: g.Request, StrategyRevision: g.StrategyRevision, Queue: path.queue}
+		if path.trace != nil {
+			binding.NativeMatches = &zapretactivation.NativeMatches{Profiles: path.trace.MatchedProfiles(i)}
+		}
+		result = append(result, binding)
 	}
 	return result, nil
 }
@@ -320,7 +325,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 	for i, plan := range plans {
 		marks[i] = plan.QueueMark()
 	}
-	args, err := selected.Compile(zapretEngineRoot, plans[0].Queue(), plans[0].LoopMark(), marks)
+	args, trace, err := selected.Compile(zapretEngineRoot, plans[0].Queue(), plans[0].LoopMark(), marks, profile.ObserveNativeProfiles)
 	if err != nil {
 		return nil, err
 	}
@@ -357,7 +362,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 			}
 		}()
 	}
-	engine, fact, err := startZapretEngine(ctx, plans[0], args, profile.EngineDigest)
+	engine, fact, err := startZapretEngine(ctx, plans[0], args, profile.EngineDigest, trace)
 	if err != nil {
 		return nil, err
 	}
@@ -451,7 +456,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 		return nil, errors.New("installed Zapret generation changed before publication")
 	}
 	path := &installedZapretPath{ctx: authority.Context, release: release, done: make(chan struct{}), peer: peer.Revision, uid: peer.UID,
-		queue: plans[0].Queue(),
+		queue: plans[0].Queue(), trace: trace,
 		grant: zapretactivation.BatchGrant{BatchID: batch.BatchID, Bindings: grants, TUN: batch.TUN}}
 	// Observation and FD admission check the same table and queue owners.
 	// Observation never creates a lease or extends the batch lifetime.
@@ -615,7 +620,7 @@ func makeZapretSocketRoot(gid uint32) error {
 	return nil
 }
 
-func startZapretEngine(ctx context.Context, plan planner.ZapretPlan, args []string, engineDigest string) (_ *installedZapretEngine, _ processevidence.Fact, failure error) {
+func startZapretEngine(ctx context.Context, plan planner.ZapretPlan, args []string, engineDigest string, trace ZapretNativeTrace) (_ *installedZapretEngine, _ processevidence.Fact, failure error) {
 	credential := fmt.Sprintf("--uid=%d:%d", zapretEngineUID, zapretEngineUID)
 	// Match the admitted socket's egress for generated packets. A raw
 	// send via an alternate route can fail and make nfqws2 pass the original.
@@ -630,6 +635,10 @@ func startZapretEngine(ctx context.Context, plan planner.ZapretPlan, args []stri
 	cmd := exec.Command(zapretEnginePath, append(args, credential)...)
 	cmd.Dir = zapretEngineRoot
 	cmd.Env = []string{"LANG=C", "LC_ALL=C"}
+	if trace != nil {
+		cmd.Stdout = trace
+		cmd.WaitDelay = 250 * time.Millisecond
+	}
 	pidfd := -1
 	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL, PidFD: &pidfd}
 	if err := cmd.Start(); err != nil {

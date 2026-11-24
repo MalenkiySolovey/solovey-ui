@@ -10,7 +10,38 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-component-zapret/strategy"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 )
+
+func TestZapretViewDoesNotShowRetiredProfileMatches(t *testing.T) {
+	request := zapretactivation.Request{OutboundRef: "a", StrategyRef: "operator-strategy", OutboundRevision: strings.Repeat("1", 64)}
+	snapshot := service.ZapretCatalogSnapshot{
+		References: []outbounds.ZapretReference{{OutboundRef: request.OutboundRef, StrategyRef: request.StrategyRef, Enabled: true}},
+		Desired:    []zapretactivation.Request{request},
+		Applied: []zapretactivation.AppliedBinding{{Request: request, StrategyRevision: strings.Repeat("2", 64), Queue: 401,
+			NativeMatches: &zapretactivation.NativeMatches{Profiles: []string{"active-profile"}}}},
+	}
+	check := func(state string, matches []string) {
+		t.Helper()
+		view, err := makeCatalogView(snapshot)
+		if err != nil || len(view.References) != 1 {
+			t.Fatalf("bad view: %+v, %v", view, err)
+		}
+		ref := view.References[0]
+		if ref.State != state || matches == nil && ref.NativeMatches != nil ||
+			matches != nil && (ref.NativeMatches == nil || !slices.Equal(ref.NativeMatches.Profiles, matches)) {
+			t.Fatalf("wrong %s generation evidence: %+v", state, ref)
+		}
+	}
+	check("applied", []string{"active-profile"})
+	snapshot.Desired[0].OutboundRevision = strings.Repeat("3", 64)
+	check("pending", nil)
+	snapshot.Applied = nil
+	check("blocked", nil)
+	snapshot.References[0].Enabled = false
+	check("off", nil)
+}
 
 func TestZapretCatalogNamedListTransactions(t *testing.T) {
 	var raw json.RawMessage
