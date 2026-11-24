@@ -15,11 +15,11 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var errZapretDescriptorBudget = errors.New("Zapret broker descriptor budget exceeded")
-var errZapretMarkBudget = errors.New("Zapret socket mark budget exceeded")
+var errZapretDescriptorBudget = errors.New("installed Zapret broker descriptor budget exceeded")
+var errZapretMarkBudget = errors.New("installed Zapret socket mark budget exceeded")
 
 // ErrZapretEngineBudget classifies an argument size error from the compiler.
-var ErrZapretEngineBudget = errors.New("Zapret engine capacity exceeded")
+var ErrZapretEngineBudget = errors.New("installed Zapret engine capacity exceeded")
 
 const (
 	// Listener plus one accept before the worker gate; each admitted worker

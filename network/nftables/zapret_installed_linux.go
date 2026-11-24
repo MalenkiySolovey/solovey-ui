@@ -34,7 +34,7 @@ const (
 	zapretGuardPriority = math.MaxInt32 - 1
 )
 
-var ErrZapretAtomicBudget = errors.New("Zapret nftables atomic batch exceeds the netlink socket budget")
+var ErrZapretAtomicBudget = errors.New("installed Zapret nftables atomic batch exceeds the netlink socket budget")
 
 // ZapretOwnedTable holds the only netlink port allowed to change this
 // allocation. The kernel removes the table on port close, including broker
