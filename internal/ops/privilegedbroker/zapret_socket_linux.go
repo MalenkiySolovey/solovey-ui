@@ -17,6 +17,8 @@ import (
 
 var errZapretSocket = errors.New("socket admission for Zapret denied")
 
+const zapretSocketWorkers = 4
+
 // ZapretSocketGrant is supplied by the broker's trusted generation owner,
 // never decoded from a Panel request. Generation identifies one live install
 // of a plan, not a deterministic plan revision or reusable bearer token.
@@ -64,7 +66,7 @@ func (s *Server) serveZapretSockets(ctx context.Context, endpoint *standaloneSoc
 		return err
 	}
 	rateLimit := rate.NewLimiter(64, 16)
-	active := make(chan struct{}, 4)
+	active := make(chan struct{}, zapretSocketWorkers)
 	for {
 		conn, err := listener.AcceptUnix()
 		if err != nil {

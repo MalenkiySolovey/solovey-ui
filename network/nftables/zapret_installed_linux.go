@@ -34,6 +34,8 @@ const (
 	zapretGuardPriority = math.MaxInt32 - 1
 )
 
+var ErrZapretAtomicBudget = errors.New("installed Zapret nftables atomic batch exceeds the netlink socket budget")
+
 // ZapretOwnedTable holds the only netlink port allowed to change this
 // allocation. The kernel removes the table on port close, including broker
 // death. It is not a grant; the independent deny must already exist and
@@ -46,7 +48,10 @@ type ZapretOwnedTable struct {
 	comment []byte
 	port    uint32
 	handle  uint64
+	bytes   int
 }
+
+func (t *ZapretOwnedTable) BatchBytes() int { return t.bytes }
 
 // CreateZapretOwnedTable applies exactly one create-only batch for a plan.
 // Partial or unconfirmed apply closes its port, never deletes by table name.
@@ -61,16 +66,52 @@ func CreateZapretOwnedBatch(ctx context.Context, plans []planner.ZapretPlan) (*Z
 }
 
 func CreateZapretOwnedBatchForIngress(ctx context.Context, plans []planner.ZapretPlan, tun *planner.ZapretTUNForward) (*ZapretOwnedTable, error) {
-	if len(plans) == 0 || len(plans) > 3 {
-		return nil, errors.New("missing or excessive installed Zapret allocations")
+	draft, err := buildZapretBatch(plans, tun)
+	if err != nil {
+		return nil, err
+	}
+	return createZapretTable(ctx, draft.namespace, planner.ZapretInstalledTable, draft.chains, draft.comment, draft.messages)
+}
+
+type zapretTableDraft struct {
+	namespace uint64
+	chains    uint32
+	comment   []byte
+	messages  []netlink.Message
+}
+
+// CheckZapretOwnedBatchBudget serializes the intended rules against the local
+// socket limit without sending a transaction or opening a table owner.
+func CheckZapretOwnedBatchBudget(ctx context.Context, plans []planner.ZapretPlan, tun *planner.ZapretTUNForward) error {
+	draft, err := buildZapretBatch(plans, tun)
+	if err != nil {
+		return err
+	}
+	conn, err := netlink.Dial(unix.NETLINK_NETFILTER, nil)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if err := checkZapretTableNamespace(conn, draft.namespace); err != nil {
+		return err
+	}
+	if err := checkZapretNetlinkBudget(conn, draft.messages); err != nil {
+		return err
+	}
+	return ctx.Err()
+}
+
+func buildZapretBatch(plans []planner.ZapretPlan, tun *planner.ZapretTUNForward) (zapretTableDraft, error) {
+	if len(plans) == 0 {
+		return zapretTableDraft{}, errors.New("missing installed Zapret allocations")
 	}
 	if tun != nil && !tun.Valid() {
-		return nil, errors.New("invalid Zapret TUN forwarding plan")
+		return zapretTableDraft{}, errors.New("invalid Zapret TUN forwarding plan")
 	}
 	plan := plans[0]
 	scope, err := plan.SocketScope()
 	if err != nil || plan.Queue() == 0 || plan.FinalRouteBit() == 0 {
-		return nil, errors.New("missing installed Zapret allocation")
+		return zapretTableDraft{}, errors.New("missing installed Zapret allocation")
 	}
 	comment := zapretTableComment(scope.PlanRevision())
 	if len(plans) > 1 {
@@ -81,7 +122,7 @@ func CreateZapretOwnedBatchForIngress(ctx context.Context, plans []planner.Zapre
 			if err != nil || s.Egress() != scope.Egress() || member.Queue() != plan.Queue() ||
 				member.LoopMark() != plan.LoopMark() || member.FinalRouteBit() != plan.FinalRouteBit() ||
 				member.PacketMarkMask() != plan.PacketMarkMask() || marks[member.SocketMark()] {
-				return nil, errors.New("inconsistent installed Zapret batch allocation")
+				return zapretTableDraft{}, errors.New("inconsistent installed Zapret batch allocation")
 			}
 			marks[member.SocketMark()] = true
 			revisions = append(revisions, s.PlanRevision()...)
@@ -90,13 +131,13 @@ func CreateZapretOwnedBatchForIngress(ctx context.Context, plans []planner.Zapre
 	}
 	batch, err := zapretOwnedBatch(plans, comment, tun)
 	if err != nil {
-		return nil, err
+		return zapretTableDraft{}, err
 	}
 	chains := uint32(2)
 	if tun != nil {
 		chains++
 	}
-	return createZapretTable(ctx, scope.Egress().NamespaceCookie, planner.ZapretInstalledTable, chains, comment, batch)
+	return zapretTableDraft{scope.Egress().NamespaceCookie, chains, comment, batch}, nil
 }
 
 func createZapretTable(ctx context.Context, namespace uint64, name string, chains uint32, comment []byte, batch []netlink.Message) (_ *ZapretOwnedTable, failure error) {
@@ -116,6 +157,10 @@ func createZapretTable(ctx context.Context, namespace uint64, name string, chain
 	if err := checkZapretTableNamespace(conn, namespace); err != nil {
 		return nil, err
 	}
+	if err := checkZapretNetlinkBudget(conn, batch); err != nil {
+		return nil, err
+	}
+	t.bytes = zapretNetlinkBatchBytes(batch)
 	sent, err := conn.SendMessages(batch)
 	if err != nil {
 		return nil, fmt.Errorf("apply Zapret atomic create: %w", err)
@@ -131,6 +176,50 @@ func createZapretTable(ctx context.Context, namespace uint64, name string, chain
 		return nil, err
 	}
 	return t, nil
+}
+
+func checkZapretNetlinkBudget(conn *netlink.Conn, batch []netlink.Message) error {
+	raw, err := conn.SyscallConn()
+	if err != nil {
+		return err
+	}
+	var sendBuffer, receiveBuffer int
+	var socketErr error
+	if err := raw.Control(func(fd uintptr) {
+		sendBuffer, socketErr = unix.GetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_SNDBUF)
+		if socketErr == nil {
+			receiveBuffer, socketErr = unix.GetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RCVBUF)
+		}
+	}); err != nil || socketErr != nil {
+		return errors.Join(err, socketErr)
+	}
+	size := zapretNetlinkBatchBytes(batch)
+	if err := validateZapretNetlinkSize(size, sendBuffer); err != nil {
+		return err
+	}
+	// The kernel doubles the buffer request. Never shrink the existing ACK
+	// queue, and never force a value above the host's configured rmem maximum.
+	if size > receiveBuffer/2 {
+		return conn.SetReadBuffer(size)
+	}
+	return nil
+}
+
+func zapretNetlinkBatchBytes(batch []netlink.Message) int {
+	var bytes int
+	for _, message := range batch {
+		bytes += (unix.NLMSG_HDRLEN + len(message.Data) + 3) &^ 3
+	}
+	return bytes
+}
+
+func validateZapretNetlinkSize(bytes, sendBuffer int) error {
+	// SendMessages sends one datagram. Linux netlink_sendmsg reserves 32
+	// bytes of SO_SNDBUF. Messages and the batch boundaries are 4-aligned.
+	if limit := sendBuffer - 32; bytes > limit {
+		return fmt.Errorf("%w: %d bytes exceed %d; reduce selected ports or bindings", ErrZapretAtomicBudget, bytes, limit)
+	}
+	return nil
 }
 
 func checkZapretTableNamespace(conn *netlink.Conn, namespace uint64) error {

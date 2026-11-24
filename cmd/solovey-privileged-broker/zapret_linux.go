@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/MalenkiySolovey/solovey-component-zapret/binding"
@@ -18,7 +19,23 @@ import (
 )
 
 func registerInstalledZapret(ctx context.Context, server *broker.Server, transport broker.TransportMode, listeners *broker.ListenerSet) error {
-	return broker.RegisterInstalledZapret(ctx, server, transport, listeners, resolveZapretStrategies)
+	return broker.RegisterInstalledZapret(ctx, server, transport, listeners, resolveZapretBatch)
+}
+
+func resolveZapretBatch(inputs []json.RawMessage, requests []zapretactivation.Request) (broker.InstalledZapretStrategies, error) {
+	result, err := resolveZapretStrategies(inputs, requests)
+	if err != nil {
+		return result, err
+	}
+	compile := result.Compile
+	result.Compile = func(root string, queue uint16, loopMark uint32, marks []uint32, trace bool) ([]string, broker.ZapretNativeTrace, error) {
+		args, evidence, err := compile(root, queue, loopMark, marks, trace)
+		if errors.Is(err, strategy.ErrEngineArgumentBudget) {
+			return nil, nil, fmt.Errorf("%w: %w", broker.ErrZapretEngineBudget, err)
+		}
+		return args, evidence, err
+	}
+	return result, nil
 }
 
 type installedStrategy struct{ strategy.Strategy }

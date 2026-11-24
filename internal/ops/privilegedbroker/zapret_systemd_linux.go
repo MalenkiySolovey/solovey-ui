@@ -101,23 +101,22 @@ func (z *installedZapret) validate(ctx context.Context, call Request, peer PeerI
 		peer.UID == 0 || peer.Supervisor != "systemd" || peer.CgroupPolicy != CgroupRequired || !peer.hasLiveness {
 		return nil, Failure(CodeValidation, "invalid installed Zapret binding or Panel identity")
 	}
-	profile, _, err := z.selectStrategies(input)
+	if err := checkZapretDescriptorBudget(len(input.Bindings), input.TUN != nil); err != nil {
+		return nil, Failure(CodeValidation, err.Error())
+	}
+	profile, selected, err := z.selectStrategies(input)
 	if err == nil {
 		err = profile.verifyDialBindings(input.Bindings, 0)
 	}
 	if err == nil {
 		err = profile.verifyTUN(ctx, input.TUN)
 	}
-	if err == nil && input.TUN != nil {
-		var verifyActive func(context.Context) error
-		if path := z.active; path != nil && path.peer == peer.Revision && path.ctx.Err() == nil {
-			verifyActive = path.verify
-		}
-		err = checkZapretForeignHooks(ctx, true, verifyActive)
+	if err == nil {
+		err = z.checkBatchBudget(ctx, input, peer, profile, selected)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "installed Zapret profile validation:", err)
-		if errors.Is(err, errZapretCustomBlobsDenied) || errors.Is(err, errZapretDialBinding) {
+		if errors.Is(err, errZapretCustomBlobsDenied) || errors.Is(err, errZapretDialBinding) || zapretCapacityFailure(err) {
 			return nil, Failure(CodeValidation, err.Error())
 		}
 		return nil, Failure(CodeValidation, "installed Zapret does not authorize the selected binding or Strategy")
@@ -153,6 +152,9 @@ func (z *installedZapret) acquire(ctx context.Context, call Request, peer PeerId
 	if err != nil {
 		// Only fixed, owner-classified startup errors are returned to Panel.
 		fmt.Fprintln(os.Stderr, "installed Zapret activation:", err)
+		if zapretCapacityFailure(err) {
+			return nil, Failure(CodeExecution, err.Error())
+		}
 		return nil, Failure(CodeExecution, "Zapret packet path not ready; see privileged broker journal")
 	}
 	path.inputDigest = Digest(call.Payload)
@@ -161,7 +163,7 @@ func (z *installedZapret) acquire(ctx context.Context, call Request, peer PeerId
 }
 
 func validZapretTargets(targets []zapretactivation.Request) bool {
-	if len(targets) == 0 || len(targets) > zapretactivation.MaxBindings {
+	if len(targets) == 0 {
 		return false
 	}
 	seen := make(map[string]bool, len(targets))
@@ -292,6 +294,9 @@ func (s InstalledZapretStrategies) handlesDNS(binding int, ipv6 bool, need zapre
 }
 
 func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.BatchRequest, peer PeerIdentity) (_ *installedZapretPath, failure error) {
+	if err := checkZapretDescriptorBudget(len(batch.Bindings), batch.TUN != nil); err != nil {
+		return nil, err
+	}
 	profile, selected, err := z.selectStrategies(batch.Validation)
 	if err != nil {
 		return nil, err
@@ -299,7 +304,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 	if err := profile.verifyTUN(ctx, batch.TUN); err != nil {
 		return nil, err
 	}
-	egress, occupied, err := observeInstalledZapretNetwork(ctx, profile.Interface, profile.IPv6, batch.TUN != nil)
+	egress, occupied, err := observeInstalledZapretNetwork(ctx, profile.Interface, profile.IPv6, batch.TUN != nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -333,11 +338,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 	if err != nil {
 		return nil, err
 	}
-	marks := make([]uint32, len(plans))
-	for i, plan := range plans {
-		marks[i] = plan.QueueMark()
-	}
-	args, trace, err := selected.Compile(zapretEngineRoot, plans[0].Queue(), plans[0].LoopMark(), marks, profile.ObserveNativeProfiles)
+	args, trace, err := compileInstalledZapret(plans, selected, plans[0].Queue(), profile.ObserveNativeProfiles)
 	if err != nil {
 		return nil, err
 	}
@@ -387,6 +388,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 	if err != nil {
 		return nil, err
 	}
+	fmt.Fprintf(os.Stdout, "installed Zapret ruleset: bindings=%d nft_batch_bytes=%d\n", len(plans), table.BatchBytes())
 	defer func() {
 		if failure != nil {
 			failure = errors.Join(failure, table.Close())

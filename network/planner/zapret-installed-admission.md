@@ -37,9 +37,10 @@ and capless Panel retain their existing privilege boundaries.
 Core protect_path → one NFQUEUE → mark-filtered nfqws2 profiles`.
 
 The root-owned authorization profile can use `outboundRefs` and `strategies`
-arrays instead of the legacy `outboundRef` and `strategy` pair. For up to three
-active IPv4/TCP Directs, the broker resolves every strategy before staging the
-batch; each member gets a journaled mark and a fresh FD admission endpoint.
+arrays instead of the legacy `outboundRef` and `strategy` pair. The broker
+resolves every active strategy before staging the batch; each member gets a
+journaled mark and a fresh FD admission endpoint. The broker descriptor and
+netlink transaction budgets bound the batch rather than a binding count.
 The Planner compiles one create-only nftables table and one shared queue.
 The pinned engine applies the ordered native profiles filtered by exact queue
 mark. Its checked upstream generator can emit only on the approved path.
