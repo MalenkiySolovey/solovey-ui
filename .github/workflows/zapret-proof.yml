@@ -134,11 +134,11 @@ jobs:
           # nfqws2 loads Lua after dropping its UID. The runner's home is not
           # a traverseable installed-artifact root for that user.
           engine="$(sudo mktemp -d /usr/local/lib/solovey-zapret-r8b1.XXXXXXXX)"
-          trap 'sudo rm -f -- "$engine/nfqws2" "$engine/LICENSE.upstream" "$engine/source.json" "$engine/nfqueue-policy.c" "$engine/SHA256SUMS" "$engine/lua/zapret-lib.lua" "$engine/lua/zapret-antidpi.lua"; sudo rmdir -- "$engine/lua" "$engine"' EXIT
+          trap 'sudo rm -f -- "$engine/nfqws2" "$engine/LICENSE.upstream" "$engine/source.json" "$engine/nfqueue-policy.c" "$engine/SHA256SUMS" "$engine/lua/"{zapret-lib.lua,zapret-antidpi.lua,zapret-auto.lua}; sudo rmdir -- "$engine/lua" "$engine"' EXIT
           sudo install -d -m 0755 "$engine/lua"
           sudo install -m 0755 "$RUNNER_TEMP/zapret-engine/nfqws2" "$engine/nfqws2"
           sudo install -m 0644 "$RUNNER_TEMP/zapret-engine/"{LICENSE.upstream,source.json,nfqueue-policy.c,SHA256SUMS} "$engine/"
-          sudo install -m 0644 "$RUNNER_TEMP/zapret-engine/lua/"{zapret-lib.lua,zapret-antidpi.lua} "$engine/lua/"
+          sudo install -m 0644 "$RUNNER_TEMP/zapret-engine/lua/"{zapret-lib.lua,zapret-antidpi.lua,zapret-auto.lua} "$engine/lua/"
           sudo chmod 0755 "$engine"
           (cd -- "$engine" && sha256sum --check --strict SHA256SUMS)
           exercise() {
