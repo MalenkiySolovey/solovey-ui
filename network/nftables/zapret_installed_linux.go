@@ -134,6 +134,9 @@ func buildZapretBatch(plans []planner.ZapretPlan, tun *planner.ZapretTUNForward)
 		return zapretTableDraft{}, err
 	}
 	chains := uint32(2)
+	if zapretHasReplyPath(plans) {
+		chains += 2
+	}
 	if tun != nil {
 		chains++
 	}
@@ -361,9 +364,22 @@ func zapretOwnedBatch(plans []planner.ZapretPlan, comment []byte, tun ...*planne
 	if err := batch.addChain(zapretPostRouting, unix.NF_INET_POST_ROUTING, zapretGuardPriority-1); err != nil {
 		return nil, err
 	}
+	if zapretHasReplyPath(plans) {
+		if err := batch.addChain(zapretReplyQueue, unix.NF_INET_LOCAL_IN, zapretReplyQueuePriority); err != nil {
+			return nil, err
+		}
+		if err := batch.addChain(zapretReplyVerify, unix.NF_INET_LOCAL_IN, ZapretReplyGuardPriority-1); err != nil {
+			return nil, err
+		}
+	}
 	for _, plan := range plans {
 		if err := batch.addZapretPath(plan); err != nil {
 			return nil, err
+		}
+		if plan.NeedsReturn() {
+			if err := batch.addZapretReplyPath(plan); err != nil {
+				return nil, err
+			}
 		}
 	}
 	const reg = unix.NFT_REG_1

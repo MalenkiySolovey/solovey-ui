@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-host/hostref"
@@ -152,6 +153,52 @@ func TestZapretSystemdScopesUDPAndIPv6ByFamily(t *testing.T) {
 	facts.Zapret.SystemdFamilies = nil
 	_, err = CompileZapret(request, facts)
 	requireReason(t, err, InvalidIntent)
+}
+
+func TestZapretSystemdReturnScopeRequiresRetainedGuard(t *testing.T) {
+	request, facts := zapretFixture()
+	request.TCPPorts = []uint16{443, 853, 8443}
+	request.Directions = append(request.Directions, intent.PacketDirectionInbound)
+	request.NeedsReturn = true
+	facts.Capability.Backend = ZapretSystemdBackend
+	facts.Zapret.SystemdSerial = 7
+	facts.Zapret.InstalledEgress = &ZapretEgress{NamespaceCookie: 11, IfIndex: 2,
+		IPv4Gateway: netip.MustParseAddr("192.0.2.1"), IPv6Gateway: netip.MustParseAddr("2001:db8::1"), RouteRevision: hash("egress")}
+	facts.Zapret.SystemdFamilies = &ZapretFamilies{
+		IPv4: ZapretPorts{TCP: []uint16{443, 853}, ReplyTCP: []uint16{443}},
+		IPv6: ZapretPorts{TCP: []uint16{8443}, ReplyTCP: []uint16{8443}},
+	}
+	_, err := CompileZapret(request, facts)
+	requireReason(t, err, CapabilityUnavailable)
+	facts.Zapret.SystemdReplyGuard = true
+	plan, err := CompileZapret(request, facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.SocketMark() != ZapretSocketMarkBit|ZapretReturnSocketBit|7 || plan.QueueMark()&ZapretReturnSocketBit == 0 ||
+		plan.LoopMark()&ZapretReturnSocketBit != 0 || plan.FinalRouteBit()&ZapretReturnSocketBit != 0 ||
+		!slices.Equal(plan.ReplyTCPForFamily(false), []uint16{443}) || !slices.Equal(plan.ReplyTCPForFamily(true), []uint16{8443}) {
+		t.Fatal("reply scope escaped its selected family, mark or native queue")
+	}
+	facts.Zapret.SystemdFamilies.IPv6.ReplyTCP[0] = 443
+	if !slices.Equal(plan.ReplyTCPForFamily(true), []uint16{8443}) {
+		t.Fatal("caller mutated the admitted reply scope")
+	}
+	_, err = CompileZapret(request, facts)
+	requireReason(t, err, InvalidIntent)
+	facts.Zapret.SystemdFamilies.IPv6.ReplyTCP[0] = 8443
+	facts.Zapret.InstalledEgress.RoutingMarkBits = ZapretReturnSocketBit
+	_, err = CompileZapret(request, facts)
+	requireReason(t, err, ResourceConflict)
+	request.NeedsReturn = false
+	request.Directions = []intent.PacketDirection{intent.PacketDirectionOutbound}
+	_, err = CompileZapret(request, facts)
+	requireReason(t, err, InvalidIntent)
+	facts.Zapret.SystemdFamilies.IPv4.ReplyTCP, facts.Zapret.SystemdFamilies.IPv6.ReplyTCP = nil, nil
+	plan, err = CompileZapret(request, facts)
+	if err != nil || plan.SocketMark() != ZapretSocketMarkBit|7 {
+		t.Fatalf("static scope is unaffected by an unclaimed return bit: %x %v", plan.SocketMark(), err)
+	}
 }
 
 func TestInstalledZapretScopeBindsEgressAndRejectsProbe(t *testing.T) {

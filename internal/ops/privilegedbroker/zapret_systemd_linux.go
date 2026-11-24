@@ -116,7 +116,8 @@ func (z *installedZapret) validate(ctx context.Context, call Request, peer PeerI
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "installed Zapret profile validation:", err)
-		if errors.Is(err, errZapretCustomBlobsDenied) || errors.Is(err, errZapretDialBinding) || errors.Is(err, errZapretOuterScope) || zapretCapacityFailure(err) {
+		if errors.Is(err, errZapretCustomBlobsDenied) || errors.Is(err, errZapretDialBinding) || errors.Is(err, errZapretOuterScope) ||
+			errors.Is(err, errZapretReplyAsset) || errors.Is(err, errZapretReplyHook) || zapretCapacityFailure(err) {
 			return nil, Failure(CodeValidation, err.Error())
 		}
 		return nil, Failure(CodeValidation, "installed Zapret does not authorize the selected binding or Strategy")
@@ -152,7 +153,7 @@ func (z *installedZapret) acquire(ctx context.Context, call Request, peer PeerId
 	if err != nil {
 		// Only fixed, owner-classified startup errors are returned to Panel.
 		fmt.Fprintln(os.Stderr, "installed Zapret activation:", err)
-		if zapretCapacityFailure(err) {
+		if errors.Is(err, errZapretReplyAsset) || errors.Is(err, errZapretReplyHook) || zapretCapacityFailure(err) {
 			return nil, Failure(CodeExecution, err.Error())
 		}
 		return nil, Failure(CodeExecution, "Zapret packet path not ready; see privileged broker journal")
@@ -240,6 +241,11 @@ func (z *installedZapret) selectStrategies(input zapretactivation.Validation) (i
 	}
 	if selected.UsesCustomBlobs && !profile.AllowCustomBlobs {
 		return profile, InstalledZapretStrategies{}, errZapretCustomBlobsDenied
+	}
+	if selected.needsReturn() {
+		if err := verifyZapretReplyAsset(); err != nil {
+			return profile, InstalledZapretStrategies{}, err
+		}
 	}
 	used := 0
 	for i, request := range input.Bindings {
@@ -330,7 +336,8 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 	if err := profile.verifyTUN(ctx, batch.TUN); err != nil {
 		return nil, err
 	}
-	egress, occupied, err := observeInstalledZapretNetwork(ctx, profile.Interface, profile.IPv6, batch.TUN != nil, nil)
+	replies := selected.needsReturn()
+	egress, occupied, err := observeInstalledZapretNetwork(ctx, profile.Interface, profile.IPv6, batch.TUN != nil, replies, z.deny.port != 0, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -358,6 +365,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 		}
 		facts[i] = installedZapretFacts(request, &egress, occupied, serial)
 		facts[i].Zapret.SystemdFamilies = &selected.Families[i]
+		facts[i].Zapret.SystemdReplyGuard = replies
 		grants[i] = zapretactivation.Grant{Request: request, StrategyRevision: selected.Intents[i].StrategyRevision, Generation: generation}
 	}
 	plans, err := planner.CompileZapretSystemdBatch(selected.Intents, facts)
@@ -369,7 +377,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 		return nil, err
 	}
 	hadDeny := z.deny.port != 0
-	deny, err := z.openDeny(ctx, egress.NamespaceCookie, tunScope)
+	deny, err := z.openDeny(ctx, egress.NamespaceCookie, tunScope, replies)
 	if err != nil {
 		return nil, err
 	}
@@ -422,6 +430,11 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 	}()
 	if tun != nil {
 		if err := tun.activate(); err != nil {
+			return nil, err
+		}
+	}
+	if replies {
+		if err := checkZapretForeignHooks(ctx, tun != nil, true, true, table.Verify); err != nil {
 			return nil, err
 		}
 	}
@@ -593,11 +606,11 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 // openDeny reuses only the exact kernel owner socket retained by PID 1.
 // A new generation grants a new mark while the same deny continues to fence
 // marks issued by previous generations, including across broker death.
-func (z *installedZapret) openDeny(ctx context.Context, namespace uint64, tun *planner.ZapretTUNScope) (*nftables.ZapretOwnedTable, error) {
+func (z *installedZapret) openDeny(ctx context.Context, namespace uint64, tun *planner.ZapretTUNScope, replies bool) (*nftables.ZapretOwnedTable, error) {
 	if z.deny.port != 0 {
-		return nftables.ObserveZapretDenyTableForIngress(ctx, namespace, z.server.BootID, z.deny.port, z.deny.inode, tun)
+		return nftables.ObserveZapretDenyTableForIngress(ctx, namespace, z.server.BootID, z.deny.port, z.deny.inode, tun, replies)
 	}
-	owner, err := nftables.CreateZapretDenyTableForIngress(ctx, namespace, z.server.BootID, tun)
+	owner, err := nftables.CreateZapretDenyTableForIngress(ctx, namespace, z.server.BootID, tun, replies)
 	if err != nil {
 		return nil, err
 	}

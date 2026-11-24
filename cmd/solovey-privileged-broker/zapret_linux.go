@@ -29,8 +29,8 @@ func resolveZapretBatch(inputs []json.RawMessage, requests []zapretactivation.Re
 		return result, err
 	}
 	compile := result.Compile
-	result.Compile = func(root string, queue uint16, loopMark uint32, marks []uint32, trace bool) ([]string, broker.ZapretNativeTrace, error) {
-		args, evidence, err := compile(root, queue, loopMark, marks, trace)
+	result.Compile = func(root string, queue uint16, loopMark uint32, marks []uint32, trace, replies bool) ([]string, broker.ZapretNativeTrace, error) {
+		args, evidence, err := compile(root, queue, loopMark, marks, trace, replies)
 		if errors.Is(err, strategy.ErrEngineArgumentBudget) {
 			return nil, nil, fmt.Errorf("%w: %w", broker.ErrZapretEngineBudget, err)
 		}
@@ -65,9 +65,6 @@ func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivati
 		if err != nil {
 			return broker.InstalledZapretStrategies{}, err
 		}
-		if selected.Intent.NeedsReturn {
-			return broker.InstalledZapretStrategies{}, errors.New("installed Zapret supports outgoing observation only")
-		}
 		v4, err := selected.Strategy.PacketScopeForFamily(strategy.IPv4)
 		if err != nil {
 			return broker.InstalledZapretStrategies{}, err
@@ -78,7 +75,8 @@ func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivati
 		}
 		result.Intents = append(result.Intents, selected.Intent)
 		result.Families = append(result.Families, planner.ZapretFamilies{
-			IPv4: planner.ZapretPorts{TCP: v4.TCP, UDP: v4.UDP}, IPv6: planner.ZapretPorts{TCP: v6.TCP, UDP: v6.UDP},
+			IPv4:         planner.ZapretPorts{TCP: v4.TCP, UDP: v4.UDP, ReplyTCP: v4.ReturnTCP},
+			IPv6:         planner.ZapretPorts{TCP: v6.TCP, UDP: v6.UDP, ReplyTCP: v6.ReturnTCP},
 			RequiresIPv6: slices.ContainsFunc(selected.Strategy.Profiles, func(p strategy.Profile) bool { return p.Family == strategy.IPv6 }),
 		})
 		strategies[i] = selected.Strategy
@@ -91,13 +89,16 @@ func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivati
 		}
 		return strategies[i].HandlesQUIC(family, port)
 	}
-	result.Compile = func(root string, queue uint16, loopMark uint32, marks []uint32, trace bool) ([]string, broker.ZapretNativeTrace, error) {
+	result.Compile = func(root string, queue uint16, loopMark uint32, marks []uint32, trace, replies bool) ([]string, broker.ZapretNativeTrace, error) {
 		if len(marks) != len(strategies) {
 			return nil, nil, errors.New("incomplete Zapret mark allocation")
 		}
 		marked := make([]strategy.MarkedStrategy, len(marks))
 		for i, mark := range marks {
 			marked[i] = strategy.MarkedStrategy{Strategy: strategies[i], QueueMark: mark}
+		}
+		if replies {
+			return strategy.CompileBindingsForReturnPath(root, queue, loopMark, marked, trace)
 		}
 		if trace {
 			return strategy.CompileBindingsWithNativeTrace(root, queue, loopMark, marked)
