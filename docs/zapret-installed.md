@@ -30,6 +30,17 @@ for IPv4 and IPv6. The root-owned installed profile must opt in with
 `"ipv6": true` and have a qualified IPv6 route on the same nominated egress.
 An explicitly IPv6-only Strategy is rejected if the profile cannot admit it.
 
+The Direct editor preserves `bind_interface` and explicit IPv4/IPv6 source
+addresses. The interface must match the installed egress, and any selected
+source must be an assigned unicast address on that interface. OFF leaves
+these ordinary Dial settings in place. A mismatch rejects the edit rather
+than selecting another source or replacing the live generation.
+
+Plain TCP and UDP DNS can use the same **Transport via** selector. Cover
+the resolver port and endpoint family; UDP requires both UDP and TCP on
+that port because a truncated reply is retried over TCP. The DNS editor's
+applied state describes the selected binding, not a native packet match.
+
 DoQ and DoH3 use the existing DNS **Transport via** setting and require a Core
 build with QUIC. Configure a native QUIC action for the DNS port in every
 admitted endpoint family. A conditional list match alone is not enough, and an
@@ -141,9 +152,9 @@ The architecture budget entries for the batch are reviewed individually:
   Native profile evidence compiles the same verified bindings and marks with
   an optional observation callback. Its private sink belongs to the installed
   engine generation; only the existing verified observation verb reads it.
-- `validateDialedDNSDetours` applies the existing detour check to all six
-  dialed remote DNS transports. It does not select an outbound or provide
-  a fallback resolver.
+- `validateDialedDNSDetours` applies the existing explicit detour check to
+  all six dialed remote DNS transports. It does not select an outbound or
+  provide a fallback resolver; encrypted bootstrap checks remain.
 - `NewBox` still registers the pinned Core's existing default Direct. The
   source fingerprint changes because the inbound construction now passes a
   transient device opener to the one prepared TUN; the default outbound and

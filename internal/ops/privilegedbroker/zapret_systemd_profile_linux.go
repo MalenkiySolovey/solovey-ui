@@ -73,7 +73,7 @@ type installedZapretTUN struct {
 	Scope   planner.ZapretTUNScope      `json:"scope"`
 }
 
-var errZapretDialBinding = errors.New("Zapret Dial binding is incompatible with the installed egress")
+var errZapretDialBinding = errors.New("selected Zapret Dial binding is incompatible with the installed egress")
 
 func (p installedZapretProfile) verifyDialBindings(bindings []zapretactivation.Request, ifindex int32) error {
 	var sources map[netip.Addr]bool
