@@ -323,13 +323,25 @@ func (batch *zapretBatch) addZapretPath(plan planner.ZapretPlan) error {
 		path := []expr.Any{meta(unix.NFT_META_NFPROTO), eq([]byte{route.family}),
 			meta(unix.NFT_META_OIF), eq(u32(uint32(egress.IfIndex))),
 			&expr.Rt{Key: route.key, Register: reg}, eq(route.gateway.AsSlice())}
+		ipv6 := route.family == unix.NFPROTO_IPV6
+		originalPath := path
+		if source := scope.SourceForFamily(ipv6); source.IsValid() {
+			offset := uint32(12)
+			if ipv6 {
+				offset = 8
+			}
+			originalPath = append(append([]expr.Any(nil), path...),
+				&expr.Payload{DestRegister: reg, Base: expr.PayloadBaseNetworkHeader, Offset: offset, Len: uint32(source.BitLen() / 8)},
+				eq(source.AsSlice()),
+				&expr.Fib{Register: reg, ResultADDRTYPE: true, FlagSADDR: true, FlagOIF: true}, eq(u32(unix.RTN_LOCAL)))
+		}
 		for _, protocol := range packet.Protocols {
 			l4 := byte(unix.IPPROTO_TCP)
 			if protocol == intent.PacketProtocolUDP {
 				l4 = unix.IPPROTO_UDP
 			}
-			for _, port := range plan.PortsForFamily(protocol, route.family == unix.NFPROTO_IPV6) {
-				match := append(append([]expr.Any(nil), path...), meta(unix.NFT_META_L4PROTO), eq([]byte{l4}),
+			for _, port := range plan.PortsForFamily(protocol, ipv6) {
+				match := append(append([]expr.Any(nil), originalPath...), meta(unix.NFT_META_L4PROTO), eq([]byte{l4}),
 					&expr.Payload{DestRegister: reg, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2},
 					eq(binary.BigEndian.AppendUint16(nil, port)))
 				// A foreign packet-only mark cannot put another socket in our queue.
@@ -352,7 +364,11 @@ func (batch *zapretBatch) addZapretPath(plan planner.ZapretPlan) error {
 		// lookup can change the next hop, or the owned port can disappear
 		// while a packet is between the two hooks. Mint the final bit here.
 		for _, mark := range []uint32{plan.QueueMark(), plan.RawOutputMark()} {
-			match := append(append([]expr.Any(nil), path...), meta(unix.NFT_META_MARK), eq(u32(mark)))
+			checkPath := path
+			if mark == plan.QueueMark() {
+				checkPath = originalPath
+			}
+			match := append(append([]expr.Any(nil), checkPath...), meta(unix.NFT_META_MARK), eq(u32(mark)))
 			match = append(match, setMark(mark|plan.FinalRouteBit())...)
 			if err := addRule(zapretPostRouting, append(match, &expr.Verdict{Kind: expr.VerdictAccept})); err != nil {
 				return err

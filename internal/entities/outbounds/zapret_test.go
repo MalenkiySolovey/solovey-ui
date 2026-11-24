@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"net/netip"
 	"strings"
 	"testing"
 
@@ -72,6 +73,45 @@ func TestZapretProjectionRequiresMatchingGenerationGrant(t *testing.T) {
 	want := `{"protect_path":"` + zapretactivation.SocketRoot + "/z-" + strings.Repeat("b", 64) + `"}`
 	if err != nil || string(projected.Options) != want || string(row.Options) != before {
 		t.Fatalf("expected a runtime-only socket path, got %s, %v", projected.Options, err)
+	}
+}
+
+func TestZapretSourceAndInterfaceKeepNativeDialOptions(t *testing.T) {
+	row := model.Outbound{Tag: "a", Type: "direct", Options: json.RawMessage(
+		`{"bind_interface":"egress0","inet4_bind_address":"192.0.2.2","inet6_bind_address":"2001:db8::2","zapret":{"outboundRef":"a","enabled":true,"strategyRef":"proof"}}`)}
+	want := zapretactivation.DialBinding{Interface: "egress0", IPv4: netip.MustParseAddr("192.0.2.2"), IPv6: netip.MustParseAddr("2001:db8::2")}
+	grant := func(r zapretactivation.Request) zapretactivation.Grant {
+		t.Helper()
+		if r.Dial != want {
+			t.Fatalf("unexpected Dial authority: %+v", r.Dial)
+		}
+		return zapretactivation.Grant{Request: r, StrategyRevision: strings.Repeat("a", 64), Generation: strings.Repeat("b", 64)}
+	}
+	if _, err := projectZapretRuntime(row, false, func(r zapretactivation.Request) (zapretactivation.Grant, error) {
+		g := grant(r)
+		g.Dial.IPv6 = netip.MustParseAddr("2001:db8::3")
+		return g, nil
+	}); !errors.Is(err, ErrZapretPacketPathUnqualified) {
+		t.Fatalf("accepted grant for a different source: %v", err)
+	}
+	projected, err := projectZapretRuntime(row, false, func(r zapretactivation.Request) (zapretactivation.Grant, error) {
+		return grant(r), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]string
+	if err := json.Unmarshal(projected.Options, &got); err != nil || len(got) != 4 ||
+		got["bind_interface"] != want.Interface || got["inet4_bind_address"] != want.IPv4.String() ||
+		got["inet6_bind_address"] != want.IPv6.String() || !strings.HasPrefix(got["protect_path"], zapretactivation.SocketRoot+"/z-") {
+		t.Fatalf("native settings changed: %s (%v)", projected.Options, err)
+	}
+	for _, field := range []string{`"inet4_bind_address":"::1"`, `"inet6_bind_address":"::ffff:192.0.2.2"`, `"bind_interface":"long-interface-name"`} {
+		invalid := row
+		invalid.Options = json.RawMessage(`{` + field + `,"zapret":{"outboundRef":"a","enabled":true,"strategyRef":"proof"}}`)
+		if _, enabled, err := zapretRequest(invalid); !errors.Is(err, ErrZapretPacketPathUnqualified) || enabled {
+			t.Errorf("accepted invalid Dial field %s: %v", field, err)
+		}
 	}
 }
 

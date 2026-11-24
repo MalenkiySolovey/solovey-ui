@@ -90,6 +90,22 @@ func TestInstalledZapretDNSRequiresFamilyAndEffectiveQUICProfile(t *testing.T) {
 	}
 }
 
+func TestInstalledZapretPlainUDPIncludesTCPRetry(t *testing.T) {
+	need := zapretactivation.DNSPathRequirement{Family: zapretactivation.DNSFamilyIPv4, Port: 53, PlainUDP: true}
+	strategies := InstalledZapretStrategies{Families: []planner.ZapretFamilies{{IPv4: planner.ZapretPorts{UDP: []uint16{53}}}}}
+	if strategies.handlesDNS(0, false, need) {
+		t.Fatal("UDP without TCP retry was admitted")
+	}
+	strategies.Families[0].IPv4.TCP = []uint16{53}
+	if !strategies.handlesDNS(0, false, need) {
+		t.Fatal("UDP and same-port TCP retry were not admitted")
+	}
+	need.QUIC = true
+	if strategies.handlesDNS(0, false, need) {
+		t.Fatal("ambiguous plain/QUIC request was admitted")
+	}
+}
+
 func TestInstalledZapretSecondSocketRollback(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("requires a disposable root-owned Unix socket directory")

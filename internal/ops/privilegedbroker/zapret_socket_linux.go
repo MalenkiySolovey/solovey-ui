@@ -160,8 +160,10 @@ func (s *Server) serveZapretSocket(ctx context.Context, conn *net.UnixConn, gran
 		}
 		event.Phase = AuditPhaseDispatchGate
 		event.ResultClass = "denied_execution_failed"
-		if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_BINDTOIFINDEX, int(grant.Scope.Egress().IfIndex)); err != nil {
-			return err
+		if !grant.Scope.ExplicitBindInterface() {
+			if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_BINDTOIFINDEX, int(grant.Scope.Egress().IfIndex)); err != nil {
+				return err
+			}
 		}
 		if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_MARK, int(grant.Scope.Mark())); err != nil {
 			return err
@@ -246,10 +248,17 @@ func checkZapretSocket(fd int, peer PeerIdentity, scope planner.ZapretSocketScop
 	if err := unix.Fstat(fd, &stat); err != nil || stat.Mode&unix.S_IFMT != unix.S_IFSOCK || stat.Uid != peer.UID || stat.Gid != peer.GID {
 		return errZapretSocket
 	}
-	for _, opt := range []int{unix.SO_MARK, unix.SO_BINDTOIFINDEX, unix.SO_ACCEPTCONN} {
+	for _, opt := range []int{unix.SO_MARK, unix.SO_ACCEPTCONN} {
 		if value, err := unix.GetsockoptInt(fd, unix.SOL_SOCKET, opt); err != nil || value != 0 {
 			return errZapretSocket
 		}
+	}
+	wantIfIndex := 0
+	if scope.ExplicitBindInterface() {
+		wantIfIndex = int(scope.Egress().IfIndex)
+	}
+	if value, err := unix.GetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_BINDTOIFINDEX); err != nil || value != wantIfIndex {
+		return errZapretSocket
 	}
 	kind, typeErr := unix.GetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TYPE)
 	protocol, protoErr := unix.GetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_PROTOCOL)

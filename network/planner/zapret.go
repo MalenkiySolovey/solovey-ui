@@ -49,6 +49,8 @@ type ZapretFacts struct {
 	SystemdSerial                             uint32          `json:",omitempty"`
 	SystemdQueue                              uint16          `json:",omitempty"` // assigned by CompileZapretSystemdBatch
 	SystemdFamilies                           *ZapretFamilies `json:",omitempty"`
+	SystemdBindInterface                      bool            `json:",omitempty"`
+	SystemdSource4, SystemdSource6            netip.Addr      `json:",omitzero"`
 }
 
 type ZapretPorts struct{ TCP, UDP []uint16 }
@@ -218,6 +220,20 @@ func (s ZapretSocketScope) AllowsProtocol(p intent.PacketProtocol) bool {
 	return slices.Contains(s.plan.intent.Protocols, p)
 }
 
+func (s ZapretSocketScope) ExplicitBindInterface() bool {
+	return s.Valid() && s.plan.plan.facts.Zapret.SystemdBindInterface
+}
+
+func (s ZapretSocketScope) SourceForFamily(ipv6 bool) netip.Addr {
+	if !s.Valid() {
+		return netip.Addr{}
+	}
+	if ipv6 {
+		return s.plan.plan.facts.Zapret.SystemdSource6
+	}
+	return s.plan.plan.facts.Zapret.SystemdSource4
+}
+
 func (s ZapretSocketScope) AllowsFamily(p intent.PacketProtocol, ipv6 bool) bool {
 	e := s.Egress()
 	return ((!ipv6 && e.IPv4Gateway.IsValid()) || (ipv6 && e.IPv6Gateway.IsValid())) && len(s.plan.portsForFamily(p, ipv6)) != 0
@@ -277,6 +293,10 @@ func compileZapret(request intent.ZapretPacketPathIntent, facts Facts, sharedQue
 		!z.NFQueue || !z.ConntrackAccounting || !z.EgressGuard || z.Provider != "sing-box" {
 		return ZapretPlan{}, conflict(CapabilityUnavailable, ref)
 	}
+	if facts.Capability.Backend != ZapretSystemdBackend &&
+		(z.SystemdBindInterface || z.SystemdSource4.IsValid() || z.SystemdSource6.IsValid()) {
+		return ZapretPlan{}, conflict(CapabilityUnavailable, ref)
+	}
 	table, guard := "inet:"+ZapretProbeTable, ZapretProbeGuard
 	switch facts.Capability.Backend {
 	case ZapretNamespaceBackend:
@@ -293,6 +313,11 @@ func compileZapret(request intent.ZapretPacketPathIntent, facts Facts, sharedQue
 		if z.InstalledEgress == nil || !z.InstalledEgress.valid() || !z.InstalledEgress.IPv4Gateway.IsValid() ||
 			z.SystemdSerial == 0 || z.SystemdSerial > ZapretMaxSerial ||
 			(z.InstalledEgress.RoutingMarkBits|z.ReservedMarkBits)&ZapretReservedMask != 0 {
+			return ZapretPlan{}, conflict(CapabilityUnavailable, ref)
+		}
+		if z.SystemdSource4.IsValid() && (!z.SystemdSource4.Is4() || !z.SystemdSource4.IsGlobalUnicast()) ||
+			z.SystemdSource6.IsValid() && (!z.SystemdSource6.Is6() || z.SystemdSource6.Is4In6() || z.SystemdSource6.Zone() != "" ||
+				!z.SystemdSource6.IsGlobalUnicast() || !z.InstalledEgress.IPv6Gateway.IsValid()) {
 			return ZapretPlan{}, conflict(CapabilityUnavailable, ref)
 		}
 		if f := z.SystemdFamilies; f != nil {
