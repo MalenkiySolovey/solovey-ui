@@ -263,8 +263,8 @@ func rootOwnedZapretAsset(info os.FileInfo) bool {
 	return ok && stat.Uid == 0 && info.Mode()&(os.ModeSetuid|os.ModeSetgid|0o022) == 0
 }
 
-func observeInstalledZapretNetwork(ctx context.Context, interfaceName string, ipv6, tun bool) (planner.ZapretEgress, []uint16, error) {
-	if err := checkZapretForeignHooks(ctx, tun, nil); err != nil {
+func observeInstalledZapretNetwork(ctx context.Context, interfaceName string, ipv6, tun bool, verifyActive func(context.Context) error) (planner.ZapretEgress, []uint16, error) {
+	if err := checkZapretForeignHooks(ctx, tun, verifyActive); err != nil {
 		return planner.ZapretEgress{}, nil, err
 	}
 	iface, err := net.InterfaceByName(interfaceName)

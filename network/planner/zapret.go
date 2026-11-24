@@ -247,12 +247,17 @@ func CompileZapret(request intent.ZapretPacketPathIntent, facts Facts) (ZapretPl
 // reuses it exclusively inside the batch. Socket marks are still unique per
 // binding; every plan must agree on the observed egress and queue inventory.
 func CompileZapretSystemdBatch(requests []intent.ZapretPacketPathIntent, facts []Facts) ([]ZapretPlan, error) {
-	if len(requests) == 0 || len(requests) > 3 || len(requests) != len(facts) {
+	if len(requests) == 0 || len(requests) != len(facts) {
 		return nil, conflict(InvalidIntent, "zapret")
+	}
+	if uint64(len(requests)) > uint64(ZapretMaxSerial) {
+		return nil, conflict(ResourceConflict, "zapret socket mark serials")
 	}
 	var queue uint16
 	var egress ZapretEgress
 	plans := make([]ZapretPlan, 0, len(requests))
+	marks := make(map[uint32]bool, len(requests))
+	refs := make(map[string]bool, len(requests))
 	for i, request := range requests {
 		if facts[i].Capability.Backend != ZapretSystemdBackend {
 			return nil, conflict(CapabilityUnavailable, request.ResourceRef)
@@ -267,11 +272,10 @@ func CompileZapretSystemdBatch(requests []intent.ZapretPacketPathIntent, facts [
 			!slices.Equal(plan.plan.facts.Zapret.OccupiedQueues, plans[0].plan.facts.Zapret.OccupiedQueues) {
 			return nil, conflict(StalePlan, request.ResourceRef)
 		}
-		for _, prior := range plans {
-			if prior.mark == plan.mark || prior.intent.OutboundRef == plan.intent.OutboundRef {
-				return nil, conflict(ResourceConflict, request.ResourceRef)
-			}
+		if marks[plan.mark] || refs[request.OutboundRef] {
+			return nil, conflict(ResourceConflict, request.ResourceRef)
 		}
+		marks[plan.mark], refs[request.OutboundRef] = true, true
 		plans = append(plans, plan)
 	}
 	return plans, nil

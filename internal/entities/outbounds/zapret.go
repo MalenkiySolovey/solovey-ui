@@ -109,7 +109,7 @@ func CheckZapretStartup(db *gorm.DB, ready bool) (bool, error) {
 	if err := db.Find(&rows).Error; err != nil {
 		return false, err
 	}
-	found := 0
+	found := false
 	for _, row := range rows {
 		fields, binding, err := zapretOptions(row)
 		if err != nil {
@@ -124,12 +124,9 @@ func CheckZapretStartup(db *gorm.DB, ready bool) (bool, error) {
 		if _, err := zapretDialBinding(fields); err != nil {
 			return false, fmt.Errorf("outbound %q: %w", binding.OutboundRef, err)
 		}
-		found++
-		if found > zapretactivation.MaxBindings {
-			return false, fmt.Errorf("%w: at most %d Direct bindings", ErrZapretPacketPathUnqualified, zapretactivation.MaxBindings)
-		}
+		found = true
 	}
-	return found > 0, nil
+	return found, nil
 }
 
 func zapretDialBinding(fields map[string]json.RawMessage) (zapretactivation.DialBinding, error) {
@@ -225,9 +222,6 @@ func zapretRequests(rows []*model.Outbound) ([]zapretactivation.Request, error) 
 		if enabled {
 			requests = append(requests, request)
 		}
-	}
-	if len(requests) > zapretactivation.MaxBindings {
-		return nil, ErrZapretPacketPathUnqualified
 	}
 	return requests, nil
 }

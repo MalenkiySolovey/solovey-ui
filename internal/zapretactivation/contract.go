@@ -10,7 +10,6 @@ import (
 
 const (
 	SocketRoot            = "/run/solovey-ui/zapret"
-	MaxBindings           = 3
 	CatalogKey            = "zapret.strategies"
 	MaxCatalogBytes       = 256 << 10
 	MaxDefinitionBytes    = 8 << 10

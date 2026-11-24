@@ -3,7 +3,7 @@
 ## Multi-Direct and DNS (R8B2 baseline)
 
 The qualified runtime is an installed Linux systemd Official/Full profile for
-IPv4/TCP. Up to three explicit Directs share one queue and one pinned `nfqws2`.
+IPv4/TCP. Explicit Directs share one queue and one pinned `nfqws2`.
 They can use the same strategy or different, mark-isolated strategies. The
 Panel and Core remain unprivileged. A shared engine failure denies all admitted
 bindings; ordinary outbounds and the management path are independent.
@@ -115,6 +115,20 @@ The component resolves ordered profiles, the Network Planner allocates marks,
 and the broker publishes the batch only after it can serve every member.
 Neither the resolver nor the broker chooses a replacement Direct on failure.
 
+There is no fixed per-Direct count. The framed request and root-owned
+profile have byte limits. The broker accounts for open descriptors, one
+listener and bounded handoff workers per binding against `RLIMIT_NOFILE`.
+The Planner allocates one distinct, non-reused mark serial per binding.
+The complete nftables transaction must fit one netlink datagram; each
+admitted family and port adds selectors to that transaction. The Component
+compiles one bounded native argument list and, if enabled, allocates trace
+slots only for its compiled profiles. The limiting resource can depend on
+the chosen profiles and host. Edit validation previews mark slots and checks
+the complete arguments and rule transaction without consuming a mark,
+starting an engine, or replacing the live rules. Activation checks again
+against its own allocation. Reduce port/profile scope or disable a binding
+if the reported budget cannot fit; no partial batch is installed.
+
 The architecture budget entries for the batch are reviewed individually:
 
 - `resolveZapretStrategies` uses the component's binding resolver for each
@@ -127,16 +141,16 @@ The architecture budget entries for the batch are reviewed individually:
   Native profile evidence compiles the same verified bindings and marks with
   an optional observation callback. Its private sink belongs to the installed
   engine generation; only the existing verified observation verb reads it.
-- `validateEncryptedDNSDetours` extends the DNS owner's existing detour
-  check to DoQ and DoH3. It validates the explicit transport and bootstrap
-  reference; it does not select an outbound or provide a fallback resolver.
+- `validateDialedDNSDetours` applies the existing detour check to all six
+  dialed remote DNS transports. It does not select an outbound or provide
+  a fallback resolver.
 - `NewBox` still registers the pinned Core's existing default Direct. The
   source fingerprint changes because the inbound construction now passes a
   transient device opener to the one prepared TUN; the default outbound and
   Routing decision are unchanged.
 - `installedZapret.prepare` owns one batch worker and one watcher, started
   only after all endpoints and the owned table are ready. The watcher exits
-  with the batch authority. At most three listeners are joined; losing any
+  with the batch authority. Each admitted listener is joined; losing any
   listener or the engine cancels the batch. Closing the admission table and
   joining the listeners precede engine retirement. PID 1 retains the deny
   table until the broker can prove all previously marked sockets have drained.

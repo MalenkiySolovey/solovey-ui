@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/MalenkiySolovey/solovey-component-zapret/binding"
@@ -77,11 +78,18 @@ func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivati
 		for i, mark := range marks {
 			marked[i] = strategy.MarkedStrategy{Strategy: strategies[i], QueueMark: mark}
 		}
+		var args []string
+		var evidence broker.ZapretNativeTrace
+		var err error
 		if trace {
-			return strategy.CompileBindingsWithNativeTrace(root, queue, loopMark, marked)
+			args, evidence, err = strategy.CompileBindingsWithNativeTrace(root, queue, loopMark, marked)
+		} else {
+			args, err = strategy.CompileBindings(root, queue, loopMark, marked)
 		}
-		args, err := strategy.CompileBindings(root, queue, loopMark, marked)
-		return args, nil, err
+		if errors.Is(err, strategy.ErrEngineArgumentBudget) {
+			return nil, nil, fmt.Errorf("%w: %w", broker.ErrZapretEngineBudget, err)
+		}
+		return args, evidence, err
 	}
 	return result, nil
 }

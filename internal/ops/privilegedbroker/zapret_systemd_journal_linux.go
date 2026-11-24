@@ -4,6 +4,7 @@ package privilegedbroker
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
@@ -11,6 +12,21 @@ import (
 )
 
 const zapretSystemdResource = "zapret-systemd-mark"
+
+// previewZapretMarkBatch observes the next serials without claiming them.
+func (j *FileJournal) previewZapretMarkBatch(peer PeerIdentity, bindings int) (uint32, error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	used := j.fences[zapretSystemdResource]
+	if len(j.unresolved) != 0 || peer.BootID != j.bootID || !digestPattern.MatchString(peer.Revision) || used > uint64(planner.ZapretMaxSerial) {
+		return 0, Failure(CodeRecoveryRequired, "Zapret mark reservation requires journal recovery")
+	}
+	available := uint64(planner.ZapretMaxSerial) - used
+	if uint64(bindings) > available || uint64(bindings) > ^uint64(0)-j.sequence {
+		return 0, fmt.Errorf("%w: %d requested, %d mark serials remain for this boot", errZapretMarkBudget, bindings, available)
+	}
+	return uint32(used + 1), nil
+}
 
 // reserveZapretMark consumes a serial before any socket can receive it. A
 // failed or interrupted activation still cannot reuse the old serial. Use a

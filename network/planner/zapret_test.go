@@ -2,6 +2,7 @@ package planner
 
 import (
 	"errors"
+	"fmt"
 	"net/netip"
 	"testing"
 
@@ -89,6 +90,33 @@ func TestZapretSystemdBatchSharesOnlyQueueAndEgress(t *testing.T) {
 	facts[1].Zapret.InstalledEgress.IfIndex = 3
 	if batch, err := CompileZapretSystemdBatch(requests, facts); err == nil || batch != nil {
 		t.Fatal("planner accepted inconsistent egress in a shared queue")
+	}
+}
+
+func TestZapretSystemdBatchAllocatesMoreThanThreeDistinctBindings(t *testing.T) {
+	request, observation := zapretFixture()
+	observation.Capability.Backend = ZapretSystemdBackend
+	observation.Zapret.InstalledEgress = &ZapretEgress{NamespaceCookie: 11, IfIndex: 2,
+		IPv4Gateway: netip.MustParseAddr("192.0.2.1"), RouteRevision: hash("egress")}
+	requests, facts := make([]intent.ZapretPacketPathIntent, 6), make([]Facts, 6)
+	for i := range requests {
+		ref := fmt.Sprintf("selected-%d", i)
+		value, observed := request, clone(observation)
+		value.ResourceRef, value.OutboundRef, value.InputRevision = "outbound:"+ref, ref, hash(ref)
+		observed.Zapret.OutboundRef, observed.Zapret.OutboundRevision = ref, value.InputRevision
+		observed.Zapret.SystemdSerial = uint32(i + 1)
+		requests[i], facts[i] = value, observed
+	}
+	plans, err := CompileZapretSystemdBatch(requests, facts)
+	if err != nil || len(plans) != len(requests) {
+		t.Fatalf("resource-compatible members were not allocated together: %v", err)
+	}
+	seen := make(map[uint32]bool, len(plans))
+	for _, plan := range plans {
+		if plan.Queue() == 0 || plan.Queue() != plans[0].Queue() || seen[plan.SocketMark()] {
+			t.Fatal("allocated separate queues or reused a mark")
+		}
+		seen[plan.SocketMark()] = true
 	}
 }
 
