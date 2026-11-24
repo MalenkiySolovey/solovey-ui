@@ -68,8 +68,9 @@ github.com/MalenkiySolovey/solovey-host v0.10.0 h1:jZePH9C8Pq/ziw4OI6HdUr/6iuAPN
 github.com/MalenkiySolovey/solovey-host v0.10.0/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
 github.com/MalenkiySolovey/solovey-host v0.11.0 h1:3aS/lXMvn55HAQs6m8JU79KLToZX2jobs27QUOpr/j8=
 github.com/MalenkiySolovey/solovey-host v0.11.0/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
-github.com/MalenkiySolovey/solovey-host v0.12.1 h1:jaf33dRl5IAWgdIeJmKd9IBO3z3EFdeFIjxi/xb8xeY=
 github.com/MalenkiySolovey/solovey-host v0.12.1/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
+github.com/MalenkiySolovey/solovey-host v0.12.2 h1:6Aj30FzQvO9eSHPGv0Nu/VNiZQe58jCvG47n7S3qEDk=
+github.com/MalenkiySolovey/solovey-host v0.12.2/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
 github.com/ajg/form v1.5.1 h1:t9c7v8JUKu/XxOGBU0yjNpaMloxGEJhUkqFRq0ibGeU=
 github.com/ajg/form v1.5.1/go.mod h1:uL1WgH+h2mgNtvBq0339dVnzXdBETtL2LeUXaIv25UY=
 github.com/akutz/memconn v0.1.0 h1:NawI0TORU4hcOMsMr11g7vwlCdkYeLKXBcxWu2W/P8A=
