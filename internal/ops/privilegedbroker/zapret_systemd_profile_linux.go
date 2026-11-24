@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"slices"
@@ -70,6 +71,43 @@ type installedZapretProfile struct {
 type installedZapretTUN struct {
 	Inbound zapretactivation.TUNRequest `json:"inbound"`
 	Scope   planner.ZapretTUNScope      `json:"scope"`
+}
+
+var errZapretDialBinding = errors.New("Zapret Dial binding is incompatible with the installed egress")
+
+func (p installedZapretProfile) verifyDialBindings(bindings []zapretactivation.Request, ifindex int32) error {
+	var sources map[netip.Addr]bool
+	for _, request := range bindings {
+		dial := request.Dial
+		if dial.Interface != "" && dial.Interface != p.Interface {
+			return fmt.Errorf("%w: bind_interface must match the operator-approved interface", errZapretDialBinding)
+		}
+		if dial.IPv6.IsValid() && !p.IPv6 {
+			return fmt.Errorf("%w: the installed profile has no admitted IPv6 path", errZapretDialBinding)
+		}
+		if dial.IPv4.IsValid() || dial.IPv6.IsValid() || dial.Interface != "" {
+			if sources == nil {
+				iface, err := net.InterfaceByName(p.Interface)
+				if err != nil || iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 || ifindex != 0 && iface.Index != int(ifindex) {
+					return fmt.Errorf("%w: the operator-approved interface is unavailable or changed", errZapretDialBinding)
+				}
+				addrs, err := iface.Addrs()
+				if err != nil {
+					return fmt.Errorf("%w: could not verify local source addresses", errZapretDialBinding)
+				}
+				sources = make(map[netip.Addr]bool, len(addrs))
+				for _, addr := range addrs {
+					if prefix, err := netip.ParsePrefix(addr.String()); err == nil {
+						sources[prefix.Addr().Unmap()] = true
+					}
+				}
+			}
+			if dial.IPv4.IsValid() && !sources[dial.IPv4] || dial.IPv6.IsValid() && !sources[dial.IPv6] {
+				return fmt.Errorf("%w: assign the selected source address to the operator-approved interface", errZapretDialBinding)
+			}
+		}
+	}
+	return nil
 }
 
 func (p installedZapretProfile) verifyTUN(ctx context.Context, req *zapretactivation.TUNRequest) error {
@@ -265,6 +303,7 @@ func installedZapretFacts(request zapretactivation.Request, egress *planner.Zapr
 		Capability: platform.PlatformFact{Availability: platform.Available, Backend: planner.ZapretSystemdBackend},
 		Zapret: &planner.ZapretFacts{OutboundRef: request.OutboundRef, OutboundRevision: request.OutboundRevision,
 			Provider: "sing-box", InstalledEgress: egress, SystemdSerial: serial, OccupiedQueues: queues,
+			SystemdBindInterface: request.Dial.Interface != "", SystemdSource4: request.Dial.IPv4, SystemdSource6: request.Dial.IPv6,
 			DirectSocket: true, SocketMark: true, NFQueue: true, ConntrackAccounting: true, EgressGuard: true}}
 }
 

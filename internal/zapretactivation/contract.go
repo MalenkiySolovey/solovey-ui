@@ -24,9 +24,24 @@ func ManagedStrategyRef(ref string) bool {
 }
 
 type Request struct {
-	OutboundRef      string `json:"outboundRef"`
-	OutboundRevision string `json:"outboundRevision"`
-	StrategyRef      string `json:"strategyRef"`
+	OutboundRef      string      `json:"outboundRef"`
+	OutboundRevision string      `json:"outboundRevision"`
+	StrategyRef      string      `json:"strategyRef"`
+	Dial             DialBinding `json:"dial,omitzero"`
+}
+
+// DialBinding records the requested native settings, not a network grant.
+// The broker resolves the interface against its own installed profile.
+type DialBinding struct {
+	Interface string     `json:"interface,omitempty"`
+	IPv4      netip.Addr `json:"ipv4,omitzero"`
+	IPv6      netip.Addr `json:"ipv6,omitzero"`
+}
+
+func (d DialBinding) Valid() bool {
+	return len(d.Interface) <= 15 && !strings.ContainsAny(d.Interface, "\x00/ \t\r\n") &&
+		(!d.IPv4.IsValid() || d.IPv4.Is4() && d.IPv4.IsGlobalUnicast()) &&
+		(!d.IPv6.IsValid() || d.IPv6.Is6() && !d.IPv6.Is4In6() && d.IPv6.Zone() == "" && d.IPv6.IsGlobalUnicast())
 }
 
 type Grant struct {
@@ -103,9 +118,10 @@ const (
 )
 
 type DNSPathRequirement struct {
-	Port   uint16    `json:"port"`
-	Family DNSFamily `json:"family,omitempty"`
-	QUIC   bool      `json:"quic,omitempty"` // Otherwise authenticated TLS over TCP.
+	Port     uint16    `json:"port"`
+	Family   DNSFamily `json:"family,omitempty"`
+	QUIC     bool      `json:"quic,omitempty"`
+	PlainUDP bool      `json:"plainUDP,omitempty"` // UDP with same-detour TCP retry on truncation.
 }
 
 func (g Grant) ProtectPath(want Request) (string, bool) {

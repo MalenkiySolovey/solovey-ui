@@ -14,14 +14,14 @@ import (
 	"github.com/sagernet/sing-box/option"
 )
 
-// ValidateEncryptedDNSDetours checks the completed candidate without starting
+// ValidateDialedDNSDetours checks the completed candidate without starting
 // transports. The dry Outbounds projection omits broker paths; selected names
 // denote only the Directs that would receive one after actual admission.
-func ValidateEncryptedDNSDetours(config []byte, selected map[string]bool) error {
-	return validateEncryptedDNSDetours(config, selected, coreprovider.Current().ID == "shtorm-extended")
+func ValidateDialedDNSDetours(config []byte, selected map[string]bool) error {
+	return validateDialedDNSDetours(config, selected, coreprovider.Current().ID == "shtorm-extended")
 }
 
-func validateEncryptedDNSDetours(config []byte, selected map[string]bool, allowEmptyDirect bool) error {
+func validateDialedDNSDetours(config []byte, selected map[string]bool, allowEmptyDirect bool) error {
 	var root, dns dnsObject
 	var servers []dnsObject
 	_ = json.Unmarshal(config, &root)
@@ -39,7 +39,7 @@ func validateEncryptedDNSDetours(config []byte, selected map[string]bool, allowE
 	}
 	for i, server := range servers {
 		kind, ref := dnsString(server, "type"), dnsString(server, "detour")
-		if ref == "" || kind != C.DNSTypeHTTPS && kind != C.DNSTypeTLS && kind != C.DNSTypeQUIC && kind != C.DNSTypeHTTP3 {
+		if ref == "" || !zapretDialedDNS(kind) {
 			continue
 		}
 		fail := func(code, message string) error {
@@ -50,7 +50,7 @@ func validateEncryptedDNSDetours(config []byte, selected map[string]bool, allowE
 			return fail("dns_detour_missing", "Select one existing outbound or endpoint for this DNS transport.")
 		}
 		// Pinned Official rejects an empty Direct lazily, not on JSON decode.
-		if !allowEmptyDirect && !selected[ref] && dnsString(rows[0], "type") == "direct" {
+		if !allowEmptyDirect && !selected[ref] && dnsString(rows[0], "type") == C.TypeDirect {
 			var dial option.DialerOptions
 			if json.Unmarshal(dnsJSON(rows[0]), &dial) == nil && reflect.DeepEqual(dial, option.DialerOptions{}) {
 				return fail("dns_detour_empty_direct", "This Core cannot use an empty Direct as an explicit DNS detour. Update the DNS transport before removing its dial settings or disabling its Zapret binding.")
@@ -58,6 +58,15 @@ func validateEncryptedDNSDetours(config []byte, selected map[string]bool, allowE
 		}
 	}
 	return nil
+}
+
+func zapretDialedDNS(kind string) bool {
+	switch kind {
+	case C.DNSTypeTCP, C.DNSTypeUDP, C.DNSTypeHTTPS, C.DNSTypeTLS, C.DNSTypeQUIC, C.DNSTypeHTTP3:
+		return true
+	default:
+		return false
+	}
 }
 
 // ZapretDNSRequirements derives requirements for existing native detours, without
@@ -80,12 +89,15 @@ func zapretDNSRequirements(config []byte, selected map[string]bool, withQUIC boo
 		var need zapretactivation.DNSPathRequirement
 		kind := dnsString(server, "type")
 		switch kind {
+		case C.DNSTypeTCP, C.DNSTypeUDP:
+			need.Port = 53
+			need.PlainUDP = kind == C.DNSTypeUDP
 		case C.DNSTypeHTTPS, C.DNSTypeHTTP3:
 			need.Port = 443
 		case C.DNSTypeTLS, C.DNSTypeQUIC:
 			need.Port = 853
 		default:
-			return nil, fail("detour", "dns_zapret_transport_unsupported", "Select an encrypted DoH, DoT, DoQ or DoH3 transport for an enabled Zapret Direct.")
+			return nil, fail("detour", "dns_zapret_transport_unsupported", "Select a remote TCP, UDP, DoH, DoT, DoQ or DoH3 transport for an enabled Zapret Direct.")
 		}
 		need.QUIC = kind == C.DNSTypeQUIC || kind == C.DNSTypeHTTP3
 		if need.QUIC && !withQUIC {
@@ -117,10 +129,12 @@ func zapretDNSRequirements(config []byte, selected map[string]bool, withQUIC boo
 				need.Family = zapretactivation.DNSFamilyIPv6
 			}
 		}
-		var tls dnsObject
-		_ = json.Unmarshal(server["tls"], &tls)
-		if dnsBool(tls, "insecure") {
-			return nil, fail("tls.insecure", "dns_zapret_tls_required", "Certificate verification must remain enabled for protected DNS.")
+		if kind != C.DNSTypeTCP && kind != C.DNSTypeUDP {
+			var tls dnsObject
+			_ = json.Unmarshal(server["tls"], &tls)
+			if dnsBool(tls, "insecure") {
+				return nil, fail("tls.insecure", "dns_zapret_tls_required", "Certificate verification must remain enabled for protected DNS.")
+			}
 		}
 		if requirements == nil {
 			requirements = make(map[string][]zapretactivation.DNSPathRequirement)

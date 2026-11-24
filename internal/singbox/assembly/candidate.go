@@ -99,7 +99,7 @@ func ValidateCoreRestartFromDB(db *gorm.DB, zapretReady bool) error {
 			return fmt.Errorf("%w: the pinned Core rejected the candidate", entityoutbounds.ErrZapretPacketPathUnqualified)
 		}
 	}
-	if err := singboxconfig.ValidateEncryptedDNSDetours(projection.Config, selected); err != nil {
+	if err := singboxconfig.ValidateDialedDNSDetours(projection.Config, selected); err != nil {
 		return err
 	}
 	_, err = singboxconfig.PrepareRuntimeAssets(projection.Config)

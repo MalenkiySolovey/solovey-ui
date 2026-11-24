@@ -103,6 +103,9 @@ func (z *installedZapret) validate(ctx context.Context, call Request, peer PeerI
 	}
 	profile, _, err := z.selectStrategies(input)
 	if err == nil {
+		err = profile.verifyDialBindings(input.Bindings, 0)
+	}
+	if err == nil {
 		err = profile.verifyTUN(ctx, input.TUN)
 	}
 	if err == nil && input.TUN != nil {
@@ -114,8 +117,8 @@ func (z *installedZapret) validate(ctx context.Context, call Request, peer PeerI
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "installed Zapret profile validation:", err)
-		if errors.Is(err, errZapretCustomBlobsDenied) {
-			return nil, Failure(CodeValidation, errZapretCustomBlobsDenied.Error())
+		if errors.Is(err, errZapretCustomBlobsDenied) || errors.Is(err, errZapretDialBinding) {
+			return nil, Failure(CodeValidation, err.Error())
 		}
 		return nil, Failure(CodeValidation, "installed Zapret does not authorize the selected binding or Strategy")
 	}
@@ -164,7 +167,7 @@ func validZapretTargets(targets []zapretactivation.Request) bool {
 	seen := make(map[string]bool, len(targets))
 	for _, target := range targets {
 		if !safeIdentifier(target.OutboundRef) || !safeIdentifier(target.StrategyRef) ||
-			!digestPattern.MatchString(target.OutboundRevision) || seen[target.OutboundRef] {
+			!digestPattern.MatchString(target.OutboundRevision) || seen[target.OutboundRef] || !target.Dial.Valid() {
 			return false
 		}
 		seen[target.OutboundRef] = true
@@ -248,6 +251,9 @@ func (z *installedZapret) selectStrategies(input zapretactivation.Validation) (i
 			}
 			for _, need := range requirements {
 				if !selected.handlesDNS(i, profile.IPv6, need) {
+					if need.PlainUDP {
+						return profile, InstalledZapretStrategies{}, fmt.Errorf("strategy for Direct %q must cover UDP and its TCP retry on DNS port %d, family %d", request.OutboundRef, need.Port, need.Family)
+					}
 					return profile, InstalledZapretStrategies{}, fmt.Errorf("strategy for Direct %q does not cover protected DNS (port %d, family %d, QUIC %t)", request.OutboundRef, need.Port, need.Family, need.QUIC)
 				}
 			}
@@ -260,6 +266,9 @@ func (z *installedZapret) selectStrategies(input zapretactivation.Validation) (i
 }
 
 func (s InstalledZapretStrategies) handlesDNS(binding int, ipv6 bool, need zapretactivation.DNSPathRequirement) bool {
+	if need.Port == 0 || need.QUIC && need.PlainUDP {
+		return false
+	}
 	covered := func(v6 bool) bool {
 		ports := s.Families[binding].IPv4
 		if v6 {
@@ -268,7 +277,7 @@ func (s InstalledZapretStrategies) handlesDNS(binding int, ipv6 bool, need zapre
 		if need.QUIC {
 			return slices.Contains(ports.UDP, need.Port) && s.HandlesQUIC != nil && s.HandlesQUIC(binding, v6, need.Port)
 		}
-		return slices.Contains(ports.TCP, need.Port)
+		return slices.Contains(ports.TCP, need.Port) && (!need.PlainUDP || slices.Contains(ports.UDP, need.Port))
 	}
 	switch need.Family {
 	case zapretactivation.DNSFamilyFromProfile:
@@ -292,6 +301,9 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 	}
 	egress, occupied, err := observeInstalledZapretNetwork(ctx, profile.Interface, profile.IPv6, batch.TUN != nil)
 	if err != nil {
+		return nil, err
+	}
+	if err := profile.verifyDialBindings(batch.Bindings, egress.IfIndex); err != nil {
 		return nil, err
 	}
 	var tunScope *planner.ZapretTUNScope
@@ -463,6 +475,9 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 	path.verify = func(ctx context.Context) error {
 		if ctx.Err() != nil || table.Verify(ctx) != nil || deny.Verify(ctx) != nil {
 			return errZapretSocket
+		}
+		if err := profile.verifyDialBindings(batch.Bindings, egress.IfIndex); err != nil {
+			return err
 		}
 		_, err := nftables.ObserveZapretQueueOwner(plans[0], fact)
 		return err

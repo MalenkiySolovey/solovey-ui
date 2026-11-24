@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/netip"
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
@@ -117,8 +118,11 @@ func CheckZapretStartup(db *gorm.DB, ready bool) (bool, error) {
 		if binding == nil || !binding.Enabled {
 			continue
 		}
-		if !ready || row.RemoteMissing || zapretDialConflict(fields) {
+		if !ready || row.RemoteMissing {
 			return false, fmt.Errorf("outbound %q: %w", binding.OutboundRef, ErrZapretPacketPathUnqualified)
+		}
+		if _, err := zapretDialBinding(fields); err != nil {
+			return false, fmt.Errorf("outbound %q: %w", binding.OutboundRef, err)
 		}
 		found++
 		if found > zapretactivation.MaxBindings {
@@ -128,14 +132,43 @@ func CheckZapretStartup(db *gorm.DB, ready bool) (bool, error) {
 	return found > 0, nil
 }
 
-func zapretDialConflict(fields map[string]json.RawMessage) bool {
-	for key := range fields {
-		switch strings.ToLower(key) {
-		case "protect_path", "routing_mark", "bind_interface", "netns", "inet4_bind_address", "inet6_bind_address":
-			return true
+func zapretDialBinding(fields map[string]json.RawMessage) (zapretactivation.DialBinding, error) {
+	var dial zapretactivation.DialBinding
+	for key, raw := range fields {
+		field := strings.ToLower(key)
+		switch field {
+		case "protect_path", "routing_mark", "netns":
+			return dial, fmt.Errorf("%w: selected Dial field %s has no installed admission", ErrZapretPacketPathUnqualified, field)
+		case "bind_interface", "inet4_bind_address", "inet6_bind_address":
+			var entered *string
+			if key != field || json.Unmarshal(raw, &entered) != nil {
+				return dial, fmt.Errorf("%w: invalid Dial field %s", ErrZapretPacketPathUnqualified, field)
+			}
+			if entered == nil {
+				continue // The native option is unset; preserve the original JSON.
+			}
+			if field == "bind_interface" {
+				dial.Interface = *entered
+				continue
+			}
+			addr, err := netip.ParseAddr(*entered)
+			if err != nil || field == "inet4_bind_address" && !addr.Is4() ||
+				field == "inet6_bind_address" && (!addr.Is6() || addr.Is4In6() || addr.Zone() != "") {
+				return dial, fmt.Errorf("%w: invalid Dial field %s", ErrZapretPacketPathUnqualified, field)
+			}
+			if !addr.IsUnspecified() {
+				if addr.Is4() {
+					dial.IPv4 = addr
+				} else {
+					dial.IPv6 = addr
+				}
+			}
 		}
 	}
-	return false
+	if !dial.Valid() {
+		return dial, fmt.Errorf("%w: use a valid Linux interface and unicast source addresses", ErrZapretPacketPathUnqualified)
+	}
+	return dial, nil
 }
 
 // projectZapretOutbound is used outside authorized Core startup. Returning an
@@ -160,14 +193,18 @@ func zapretRequest(row model.Outbound) (zapretactivation.Request, bool, error) {
 	if err != nil || binding == nil || !binding.Enabled {
 		return zapretactivation.Request{}, false, err
 	}
-	if row.RemoteMissing || zapretDialConflict(fields) {
+	if row.RemoteMissing {
 		return zapretactivation.Request{}, false, fmt.Errorf("outbound %q: %w", binding.OutboundRef, ErrZapretPacketPathUnqualified)
+	}
+	dial, err := zapretDialBinding(fields)
+	if err != nil {
+		return zapretactivation.Request{}, false, fmt.Errorf("outbound %q: %w", binding.OutboundRef, err)
 	}
 	serialized, err := json.Marshal(row)
 	if err != nil {
 		return zapretactivation.Request{}, false, err
 	}
-	return zapretactivation.Request{OutboundRef: binding.OutboundRef, OutboundRevision: fmt.Sprintf("%x", sha256.Sum256(serialized)), StrategyRef: binding.StrategyRef}, true, nil
+	return zapretactivation.Request{OutboundRef: binding.OutboundRef, OutboundRevision: fmt.Sprintf("%x", sha256.Sum256(serialized)), StrategyRef: binding.StrategyRef, Dial: dial}, true, nil
 }
 
 func ZapretRequests(db *gorm.DB) ([]zapretactivation.Request, error) {
