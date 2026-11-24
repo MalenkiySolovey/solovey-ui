@@ -1,4 +1,4 @@
 github.com/MalenkiySolovey/solovey-component-server-protection v0.1.0 h1:gSzRUTp93lF0d0DP+7vhBziM2CUY9dhLrT+8l8vQqwk=
 github.com/MalenkiySolovey/solovey-component-server-protection v0.1.0/go.mod h1:q4o5M/L2vVYNYcAEGzjwBNWSPb9ISPS6m4jPYAZk0co=
-github.com/MalenkiySolovey/solovey-host v0.12.1 h1:jaf33dRl5IAWgdIeJmKd9IBO3z3EFdeFIjxi/xb8xeY=
-github.com/MalenkiySolovey/solovey-host v0.12.1/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
+github.com/MalenkiySolovey/solovey-host v0.12.2 h1:6Aj30FzQvO9eSHPGv0Nu/VNiZQe58jCvG47n7S3qEDk=
+github.com/MalenkiySolovey/solovey-host v0.12.2/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
