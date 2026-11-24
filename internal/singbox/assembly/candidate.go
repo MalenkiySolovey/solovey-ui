@@ -21,6 +21,7 @@ import (
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 	"github.com/MalenkiySolovey/solovey-ui/logger"
+	"github.com/sagernet/sing-box/option"
 	"gorm.io/gorm"
 )
 
@@ -45,6 +46,7 @@ func BuildCoreStartupFromDB(db *gorm.DB, admit entityoutbounds.ZapretBatchAdmitt
 		return nil, err
 	}
 	render := entityoutbounds.GetAllConfig
+	var selected map[string]bool
 	if bound {
 		tun, err := InstalledZapretTUNRequest(db)
 		if err != nil {
@@ -52,6 +54,7 @@ func BuildCoreStartupFromDB(db *gorm.DB, admit entityoutbounds.ZapretBatchAdmitt
 		}
 		render = func(tx *gorm.DB) ([]json.RawMessage, error) {
 			return entityoutbounds.GetAllRuntimeConfig(tx, func(input zapretactivation.Validation) ([]zapretactivation.Grant, error) {
+				selected = selectedZapretOutbounds(input.Bindings)
 				input.TUN = tun
 				return admit(input)
 			})
@@ -61,7 +64,7 @@ func BuildCoreStartupFromDB(db *gorm.DB, admit entityoutbounds.ZapretBatchAdmitt
 	if err != nil {
 		return nil, err
 	}
-	if err := validateZapretCoreProfile(projection.Config, bound); err != nil {
+	if err := validateZapretCoreProfile(projection.Config, bound, selected); err != nil {
 		return nil, err
 	}
 	return singboxconfig.PrepareRuntimeAssets(projection.Config)
@@ -82,19 +85,18 @@ func ValidateCoreRestartFromDB(db *gorm.DB, zapretReady bool) error {
 	if err != nil {
 		return err
 	}
-	if err := validateZapretCoreProfile(projection.Config, bound); err != nil {
-		return err
-	}
 	var selected map[string]bool
 	if bound {
 		requests, err := entityoutbounds.ZapretRequests(db)
 		if err != nil {
 			return err
 		}
-		selected = make(map[string]bool, len(requests))
-		for _, request := range requests {
-			selected[request.OutboundRef] = true
-		}
+		selected = selectedZapretOutbounds(requests)
+	}
+	if err := validateZapretCoreProfile(projection.Config, bound, selected); err != nil {
+		return err
+	}
+	if bound {
 		if singboxvalidation.ValidateConfigShape(projection.Config) != nil {
 			return fmt.Errorf("%w: the pinned Core rejected the candidate", entityoutbounds.ErrZapretPacketPathUnqualified)
 		}
@@ -106,7 +108,15 @@ func ValidateCoreRestartFromDB(db *gorm.DB, zapretReady bool) error {
 	return err
 }
 
-func validateZapretCoreProfile(config []byte, bound bool) error {
+func selectedZapretOutbounds(requests []zapretactivation.Request) map[string]bool {
+	selected := make(map[string]bool, len(requests))
+	for _, request := range requests {
+		selected[request.OutboundRef] = true
+	}
+	return selected
+}
+
+func validateZapretCoreProfile(config []byte, bound bool, selected map[string]bool) error {
 	var candidate struct {
 		Inbounds  []json.RawMessage
 		Route     map[string]json.RawMessage
@@ -122,10 +132,32 @@ func validateZapretCoreProfile(config []byte, bound bool) error {
 	if !bound {
 		return nil
 	}
-	for key := range candidate.Route {
+	var interfaceDefault string
+	for key, raw := range candidate.Route {
 		switch strings.ToLower(key) {
-		case "default_mark", "default_network_namespace", "network_namespaces", "default_interface", "auto_detect_interface":
+		case "default_mark", "default_network_namespace", "network_namespaces":
 			return fmt.Errorf("%w: conflicting Core route control %s", entityoutbounds.ErrZapretPacketPathUnqualified, key)
+		case "default_interface":
+			var name string
+			if err := json.Unmarshal(raw, &name); err != nil {
+				return fmt.Errorf("%w: invalid route.%s", entityoutbounds.ErrZapretPacketPathUnqualified, key)
+			}
+			if name != "" {
+				interfaceDefault = "default_interface"
+			}
+		case "auto_detect_interface":
+			var enabled bool
+			if err := json.Unmarshal(raw, &enabled); err != nil {
+				return fmt.Errorf("%w: invalid route.%s", entityoutbounds.ErrZapretPacketPathUnqualified, key)
+			}
+			if enabled && interfaceDefault == "" {
+				interfaceDefault = "auto_detect_interface"
+			}
+		}
+	}
+	if interfaceDefault != "" {
+		if err := validateZapretInterfaceOverrides(candidate.Outbounds, selected, interfaceDefault); err != nil {
+			return err
 		}
 	}
 	for _, options := range append(candidate.Outbounds, candidate.Endpoints...) {
@@ -134,6 +166,32 @@ func validateZapretCoreProfile(config []byte, bound bool) error {
 				return fmt.Errorf("%w: another Core socket mark owner is configured", entityoutbounds.ErrZapretPacketPathUnqualified)
 			}
 		}
+	}
+	return nil
+}
+
+func validateZapretInterfaceOverrides(outbounds []map[string]json.RawMessage, selected map[string]bool, routeField string) error {
+	seen := make(map[string]bool, len(selected))
+	for _, fields := range outbounds {
+		var tag string
+		if json.Unmarshal(fields["tag"], &tag) != nil || !selected[tag] {
+			continue
+		}
+		raw, err := json.Marshal(fields)
+		if err != nil {
+			return err
+		}
+		var dial option.DialerOptions
+		// Both pinned default dialers suppress interface defaults on an
+		// explicit interface or either native source-address option.
+		if json.Unmarshal(raw, &dial) != nil || dial.BindInterface == "" && dial.Inet4BindAddress == nil && dial.Inet6BindAddress == nil {
+			return fmt.Errorf("%w: outbound %q inherits route.%s; configure its admitted interface or source address explicitly",
+				entityoutbounds.ErrZapretPacketPathUnqualified, tag, routeField)
+		}
+		seen[tag] = true
+	}
+	if len(seen) == 0 || len(seen) != len(selected) {
+		return fmt.Errorf("%w: could not verify interface overrides for every selected outbound", entityoutbounds.ErrZapretPacketPathUnqualified)
 	}
 	return nil
 }
