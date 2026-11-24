@@ -23,6 +23,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	platform "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
 	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
+	packetfilter "github.com/MalenkiySolovey/solovey-ui/network/nftables"
 	"github.com/MalenkiySolovey/solovey-ui/network/planner"
 	"github.com/google/nftables"
 )
@@ -32,6 +33,7 @@ const (
 	zapretEngineRoot  = "/usr/local/lib/solovey-ui/zapret-engine"
 	zapretEnginePath  = zapretEngineRoot + "/nfqws2"
 	zapretEngineRev   = "038c97e5819df10f8e8c22a2f1fffe57f2f7379b"
+	zapretAutoLuaSHA  = "23a9b99a776d868d92f4cc0ee5110f5c1f12fe746620d9c0337022dbc2f52df0"
 	zapretInventory   = "/usr/local/solovey-ui/components/installed.json"
 )
 
@@ -42,7 +44,11 @@ type InstalledZapretStrategies struct {
 	Families        []planner.ZapretFamilies
 	UsesCustomBlobs bool
 	HandlesQUIC     func(binding int, ipv6 bool, port uint16) bool
-	Compile         func(engineRoot string, queue uint16, loopMark uint32, queueMarks []uint32, trace bool) ([]string, ZapretNativeTrace, error)
+	Compile         func(engineRoot string, queue uint16, loopMark uint32, queueMarks []uint32, trace, replies bool) ([]string, ZapretNativeTrace, error)
+}
+
+func (s InstalledZapretStrategies) needsReturn() bool {
+	return slices.ContainsFunc(s.Intents, func(p intent.ZapretPacketPathIntent) bool { return p.NeedsReturn })
 }
 
 type ZapretNativeTrace interface {
@@ -226,6 +232,16 @@ func (p installedZapretProfile) verifyEngine() error {
 	return nil
 }
 
+var errZapretReplyAsset = errors.New("the Circular strategy requires the pinned zapret-auto.lua; install the matching Zapret2 engine package")
+
+func verifyZapretReplyAsset() error {
+	data, err := readZapretAsset(zapretEngineRoot+"/lua/zapret-auto.lua", 512<<10)
+	if err != nil || fmt.Sprintf("%x", sha256.Sum256(data)) != zapretAutoLuaSHA {
+		return errZapretReplyAsset
+	}
+	return nil
+}
+
 func readZapretAsset(path string, maxSize int64) ([]byte, error) {
 	// Directories and files are trusted deployment assets; neither Panel nor
 	// the engine's post-drop UID can replace the executable, profile or Lua.
@@ -263,8 +279,8 @@ func rootOwnedZapretAsset(info os.FileInfo) bool {
 	return ok && stat.Uid == 0 && info.Mode()&(os.ModeSetuid|os.ModeSetgid|0o022) == 0
 }
 
-func observeInstalledZapretNetwork(ctx context.Context, interfaceName string, ipv6, tun bool, verifyActive func(context.Context) error) (planner.ZapretEgress, []uint16, error) {
-	if err := checkZapretForeignHooks(ctx, tun, verifyActive); err != nil {
+func observeInstalledZapretNetwork(ctx context.Context, interfaceName string, ipv6, tun, replies, hasDeny bool, verifyActive func(context.Context) error) (planner.ZapretEgress, []uint16, error) {
+	if err := checkZapretForeignHooks(ctx, tun, replies, hasDeny, verifyActive); err != nil {
 		return planner.ZapretEgress{}, nil, err
 	}
 	iface, err := net.InterfaceByName(interfaceName)
@@ -307,7 +323,9 @@ func installedZapretFacts(request zapretactivation.Request, egress *planner.Zapr
 			DirectSocket: true, SocketMark: true, NFQueue: true, ConntrackAccounting: true, EgressGuard: true}}
 }
 
-func checkZapretForeignHooks(ctx context.Context, tun bool, verifyActive func(context.Context) error) error {
+var errZapretReplyHook = errors.New("a foreign INPUT hook occupies the Circular reply guard; move that chain before the Zapret approval hooks")
+
+func checkZapretForeignHooks(ctx context.Context, tun, replies, hasDeny bool, verifyActive func(context.Context) error) error {
 	for _, path := range []string{"/proc/net/ip_tables_names", "/proc/net/ip6_tables_names"} {
 		data, err := os.ReadFile(path)
 		if err != nil && !errors.Is(err, os.ErrNotExist) || len(strings.TrimSpace(string(data))) != 0 {
@@ -318,6 +336,10 @@ func checkZapretForeignHooks(ctx context.Context, tun bool, verifyActive func(co
 	if err != nil {
 		return err
 	}
+	return checkZapretHookInventory(ctx, chains, tun, replies, hasDeny, verifyActive)
+}
+
+func checkZapretHookInventory(ctx context.Context, chains []*nftables.Chain, tun, replies, hasDeny bool, verifyActive func(context.Context) error) error {
 	var sawActive bool
 	for _, chain := range chains {
 		if chain.Hooknum == nil {
@@ -326,7 +348,22 @@ func checkZapretForeignHooks(ctx context.Context, tun bool, verifyActive func(co
 		// Netdev egress and inet input both have hook number 1.
 		switch chain.Table.Family {
 		case nftables.TableFamilyINet, nftables.TableFamilyIPv4, nftables.TableFamilyIPv6:
-			if *chain.Hooknum == *nftables.ChainHookInput || !tun && *chain.Hooknum == *nftables.ChainHookForward {
+			if *chain.Hooknum == *nftables.ChainHookInput {
+				if !replies || chain.Priority != nil && int32(*chain.Priority) < packetfilter.ZapretReplyPrecheckPriority {
+					continue
+				}
+				if chain.Table.Family == nftables.TableFamilyINet {
+					if hasDeny && chain.Table.Name == planner.ZapretDenyTable && chain.Priority != nil && packetfilter.ZapretReplyDenyHook(chain.Name, int32(*chain.Priority)) {
+						continue // openDeny must verify the retained owner and shape.
+					}
+					if chain.Table.Name == planner.ZapretInstalledTable && verifyActive != nil {
+						sawActive = true
+						continue
+					}
+				}
+				return errZapretReplyHook
+			}
+			if !tun && *chain.Hooknum == *nftables.ChainHookForward {
 				continue
 			}
 		}

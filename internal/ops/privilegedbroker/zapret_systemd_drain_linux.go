@@ -159,7 +159,7 @@ func retiredZapretTCPID(entry []byte, family byte) ([]byte, error) {
 			mark = decoder.Uint32()
 		}
 	}
-	if decoder.Err() != nil || mark&^planner.ZapretMaxSerial != planner.ZapretSocketMarkBit || mark&planner.ZapretMaxSerial == 0 {
+	if decoder.Err() != nil || mark&^(planner.ZapretMaxSerial|planner.ZapretReturnSocketBit) != planner.ZapretSocketMarkBit || mark&planner.ZapretMaxSerial == 0 {
 		return nil, errors.New("kernel did not identify the retired Zapret socket mark")
 	}
 	return entry[4:52], nil // inet_diag_sockid (includes the kernel cookie)

@@ -13,10 +13,48 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
+	packetfilter "github.com/MalenkiySolovey/solovey-ui/network/nftables"
 	"github.com/MalenkiySolovey/solovey-ui/network/planner"
+	"github.com/google/nftables"
 )
 
 type testNativeTrace struct{ io.Writer }
+
+func TestInstalledZapretReplyHookOrdering(t *testing.T) {
+	input := func(table, name string, priority int32) *nftables.Chain {
+		return &nftables.Chain{Table: &nftables.Table{Name: table, Family: nftables.TableFamilyINet},
+			Name: name, Hooknum: nftables.ChainHookInput, Priority: nftables.ChainPriorityRef(nftables.ChainPriority(priority))}
+	}
+	check := func(replies, hasDeny bool, verify func(context.Context) error, chains ...*nftables.Chain) error {
+		return checkZapretHookInventory(t.Context(), chains, false, replies, hasDeny, verify)
+	}
+	early := input("ordinary", "filter", 0)
+	late := input("foreign", "overlap", packetfilter.ZapretReplyPrecheckPriority)
+	terminal := input("foreign", "after_guard", packetfilter.ZapretReplyGuardPriority+1)
+	if err := check(true, false, nil, early); err != nil {
+		t.Fatalf("ordinary INPUT should remain independent: %v", err)
+	}
+	if err := check(false, false, nil, early, late, terminal); err != nil {
+		t.Fatalf("outgoing-only preflight must not gate foreign INPUT: %v", err)
+	}
+	for _, chain := range []*nftables.Chain{late, terminal, input(planner.ZapretDenyTable, "deny_unadmitted_reply", packetfilter.ZapretReplyGuardPriority)} {
+		if err := check(true, false, nil, early, chain); !errors.Is(err, errZapretReplyHook) {
+			t.Fatalf("conflicting or unowned INPUT hook %s accepted: %v", chain.Name, err)
+		}
+	}
+	retained := input(planner.ZapretDenyTable, "deny_unadmitted_reply", packetfilter.ZapretReplyGuardPriority)
+	live := input(planner.ZapretInstalledTable, "verify_reply", packetfilter.ZapretReplyGuardPriority-1)
+	if err := check(true, true, nil, early, retained); err != nil {
+		t.Fatalf("matching hook with retained evidence rejected: %v", err)
+	}
+	if err := check(true, true, nil, early, retained, live); !errors.Is(err, errZapretReplyHook) {
+		t.Fatalf("unverified live table accepted: %v", err)
+	}
+	verifyErr := errors.New("live owner changed")
+	if err := check(true, true, func(context.Context) error { return verifyErr }, early, retained, live); !errors.Is(err, verifyErr) {
+		t.Fatalf("live table verification was skipped: %v", err)
+	}
+}
 
 func (t testNativeTrace) MatchedProfiles(binding int) []string {
 	if binding == 0 {

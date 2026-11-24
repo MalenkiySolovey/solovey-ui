@@ -21,6 +21,9 @@ func TestRetiredZapretTCPIDRequiresExactOrphan(t *testing.T) {
 		ok    bool
 	}{
 		{name: "verified orphan", mark: planner.ZapretSocketMarkBit | 4, ok: true},
+		{name: "verified return-scope orphan", mark: planner.ZapretSocketMarkBit | planner.ZapretReturnSocketBit | 4, ok: true},
+		{name: "foreign return-bit-only mark", mark: planner.ZapretReturnSocketBit | 4},
+		{name: "packet proof bit cannot be a socket mark", mark: planner.ZapretSocketMarkBit | planner.ZapretSystemdFinal | 4},
 		{name: "owned by Panel", uid: 950, mark: planner.ZapretSocketMarkBit | 4},
 		{name: "root socket with an open descriptor", inode: 123, mark: planner.ZapretSocketMarkBit | 4},
 		{name: "unmarked control"},

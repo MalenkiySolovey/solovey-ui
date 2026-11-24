@@ -17,11 +17,11 @@ import (
 // caller must give PID 1 a retained copy of this owner port before allowing
 // any plan to mark sockets. No live queue or engine is needed to deny.
 func CreateZapretDenyTable(ctx context.Context, namespace uint64, bootID string) (*ZapretOwnedTable, error) {
-	return CreateZapretDenyTableForIngress(ctx, namespace, bootID, nil)
+	return CreateZapretDenyTableForIngress(ctx, namespace, bootID, nil, false)
 }
 
-func CreateZapretDenyTableForIngress(ctx context.Context, namespace uint64, bootID string, tun *planner.ZapretTUNScope) (*ZapretOwnedTable, error) {
-	comment, chains := zapretDenyShape(bootID, tun)
+func CreateZapretDenyTableForIngress(ctx context.Context, namespace uint64, bootID string, tun *planner.ZapretTUNScope, replies bool) (*ZapretOwnedTable, error) {
+	comment, chains := zapretDenyShape(bootID, tun, replies)
 	const chain = "deny_unadmitted"
 	batch, err := newZapretBatch(planner.ZapretDenyTable, comment)
 	if err != nil {
@@ -49,14 +49,23 @@ func CreateZapretDenyTableForIngress(ctx context.Context, namespace uint64, boot
 			return nil, err
 		}
 	}
+	if replies {
+		if err := batch.addZapretReplyDeny(); err != nil {
+			return nil, err
+		}
+	}
 	return createZapretTable(ctx, namespace, planner.ZapretDenyTable, chains, comment, batch.finish())
 }
 
-func zapretDenyShape(bootID string, tun *planner.ZapretTUNScope) ([]byte, uint32) {
+func zapretDenyShape(bootID string, tun *planner.ZapretTUNScope, replies bool) ([]byte, uint32) {
+	value, chains := "deny:"+bootID, uint32(1)
 	if tun != nil {
-		return zapretTableComment("deny-tun:" + tun.Revision(bootID)), 3
+		value, chains = "deny-tun:"+tun.Revision(bootID), 3
 	}
-	return zapretTableComment("deny:" + bootID), 1
+	if replies {
+		value, chains = value+":input-v1", chains+2
+	}
+	return zapretTableComment(value), chains
 }
 
 // WithZapretDenyOwner is only used for the broker-to-PID-1 FD store handoff.
@@ -78,10 +87,10 @@ func (t *ZapretOwnedTable) WithZapretDenyOwner(use func(int) error) error {
 // descriptor was previously verified in the systemd FD store. This connection
 // cannot modify the table and its close does not retire the owner.
 func ObserveZapretDenyTable(ctx context.Context, namespace uint64, bootID string, port uint32, expectedInode uint64) (_ *ZapretOwnedTable, failure error) {
-	return ObserveZapretDenyTableForIngress(ctx, namespace, bootID, port, expectedInode, nil)
+	return ObserveZapretDenyTableForIngress(ctx, namespace, bootID, port, expectedInode, nil, false)
 }
 
-func ObserveZapretDenyTableForIngress(ctx context.Context, namespace uint64, bootID string, port uint32, expectedInode uint64, tun *planner.ZapretTUNScope) (_ *ZapretOwnedTable, failure error) {
+func ObserveZapretDenyTableForIngress(ctx context.Context, namespace uint64, bootID string, port uint32, expectedInode uint64, tun *planner.ZapretTUNScope, replies bool) (_ *ZapretOwnedTable, failure error) {
 	inventory, err := readZapretQueueInventory("/proc/net/netlink")
 	if err != nil {
 		return nil, err
@@ -102,7 +111,7 @@ func ObserveZapretDenyTableForIngress(ctx context.Context, namespace uint64, boo
 	if err := checkZapretTableNamespace(conn, namespace); err != nil {
 		return nil, err
 	}
-	comment, chains := zapretDenyShape(bootID, tun)
+	comment, chains := zapretDenyShape(bootID, tun, replies)
 	table := &ZapretOwnedTable{conn: conn, port: port, name: planner.ZapretDenyTable, chains: chains, comment: comment}
 	if err := table.setDeadline(ctx); err != nil {
 		return nil, err

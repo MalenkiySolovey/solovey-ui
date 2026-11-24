@@ -30,6 +30,9 @@ const (
 	zapretSystemdLoopMark uint32 = 1 << 25
 	zapretSystemdPassMark uint32 = 1 << 26
 	ZapretSystemdFinal    uint32 = 1 << 27
+	// Bit 28 belongs to the prepared TUN path. Reserve this bit only for
+	// plans whose selected TCP sockets require a retained input guard.
+	ZapretReturnSocketBit uint32 = 1 << 29
 	ZapretMaxSerial       uint32 = (1 << 24) - 1
 	ZapretDenyMask               = ZapretSocketMarkBit | zapretSystemdLoopMark
 	ZapretReservedMask           = ZapretDenyMask | zapretSystemdPassMark | ZapretSystemdFinal | ZapretMaxSerial
@@ -52,10 +55,14 @@ type ZapretFacts struct {
 	SystemdQueue                              uint16          `json:",omitempty"` // assigned by CompileZapretSystemdBatch
 	SystemdFamilies                           *ZapretFamilies `json:",omitempty"`
 	SystemdBindInterface                      bool            `json:",omitempty"`
+	SystemdReplyGuard                         bool            `json:",omitempty"`
 	SystemdSource4, SystemdSource6            netip.Addr      `json:",omitzero"`
 }
 
-type ZapretPorts struct{ TCP, UDP []uint16 }
+type ZapretPorts struct {
+	TCP, UDP []uint16
+	ReplyTCP []uint16 `json:",omitempty"`
+}
 
 // ZapretFamilies is the component's port scope for each family, before
 // intersection with the operator's installed egress capability.
@@ -78,9 +85,10 @@ func (p ZapretPorts) forProtocol(protocol intent.PacketProtocol) []uint16 {
 func (p ZapretPorts) empty() bool { return len(p.TCP) == 0 && len(p.UDP) == 0 }
 
 func (p ZapretPorts) canonical() ZapretPorts {
-	p.TCP, p.UDP = slices.Clone(p.TCP), slices.Clone(p.UDP)
+	p.TCP, p.UDP, p.ReplyTCP = slices.Clone(p.TCP), slices.Clone(p.UDP), slices.Clone(p.ReplyTCP)
 	slices.Sort(p.TCP)
 	slices.Sort(p.UDP)
+	slices.Sort(p.ReplyTCP)
 	return p
 }
 
@@ -88,23 +96,38 @@ func (f ZapretFamilies) valid(value intent.ZapretPacketPathIntent) bool {
 	if f.RequiresIPv6 && f.IPv6.empty() {
 		return false
 	}
+	if value.NeedsReturn != (len(f.IPv4.ReplyTCP) != 0 || len(f.IPv6.ReplyTCP) != 0) {
+		return false
+	}
+	for _, family := range []ZapretPorts{f.IPv4, f.IPv6} {
+		if !validZapretPortSubset(family.ReplyTCP, family.TCP) {
+			return false
+		}
+	}
 	for _, protocol := range []intent.PacketProtocol{intent.PacketProtocolTCP, intent.PacketProtocolUDP} {
 		v4, v6 := f.IPv4.forProtocol(protocol), f.IPv6.forProtocol(protocol)
 		union := (ZapretPorts{TCP: value.TCPPorts, UDP: value.UDPPorts}).forProtocol(protocol)
 		for _, subset := range [][]uint16{v4, v6} {
-			if len(subset) > len(union) {
+			if !validZapretPortSubset(subset, union) {
 				return false
-			}
-			for i, port := range subset {
-				if !slices.Contains(union, port) || slices.Contains(subset[:i], port) {
-					return false
-				}
 			}
 		}
 		for _, port := range union {
 			if !slices.Contains(v4, port) && !slices.Contains(v6, port) {
 				return false
 			}
+		}
+	}
+	return true
+}
+
+func validZapretPortSubset(ports, scope []uint16) bool {
+	if len(ports) > len(scope) {
+		return false
+	}
+	for i, port := range ports {
+		if !slices.Contains(scope, port) || slices.Contains(ports[:i], port) {
+			return false
 		}
 	}
 	return true
@@ -145,6 +168,7 @@ func (p ZapretPlan) Plan() Plan         { return p.plan }
 func (p ZapretPlan) Queue() uint16      { return p.queue }
 func (p ZapretPlan) SocketMark() uint32 { return p.mark }
 func (p ZapretPlan) LoopMark() uint32   { return p.loopMark }
+func (p ZapretPlan) NeedsReturn() bool  { return p.intent.NeedsReturn }
 
 // QueueMark includes the admission bit issued by the nft queue rule, never by
 // the dialer. The egress guard drops the unapproved socket mark.
@@ -176,16 +200,25 @@ func (p ZapretPlan) PortsForFamily(protocol intent.PacketProtocol, ipv6 bool) []
 	return slices.Clone(p.portsForFamily(protocol, ipv6))
 }
 
+// ReplyTCPForFamily is the qualified subset of TCP ports that requires the
+// same native queue for replies. It is not an independent outbound scope.
+func (p ZapretPlan) ReplyTCPForFamily(ipv6 bool) []uint16 {
+	return slices.Clone(p.packetPortsForFamily(ipv6).ReplyTCP)
+}
+
 func (p ZapretPlan) portsForFamily(protocol intent.PacketProtocol, ipv6 bool) []uint16 {
-	ports := ZapretPorts{TCP: p.intent.TCPPorts, UDP: p.intent.UDPPorts}
+	return p.packetPortsForFamily(ipv6).forProtocol(protocol)
+}
+
+func (p ZapretPlan) packetPortsForFamily(ipv6 bool) ZapretPorts {
 	if p.plan.facts.Zapret != nil && p.plan.facts.Zapret.SystemdFamilies != nil {
 		families := p.plan.facts.Zapret.SystemdFamilies
-		ports = families.IPv4
 		if ipv6 {
-			ports = families.IPv6
+			return families.IPv6
 		}
+		return families.IPv4
 	}
-	return ports.forProtocol(protocol)
+	return ZapretPorts{TCP: p.intent.TCPPorts, UDP: p.intent.UDPPorts}
 }
 
 // ZapretSocketScope projects allocation data for the installed broker. It is
@@ -295,9 +328,12 @@ func compileZapret(request intent.ZapretPacketPathIntent, facts Facts, sharedQue
 	if z.OutboundRef != request.OutboundRef || z.OutboundRevision != request.InputRevision {
 		return ZapretPlan{}, conflict(StalePlan, ref)
 	}
-	if request.NeedsReturn || !z.DirectSocket || z.TUNAutoRedirect || !z.SocketMark ||
+	if !z.DirectSocket || z.TUNAutoRedirect || !z.SocketMark ||
 		!z.NFQueue || !z.ConntrackAccounting || !z.EgressGuard || z.Provider != "sing-box" {
 		return ZapretPlan{}, conflict(CapabilityUnavailable, ref)
+	}
+	if request.NeedsReturn && (facts.Capability.Backend != ZapretSystemdBackend || !z.SystemdReplyGuard) {
+		return ZapretPlan{}, conflict(CapabilityUnavailable, "the selected Zapret strategy requires a retained TCP reply guard")
 	}
 	if facts.Capability.Backend != ZapretSystemdBackend &&
 		(z.SystemdBindInterface || z.SystemdSource4.IsValid() || z.SystemdSource6.IsValid()) {
@@ -321,6 +357,9 @@ func compileZapret(request intent.ZapretPacketPathIntent, facts Facts, sharedQue
 			(z.InstalledEgress.RoutingMarkBits|z.ReservedMarkBits)&ZapretReservedMask != 0 {
 			return ZapretPlan{}, conflict(CapabilityUnavailable, ref)
 		}
+		if request.NeedsReturn && (z.InstalledEgress.RoutingMarkBits|z.ReservedMarkBits)&ZapretReturnSocketBit != 0 {
+			return ZapretPlan{}, conflict(ResourceConflict, "the Zapret reply socket mark overlaps installed policy")
+		}
 		if z.SystemdSource4.IsValid() && (!z.SystemdSource4.Is4() || !z.SystemdSource4.IsGlobalUnicast()) ||
 			z.SystemdSource6.IsValid() && (!z.SystemdSource6.Is6() || z.SystemdSource6.Is4In6() || z.SystemdSource6.Zone() != "" ||
 				!z.SystemdSource6.IsGlobalUnicast() || !z.InstalledEgress.IPv6Gateway.IsValid()) {
@@ -333,7 +372,10 @@ func compileZapret(request intent.ZapretPacketPathIntent, facts Facts, sharedQue
 			if !z.InstalledEgress.IPv6Gateway.IsValid() && (f.RequiresIPv6 || f.IPv4.empty()) {
 				return ZapretPlan{}, conflict(CapabilityUnavailable, ref)
 			}
-		} else if z.InstalledEgress.IPv6Gateway.IsValid() || len(request.UDPPorts) != 0 {
+			if request.NeedsReturn && !z.InstalledEgress.IPv6Gateway.IsValid() && len(f.IPv4.ReplyTCP) == 0 {
+				return ZapretPlan{}, conflict(CapabilityUnavailable, ref)
+			}
+		} else if request.NeedsReturn || z.InstalledEgress.IPv6Gateway.IsValid() || len(request.UDPPorts) != 0 {
 			return ZapretPlan{}, conflict(InvalidIntent, ref)
 		}
 		table, guard = "inet:"+ZapretInstalledTable, "inet:"+ZapretDenyTable
@@ -414,6 +456,9 @@ func compileZapret(request intent.ZapretPacketPathIntent, facts Facts, sharedQue
 	}
 	if facts.Capability.Backend == ZapretSystemdBackend {
 		mark, loopMark, passMark, finalBit = ZapretSocketMarkBit|z.SystemdSerial, zapretSystemdLoopMark, zapretSystemdPassMark, ZapretSystemdFinal
+		if request.NeedsReturn {
+			mark |= ZapretReturnSocketBit
+		}
 	}
 	if queue == 0 || passMark == 0 || z.InstalledEgress != nil && finalBit == 0 {
 		return ZapretPlan{}, conflict(AllocationUnavailable, ref)

@@ -69,7 +69,8 @@ func (z *installedZapret) checkBatchBudget(ctx context.Context, input zapretacti
 	if path := z.active; path != nil && path.peer == peer.Revision && path.uid == peer.UID && path.ctx.Err() == nil {
 		verifyActive = path.verify
 	}
-	egress, occupied, err := observeInstalledZapretNetwork(ctx, profile.Interface, profile.IPv6, input.TUN != nil, verifyActive)
+	replies := selected.needsReturn()
+	egress, occupied, err := observeInstalledZapretNetwork(ctx, profile.Interface, profile.IPv6, input.TUN != nil, replies, z.deny.port != 0, verifyActive)
 	if err != nil {
 		return err
 	}
@@ -84,6 +85,7 @@ func (z *installedZapret) checkBatchBudget(ctx context.Context, input zapretacti
 	for i, request := range input.Bindings {
 		facts[i] = installedZapretFacts(request, &egress, occupied, first+uint32(i))
 		facts[i].Zapret.SystemdFamilies = &selected.Families[i]
+		facts[i].Zapret.SystemdReplyGuard = replies
 	}
 	plans, err := planner.CompileZapretSystemdBatch(selected.Intents, facts)
 	if err != nil {
@@ -108,8 +110,10 @@ func (z *installedZapret) checkBatchBudget(ctx context.Context, input zapretacti
 
 func compileInstalledZapret(plans []planner.ZapretPlan, selected InstalledZapretStrategies, queue uint16, observe bool) ([]string, ZapretNativeTrace, error) {
 	marks := make([]uint32, len(plans))
+	replies := false
 	for i, plan := range plans {
 		marks[i] = plan.QueueMark()
+		replies = replies || plan.NeedsReturn()
 	}
-	return selected.Compile(zapretEngineRoot, queue, plans[0].LoopMark(), marks, observe)
+	return selected.Compile(zapretEngineRoot, queue, plans[0].LoopMark(), marks, observe, replies)
 }
