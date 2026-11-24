@@ -19,7 +19,23 @@ import (
 )
 
 func registerInstalledZapret(ctx context.Context, server *broker.Server, transport broker.TransportMode, listeners *broker.ListenerSet) error {
-	return broker.RegisterInstalledZapret(ctx, server, transport, listeners, resolveZapretStrategies)
+	return broker.RegisterInstalledZapret(ctx, server, transport, listeners, resolveZapretBatch)
+}
+
+func resolveZapretBatch(inputs []json.RawMessage, requests []zapretactivation.Request) (broker.InstalledZapretStrategies, error) {
+	result, err := resolveZapretStrategies(inputs, requests)
+	if err != nil {
+		return result, err
+	}
+	compile := result.Compile
+	result.Compile = func(root string, queue uint16, loopMark uint32, marks []uint32, trace bool) ([]string, broker.ZapretNativeTrace, error) {
+		args, evidence, err := compile(root, queue, loopMark, marks, trace)
+		if errors.Is(err, strategy.ErrEngineArgumentBudget) {
+			return nil, nil, fmt.Errorf("%w: %w", broker.ErrZapretEngineBudget, err)
+		}
+		return args, evidence, err
+	}
+	return result, nil
 }
 
 type installedStrategy struct{ strategy.Strategy }
@@ -78,18 +94,11 @@ func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivati
 		for i, mark := range marks {
 			marked[i] = strategy.MarkedStrategy{Strategy: strategies[i], QueueMark: mark}
 		}
-		var args []string
-		var evidence broker.ZapretNativeTrace
-		var err error
 		if trace {
-			args, evidence, err = strategy.CompileBindingsWithNativeTrace(root, queue, loopMark, marked)
-		} else {
-			args, err = strategy.CompileBindings(root, queue, loopMark, marked)
+			return strategy.CompileBindingsWithNativeTrace(root, queue, loopMark, marked)
 		}
-		if errors.Is(err, strategy.ErrEngineArgumentBudget) {
-			return nil, nil, fmt.Errorf("%w: %w", broker.ErrZapretEngineBudget, err)
-		}
-		return args, evidence, err
+		args, err := strategy.CompileBindings(root, queue, loopMark, marked)
+		return args, nil, err
 	}
 	return result, nil
 }
