@@ -9,7 +9,7 @@ require (
 	github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0
 	github.com/MalenkiySolovey/solovey-component-telegram v0.1.0
 	github.com/MalenkiySolovey/solovey-contracts v1.0.1
-	github.com/MalenkiySolovey/solovey-host v0.12.2
+	github.com/MalenkiySolovey/solovey-host v0.12.3
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cilium/ebpf v0.22.0
 	github.com/coder/websocket v1.8.14

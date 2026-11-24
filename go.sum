@@ -75,6 +75,8 @@ github.com/MalenkiySolovey/solovey-host v0.11.0/go.mod h1:BUYlv5O5C9TrMoulPD+aNf
 github.com/MalenkiySolovey/solovey-host v0.12.1/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
 github.com/MalenkiySolovey/solovey-host v0.12.2 h1:6Aj30FzQvO9eSHPGv0Nu/VNiZQe58jCvG47n7S3qEDk=
 github.com/MalenkiySolovey/solovey-host v0.12.2/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
+github.com/MalenkiySolovey/solovey-host v0.12.3 h1:+92WMGufQOwxAILrzHtW6VjNlZkp3DwE+6YqGMlcitQ=
+github.com/MalenkiySolovey/solovey-host v0.12.3/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
 github.com/ajg/form v1.5.1 h1:t9c7v8JUKu/XxOGBU0yjNpaMloxGEJhUkqFRq0ibGeU=
 github.com/ajg/form v1.5.1/go.mod h1:uL1WgH+h2mgNtvBq0339dVnzXdBETtL2LeUXaIv25UY=
 github.com/akutz/memconn v0.1.0 h1:NawI0TORU4hcOMsMr11g7vwlCdkYeLKXBcxWu2W/P8A=

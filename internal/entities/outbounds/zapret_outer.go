@@ -10,20 +10,74 @@ import (
 	"github.com/sagernet/sing-box/option"
 )
 
-// The pinned HTTP and conventional Hysteria2 paths use the outbound's
-// shared dialer. Only assert the outer transport's protocol, port and family.
+// Identify the pinned provider's fixed network endpoint. The logical network
+// requested through a proxy may differ from the socket opened by this dialer.
 func zapretOuterSocket(row model.Outbound) (zapretactivation.OuterSocket, error) {
 	var socket zapretactivation.OuterSocket
 	fail := func(reason string) (zapretactivation.OuterSocket, error) {
 		return socket, fmt.Errorf("%w: %s", ErrZapretPacketPathUnqualified, reason)
 	}
 	var server option.ServerOptions
+	var network zapretactivation.OuterNetwork
 	switch row.Type {
 	case C.TypeDirect:
 		return socket, nil
-	case C.TypeHTTP:
+	case C.TypeHTTP, C.TypeAnyTLS, C.TypeShadowTLS, C.TypeSSH, C.TypeTUIC:
+		if row.Type == C.TypeTUIC && !C.WithQUIC {
+			return fail("this Core build does not support TUIC")
+		}
 		if err := json.Unmarshal(row.Options, &server); err != nil {
-			return fail("invalid HTTP proxy endpoint")
+			return fail("invalid fixed proxy endpoint")
+		}
+	case C.TypeVLESS, C.TypeVMess, C.TypeTrojan:
+		var native struct {
+			option.ServerOptions
+			Transport *struct{ Type string } `json:"transport"`
+		}
+		if err := json.Unmarshal(row.Options, &native); err != nil {
+			return fail("invalid proxy transport")
+		}
+		server, network = native.ServerOptions, zapretactivation.OuterTCP
+		if native.Transport != nil {
+			switch native.Transport.Type {
+			case C.V2RayTransportTypeHTTP, C.V2RayTransportTypeWebsocket, C.V2RayTransportTypeGRPC, C.V2RayTransportTypeHTTPUpgrade:
+			case C.V2RayTransportTypeQUIC:
+				if !C.WithQUIC {
+					return fail("this Core build does not support the QUIC transport")
+				}
+				network = zapretactivation.OuterUDP
+			default:
+				return fail(fmt.Sprintf("transport %q has no qualified fixed outer path; check for separate download or peer sockets", native.Transport.Type))
+			}
+		}
+	case C.TypeSOCKS:
+		var native option.SOCKSOutboundOptions
+		if err := json.Unmarshal(row.Options, &native); err != nil {
+			return fail("invalid SOCKS proxy endpoint")
+		}
+		switch native.Version {
+		case "4", "4a":
+		case "", "5":
+			// The native DetourDialer does not enforce the logical NetworkList.
+			if native.UDPOverTCP == nil || !native.UDPOverTCP.Enabled {
+				return fail("SOCKS5 UDP ASSOCIATE can use a server-selected relay address and port; the fixed path requires UDP over TCP")
+			}
+		default:
+			return fail("invalid SOCKS version")
+		}
+		server = native.ServerOptions
+	case C.TypeShadowsocks:
+		var native option.ShadowsocksOutboundOptions
+		if err := json.Unmarshal(row.Options, &native); err != nil {
+			return fail("invalid Shadowsocks proxy endpoint")
+		}
+		if native.Plugin != "" {
+			return fail("the Shadowsocks plugin owns the TCP connection and has no qualified socket handoff")
+		}
+		server, network = native.ServerOptions, zapretactivation.OuterTCPUDP
+		// Both provider mux clients open a TCP session even for logical UDP.
+		if (native.UDPOverTCP != nil && native.UDPOverTCP.Enabled) || (native.Multiplex != nil && native.Multiplex.Enabled) {
+			network = zapretactivation.OuterTCP
 		}
 	case C.TypeHysteria2:
 		if !C.WithQUIC {
@@ -58,5 +112,5 @@ func zapretOuterSocket(row model.Outbound) (zapretactivation.OuterSocket, error)
 			family = zapretactivation.FamilyIPv6
 		}
 	}
-	return zapretactivation.OuterSocket{Kind: row.Type, Port: server.ServerPort, Family: family}, nil
+	return zapretactivation.OuterSocket{Kind: row.Type, Port: server.ServerPort, Family: family, Network: network}, nil
 }

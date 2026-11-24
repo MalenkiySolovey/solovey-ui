@@ -146,7 +146,7 @@ func TestInstalledZapretPlainUDPIncludesTCPRetry(t *testing.T) {
 
 func TestInstalledZapretOuterCoverageUsesTransportPortAndFamily(t *testing.T) {
 	strategies := InstalledZapretStrategies{Families: []planner.ZapretFamilies{{
-		IPv4: planner.ZapretPorts{TCP: []uint16{3128}, UDP: []uint16{443}},
+		IPv4: planner.ZapretPorts{TCP: []uint16{3128, 8388}, UDP: []uint16{443, 8388}},
 		IPv6: planner.ZapretPorts{UDP: []uint16{443}},
 	}}}
 	for _, tc := range []struct {
@@ -160,6 +160,14 @@ func TestInstalledZapretOuterCoverageUsesTransportPortAndFamily(t *testing.T) {
 		{zapretactivation.OuterSocket{Kind: "hysteria2", Port: 443}, true, true},
 		{zapretactivation.OuterSocket{Kind: "hysteria2", Port: 443, Family: zapretactivation.FamilyIPv6}, false, false},
 		{zapretactivation.OuterSocket{Kind: "selector", Port: 443}, true, false},
+		{zapretactivation.OuterSocket{Kind: "vless", Port: 443, Network: zapretactivation.OuterTCP}, true, false},
+		{zapretactivation.OuterSocket{Kind: "vless", Port: 443, Network: zapretactivation.OuterUDP}, true, true},
+		{zapretactivation.OuterSocket{Kind: "tuic", Port: 3128, Family: zapretactivation.FamilyIPv4}, true, false},
+		{zapretactivation.OuterSocket{Kind: "tuic", Port: 443, Family: zapretactivation.FamilyIPv6}, true, true},
+		{zapretactivation.OuterSocket{Kind: "shadowsocks", Port: 3128, Network: zapretactivation.OuterTCPUDP}, false, false},
+		{zapretactivation.OuterSocket{Kind: "shadowsocks", Port: 443, Network: zapretactivation.OuterTCPUDP}, false, false},
+		{zapretactivation.OuterSocket{Kind: "shadowsocks", Port: 8388, Network: zapretactivation.OuterTCPUDP}, false, true},
+		{zapretactivation.OuterSocket{Kind: "shadowsocks", Port: 8388, Network: zapretactivation.OuterTCPUDP}, true, false},
 	} {
 		if got := strategies.handlesOuter(0, tc.ipv6, tc.need); got != tc.want {
 			t.Errorf("outer=%+v ipv6=%t got=%t want=%t", tc.need, tc.ipv6, got, tc.want)
