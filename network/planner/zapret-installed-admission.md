@@ -51,6 +51,25 @@ covers all previously issued marks. A rejected strategy preflight leaves the
 current Core running. An accepted binding change materializes a new batch at
 the usual Core restart boundary; this is not a seamless failover guarantee.
 
+## Native Circular on systemd
+
+The return-capable profile uses the same broker and queue. It requires the
+matching Component engine payload with its root-owned, pinned `zapret-auto.lua`
+and Linux nftables socket marks, queue and conntrack support. For a strategy
+saved in the Panel, the root-owned broker profile must also have
+`allowManagedStrategies` enabled. Only replies to
+marked TCP sockets on a Circular profile's family, port and admitted interface
+are queued. Earlier INPUT chains can still drop traffic. Circular reserves the
+final four INPUT priorities, starting at `2147483643`; move a conflicting
+chain earlier before enabling the binding. Do not modify privileged packet
+hooks while a protected binding is active.
+
+The broker retains the reply deny with the existing systemd owner descriptor.
+Switching strategy or turning the binding OFF closes the old Core and drains
+its marked sockets before retiring that deny. The argument window limits
+native action processing, not NFQUEUE admission. No conntrack accounting is
+enabled as a side effect, and the strategy does not install arbitrary Lua.
+
 ## Historical proof paths
 
 The following notes record the earlier `zapretproof` build and rejected
