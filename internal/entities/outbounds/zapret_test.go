@@ -76,6 +76,48 @@ func TestZapretProjectionRequiresMatchingGenerationGrant(t *testing.T) {
 	}
 }
 
+func TestZapretDialAdmitsOnlyInactiveNativeMarkAndNamespace(t *testing.T) {
+	grant := func(r zapretactivation.Request) (zapretactivation.Grant, error) {
+		return zapretactivation.Grant{Request: r, StrategyRevision: strings.Repeat("a", 64), Generation: strings.Repeat("b", 64)}, nil
+	}
+	for _, tc := range []struct {
+		fields string
+		want   string
+	}{
+		{`"routing_mark":0,"netns":""`, ""},
+		{`"routing_mark":"0x000","netns":""`, ""},
+		{`"routing_mark":"0O_00"`, ""},
+		{`"routing_mark":1`, "before the broker handoff"},
+		{`"routing_mark":"0x0001"`, "before the broker handoff"},
+		{`"routing_mark":""`, "invalid Dial field routing_mark"},
+		{`"routing_mark":null`, "invalid Dial field routing_mark"},
+		{`"routing_mark":-1`, "invalid Dial field routing_mark"},
+		{`"Routing_Mark":0`, "invalid Dial field routing_mark"},
+		{`"netns":"separate"`, "outside this broker"},
+		{`"netns":null`, "invalid Dial field netns"},
+		{`"netns":0`, "invalid Dial field netns"},
+		{`"protect_path":""`, "reserved for installed Core socket admission"},
+	} {
+		t.Run(tc.fields, func(t *testing.T) {
+			before := `{` + tc.fields + `,"zapret":{"outboundRef":"a","enabled":true,"strategyRef":"proof"}}`
+			row := model.Outbound{Tag: "a", Type: "direct", Options: json.RawMessage(before)}
+			projected, err := projectZapretRuntime(row, false, grant)
+			if tc.want != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.want) {
+					t.Fatalf("got %v, want %q", err, tc.want)
+				}
+				return
+			}
+			var projectedFields, originalFields map[string]json.RawMessage
+			if err != nil || json.Unmarshal(projected.Options, &projectedFields) != nil || json.Unmarshal(row.Options, &originalFields) != nil ||
+				string(row.Options) != before || !bytes.Equal(projectedFields["routing_mark"], originalFields["routing_mark"]) ||
+				!bytes.Equal(projectedFields["netns"], originalFields["netns"]) || len(projectedFields["protect_path"]) == 0 {
+				t.Fatalf("expected original inactive settings plus the broker path, got %s (%v)", projected.Options, err)
+			}
+		})
+	}
+}
+
 func TestZapretSourceAndInterfaceKeepNativeDialOptions(t *testing.T) {
 	row := model.Outbound{Tag: "a", Type: "direct", Options: json.RawMessage(
 		`{"bind_interface":"egress0","inet4_bind_address":"192.0.2.2","inet6_bind_address":"2001:db8::2","zapret":{"outboundRef":"a","enabled":true,"strategyRef":"proof"}}`)}

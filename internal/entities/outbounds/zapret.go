@@ -13,6 +13,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
+	"github.com/sagernet/sing-box/option"
 	"gorm.io/gorm"
 )
 
@@ -142,8 +143,24 @@ func zapretDialBinding(fields map[string]json.RawMessage) (zapretactivation.Dial
 	for key, raw := range fields {
 		field := strings.ToLower(key)
 		switch field {
-		case "protect_path", "routing_mark", "netns":
-			return dial, fmt.Errorf("%w: selected Dial field %s has no installed admission", ErrZapretPacketPathUnqualified, field)
+		case "protect_path":
+			return dial, fmt.Errorf("%w: protect_path is reserved for installed Core socket admission", ErrZapretPacketPathUnqualified)
+		case "routing_mark":
+			var mark option.FwMark
+			if key != field || json.Unmarshal(raw, &mark) != nil {
+				return dial, fmt.Errorf("%w: invalid Dial field %s", ErrZapretPacketPathUnqualified, field)
+			}
+			if mark != 0 {
+				return dial, fmt.Errorf("%w: nonzero routing_mark would set SO_MARK before the broker handoff", ErrZapretPacketPathUnqualified)
+			}
+		case "netns":
+			var namespace *string
+			if key != field || json.Unmarshal(raw, &namespace) != nil || namespace == nil {
+				return dial, fmt.Errorf("%w: invalid Dial field %s", ErrZapretPacketPathUnqualified, field)
+			}
+			if *namespace != "" {
+				return dial, fmt.Errorf("%w: netns selects a namespace outside this broker's packet admission", ErrZapretPacketPathUnqualified)
+			}
 		case "bind_interface", "inet4_bind_address", "inet6_bind_address":
 			var entered *string
 			if key != field || json.Unmarshal(raw, &entered) != nil {
