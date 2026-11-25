@@ -288,7 +288,7 @@ func readRequestLimit(c *gin.Context, target any, limit int64) error {
 	data, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, limit))
 	var size *http.MaxBytesError
 	if errors.As(err, &size) {
-		return fmt.Errorf("Zapret request exceeds its %d-byte transfer limit", limit)
+		return fmt.Errorf("the Zapret request exceeds its %d-byte transfer limit", limit)
 	}
 	if err != nil || broker.DecodeRawPayload(data, target) != nil {
 		return errors.New("invalid Zapret request")
