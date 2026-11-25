@@ -143,13 +143,20 @@ budget. The saved-catalog byte limit bounds database and transfer work, not
 the number of checks in a streamed suite.
 
 The selected Outbound mode borrows the active Core generation. It supports
-Direct and the audited literal-TCP HTTP/SOCKS paths, with no diagnostic fallback
-to another Outbound. A proxy CONNECT acknowledgment alone is not evidence of
-an endpoint handshake. An explicit DNS server uses its existing configuration
+Direct and the audited literal-TCP HTTP, SOCKS and Snell paths, with no
+diagnostic fallback to another Outbound. Neither a CONNECT acknowledgment
+nor a Snell stream that defers the endpoint request proves a TCP handshake at
+the destination. An HTTP response or verified TLS handshake over the stream
+is reported separately. An explicit DNS server uses its existing configuration
 and detour; without one, lookup uses the active Core's DNS policy without
 ingress metadata. Configured transport is not wire evidence (UDP can retry
 over TCP). Probe results do not assert the effective interface, a group member,
 or a Zapret match when the owner does not observe it.
+
+Compare DNS runs for the same target, family, Host, Outbound and generation.
+The report distinguishes NXDOMAIN, an empty answer, a resolver error, a
+policy-rejected address and different address sets. A difference alone does
+not prove DNS tampering, and the report does not expose the raw answer sets.
 
 PANEL has no owner contract combining an actual ingress/user context with
 policy admission at the final destination socket. The existing local-proxy

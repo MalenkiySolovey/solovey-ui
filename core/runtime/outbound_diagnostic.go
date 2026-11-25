@@ -32,17 +32,31 @@ type OutboundDiagnostic struct {
 	resolver   adapter.DNSTransport
 }
 
-func diagnosticOutboundSupported(outbound adapter.Outbound) bool {
+type DiagnosticTCPMode uint8
+
+const (
+	DiagnosticTCPUnavailable DiagnosticTCPMode = iota
+	DiagnosticTCPDirect
+	DiagnosticTCPProxyConnect
+	DiagnosticTCPProxyStream
+)
+
+func diagnosticTCPMode(outbound adapter.Outbound) DiagnosticTCPMode {
 	if outbound == nil || !slices.Contains(outbound.Network(), "tcp") {
-		return false
+		return DiagnosticTCPUnavailable
 	}
 	// These pinned provider classes pass a literal TCP destination through to
 	// the direct socket or configured proxy. Others need equivalent evidence.
 	switch outbound.Type() {
-	case C.TypeDirect, C.TypeHTTP, C.TypeSOCKS:
-		return true
+	case C.TypeDirect:
+		return DiagnosticTCPDirect
+	case C.TypeHTTP, C.TypeSOCKS:
+		return DiagnosticTCPProxyConnect
+	case C.TypeSnell:
+		// The endpoint request can be deferred to the first stream operation.
+		return DiagnosticTCPProxyStream
 	default:
-		return false
+		return DiagnosticTCPUnavailable
 	}
 }
 
@@ -78,7 +92,7 @@ func (c *Core) DiagnosticChoices() (outbounds, resolvers []string) {
 			return ErrCoreUnavailable
 		}
 		for _, outbound := range rt.outboundManager.Outbounds() {
-			if outbound.Tag() != privateAPITag && diagnosticOutboundSupported(outbound) {
+			if outbound.Tag() != privateAPITag && diagnosticTCPMode(outbound) != DiagnosticTCPUnavailable {
 				outbounds = append(outbounds, outbound.Tag())
 			}
 		}
@@ -109,7 +123,7 @@ func (c *Core) OpenOutboundDiagnostic(tag, resolver string) (OutboundDiagnostic,
 		if !exists {
 			return ErrOutboundNotFound
 		}
-		if !diagnosticOutboundSupported(selected) {
+		if diagnosticTCPMode(selected) == DiagnosticTCPUnavailable {
 			return ErrDiagnosticOutbound
 		}
 		diagnostic = OutboundDiagnostic{core: c, generation: rt.generation, outbound: selected}
@@ -132,11 +146,8 @@ func (c *Core) OpenOutboundDiagnostic(tag, resolver string) (OutboundDiagnostic,
 
 func (d OutboundDiagnostic) Generation() string { return d.generation }
 
-// ConnectOnly reports whether a successful dial is a proxy acknowledgement,
-// not direct evidence from a TCP socket opened to the requested destination.
-func (d OutboundDiagnostic) ConnectOnly() bool {
-	return d.outbound != nil && d.outbound.Type() != C.TypeDirect
-}
+// TCPMode describes what a successful dial can establish before any probe IO.
+func (d OutboundDiagnostic) TCPMode() DiagnosticTCPMode { return diagnosticTCPMode(d.outbound) }
 
 func (d OutboundDiagnostic) current(rt coreRuntime) bool {
 	if rt.generation != d.generation || rt.ctx.Err() != nil {

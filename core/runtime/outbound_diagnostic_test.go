@@ -9,7 +9,36 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/sagernet/sing-box/adapter"
+	C "github.com/sagernet/sing-box/constant"
 )
+
+type diagnosticOutboundFixture struct {
+	adapter.Outbound
+	kind     string
+	networks []string
+}
+
+func (f diagnosticOutboundFixture) Type() string      { return f.kind }
+func (f diagnosticOutboundFixture) Network() []string { return f.networks }
+
+func TestDiagnosticTCPModeDistinguishesProxyStreamFromAcknowledgement(t *testing.T) {
+	for _, test := range []struct {
+		kind     string
+		networks []string
+		want     DiagnosticTCPMode
+	}{
+		{C.TypeDirect, []string{"tcp", "udp"}, DiagnosticTCPDirect},
+		{C.TypeHTTP, []string{"tcp"}, DiagnosticTCPProxyConnect},
+		{C.TypeSOCKS, []string{"tcp", "udp"}, DiagnosticTCPProxyConnect},
+		{C.TypeSnell, []string{"tcp", "udp"}, DiagnosticTCPProxyStream},
+		{C.TypeSnell, []string{"udp"}, DiagnosticTCPUnavailable},
+		{C.TypeSelector, []string{"tcp"}, DiagnosticTCPUnavailable},
+	} {
+		if got := diagnosticTCPMode(diagnosticOutboundFixture{kind: test.kind, networks: test.networks}); got != test.want {
+			t.Errorf("type %s with networks %v: got %d, want %d", test.kind, test.networks, got, test.want)
+		}
+	}
+}
 
 type diagnosticDNSFixture struct {
 	adapter.DNSRouter
