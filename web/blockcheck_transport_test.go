@@ -17,38 +17,48 @@ import (
 	"testing"
 	"time"
 
-	feature "github.com/MalenkiySolovey/solovey-component-blockcheck"
+	"github.com/MalenkiySolovey/solovey-host/operationref"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/supervisor"
-	_ "github.com/MalenkiySolovey/solovey-ui/components/blockcheck"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"github.com/MalenkiySolovey/solovey-ui/service"
+	_ "github.com/MalenkiySolovey/solovey-ui/testsupport/blockcheckfixture"
 )
 
+type suiteFrame struct {
+	Kind     string
+	Job      operationref.Job
+	Progress struct{ GroupsDone, ProbesDone int }
+}
+
 func TestBlockCheckProductionStreamPreservesDeadlineAndExactCancellation(t *testing.T) {
+	owner, registered := registry.ComponentByID("blockcheck")
+	if !registered {
+		t.Fatal("BlockCheck fixture was not registered")
+	}
+	settings := owner.Manifest.Database.Settings
+	if len(settings) != 1 {
+		t.Fatalf("unexpected BlockCheck catalog storage: %v", settings)
+	}
 	for _, useHTTP2 := range []bool{false, true} {
 		t.Run(fmt.Sprintf("http2=%t", useHTTP2), func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "installed.json")
 			t.Setenv(installstate.InstalledFileEnv, path)
-			if _, err := installstate.SetInstalled(path, []manifest.Manifest{feature.Manifest()}, feature.ID, true); err != nil {
+			if _, err := installstate.SetInstalled(path, []manifest.Manifest{owner.Manifest}, owner.Manifest.ID, true); err != nil {
 				t.Fatal(err)
 			}
 			db := initWebRouterTestDB(t)
 			const base = "/qualification+v1/"
 			setWebRouterSetting(t, db, "webPath", base)
-			setWebRouterSetting(t, db, enabledstate.SettingKey(feature.ID), "true")
-			catalog := feature.Catalog{Schema: feature.CatalogSchema, Groups: []feature.Group{
-				{ID: "first", Name: "Local fixture", Targets: []feature.Target{{Name: "No DNS for literal", Host: "9.9.9.9", Probes: []feature.Probe{feature.DNS}}}},
-				{ID: "second", Name: "Closing fixture", Targets: []feature.Target{{Name: "Synthetic CONNECT target", Host: "9.9.9.9", Probes: []feature.Probe{feature.HTTP}}}},
-			}}
-			encoded, err := json.Marshal(catalog)
-			if err != nil || catalog.Validate() != nil {
-				t.Fatal("invalid catalog fixture", err)
-			}
-			setWebRouterSetting(t, db, feature.CatalogSettingKey, string(encoded))
+			setWebRouterSetting(t, db, enabledstate.SettingKey(owner.Manifest.ID), "true")
+			setWebRouterSetting(t, db, settings[0], `{"schema":"solovey.blockcheck.groups/v1","groups":[
+				{"id":"first","name":"Local fixture","targets":[{"name":"No DNS for literal","host":"9.9.9.9","probes":["dns"]}]},
+				{"id":"second","name":"Closing fixture","targets":[{"name":"Synthetic CONNECT target","host":"9.9.9.9","probes":["http"]}]}
+			]}`)
 			connected := make(chan struct{}, 1)
 			proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				// This loopback sink never forwards CONNECT or opens a destination socket.
@@ -153,8 +163,19 @@ func TestBlockCheckProductionStreamPreservesDeadlineAndExactCancellation(t *test
 				}
 				return response
 			}
-			request := feature.SuiteRequest{All: true, RunRequest: feature.RunRequest{CatalogRevision: catalog.Revision(),
-				Path: feature.PathSelection{Mode: feature.Outbound, Ref: "fixture"}, Family: feature.IPv4}}
+			groups, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"components/blockcheck/groups", nil)
+			catalogResponse, err := server.Client().Do(groups)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var catalog struct{ Obj struct{ Revision string } }
+			decodeErr = json.NewDecoder(io.LimitReader(catalogResponse.Body, 16384)).Decode(&catalog)
+			_ = catalogResponse.Body.Close()
+			if decodeErr != nil || catalogResponse.StatusCode != http.StatusOK || catalog.Obj.Revision == "" {
+				t.Fatal("catalog fixture was not admitted", decodeErr)
+			}
+			request := map[string]any{"all": true, "catalogRevision": catalog.Obj.Revision, "family": "ipv4",
+				"path": map[string]string{"mode": "OUTBOUND", "ref": "fixture"}}
 			stream := post("stream", request)
 			defer stream.Body.Close()
 			if stream.StatusCode != http.StatusOK || stream.Header.Get("Content-Encoding") != "" ||
@@ -163,7 +184,7 @@ func TestBlockCheckProductionStreamPreservesDeadlineAndExactCancellation(t *test
 				t.Fatalf("wrong stream transport: %d %s %v", stream.StatusCode, stream.Proto, stream.Header)
 			}
 			decoder := json.NewDecoder(io.LimitReader(stream.Body, 64<<10))
-			var started feature.SuiteEvent
+			var started suiteFrame
 			if err := decoder.Decode(&started); err != nil || started.Kind != "started" || !started.Job.CancelSupported {
 				t.Fatalf("missing cancellable operation: %+v %v", started, err)
 			}
@@ -185,9 +206,9 @@ func TestBlockCheckProductionStreamPreservesDeadlineAndExactCancellation(t *test
 			// Cross the listener's deadline while no new stream frames are being sent.
 			time.Sleep(1200 * time.Millisecond)
 			cancelJob(started.Job.OperationID, true)
-			var last feature.SuiteEvent
+			var last suiteFrame
 			for {
-				var event feature.SuiteEvent
+				var event suiteFrame
 				if err := decoder.Decode(&event); err != nil {
 					if err != io.EOF {
 						t.Fatal("stream lost clean EOF", err)
