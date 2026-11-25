@@ -15,7 +15,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
-type localProvider struct{ core func() *service.Runtime }
+type localProvider struct{}
 
 type pathOptions struct {
 	Outbounds   []string                           `json:"outbounds"`
@@ -23,8 +23,8 @@ type pathOptions struct {
 	Unavailable map[feature.Mode]feature.PathError `json:"unavailable"`
 }
 
-func (p localProvider) options() pathOptions {
-	outbounds, resolvers := p.core().Core().DiagnosticChoices()
+func (localProvider) options() pathOptions {
+	outbounds, resolvers := service.LocalOutboundDiagnosticChoices()
 	result := pathOptions{Outbounds: outbounds, Resolvers: resolvers, Unavailable: map[feature.Mode]feature.PathError{
 		feature.Panel: feature.ErrPanelIngressUnqualified, feature.HostBaseline: feature.ErrBaselineUnobservable,
 	}}
@@ -34,7 +34,7 @@ func (p localProvider) options() pathOptions {
 	return result
 }
 
-func (p localProvider) Open(ctx context.Context, host hostref.Ref, selection feature.PathSelection) (feature.Path, error) {
+func (localProvider) Open(_ context.Context, host hostref.Ref, selection feature.PathSelection) (feature.Path, error) {
 	if !host.IsLocal() {
 		return feature.Path{}, feature.ErrInactive
 	}
@@ -47,8 +47,7 @@ func (p localProvider) Open(ctx context.Context, host hostref.Ref, selection fea
 	default:
 		return feature.Path{}, feature.ErrInvalidRun
 	}
-	core := p.core().Core()
-	diagnostic, err := core.OpenOutboundDiagnostic(selection.Ref, selection.Resolver)
+	diagnostic, err := service.OpenLocalOutboundDiagnostic(selection.Ref, selection.Resolver)
 	if err != nil {
 		return feature.Path{}, pathError(err)
 	}
@@ -67,7 +66,7 @@ func (p localProvider) Open(ctx context.Context, host hostref.Ref, selection fea
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			if p.core().Core() != core || diagnostic.Current() != nil {
+			if diagnostic.Current() != nil {
 				return feature.ErrGenerationChanged
 			}
 			return nil
