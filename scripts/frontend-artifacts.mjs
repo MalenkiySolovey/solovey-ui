@@ -74,6 +74,7 @@ export function validateFrontendPin(pin) {
   // Historical 0.1.x pins through 0.1.6 retain their exact old tuple.
   const [, minor, patch] = pin.version.split('.').map(Number)
   if (minor > 1 || minor === 1 && patch >= 7) selections.full[1].push('zapret')
+  if (minor > 1 || minor === 1 && patch >= 23) selections.full[1].unshift('blockcheck')
   for(const [name,[profile,ids]] of Object.entries(selections)) { assert.equal(pin.profiles[name].profile,profile); assert.deepEqual(pin.profiles[name].componentIDs,ids) }
   assert.notEqual(pin.profiles['core-empty-inputs'].inputManifestSHA256,pin.input.manifestSHA256)
   return pin

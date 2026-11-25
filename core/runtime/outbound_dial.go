@@ -93,9 +93,20 @@ func (c *Core) ValidateOutbound(tag string) error {
 }
 
 func (c *Core) DialOutbound(ctx context.Context, tag, network string, destination M.Socksaddr) (connection net.Conn, err error) {
+	return c.dialOutbound(ctx, tag, network, destination, nil)
+}
+
+func (c *Core) dialOutbound(ctx context.Context, tag, network string, destination M.Socksaddr, diagnostic *OutboundDiagnostic) (connection net.Conn, err error) {
 	var selected adapter.Outbound
 	var generation context.Context
-	err = c.withRuntime(func(current coreRuntime) error {
+	admit := c.withRuntime
+	if diagnostic != nil {
+		admit = c.withMutation
+	}
+	err = admit(func(current coreRuntime) error {
+		if diagnostic != nil && !diagnostic.current(current) {
+			return ErrStaleGeneration
+		}
 		outbound, ok := current.outboundManager.Outbound(tag)
 		if !ok {
 			return ErrOutboundNotFound
@@ -151,7 +162,15 @@ func (c *Core) DialOutbound(ctx context.Context, tag, network string, destinatio
 		return nil, ctx.Err()
 	}
 	if err == nil && connection != nil {
-		connection = &outboundDialConnection{Conn: connection, release: release}
+		wrapped := &outboundDialConnection{Conn: connection, release: release}
+		if diagnostic != nil {
+			// A direct net.Conn no longer observes the setup context after dial.
+			// Close it on retirement so a probe cannot continue on the old path.
+			stopClose := context.AfterFunc(generation, func() { _ = wrapped.Close() })
+			connection = &outboundDialConnection{Conn: wrapped, release: func() { stopClose() }}
+		} else {
+			connection = wrapped
+		}
 	}
 	return connection, err
 }

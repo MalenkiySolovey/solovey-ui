@@ -105,7 +105,7 @@ require (
 	github.com/MalenkiySolovey/solovey-component-import-xui v0.1.4
 	github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions v0.1.0
 	github.com/MalenkiySolovey/solovey-component-server-protection v0.1.0
-	github.com/MalenkiySolovey/solovey-component-zapret v0.1.13
+	github.com/MalenkiySolovey/solovey-component-zapret v0.1.14
 	github.com/OneOfOne/xxhash v1.2.8 // indirect
 	github.com/ajg/form v1.5.1 // indirect
 	github.com/akutz/memconn v0.1.0 // indirect
@@ -270,7 +270,10 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-require github.com/MalenkiySolovey/solovey-component-paid-subscriptions v0.1.4
+require (
+	github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.1
+	github.com/MalenkiySolovey/solovey-component-paid-subscriptions v0.1.4
+)
 
 replace github.com/sagernet/sing-box => github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261104205147-493b451cdac6
 

@@ -4,6 +4,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -66,6 +67,19 @@ func TestTelegramComponentRoutesAbsentInMinimalProfile(t *testing.T) {
 	} {
 		if routeExists(router, http.MethodPost, path) {
 			t.Fatalf("minimal profile must not register native fallback route %s", path)
+		}
+	}
+}
+
+func TestBlockCheckRoutesAbsentInMinimalProfile(t *testing.T) {
+	initSessionTestDB(t)
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	handler := &APIHandler{ApiService: newComposedApiService()}
+	handler.initRouter(router.Group("/api"))
+	for _, route := range router.Routes() {
+		if strings.HasPrefix(route.Path, "/api/components/blockcheck/") {
+			t.Fatalf("minimal profile registered %s %s", route.Method, route.Path)
 		}
 	}
 }
