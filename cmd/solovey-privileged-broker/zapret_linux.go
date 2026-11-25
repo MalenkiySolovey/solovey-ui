@@ -75,8 +75,8 @@ func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivati
 		}
 		result.Intents = append(result.Intents, selected.Intent)
 		result.Families = append(result.Families, planner.ZapretFamilies{
-			IPv4:         planner.ZapretPorts{TCP: v4.TCP, UDP: v4.UDP, ReplyTCP: v4.ReturnTCP},
-			IPv6:         planner.ZapretPorts{TCP: v6.TCP, UDP: v6.UDP, ReplyTCP: v6.ReturnTCP},
+			IPv4:         zapretPlannerPorts(v4),
+			IPv6:         zapretPlannerPorts(v6),
 			RequiresIPv6: slices.ContainsFunc(selected.Strategy.Profiles, func(p strategy.Profile) bool { return p.Family == strategy.IPv6 }),
 		})
 		strategies[i] = selected.Strategy
@@ -107,4 +107,9 @@ func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivati
 		return args, nil, err
 	}
 	return result, nil
+}
+
+func zapretPlannerPorts(scope strategy.Scope) planner.ZapretPorts {
+	return planner.ZapretPorts{TCP: scope.TCP, UDP: scope.UDP, ReplyTCP: scope.ReturnTCP,
+		TCPRanges: scope.TCPRanges, UDPRanges: scope.UDPRanges, ReplyTCPRanges: scope.ReturnTCPRanges}
 }

@@ -11,13 +11,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-host/network/intent"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/processevidence"
 	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
@@ -286,10 +286,11 @@ func (s InstalledZapretStrategies) handlesDNS(binding int, ipv6 bool, need zapre
 		if v6 {
 			ports = s.Families[binding].IPv6
 		}
+		udp := ports.Contains(intent.PacketProtocolUDP, need.Port)
 		if need.QUIC {
-			return slices.Contains(ports.UDP, need.Port) && s.HandlesQUIC != nil && s.HandlesQUIC(binding, v6, need.Port)
+			return udp && s.HandlesQUIC != nil && s.HandlesQUIC(binding, v6, need.Port)
 		}
-		return slices.Contains(ports.TCP, need.Port) && (!need.PlainUDP || slices.Contains(ports.UDP, need.Port))
+		return ports.Contains(intent.PacketProtocolTCP, need.Port) && (!need.PlainUDP || udp)
 	}
 	return coversZapretFamily(need.Family, ipv6, covered)
 }
@@ -307,11 +308,11 @@ func (s InstalledZapretStrategies) handlesOuter(binding int, ipv6 bool, need zap
 		}
 		switch need.Transports() {
 		case zapretactivation.OuterTCP:
-			return slices.Contains(ports.TCP, need.Port)
+			return ports.Contains(intent.PacketProtocolTCP, need.Port)
 		case zapretactivation.OuterUDP:
-			return slices.Contains(ports.UDP, need.Port)
+			return ports.Contains(intent.PacketProtocolUDP, need.Port)
 		case zapretactivation.OuterTCPUDP:
-			return slices.Contains(ports.TCP, need.Port) && slices.Contains(ports.UDP, need.Port)
+			return ports.Contains(intent.PacketProtocolTCP, need.Port) && ports.Contains(intent.PacketProtocolUDP, need.Port)
 		default:
 			return false
 		}

@@ -3,7 +3,6 @@
 package nftables
 
 import (
-	"encoding/binary"
 	"slices"
 
 	"github.com/MalenkiySolovey/solovey-host/network/intent"
@@ -42,16 +41,15 @@ func (b *zapretBatch) addZapretReplyPath(plan planner.ZapretPlan) error {
 		if ipv6 {
 			family, addressOffset = unix.NFPROTO_IPV6, 24
 		}
-		observe := plan.ReplyTCPForFamily(ipv6)
-		for _, port := range plan.PortsForFamily(intent.PacketProtocolTCP, ipv6) {
+		for _, port := range plan.ReplyPortsForFamily(ipv6) {
 			rule := tunMetaEq(expr.MetaKeyNFPROTO, []byte{family})
 			rule = append(rule, zapretTCPSocketMark(plan.SocketMark(), ^uint32(0))...)
 			rule = append(rule, &expr.Ct{Key: expr.CtKeyDIRECTION, Register: 1}, zapretReplyEq([]byte{1}),
 				&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseTransportHeader, Offset: 0, Len: 2},
-				zapretReplyEq(binary.BigEndian.AppendUint16(nil, port)))
+				zapretPortMatch(1, port.PortInterval))
 			rule = append(rule, tunMetaEq(expr.MetaKeyMARK, tunU32(0))...)
 			var verdict expr.Any = &expr.Verdict{Kind: expr.VerdictAccept}
-			if slices.Contains(observe, port) {
+			if port.NeedsQueue {
 				rule = append(rule, tunMetaEq(expr.MetaKeyIIF, tunU32(uint32(egress.IfIndex)))...)
 				if address := scope.SourceForFamily(ipv6); address.IsValid() {
 					rule = append(rule, &expr.Payload{DestRegister: 1, Base: expr.PayloadBaseNetworkHeader,

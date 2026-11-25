@@ -31,13 +31,14 @@ func RenderZapretProbe(plan planner.ZapretPlan) (string, error) {
 	}
 	fmt.Fprintf(&text, "add chain %s outbound { type filter hook output priority 150; policy accept; }\n", table)
 	for _, network := range scope.Protocols {
-		ports := scope.TCPPorts
-		if network == "udp" {
-			ports = scope.UDPPorts
-		}
+		ports := plan.PacketPortIntervals(network)
 		values := make([]string, 0, len(ports))
 		for _, port := range ports {
-			values = append(values, strconv.Itoa(int(port)))
+			value := strconv.Itoa(int(port.First))
+			if port.First != port.Last {
+				value += "-" + strconv.Itoa(int(port.Last))
+			}
+			values = append(values, value)
 		}
 		match := fmt.Sprintf("oifname \"lo\" ct direction original %s dport { %s }", network, strings.Join(values, ", "))
 		fmt.Fprintf(&text, "add rule %s outbound %s counter name %s_seen\n", table, match, network)

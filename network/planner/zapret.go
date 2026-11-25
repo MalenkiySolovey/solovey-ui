@@ -60,8 +60,9 @@ type ZapretFacts struct {
 }
 
 type ZapretPorts struct {
-	TCP, UDP []uint16
-	ReplyTCP []uint16 `json:",omitempty"`
+	TCP, UDP                             []uint16
+	ReplyTCP                             []uint16              `json:",omitempty"`
+	TCPRanges, UDPRanges, ReplyTCPRanges []intent.PortInterval `json:",omitempty"`
 }
 
 // ZapretFamilies is the component's port scope for each family, before
@@ -71,21 +72,31 @@ type ZapretFamilies struct {
 	RequiresIPv6 bool
 }
 
-func (p ZapretPorts) forProtocol(protocol intent.PacketProtocol) []uint16 {
+func (p ZapretPorts) forProtocol(protocol intent.PacketProtocol) ([]uint16, []intent.PortInterval) {
 	switch protocol {
 	case intent.PacketProtocolTCP:
-		return p.TCP
+		return p.TCP, p.TCPRanges
 	case intent.PacketProtocolUDP:
-		return p.UDP
+		return p.UDP, p.UDPRanges
 	default:
-		return nil
+		return nil, nil
 	}
 }
 
-func (p ZapretPorts) empty() bool { return len(p.TCP) == 0 && len(p.UDP) == 0 }
+func (p ZapretPorts) Contains(protocol intent.PacketProtocol, port uint16) bool {
+	ports, ranges := p.forProtocol(protocol)
+	return slices.Contains(ports, port) || slices.ContainsFunc(ranges, func(r intent.PortInterval) bool { return r.First <= port && port <= r.Last })
+}
+
+func (p ZapretPorts) empty() bool {
+	return len(p.TCP) == 0 && len(p.UDP) == 0 && len(p.TCPRanges) == 0 && len(p.UDPRanges) == 0
+}
+
+func (p ZapretPorts) hasReplies() bool { return len(p.ReplyTCP) != 0 || len(p.ReplyTCPRanges) != 0 }
 
 func (p ZapretPorts) canonical() ZapretPorts {
 	p.TCP, p.UDP, p.ReplyTCP = slices.Clone(p.TCP), slices.Clone(p.UDP), slices.Clone(p.ReplyTCP)
+	p.TCPRanges, p.UDPRanges, p.ReplyTCPRanges = slices.Clone(p.TCPRanges), slices.Clone(p.UDPRanges), slices.Clone(p.ReplyTCPRanges)
 	slices.Sort(p.TCP)
 	slices.Sort(p.UDP)
 	slices.Sort(p.ReplyTCP)
@@ -96,41 +107,74 @@ func (f ZapretFamilies) valid(value intent.ZapretPacketPathIntent) bool {
 	if f.RequiresIPv6 && f.IPv6.empty() {
 		return false
 	}
-	if value.NeedsReturn != (len(f.IPv4.ReplyTCP) != 0 || len(f.IPv6.ReplyTCP) != 0) {
+	if value.NeedsReturn != (f.IPv4.hasReplies() || f.IPv6.hasReplies()) {
 		return false
 	}
 	for _, family := range []ZapretPorts{f.IPv4, f.IPv6} {
-		if !validZapretPortSubset(family.ReplyTCP, family.TCP) {
+		tcp, validTCP := compactZapretPorts(family.TCP, family.TCPRanges)
+		reply, validReply := compactZapretPorts(family.ReplyTCP, family.ReplyTCPRanges)
+		if !validTCP || !validReply || !zapretPortSubset(reply, tcp) {
 			return false
 		}
 	}
 	for _, protocol := range []intent.PacketProtocol{intent.PacketProtocolTCP, intent.PacketProtocolUDP} {
-		v4, v6 := f.IPv4.forProtocol(protocol), f.IPv6.forProtocol(protocol)
-		union := (ZapretPorts{TCP: value.TCPPorts, UDP: value.UDPPorts}).forProtocol(protocol)
-		for _, subset := range [][]uint16{v4, v6} {
-			if !validZapretPortSubset(subset, union) {
-				return false
-			}
+		v4, valid4 := compactZapretPorts(f.IPv4.forProtocol(protocol))
+		v6, valid6 := compactZapretPorts(f.IPv6.forProtocol(protocol))
+		want, valid := compactZapretPorts(zapretRequestPorts(value).forProtocol(protocol))
+		if !valid || !valid4 || !valid6 {
+			return false
 		}
-		for _, port := range union {
-			if !slices.Contains(v4, port) && !slices.Contains(v6, port) {
-				return false
-			}
+		actual, err := intent.CanonicalPortIntervals(nil, slices.Concat(v4, v6)...)
+		if err != nil || !slices.Equal(actual, want) {
+			return false
 		}
 	}
 	return true
 }
 
-func validZapretPortSubset(ports, scope []uint16) bool {
-	if len(ports) > len(scope) {
-		return false
+func compactZapretPorts(ports []uint16, ranges []intent.PortInterval) ([]intent.PortInterval, bool) {
+	if len(ports) != 0 && len(ranges) != 0 {
+		return nil, false
 	}
-	for i, port := range ports {
-		if !slices.Contains(scope, port) || slices.Contains(ports[:i], port) {
+	canonical, err := intent.CanonicalPortIntervals(ports, ranges...)
+	if err != nil {
+		return nil, false
+	}
+	if len(ranges) != 0 {
+		return canonical, slices.Equal(canonical, ranges)
+	}
+	count := 0
+	for _, span := range canonical {
+		count += int(span.Last) - int(span.First) + 1
+	}
+	return canonical, count == len(ports)
+}
+
+func zapretPortSubset(inner, outer []intent.PortInterval) bool {
+	for _, span := range inner {
+		for len(outer) != 0 && outer[0].Last < span.First {
+			outer = outer[1:]
+		}
+		if len(outer) == 0 || outer[0].First > span.First || outer[0].Last < span.Last {
 			return false
 		}
 	}
 	return true
+}
+
+func zapretRequestPorts(value intent.ZapretPacketPathIntent) ZapretPorts {
+	return ZapretPorts{TCP: value.TCPPorts, UDP: value.UDPPorts, TCPRanges: value.TCPPortRanges, UDPRanges: value.UDPPortRanges}
+}
+
+func zapretPortIntervals(ports []uint16, ranges []intent.PortInterval) []intent.PortInterval {
+	if len(ports) == 0 {
+		return slices.Clone(ranges)
+	}
+	result := make([]intent.PortInterval, len(ports))
+	for i, port := range ports {
+		result[i] = intent.PortInterval{First: port, Last: port}
+	}
+	return result
 }
 
 type ZapretEgress struct {
@@ -196,18 +240,48 @@ func (p ZapretPlan) PacketScope() intent.ZapretPacketPathIntent {
 	return intent.CanonicalZapretPacketPathIntent(p.intent)
 }
 
-func (p ZapretPlan) PortsForFamily(protocol intent.PacketProtocol, ipv6 bool) []uint16 {
-	return slices.Clone(p.portsForFamily(protocol, ipv6))
+func (p ZapretPlan) PortIntervalsForFamily(protocol intent.PacketProtocol, ipv6 bool) []intent.PortInterval {
+	return zapretPortIntervals(p.packetPortsForFamily(ipv6).forProtocol(protocol))
 }
 
-// ReplyTCPForFamily is the qualified subset of TCP ports that requires the
-// same native queue for replies. It is not an independent outbound scope.
-func (p ZapretPlan) ReplyTCPForFamily(ipv6 bool) []uint16 {
-	return slices.Clone(p.packetPortsForFamily(ipv6).ReplyTCP)
+func (p ZapretPlan) PacketPortIntervals(protocol intent.PacketProtocol) []intent.PortInterval {
+	return zapretPortIntervals(zapretRequestPorts(p.intent).forProtocol(protocol))
 }
 
-func (p ZapretPlan) portsForFamily(protocol intent.PacketProtocol, ipv6 bool) []uint16 {
-	return p.packetPortsForFamily(ipv6).forProtocol(protocol)
+type ZapretReplyPorts struct {
+	intent.PortInterval
+	NeedsQueue bool
+}
+
+// ReplyPortsForFamily partitions covered TCP ports. A port that requires the
+// engine must never also match an ordinary reply rule on ingress mismatch.
+func (p ZapretPlan) ReplyPortsForFamily(ipv6 bool) []ZapretReplyPorts {
+	ports := p.packetPortsForFamily(ipv6)
+	selected := zapretPortIntervals(ports.ReplyTCP, ports.ReplyTCPRanges)
+	var result []ZapretReplyPorts
+	add := func(first, last uint32, queued bool) {
+		result = append(result, ZapretReplyPorts{PortInterval: intent.PortInterval{First: uint16(first), Last: uint16(last)}, NeedsQueue: queued})
+	}
+	for _, scope := range zapretPortIntervals(ports.TCP, ports.TCPRanges) {
+		first, last := uint32(scope.First), uint32(scope.Last)
+		for len(selected) != 0 && uint32(selected[0].First) <= last {
+			reply := selected[0]
+			if gap := uint32(reply.First); first < gap {
+				add(first, gap-1, false)
+			}
+			end := min(last, uint32(reply.Last))
+			add(max(first, uint32(reply.First)), end, true)
+			first = end + 1
+			if end < uint32(reply.Last) {
+				break
+			}
+			selected = selected[1:]
+		}
+		if first <= last {
+			add(first, last, false)
+		}
+	}
+	return result
 }
 
 func (p ZapretPlan) packetPortsForFamily(ipv6 bool) ZapretPorts {
@@ -218,7 +292,7 @@ func (p ZapretPlan) packetPortsForFamily(ipv6 bool) ZapretPorts {
 		}
 		return families.IPv4
 	}
-	return ZapretPorts{TCP: p.intent.TCPPorts, UDP: p.intent.UDPPorts}
+	return zapretRequestPorts(p.intent)
 }
 
 // ZapretSocketScope projects allocation data for the installed broker. It is
@@ -271,7 +345,8 @@ func (s ZapretSocketScope) SourceForFamily(ipv6 bool) netip.Addr {
 
 func (s ZapretSocketScope) AllowsFamily(p intent.PacketProtocol, ipv6 bool) bool {
 	e := s.Egress()
-	return ((!ipv6 && e.IPv4Gateway.IsValid()) || (ipv6 && e.IPv6Gateway.IsValid())) && len(s.plan.portsForFamily(p, ipv6)) != 0
+	ports, ranges := s.plan.packetPortsForFamily(ipv6).forProtocol(p)
+	return ((!ipv6 && e.IPv4Gateway.IsValid()) || (ipv6 && e.IPv6Gateway.IsValid())) && (len(ports) != 0 || len(ranges) != 0)
 }
 
 func CompileZapret(request intent.ZapretPacketPathIntent, facts Facts) (ZapretPlan, error) {
@@ -372,10 +447,10 @@ func compileZapret(request intent.ZapretPacketPathIntent, facts Facts, sharedQue
 			if !z.InstalledEgress.IPv6Gateway.IsValid() && (f.RequiresIPv6 || f.IPv4.empty()) {
 				return ZapretPlan{}, conflict(CapabilityUnavailable, ref)
 			}
-			if request.NeedsReturn && !z.InstalledEgress.IPv6Gateway.IsValid() && len(f.IPv4.ReplyTCP) == 0 {
+			if request.NeedsReturn && !z.InstalledEgress.IPv6Gateway.IsValid() && !f.IPv4.hasReplies() {
 				return ZapretPlan{}, conflict(CapabilityUnavailable, ref)
 			}
-		} else if request.NeedsReturn || z.InstalledEgress.IPv6Gateway.IsValid() || len(request.UDPPorts) != 0 {
+		} else if request.NeedsReturn || z.InstalledEgress.IPv6Gateway.IsValid() || slices.Contains(request.Protocols, intent.PacketProtocolUDP) {
 			return ZapretPlan{}, conflict(InvalidIntent, ref)
 		}
 		table, guard = "inet:"+ZapretInstalledTable, "inet:"+ZapretDenyTable
