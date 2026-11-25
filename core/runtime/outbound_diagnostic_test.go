@@ -107,18 +107,20 @@ func TestDiagnosticUDPRequiresAdmittedTargetAndConnectedTransport(t *testing.T) 
 		if got := diagnostic.SupportsUDP(); got != tc.want {
 			t.Errorf("type %s with networks %v: got %t, want %t", tc.kind, tc.networks, got, tc.want)
 		}
-		for _, destination := range []string{"127.0.0.1:443", "[::ffff:169.254.169.254]:443", "[2001:4860::1%fixture]:443", "8.8.8.8:80"} {
+		for _, destination := range []string{"127.0.0.1:3478", "[::ffff:169.254.169.254]:19302", "[2001:4860::1%fixture]:443", "8.8.8.8:80", "8.8.8.8:3479"} {
 			if _, err := diagnostic.DialUDP(t.Context(), netip.MustParseAddrPort(destination), permits); !errors.Is(err, ErrDiagnosticTarget) {
 				t.Fatalf("unsupported UDP destination was admitted: %s, %v", destination, err)
 			}
 		}
-		target := netip.MustParseAddrPort("8.8.8.8:443")
-		if _, err := diagnostic.DialUDP(t.Context(), target, func(netip.Addr) bool { return false }); !errors.Is(err, ErrDiagnosticTarget) {
-			t.Fatalf("host UDP destination policy ignored: %v", err)
-		}
-		if !tc.want {
-			if _, err := diagnostic.DialUDP(t.Context(), target, permits); !errors.Is(err, ErrDiagnosticDatagram) {
-				t.Fatalf("unqualified UDP outbound was admitted: %s, %v", tc.kind, err)
+		for _, destination := range []string{"8.8.8.8:443", "8.8.8.8:3478", "[2001:4860::1]:19302"} {
+			target := netip.MustParseAddrPort(destination)
+			if _, err := diagnostic.DialUDP(t.Context(), target, func(netip.Addr) bool { return false }); !errors.Is(err, ErrDiagnosticTarget) {
+				t.Fatalf("host UDP destination policy ignored for %s: %v", destination, err)
+			}
+			if !tc.want {
+				if _, err := diagnostic.DialUDP(t.Context(), target, permits); !errors.Is(err, ErrDiagnosticDatagram) {
+					t.Fatalf("unqualified UDP outbound was admitted: %s, %s, %v", tc.kind, destination, err)
+				}
 			}
 		}
 	}
