@@ -56,8 +56,12 @@ func (localProvider) Open(_ context.Context, host hostref.Ref, selection feature
 		dnsContext = "explicit-core-dns-server"
 	}
 	scope := "outbound-pinned-ip"
-	if diagnostic.ConnectOnly() {
+	tcpMode := diagnostic.TCPMode()
+	switch tcpMode {
+	case coreruntime.DiagnosticTCPProxyConnect:
 		scope = "outbound-proxy-connect"
+	case coreruntime.DiagnosticTCPProxyStream:
+		scope = "outbound-proxy-stream"
 	}
 	return feature.Path{
 		Evidence: feature.PathEvidence{Host: host, Mode: feature.Outbound, Generation: diagnostic.Generation(),
@@ -77,7 +81,12 @@ func (localProvider) Open(_ context.Context, host hostref.Ref, selection feature
 		},
 		DialTCP: func(ctx context.Context, destination netip.AddrPort) (net.Conn, feature.SocketEvidence, error) {
 			conn, err := diagnostic.DialTCP(ctx, destination, permitTarget)
-			return conn, feature.SocketEvidence{ProxyAccepted: err == nil && conn != nil && diagnostic.ConnectOnly()}, pathError(err)
+			var observation feature.SocketEvidence
+			if err == nil && conn != nil {
+				observation.ProxyAccepted = tcpMode == coreruntime.DiagnosticTCPProxyConnect
+				observation.ProxyTransportOnly = tcpMode == coreruntime.DiagnosticTCPProxyStream
+			}
+			return conn, observation, pathError(err)
 		},
 	}, nil
 }
