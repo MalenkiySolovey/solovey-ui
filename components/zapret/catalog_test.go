@@ -111,7 +111,94 @@ func TestZapretCatalogNamedListTransactions(t *testing.T) {
 	refs[0].Enabled = false
 	apply(catalogChange{Action: "edit-list", ID: "service", List: &hosts}, false, "")
 	apply(catalogChange{Action: "import", Transfer: &transfer}, false, "")
-	apply(catalogChange{Action: "delete", ID: id}, false, "referenced by Direct")
+	apply(catalogChange{Action: "delete", ID: id}, false, "referenced by outbound")
+}
+
+func TestPresetCatalogSaveFencesAndRevalidatesReview(t *testing.T) {
+	catalog, err := readCatalog(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepare := func(preset strategy.PresetInput) catalogChange {
+		t.Helper()
+		change := catalogChange{Action: "import-preset", ExpectedRevision: catalog.Revision(), preset: &preset}
+		if err := change.prepare(); err != nil {
+			t.Fatal(err)
+		}
+		if !zapretactivation.ManagedStrategyRef(change.ID) {
+			t.Fatalf("not a managed ID: %q", change.ID)
+		}
+		return change
+	}
+	valid := prepare(strategy.PresetInput{Format: "native", Content: []byte("--filter-tcp=443\n--new=udp --filter-udp=443\n")})
+	raw, restart, err := valid.mutate(nil, nil)
+	if err != nil || restart {
+		t.Fatalf("import of an unused strategy should not restart Core: %t, %v", restart, err)
+	}
+	after, err := readCatalog(raw)
+	if err != nil || len(after.Records[valid.ID].Definition.Profiles) != 2 {
+		t.Fatalf("catalog does not contain the reviewed profiles: %v", err)
+	}
+	refs := []outbounds.ZapretReference{{OutboundRef: "proxy", StrategyRef: valid.ID, Enabled: true}}
+	invalid := prepare(strategy.PresetInput{Format: "native", Content: []byte("--filter-tcp=443\n--lua-init=script.lua\n")})
+	invalid.ExpectedRevision = after.Revision()
+	for _, test := range []struct {
+		change catalogChange
+		want   string
+	}{{valid, "catalog changed"}, {invalid, "Lua loading"}} {
+		next, restart, err := test.change.mutate(raw, refs)
+		if next != nil || restart || err == nil || !strings.Contains(err.Error(), test.want) {
+			t.Errorf("invalid save returned a mutation or unexpected error: %s, %t, %v", next, restart, err)
+		}
+	}
+}
+
+func TestLuaDraftCatalogChangesDoNotRebind(t *testing.T) {
+	const raw = "--filter-tcp=443\n"
+	strategyID := zapretactivation.ManagedStrategyPrefix + strings.Repeat("2", 32)
+	start, err := readCatalog(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := start.SealDraft(strategy.Draft{ID: strategyID, Name: "Selected", Raw: new(raw)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start.Records[strategyID] = record
+	stored, err := json.Marshal(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs := []outbounds.ZapretReference{{OutboundRef: "proxy", StrategyRef: strategyID, Enabled: true}}
+	draft := &strategy.LuaDraft{Origin: "external", SourceRef: "Unknown", Source: "-- source only\r\n"}
+	create := catalogChange{Action: "create-lua-draft", ID: "draft", ExpectedRevision: start.Revision(), luaDraft: draft}
+	if err := create.prepare(); err != nil {
+		t.Fatal(err)
+	}
+	after, restart, err := create.mutate(stored, refs)
+	if err != nil || restart {
+		t.Fatalf("saving Lua should only change storage: %t, %v", restart, err)
+	}
+	parsed, err := readCatalog(after)
+	if err != nil || parsed.Records[strategyID].Definition.Revision != record.Definition.Revision || parsed.LuaDrafts["draft"] != *draft {
+		t.Fatalf("draft or selected definition did not round trip: %v", err)
+	}
+	view, err := makeCatalogView(service.ZapretCatalogSnapshot{Catalog: after, References: refs})
+	if err != nil || len(view.Catalog.LuaDrafts) != 0 || view.Revision != parsed.Revision() {
+		t.Fatalf("ordinary Strategy view disclosed Lua source or drifted from the write revision: %v", err)
+	}
+	for _, tc := range []struct {
+		action, revision, message string
+	}{
+		{"edit-lua-draft", start.Revision(), "catalog changed"},
+		{"create-lua-draft", parsed.Revision(), "already in use"},
+	} {
+		change := catalogChange{Action: tc.action, ID: create.ID, ExpectedRevision: tc.revision, luaDraft: draft}
+		next, restart, err := change.mutate(after, refs)
+		if next != nil || restart || err == nil || !strings.Contains(err.Error(), tc.message) {
+			t.Errorf("expected %q and no mutation: %t, %v", tc.message, restart, err)
+		}
+	}
 }
 
 func TestZapretCatalogBlobTransactions(t *testing.T) {

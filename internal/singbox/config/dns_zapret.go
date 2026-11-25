@@ -129,13 +129,8 @@ func zapretDNSRequirements(config []byte, selected map[string]bool, withQUIC boo
 				need.Family = zapretactivation.DNSFamilyIPv6
 			}
 		}
-		if kind != C.DNSTypeTCP && kind != C.DNSTypeUDP {
-			var tls dnsObject
-			_ = json.Unmarshal(server["tls"], &tls)
-			if dnsBool(tls, "insecure") {
-				return nil, fail("tls.insecure", "dns_zapret_tls_required", "Certificate verification must remain enabled for protected DNS.")
-			}
-		}
+		// Resolver authentication is a Core TLS option, not a packet admission
+		// requirement. Keep the operator's setting and the same egress scope.
 		if requirements == nil {
 			requirements = make(map[string][]zapretactivation.DNSPathRequirement)
 		}

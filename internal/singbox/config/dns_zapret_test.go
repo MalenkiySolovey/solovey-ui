@@ -35,11 +35,10 @@ func TestZapretDialedDNSDetourPreflight(t *testing.T) {
 	}
 }
 
-func TestZapretDNSRequirementsRespectExplicitTransportAndTLS(t *testing.T) {
+func TestZapretDNSRequirementsRespectExplicitTransport(t *testing.T) {
 	for _, tt := range []struct{ name, server, code string }{
 		{"unsupported", `{"type":"local","detour":"a"}`, "dns_zapret_transport_unsupported"},
 		{"no QUIC build capability", `{"type":"h3","detour":"a"}`, "dns_zapret_quic_unavailable"},
-		{"insecure", `{"type":"tls","server":"192.0.2.3","detour":"a","tls":{"insecure":true}}`, "dns_zapret_tls_required"},
 		{"no bootstrap", `{"type":"https","server":"dns.example","detour":"a"}`, "dns_zapret_bootstrap_required"},
 		{"invalid port", `{"type":"tls","server":"2001:db8::1","server_port":70000,"detour":"a"}`, "dns_zapret_port_invalid"},
 	} {
@@ -66,6 +65,25 @@ func TestZapretDNSRequirementsRespectExplicitTransportAndTLS(t *testing.T) {
 	}
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected protected DNS path requirements: %v, %v", got, err)
+	}
+}
+
+func TestZapretDNSAdmissionDoesNotChangeTLSVerification(t *testing.T) {
+	for _, kind := range []string{"tls", "https", "quic", "h3"} {
+		t.Run(kind, func(t *testing.T) {
+			selected := map[string]bool{"a": true}
+			authenticated := fmt.Appendf(nil, `{"dns":{"servers":[{"type":%q,"server":"192.0.2.3","detour":"a"}]}}`, kind)
+			operatorChoice := fmt.Appendf(nil, `{"dns":{"servers":[{"type":%q,"server":"192.0.2.3","detour":"a","tls":{"insecure":true}}]}}`, kind)
+			original := string(operatorChoice)
+			want, err := zapretDNSRequirements(authenticated, selected, true)
+			if err != nil || len(want["a"]) != 1 {
+				t.Fatalf("missing packet admission requirement: %v, %v", want, err)
+			}
+			got, err := zapretDNSRequirements(operatorChoice, selected, true)
+			if err != nil || !reflect.DeepEqual(got, want) || string(operatorChoice) != original {
+				t.Fatalf("TLS option changed the packet scope or candidate: %v, %v", got, err)
+			}
+		})
 	}
 }
 

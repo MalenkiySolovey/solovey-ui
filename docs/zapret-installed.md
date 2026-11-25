@@ -69,12 +69,12 @@ stable ID, not a path or Lua variable. Asset edits re-seal the referencing
 strategies; the broker reads the permission on admission of each generation
 and denies those strategies without it. Only the built-in blob qualifies as QUIC DNS
 coverage. Do not put secrets in an asset: these bytes are transmitted as
-configured. Host file paths, uploaded Lua and return-dependent Circular are
-not admitted.
+configured. Host file paths and Lua drafts are never admitted. Bounded native
+Circular requires the installed selected TCP return-path capability.
 
 Set `"observeNativeProfiles": true` in the root-owned installed profile to
 record native profile matches for the next engine generation. Refresh the
-Direct bindings view to see the profile IDs that ran. The engine reports each
+Runtime view to see the profile IDs that ran. The engine reports each
 matched profile at most once per binding per generation; a match does not
 report a packet verdict or prove that an action changed traffic. No packet
 contents, destinations or debug output are logged. This is off by default and
@@ -120,13 +120,13 @@ OFF; the administrator's independently provisioned ingress prohibit remains.
 
 ## Lifecycle ownership
 
-The Outbounds owner validates each explicit Direct binding and renders the
+The Outbounds owner validates each explicit egress binding and renders the
 candidate from one database view. It sends the complete batch to the broker.
 The component resolves ordered profiles, the Network Planner allocates marks,
 and the broker publishes the batch only after it can serve every member.
-Neither the resolver nor the broker chooses a replacement Direct on failure.
+Neither the resolver nor the broker chooses a replacement outbound on failure.
 
-There is no fixed per-Direct count. The framed request and root-owned
+There is no fixed binding count. The framed request and root-owned
 profile have byte limits. The broker accounts for open descriptors, one
 listener and bounded handoff workers per binding against `RLIMIT_NOFILE`.
 The Planner allocates one distinct, non-reused mark serial per binding.
@@ -177,3 +177,36 @@ The architecture budget entries for the batch are reviewed individually:
 - `startZapretEngine` has one waiter per actual child. It reaps the child and
   reports its result before closing `done`. Failed preparation and normal
   retirement use the same bounded pidfd-backed stop path.
+
+## R8D compatibility inventory
+
+This inventory uses Product's `core/registry/{outbound,endpoint,dns}.go`
+declarations and the actual pinned option/constructor sources: Official
+`8b914e4be5103d5f343dac94f26c3ebeeb226ffc` and Extended
+`493b451cdac67dd69c6c9027729e242674ba81e5`. Ordinary Core availability still
+depends on provider, compiled features and platform. Lack of Zapret admission
+does not make the corresponding Core feature unavailable.
+
+| Product egress class | Disposition and owner |
+| --- | --- |
+| Direct, both families | **Qualified** for admitted TCP/UDP, including owned source addresses and compatible explicit interface. ICMP is **not applicable** to this TCP/UDP binder. In both providers, `protocol/direct/outbound.go` rejects a Direct's own Dial detour. |
+| Fixed HTTP CONNECT, VLESS native TCP; fixed Hysteria2 and TUIC UDP | **Qualified** on both installed providers (#310, #314). Only the outer transport is visible. No claims for traffic decrypted on the remote proxy. |
+| VMess, Trojan, AnyTLS, ShadowTLS, SSH; fixed V2Ray HTTP/WS/gRPC/HTTPUpgrade, and QUIC with the appropriate build | **Source-equivalent** when the variant uses the fixed endpoint and supplied dialer (`protocol/*/outbound.go`, `transport/v2ray*`). `internal/entities/outbounds/zapret_outer.go` classifies TCP vs QUIC and checks port and family. These are not individual installed passes. |
+| SOCKS4/4a, SOCKS5 with UoT; plugin-free Shadowsocks | **Source-equivalent** with fixed TCP or TCP+UDP scope. SOCKS5 UDP ASSOCIATE can return a different peer and port; a logical TCP network preference does not make that native dial safe. Shadowsocks plugin TCP bypasses the shared handoff. These variants remain **unqualified**, without modifying the original option. |
+| Hysteria2 Realm or port hopping; Extended variable transports | **Unqualified**: Realm uses dynamic peers, hopping needs admission for every selected port, and KCP/XHTTP cannot be treated as fixed TCP (XHTTP can use a distinct download socket). UI/validation preserve their settings. |
+| Snell, Hysteria v1; Extended Mieru, TrustTunnel and Sudoku | **Deferred with reason**: shared dial construction alone does not qualify all data paths. The fixed-outer contract has no entry for Snell's protocol variants, Hysteria v1, Mieru's profile servers or TrustTunnel/Sudoku's client transports. No new owner or new path is implied. |
+| Tor, Naive and Extended Call | **Unqualified**: Tor has an embedded client and a local SOCKS boundary, Naive's native HTTP/QUIC transport can use Cronet, and Call delegates to a separate bridge/client. None has the fixed selected-FD contract verified by this integration. |
+| WireGuard, Tailscale, MASQUE, OpenConnect and OpenVPN; Bridge | **Unqualified**: separate device, peer/relay or VPN-client ownership. For example, WireGuard has per-device dial setup and Tailscale creates additional packet listeners; OpenVPN/OpenConnect construct native devices. Bridge isn't registered by Product: its direct TUN/nft/route changes would require the existing Planner/broker authority. |
+| Block; Selector, URLTest, Extended Bond/Failover/limiters and delegating detours | Block is **not applicable**. Groups and limiters invoke member outbounds: the binding belongs to a compatible member, not its container. Frontend reports a statically unambiguous egress in a supported chain; for dynamic group selection it does not infer current state from default order. Missing or ambiguous references do not create a fallback. |
+| Upstream-only registrations | Not promoted to Product support. `core/registry` is the source of Product exposure; upstream-only registrations, build-disabled implementations and old metadata are not evidence of an available egress. |
+
+| Shared inputs | Disposition and reason |
+| --- | --- |
+| `routing_mark`, `route.default_mark`, `netns` | **Compatible** for provider-decoded zero marks and an empty selected Dial namespace. JSON is preserved. **Retain** nonzero marks in the installed profile: both `common/dialer/default.go` versions append `SO_MARK` before `ProtectPath`; the capless Core and the broker's unmarked-FD check cannot compose that there. A named namespace uses a different socket namespace than the broker qualifies. `protect_path` is runtime-only authority. Root namespace holders/unshare require separate platform authority. |
+| `default_interface`, auto-detect, network strategy, fallback | **Conditional**. Both providers suppress default binds for explicit source/interface binds. Product checks all selected paths in `internal/singbox/assembly/candidate.go`; no hidden override. Native `network_strategy` selection needs a platform exposing network interfaces to the dialer, and pinned provider field conflicts (source/device/TFO) still apply. |
+| Timeouts, keepalive, reuse, address ordering, UDP fragmentation, bind-without-port, TFO and MPTCP | No blanket Zapret denial. Both providers retain these native Dial fields and platform checks. Timeout/keepalive/reuse/bind-without-port affect the same socket setup; alternate family/device and kernel-created MPTCP subflows are not new installed guarantees. |
+| TCP/UDP DNS, DoT, DoH, DoQ, DoH3 | **Qualified** for explicit admitted Direct given endpoint family, port, same-port TCP retry for UDP, build capability and nonrecursive bootstrap. Over a proxy, only the fixed outer path is protected. Implicit selection isn't marked automatically. Explicit `tls.insecure` is preserved with a DNS editor warning: TLS authentication is not a packet admission requirement. Default verification and ordinary Core TLS validation are unchanged. |
+| Hosts, fakeip, local, resolved, DHCP, mDNS and native VPN DNS; Extended SDNS/fallback | No independent Zapret switch. Hosts/fakeip have no remote socket; local/resolved use resolver-specific ownership; DHCP/mDNS use interface discovery; VPN DNS uses its endpoint. Extended SDNS constructs a stamp-derived DNSCrypt client; fallback delegates to configured DNS transports. These are not equivalent to the six admitted direct detour types. |
+| TUN stacks, auto-route, auto-redirect, DNS mode | **Qualified** only for the prepared scoped IPv4/gVisor path above. System/mixed need local listener/INPUT ownership; IPv6 needs its own ingress/return scope. Automatic routes/redirect/system DNS would add privileged writes outside this contract. Ordinary supported TUN is not another Zapret egress. |
+| Native options and Lua | The Component owns typed profiles, source review and managed dependencies. Wildcard/negative scope, uninterpreted templates, unknown functions and Windows launch flags do not create a finite broker scope. Preserve and explain them in review rather than silently changing semantics. Administrator Lua is saved as text only: the pinned engine's Lua process retains network authority and has no per-script isolation. |
+| OpenWrt and FriendlyWrt | Stock OpenWrt `25.12.5` removes retained denial on firewall teardown; pinned procd has no equivalent systemd FD store. FriendlyWrt parity and authorized physical signoff remain pending. |

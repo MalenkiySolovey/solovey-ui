@@ -18,13 +18,19 @@ import (
 )
 
 type catalogView struct {
-	Catalog        strategy.Catalog `json:"catalog"`
-	Revision       string           `json:"revision"`
-	References     []bindingStatus  `json:"references"`
-	Ready          bool             `json:"ready"`
-	TransferSchema string           `json:"transferSchema"`
-	EngineCommit   string           `json:"engineCommit"`
-	EngineLicense  string           `json:"engineLicense"`
+	Catalog        strategy.Catalog          `json:"catalog"`
+	Revision       string                    `json:"revision"`
+	References     []bindingStatus           `json:"references"`
+	Ready          bool                      `json:"ready"`
+	TransferSchema string                    `json:"transferSchema"`
+	EngineCommit   string                    `json:"engineCommit"`
+	EngineVersion  string                    `json:"engineVersion"`
+	EngineLicense  string                    `json:"engineLicense"`
+	Templates      []strategy.PresetTemplate `json:"templates"`
+	StorageUsed    int                       `json:"storageUsed"`
+	StorageLimit   int                       `json:"storageLimit"`
+	NativeOnly     []string                  `json:"nativeOnly,omitempty"`
+	PreferenceKey  string                    `json:"preferenceKey,omitempty"`
 }
 
 type bindingStatus struct {
@@ -44,6 +50,8 @@ type catalogChange struct {
 	Transfer         *strategy.Transfer  `json:"transfer,omitempty"`
 	List             *strategy.NamedList `json:"list,omitempty"`
 	Blob             *string             `json:"blob,omitempty"`
+	preset           *strategy.PresetInput
+	luaDraft         *strategy.LuaDraft
 }
 
 type diagnosticRequest struct {
@@ -77,7 +85,14 @@ func makeCatalogView(snapshot service.ZapretCatalogSnapshot) (catalogView, error
 		return catalogView{}, err
 	}
 	view := catalogView{Catalog: catalog, Revision: catalog.Revision(), Ready: snapshot.Ready,
-		TransferSchema: strategy.TransferSchema, EngineCommit: strategy.EngineCommit, EngineLicense: strategy.EngineLicense}
+		TransferSchema: strategy.TransferSchema, EngineCommit: strategy.EngineCommit, EngineVersion: strategy.EngineVersion, EngineLicense: strategy.EngineLicense,
+		Templates: strategy.PresetTemplates(), StorageUsed: len(snapshot.Catalog), StorageLimit: strategy.MaxCatalogBytes}
+	view.Catalog.LuaDrafts = nil // The draft endpoint requires administrator access.
+	for _, id := range slices.Sorted(maps.Keys(catalog.Records)) {
+		if !catalog.Records[id].VisualEditable() {
+			view.NativeOnly = append(view.NativeOnly, id)
+		}
+	}
 	view.References = make([]bindingStatus, 0, len(snapshot.References))
 	for _, ref := range snapshot.References {
 		status := bindingStatus{ZapretReference: ref, State: "off", DesiredRevision: catalog.Records[ref.StrategyRef].Definition.Revision}
@@ -123,6 +138,19 @@ func (c *catalogChange) prepare() error {
 	if len(c.ExpectedRevision) != 64 {
 		return errors.New("missing Zapret catalog revision")
 	}
+	if c.preset != nil && c.Action != "import-preset" {
+		return errors.New("invalid Zapret preset change")
+	}
+	switch c.Action {
+	case "create-lua-draft", "edit-lua-draft", "delete-lua-draft":
+		if c.ID != "" && c.Draft == nil && c.Transfer == nil && c.List == nil && c.Blob == nil && (c.luaDraft != nil) == (c.Action != "delete-lua-draft") {
+			return nil
+		}
+		return errors.New("invalid Zapret Lua draft change")
+	}
+	if c.luaDraft != nil {
+		return errors.New("invalid Zapret Lua draft change")
+	}
 	if c.Action == "create-list" || c.Action == "edit-list" || c.Action == "delete-list" {
 		if c.ID != "" && c.Draft == nil && c.Transfer == nil && c.Blob == nil && (c.List != nil) == (c.Action != "delete-list") {
 			return nil // The strategy catalog validates the list ID and content.
@@ -153,6 +181,8 @@ func (c *catalogChange) prepare() error {
 		}
 	case "import":
 		allocate = c.ID == "" && c.Draft == nil && c.Transfer != nil
+	case "import-preset":
+		allocate = c.ID == "" && c.Draft == nil && c.Transfer == nil && c.preset != nil
 	}
 	if !allocate {
 		return errors.New("invalid Zapret strategy change")
@@ -175,6 +205,11 @@ func (c catalogChange) mutate(raw json.RawMessage, refs []outbounds.ZapretRefere
 	}
 	next := previous
 	switch c.Action {
+	case "create-lua-draft", "edit-lua-draft", "delete-lua-draft":
+		if _, exists := previous.LuaDrafts[c.ID]; exists != (c.Action != "create-lua-draft") {
+			return nil, false, errors.New("the Lua draft ID is already in use or does not exist")
+		}
+		next, err = previous.WithLuaDraft(c.ID, c.luaDraft)
 	case "create-list", "edit-list", "delete-list":
 		if _, exists := previous.Lists[c.ID]; exists != (c.Action != "create-list") {
 			return nil, false, errors.New("the Zapret native list ID is already in use or does not exist")
@@ -187,6 +222,18 @@ func (c catalogChange) mutate(raw json.RawMessage, refs []outbounds.ZapretRefere
 		next, err = previous.WithNamedBlob(c.ID, c.Blob)
 	case "import":
 		next, err = previous.WithTransfer(c.ID, *c.Transfer)
+	case "import-preset":
+		if c.preset == nil {
+			return nil, false, errors.New("missing Zapret preset")
+		}
+		var review strategy.PresetPreview
+		next, review, err = previous.PreparePreset(c.ID, *c.preset)
+		if err == nil && review.Record == nil {
+			if len(review.Issues) == 0 {
+				return nil, false, errors.New("preset cannot be imported; review the source before saving")
+			}
+			return nil, false, fmt.Errorf("preset cannot be imported: %s", review.Issues[0].Message)
+		}
 	case "delete", "edit", "create":
 		_, exists := previous.Records[c.ID]
 		if exists != (c.Action != "create") {
@@ -196,7 +243,7 @@ func (c catalogChange) mutate(raw json.RawMessage, refs []outbounds.ZapretRefere
 		if c.Action == "delete" {
 			for _, ref := range refs {
 				if ref.StrategyRef == c.ID {
-					return nil, false, fmt.Errorf("strategy is referenced by Direct %q; clear or reassign its binding first", ref.OutboundRef)
+					return nil, false, fmt.Errorf("strategy is referenced by outbound %q; clear or reassign its binding first", ref.OutboundRef)
 				}
 			}
 			delete(next.Records, c.ID)

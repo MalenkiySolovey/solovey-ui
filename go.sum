@@ -52,8 +52,8 @@ github.com/MalenkiySolovey/solovey-component-zapret v0.1.9 h1:XhYltyo1eouowZCMkA
 github.com/MalenkiySolovey/solovey-component-zapret v0.1.9/go.mod h1:S7y94+Jn2WlDE9KTdjqX8LZ+xutESUKDCtZFj3REn6E=
 github.com/MalenkiySolovey/solovey-component-zapret v0.1.10 h1:ne1dxXZG71rcENuJp7ZD49dm3iHYz6dkN1EzKtcGaJc=
 github.com/MalenkiySolovey/solovey-component-zapret v0.1.10/go.mod h1:S7y94+Jn2WlDE9KTdjqX8LZ+xutESUKDCtZFj3REn6E=
-github.com/MalenkiySolovey/solovey-component-zapret v0.1.11 h1:o/4HLPVR9cxivdvN2ZcnJCGnWPQ22OhmnW5b8toahAk=
-github.com/MalenkiySolovey/solovey-component-zapret v0.1.11/go.mod h1:S7y94+Jn2WlDE9KTdjqX8LZ+xutESUKDCtZFj3REn6E=
+github.com/MalenkiySolovey/solovey-component-zapret v0.1.12 h1:h2Rvfr+LOPA5XWHKFVSnaJOLb5twlIaYxrXiWrS7ews=
+github.com/MalenkiySolovey/solovey-component-zapret v0.1.12/go.mod h1:S7y94+Jn2WlDE9KTdjqX8LZ+xutESUKDCtZFj3REn6E=
 github.com/MalenkiySolovey/solovey-contracts v1.0.0 h1:me6uddB3lN19zfYkGp6iuOT46LOshbSelIECAt4Y7aY=
 github.com/MalenkiySolovey/solovey-contracts v1.0.0/go.mod h1:2fPj6/IiP0jvioVnW2OKurqGPwilJ+gcXNs74aX1VcI=
 github.com/MalenkiySolovey/solovey-contracts v1.0.1 h1:6ppOe1XckTKpIwIfvI/Bd9Z9uEPs9Woz4K0IBOeED5M=

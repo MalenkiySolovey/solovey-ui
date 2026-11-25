@@ -44,3 +44,27 @@ func TestZapretInterfaceDefaultsRequireEverySelectedOutbound(t *testing.T) {
 		t.Fatalf("got %v, want an unqualified path", err)
 	}
 }
+
+func TestZapretCoreProfileOnlyIgnoresDecodedZeroMarks(t *testing.T) {
+	for _, tc := range []struct {
+		mark string
+		want bool
+	}{
+		{`0`, true}, {`"0x00"`, true}, {`"0b_0"`, true},
+		{`1`, false}, {`"0xAB"`, false}, {`null`, false}, {`""`, false}, {`false`, false}, {`4294967296`, false},
+	} {
+		t.Run(tc.mark, func(t *testing.T) {
+			for _, config := range []string{
+				`{"route":{"default_mark":` + tc.mark + `}}`,
+				`{"outbounds":[{"tag":"selected","routing_mark":` + tc.mark + `}]}`,
+				`{"outbounds":[{"tag":"unselected","routing_mark":` + tc.mark + `}]}`,
+				`{"endpoints":[{"tag":"endpoint","routing_mark":` + tc.mark + `}]}`,
+			} {
+				err := validateZapretCoreProfile([]byte(config), true, map[string]bool{"selected": true})
+				if tc.want && err != nil || !tc.want && !errors.Is(err, entityoutbounds.ErrZapretPacketPathUnqualified) {
+					t.Errorf("%s: got %v, accept = %t", config, err, tc.want)
+				}
+			}
+		})
+	}
+}

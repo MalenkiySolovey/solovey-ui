@@ -135,7 +135,15 @@ func validateZapretCoreProfile(config []byte, bound bool, selected map[string]bo
 	var interfaceDefault string
 	for key, raw := range candidate.Route {
 		switch strings.ToLower(key) {
-		case "default_mark", "default_network_namespace", "network_namespaces":
+		case "default_mark":
+			var mark option.FwMark
+			if key != "default_mark" || json.Unmarshal(raw, &mark) != nil {
+				return fmt.Errorf("%w: invalid route.%s", entityoutbounds.ErrZapretPacketPathUnqualified, key)
+			}
+			if mark != 0 {
+				return fmt.Errorf("%w: conflicting Core route control %s would set SO_MARK before the broker handoff", entityoutbounds.ErrZapretPacketPathUnqualified, key)
+			}
+		case "default_network_namespace", "network_namespaces":
 			return fmt.Errorf("%w: conflicting Core route control %s", entityoutbounds.ErrZapretPacketPathUnqualified, key)
 		case "default_interface":
 			var name string
@@ -161,8 +169,12 @@ func validateZapretCoreProfile(config []byte, bound bool, selected map[string]bo
 		}
 	}
 	for _, options := range append(candidate.Outbounds, candidate.Endpoints...) {
-		for key := range options {
+		for key, raw := range options {
 			if strings.EqualFold(key, "routing_mark") {
+				var mark option.FwMark
+				if key == "routing_mark" && json.Unmarshal(raw, &mark) == nil && mark == 0 {
+					continue // Both pinned dialers skip SO_MARK for zero.
+				}
 				return fmt.Errorf("%w: another Core socket mark owner is configured", entityoutbounds.ErrZapretPacketPathUnqualified)
 			}
 		}
