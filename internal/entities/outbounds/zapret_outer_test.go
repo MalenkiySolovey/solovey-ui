@@ -2,6 +2,7 @@ package outbounds
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -9,6 +10,55 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 	C "github.com/sagernet/sing-box/constant"
 )
+
+func TestZapretSnellSaveKeepsBindingOutsideNativeSchema(t *testing.T) {
+	for _, tc := range []struct {
+		name, attachment, extra, wantError string
+		quiesce                            bool
+	}{
+		{"off", `{"outboundRef":"snell-proxy","enabled":false,"strategyRef":"proof"}`, `,"detour":"underlay"`, "", false},
+		{"on", `{"outboundRef":"snell-proxy","enabled":true,"strategyRef":"proof"}`, "", "", true},
+		{"bad-native", `{"outboundRef":"snell-proxy","enabled":true,"strategyRef":"proof"}`, `,"obfs_mode":"http"`, "SNELL_OPTIONS_INVALID", false},
+		{"bad-binding", `{"outboundRef":"other","enabled":true,"strategyRef":"proof"}`, "", "binding identity does not match the outbound", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := newFailoverDB(t)
+			if err := db.AutoMigrate(&model.Endpoint{}, &model.Service{}, &model.Setting{}); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Create(&model.Outbound{Tag: "underlay", Type: "direct", Options: json.RawMessage(`{}`)}).Error; err != nil {
+				t.Fatal(err)
+			}
+			data := json.RawMessage(`{"type":"snell","tag":"snell-proxy","version":6,"psk":"fixture-psk-12","server":"203.0.113.2","server_port":19083,"zapret":` + tc.attachment + tc.extra + `}`)
+			if tc.quiesce {
+				if _, err := Save(db, "new", data); !errors.Is(err, ErrZapretPacketPathUnqualified) {
+					t.Fatalf("unqualified save accepted or wrong error: %v", err)
+				}
+			}
+			change, err := SaveForCoreLifecycle(db, "new", data)
+			if tc.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+					t.Fatalf("expected %s, got %v", tc.wantError, err)
+				}
+				return
+			}
+			if err != nil || change.QuiesceCore != tc.quiesce {
+				t.Fatalf("change = %+v, err = %v", change, err)
+			}
+			var saved model.Outbound
+			if err := db.Where("tag = ?", "snell-proxy").First(&saved).Error; err != nil {
+				t.Fatal(err)
+			}
+			fields, binding, err := zapretOptions(saved)
+			if err != nil || binding == nil || binding.Enabled != tc.quiesce || binding.StrategyRef != "proof" {
+				t.Fatalf("stored binding = %+v, err = %v", binding, err)
+			}
+			if !tc.quiesce && string(fields["detour"]) != `"underlay"` {
+				t.Fatalf("OFF lost the native detour: %s", fields["detour"])
+			}
+		})
+	}
+}
 
 func TestZapretOuterSocketProjection(t *testing.T) {
 	domainTCP := func(kind string) zapretactivation.OuterSocket {
