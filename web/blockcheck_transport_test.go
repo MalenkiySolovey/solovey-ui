@@ -1,6 +1,6 @@
 //go:build !minimal
 
-package web_test
+package web
 
 import (
 	"bytes"
@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-host/operationref"
-	_ "github.com/MalenkiySolovey/solovey-ui/app" // Register the selected Product composition.
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
@@ -27,7 +26,7 @@ import (
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"github.com/MalenkiySolovey/solovey-ui/service"
-	"github.com/MalenkiySolovey/solovey-ui/web"
+	_ "github.com/MalenkiySolovey/solovey-ui/testsupport/blockcheckfixture"
 )
 
 type suiteFrame struct {
@@ -37,9 +36,9 @@ type suiteFrame struct {
 }
 
 func TestBlockCheckProductionStreamPreservesDeadlineAndExactCancellation(t *testing.T) {
-	owner, composed := registry.ComponentByID("blockcheck")
-	if !composed {
-		t.Skip("BlockCheck is not selected in this Product composition")
+	owner, registered := registry.ComponentByID("blockcheck")
+	if !registered {
+		t.Fatal("BlockCheck fixture was not registered")
 	}
 	settings := owner.Manifest.Database.Settings
 	if len(settings) != 1 {
@@ -52,11 +51,11 @@ func TestBlockCheckProductionStreamPreservesDeadlineAndExactCancellation(t *test
 			if _, err := installstate.SetInstalled(path, []manifest.Manifest{owner.Manifest}, owner.Manifest.ID, true); err != nil {
 				t.Fatal(err)
 			}
-			db := web.InitTestRouterDB(t)
+			db := initWebRouterTestDB(t)
 			const base = "/qualification+v1/"
-			web.SetTestRouterSetting(t, db, "webPath", base)
-			web.SetTestRouterSetting(t, db, enabledstate.SettingKey(owner.Manifest.ID), "true")
-			web.SetTestRouterSetting(t, db, settings[0], `{"schema":"solovey.blockcheck.groups/v1","groups":[
+			setWebRouterSetting(t, db, "webPath", base)
+			setWebRouterSetting(t, db, enabledstate.SettingKey(owner.Manifest.ID), "true")
+			setWebRouterSetting(t, db, settings[0], `{"schema":"solovey.blockcheck.groups/v1","groups":[
 				{"id":"first","name":"Local fixture","targets":[{"name":"No DNS for literal","host":"9.9.9.9","probes":["dns"]}]},
 				{"id":"second","name":"Closing fixture","targets":[{"name":"Synthetic CONNECT target","host":"9.9.9.9","probes":["http"]}]}
 			]}`)
@@ -96,7 +95,7 @@ func TestBlockCheckProductionStreamPreservesDeadlineAndExactCancellation(t *test
 			previous := service.DefaultRuntime()
 			service.SetDefaultRuntime(runtime)
 			t.Cleanup(func() { service.SetDefaultRuntime(previous) })
-			t.Cleanup(func() { web.StopTestRouterWriters(t, runtime) })
+			t.Cleanup(func() { stopWebRouterTestWriters(t, runtime) })
 			lifecycle := supervisor.New(componenthost.Deps{})
 			if err := lifecycle.Start(t.Context()); err != nil {
 				t.Fatal(err)
@@ -110,7 +109,11 @@ func TestBlockCheckProductionStreamPreservesDeadlineAndExactCancellation(t *test
 			if err := db.Table("users").Where("id = ?", 1).Update("force_password_reset", false).Error; err != nil {
 				t.Fatal(err)
 			}
-			router, err := web.NewTestRouter(runtime)
+			panel, err := NewServer(WithRuntime(runtime), WithComponents(productComponentFixture(runtime)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			router, err := panel.initRouter()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -125,7 +128,7 @@ func TestBlockCheckProductionStreamPreservesDeadlineAndExactCancellation(t *test
 			t.Cleanup(server.Close)
 			authServer := httptest.NewServer(router)
 			t.Cleanup(authServer.Close)
-			web.LoginTestRouterAtBase(t, authServer.Client(), authServer.URL, password, base)
+			loginRuntimeTransportFixtureAtBase(t, authServer.Client(), authServer.URL, password, base)
 			server.Client().Jar = authServer.Client().Jar
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
