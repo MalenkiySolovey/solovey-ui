@@ -126,3 +126,27 @@ Existing Components can retain the legacy contract until their real consumers
 are migrated. Legacy migration/restore/backup hooks must be migrated explicitly
 before typed admission; the adapter rejects them rather than silently omitting
 their semantics. This is an in-process contract, not a process sandbox.
+
+## BlockCheck
+
+Full can install BlockCheck independently of Zapret. It is disabled by
+default. Only an authenticated administrator can edit its catalog or start a
+bounded foreground run. Disable cancels that run and preserves the catalog.
+The ordinary database backup owns `blockcheckGroupsV1`; run observations are
+not stored there. Core/minimal omit the Component and its UI.
+
+The selected Outbound mode borrows the active Core generation. It supports
+Direct and the audited literal-TCP HTTP/SOCKS paths, with no diagnostic fallback
+to another Outbound. A proxy CONNECT acknowledgment alone is not evidence of
+an endpoint handshake. An explicit DNS server uses its existing configuration
+and detour; without one, lookup uses the active Core's DNS policy without
+ingress metadata. Configured transport is not wire evidence (UDP can retry
+over TCP). Probe results do not assert the effective interface, a group member,
+or a Zapret match when the owner does not observe it.
+
+PANEL has no owner contract combining an actual ingress/user context with
+policy admission at the final destination socket. The existing local-proxy
+readiness probe is restricted to its own challenge sink. HOST_BASELINE has no
+owner proof that both DNS and the endpoint flow are outside Core, transparent
+routes and Zapret. Both modes explicitly report unavailability rather than
+silently substituting a local network client.

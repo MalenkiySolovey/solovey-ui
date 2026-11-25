@@ -4,6 +4,7 @@
 package main
 
 import (
+	_ "github.com/MalenkiySolovey/solovey-ui/components/blockcheck"
 	_ "github.com/MalenkiySolovey/solovey-ui/components/fallback-html"
 	_ "github.com/MalenkiySolovey/solovey-ui/components/import-xui"
 	_ "github.com/MalenkiySolovey/solovey-ui/components/observability-extra"

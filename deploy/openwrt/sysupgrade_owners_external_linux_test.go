@@ -69,7 +69,7 @@ func TestSysupgradeProductionOwnerChild(t *testing.T) {
 		installedIDs = append(installedIDs, owner.Manifest.ID)
 	}
 	slices.Sort(installedIDs)
-	wantInstalled := []string{"fallback-html", "import-xui", "observability-extra", "paid-subscriptions", "remote-outbound-subscriptions", "server-protection", "telegram", "zapret"}
+	wantInstalled := []string{"blockcheck", "fallback-html", "import-xui", "observability-extra", "paid-subscriptions", "remote-outbound-subscriptions", "server-protection", "telegram", "zapret"}
 	if !slices.Equal(installedIDs, wantInstalled) {
 		t.Fatalf("full package owner inventory = %v, want %v", installedIDs, wantInstalled)
 	}

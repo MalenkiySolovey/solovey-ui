@@ -1,0 +1,15 @@
+{
+  "id": "blockcheck",
+  "name": "BlockCheck",
+  "version": "1",
+  "since": "2026.11.25",
+  "delivery": "in-process",
+  "defaultEnabled": false,
+  "frontend": {"entries": ["frontend/index.ts"]},
+  "database": {"settings": ["blockcheckGroupsV1"]},
+  "hostAPI": {
+    "version": "solovey.component-host/v1",
+    "api": ["http.request"],
+    "dropData": ["settings.drop-owned"]
+  }
+}

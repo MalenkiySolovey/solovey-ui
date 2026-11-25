@@ -30,7 +30,7 @@ func TestEveryCurrentComponentManifestHasTheSamePublicIdentity(t *testing.T) {
 		ids = append(ids, filepath.Base(filepath.Dir(name)))
 	}
 	slices.Sort(ids)
-	want := []string{"fallback-html", "import-xui", "observability-extra", "paid-subscriptions", "remote-outbound-subscriptions", "server-protection", "telegram", "zapret"}
+	want := []string{"blockcheck", "fallback-html", "import-xui", "observability-extra", "paid-subscriptions", "remote-outbound-subscriptions", "server-protection", "telegram", "zapret"}
 	if !slices.Equal(ids, want) {
 		t.Fatalf("active manifest catalog = %v, want %v", ids, want)
 	}

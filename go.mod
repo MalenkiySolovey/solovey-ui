@@ -58,10 +58,11 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0
+	github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.1
 	github.com/MalenkiySolovey/solovey-component-import-xui v0.1.4
 	github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions v0.1.0
 	github.com/MalenkiySolovey/solovey-component-server-protection v0.1.0
-	github.com/MalenkiySolovey/solovey-component-zapret v0.1.13
+	github.com/MalenkiySolovey/solovey-component-zapret v0.1.14
 	github.com/ajg/form v1.5.1 // indirect
 	github.com/akutz/memconn v0.1.0 // indirect
 	github.com/alexbrainman/sspi v0.0.0-20231016080023-1a75b4708caa // indirect
