@@ -139,6 +139,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	// Gzip hides ResponseController; only these exact routes bypass its writer.
 	engine.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPathsRegexs([]string{
 		"^" + regexp.QuoteMeta(base_url) + "(?:api|apiv2)/runtime/logs$",
+		"^" + regexp.QuoteMeta(base_url) + "api/components/blockcheck/run/stream$",
 		databaseTransferUncompressedPattern(base_url),
 		providerMaintenanceUncompressedPattern(base_url),
 	})))

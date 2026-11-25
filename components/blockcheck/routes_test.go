@@ -60,11 +60,15 @@ func TestBlockCheckDurableCatalogRevision(t *testing.T) {
 }
 
 func TestBlockCheckAuthorizationAndBoundsPrecedeExecution(t *testing.T) {
-	for _, spec := range []struct{ method, path, scope string }{
-		{"GET", "/groups", "blockcheck.groups.read"}, {"POST", "/groups", "blockcheck.groups.write"},
-		{"GET", "/options", "blockcheck.options.read"}, {"POST", "/run", "blockcheck.run"},
+	for _, spec := range []struct {
+		method, path, scope string
+		limit               int
+	}{
+		{"GET", "/groups", "blockcheck.groups.read", 0}, {"POST", "/groups", "blockcheck.groups.write", feature.MaxCatalogBytes + 2048},
+		{"GET", "/options", "blockcheck.options.read", 0}, {"POST", "/run", "blockcheck.run", 8 << 10},
+		{"POST", "/run/stream", "blockcheck.run", feature.MaxSuiteRequestBytes}, {"POST", "/run/cancel", "blockcheck.run", 512},
 	} {
-		t.Run(spec.scope, func(t *testing.T) {
+		t.Run(spec.method+spec.path, func(t *testing.T) {
 			g := gin.New()
 			allow := false
 			registerRoutes(g.Group("/api"), componenthost.Ports{Auth: componenthost.AuthDeps{RequireScope: func(c *gin.Context, scope string, roles ...string) bool {
@@ -91,7 +95,7 @@ func TestBlockCheckAuthorizationAndBoundsPrecedeExecution(t *testing.T) {
 			}
 			if spec.method == http.MethodPost {
 				allow = true
-				for _, body := range []string{`{"unexpected":true}`, strings.Repeat(" ", 256<<10), `{} {}`} {
+				for _, body := range []string{`{"unexpected":true}`, strings.Repeat(" ", spec.limit) + `{}`, `{} {}`} {
 					if status := req(body); status != http.StatusBadRequest {
 						t.Fatalf("invalid request status %d", status)
 					}

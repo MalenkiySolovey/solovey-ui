@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"time"
 	"unicode/utf8"
 
 	"github.com/MalenkiySolovey/solovey-backend/settings/store"
@@ -65,12 +66,7 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports, componen
 			ports.HTTP.JSONObj(c, nil, feature.ErrInvalidRun)
 			return
 		}
-		if ports.Rate.CheckRateLimit == nil || ports.Request.RemoteIP == nil {
-			ports.HTTP.JSONObj(c, nil, feature.ErrInactive)
-			return
-		}
-		if _, err := ports.Rate.CheckRateLimit("blockcheck:" + ports.Request.RemoteIP(c)); err != nil {
-			ports.HTTP.JSONObj(c, nil, err)
+		if !allowRun(c, ports) {
 			return
 		}
 		ctx := c.Request.Context()
@@ -87,6 +83,77 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports, componen
 		}
 		ports.HTTP.JSONObj(c, report, err)
 	})
+	group.POST("/run/stream", func(c *gin.Context) {
+		if !ports.Auth.RequireScope(c, "blockcheck.run", "admin") {
+			return
+		}
+		c.Header("Cache-Control", "no-store")
+		var request feature.SuiteRequest
+		if !readRequest(c, &request, feature.MaxSuiteRequestBytes) {
+			ports.HTTP.JSONObj(c, nil, feature.ErrInvalidRun)
+			return
+		}
+		if !allowRun(c, ports) {
+			return
+		}
+		ctx := c.Request.Context()
+		catalog, err := readCatalog(ctx, dbsqlite.DB())
+		if err != nil {
+			ports.HTTP.JSONObj(c, nil, err)
+			return
+		}
+		controller := http.NewResponseController(c.Writer)
+		encoder := json.NewEncoder(c.Writer)
+		err = component.RunSuite(ctx, ports.Host, catalog, request, provider, permitTarget, func(event feature.SuiteEvent) error {
+			if event.Kind == "started" {
+				c.Header("Content-Type", "application/x-ndjson")
+				c.Header("X-Accel-Buffering", "no")
+			}
+			if event.Kind == "finished" && ports.Audit.Audit != nil {
+				ports.Audit.Audit(c, "blockcheck_run", feature.ID, event.Job.ResourceID, "", map[string]any{
+					"operation": event.Job.OperationID, "phase": event.Job.Phase, "mode": request.Path.Mode,
+					"groups": event.Progress.GroupsDone, "probes": event.Progress.ProbesDone,
+				})
+			}
+			// Same bounded write/idle behavior as the Core runtime-log stream.
+			_ = controller.SetWriteDeadline(time.Now().Add(2 * time.Second))
+			defer func() { _ = controller.SetWriteDeadline(time.Time{}) }()
+			if err := encoder.Encode(event); err != nil {
+				return err
+			}
+			return controller.Flush()
+		})
+		if err != nil && !c.Writer.Written() && ctx.Err() == nil {
+			ports.HTTP.JSONObj(c, nil, err)
+		}
+	})
+	group.POST("/run/cancel", func(c *gin.Context) {
+		if !ports.Auth.RequireScope(c, "blockcheck.run", "admin") {
+			return
+		}
+		c.Header("Cache-Control", "no-store")
+		var request struct {
+			OperationID string `json:"operationId"`
+		}
+		if !readRequest(c, &request, 512) {
+			ports.HTTP.JSONObj(c, nil, feature.ErrInvalidRun)
+			return
+		}
+		err := component.CancelSuite(ports.Host, request.OperationID)
+		ports.HTTP.JSONObj(c, nil, err)
+	})
+}
+
+func allowRun(c *gin.Context, ports componenthost.Ports) bool {
+	if ports.Rate.CheckRateLimit == nil || ports.Request.RemoteIP == nil {
+		ports.HTTP.JSONObj(c, nil, feature.ErrInactive)
+		return false
+	}
+	if _, err := ports.Rate.CheckRateLimit("blockcheck:" + ports.Request.RemoteIP(c)); err != nil {
+		ports.HTTP.JSONObj(c, nil, err)
+		return false
+	}
+	return true
 }
 
 func readRequest(c *gin.Context, target any, limit int64) bool {
