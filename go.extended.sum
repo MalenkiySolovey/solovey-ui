@@ -94,6 +94,8 @@ github.com/MalenkiySolovey/solovey-component-zapret v0.1.10 h1:ne1dxXZG71rcENuJp
 github.com/MalenkiySolovey/solovey-component-zapret v0.1.10/go.mod h1:S7y94+Jn2WlDE9KTdjqX8LZ+xutESUKDCtZFj3REn6E=
 github.com/MalenkiySolovey/solovey-component-zapret v0.1.12 h1:h2Rvfr+LOPA5XWHKFVSnaJOLb5twlIaYxrXiWrS7ews=
 github.com/MalenkiySolovey/solovey-component-zapret v0.1.12/go.mod h1:S7y94+Jn2WlDE9KTdjqX8LZ+xutESUKDCtZFj3REn6E=
+github.com/MalenkiySolovey/solovey-component-zapret v0.1.13 h1:xb7sQHbXfRNGTqLF94n+rjWYxCHsZD9w21yJvZN+UIk=
+github.com/MalenkiySolovey/solovey-component-zapret v0.1.13/go.mod h1:S7y94+Jn2WlDE9KTdjqX8LZ+xutESUKDCtZFj3REn6E=
 github.com/MalenkiySolovey/solovey-contracts v1.0.0 h1:me6uddB3lN19zfYkGp6iuOT46LOshbSelIECAt4Y7aY=
 github.com/MalenkiySolovey/solovey-contracts v1.0.0/go.mod h1:2fPj6/IiP0jvioVnW2OKurqGPwilJ+gcXNs74aX1VcI=
 github.com/MalenkiySolovey/solovey-contracts v1.0.1 h1:6ppOe1XckTKpIwIfvI/Bd9Z9uEPs9Woz4K0IBOeED5M=
@@ -119,6 +121,8 @@ github.com/MalenkiySolovey/solovey-host v0.12.2 h1:6Aj30FzQvO9eSHPGv0Nu/VNiZQe58
 github.com/MalenkiySolovey/solovey-host v0.12.2/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
 github.com/MalenkiySolovey/solovey-host v0.12.3 h1:+92WMGufQOwxAILrzHtW6VjNlZkp3DwE+6YqGMlcitQ=
 github.com/MalenkiySolovey/solovey-host v0.12.3/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
+github.com/MalenkiySolovey/solovey-host v0.12.4 h1:B/GYNu6UcgwTQbvtJJn82QNpTvF1+HN4RJJqIJM4zek=
+github.com/MalenkiySolovey/solovey-host v0.12.4/go.mod h1:BUYlv5O5C9TrMoulPD+aNflUfPccG7N9DAJilI3itXI=
 github.com/OneOfOne/xxhash v1.2.8 h1:31czK/TI9sNkxIKfaUfGlU47BAxQ0ztGgd9vPyqimf8=
 github.com/OneOfOne/xxhash v1.2.8/go.mod h1:eZbhyaAYD41SGSSsnmcpxVoRiQ/MPUTjUdIIOT9Um7Q=
 github.com/RyuaNerin/go-krypto v1.3.0 h1:smavTzSMAx8iuVlGb4pEwl9MD2qicqMzuXR2QWp2/Pg=

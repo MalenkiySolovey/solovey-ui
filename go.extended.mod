@@ -9,7 +9,7 @@ require (
 	github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0
 	github.com/MalenkiySolovey/solovey-component-telegram v0.1.0
 	github.com/MalenkiySolovey/solovey-contracts v1.0.1
-	github.com/MalenkiySolovey/solovey-host v0.12.3
+	github.com/MalenkiySolovey/solovey-host v0.12.4
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cilium/ebpf v0.22.0
 	github.com/coder/websocket v1.8.14
@@ -105,7 +105,7 @@ require (
 	github.com/MalenkiySolovey/solovey-component-import-xui v0.1.4
 	github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions v0.1.0
 	github.com/MalenkiySolovey/solovey-component-server-protection v0.1.0
-	github.com/MalenkiySolovey/solovey-component-zapret v0.1.12
+	github.com/MalenkiySolovey/solovey-component-zapret v0.1.13
 	github.com/OneOfOne/xxhash v1.2.8 // indirect
 	github.com/ajg/form v1.5.1 // indirect
 	github.com/akutz/memconn v0.1.0 // indirect
