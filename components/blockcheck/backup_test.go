@@ -1,23 +1,31 @@
 //go:build !minimal
 
-package backup_test
+package blockcheck
 
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-backend/settings/store"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	feature "github.com/MalenkiySolovey/solovey-component-blockcheck"
-	_ "github.com/MalenkiySolovey/solovey-ui/components/blockcheck"
+	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
 func TestBlockCheckBackupRestorePreservesCatalogRevisionAndUserEdits(t *testing.T) {
-	initBackupRestoreIntegrationDB(t)
+	t.Setenv("SUI_DB_FOLDER", t.TempDir())
+	if err := dbsqlite.Init(configstorage.GetDBPath()); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = dbsqlite.Close() })
 	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +53,7 @@ func TestBlockCheckBackupRestorePreservesCatalogRevisionAndUserEdits(t *testing.
 	}
 	dbbackup.SetSendSighupHook(func() error { return nil })
 	t.Cleanup(func() { dbbackup.SetSendSighupHook(nil) })
-	if err := dbbackup.Restore(integrationMemMultipartFile{Reader: bytes.NewReader(archive)}); err != nil {
+	if err := dbbackup.Restore(backupMultipartFile{Reader: bytes.NewReader(archive)}); err != nil {
 		t.Fatal(err)
 	}
 	var row model.Setting
@@ -60,3 +68,7 @@ func TestBlockCheckBackupRestorePreservesCatalogRevisionAndUserEdits(t *testing.
 		t.Fatal("restore resurrected a deleted default group")
 	}
 }
+
+type backupMultipartFile struct{ *bytes.Reader }
+
+func (backupMultipartFile) Close() error { return nil }
