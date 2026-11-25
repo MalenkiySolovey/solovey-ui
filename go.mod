@@ -3,7 +3,7 @@ module github.com/MalenkiySolovey/solovey-ui
 go 1.26.11
 
 require (
-	github.com/MalenkiySolovey/solovey-backend v0.1.4
+	github.com/MalenkiySolovey/solovey-backend v0.1.5
 	github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0
 	github.com/MalenkiySolovey/solovey-component-observability-extra v0.1.0
 	github.com/MalenkiySolovey/solovey-component-telegram v0.1.0
@@ -58,7 +58,7 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0
-	github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.1
+	github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.3
 	github.com/MalenkiySolovey/solovey-component-import-xui v0.1.4
 	github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions v0.1.0
 	github.com/MalenkiySolovey/solovey-component-server-protection v0.1.0

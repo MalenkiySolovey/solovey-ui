@@ -135,6 +135,13 @@ bounded foreground run. Disable cancels that run and preserves the catalog.
 The ordinary database backup owns `blockcheckGroupsV1`; run observations are
 not stored there. Core/minimal omit the Component and its UI.
 
+Each service card can run independently. Check All uses one active generation
+and the enabled groups in catalog order, runs up to three probes at a time,
+and streams per-probe and per-group results. Cancellation names that exact
+operation. The legacy single-response endpoint still has a separate response
+budget. The saved-catalog byte limit bounds database and transfer work, not
+the number of checks in a streamed suite.
+
 The selected Outbound mode borrows the active Core generation. It supports
 Direct and the audited literal-TCP HTTP/SOCKS paths, with no diagnostic fallback
 to another Outbound. A proxy CONNECT acknowledgment alone is not evidence of
