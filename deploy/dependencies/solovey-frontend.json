@@ -1,11 +1,11 @@
 {
   "schema": "solovey.frontend-product-pin/v1",
-  "version": "0.1.19",
+  "version": "0.1.20",
   "source": {
     "repo": "MalenkiySolovey/solovey-frontend",
-    "commit": "49dace46313bc771a018c448b34da1a00ab79c64",
-    "tree": "c1d2a243483e84a69ed00ed7318bfc9ef99a4c8f",
-    "filesSHA256": "817465657e47d0704b5698c1ea3889b2abb0581362cfc2c0e3372ec0bbc0ad42"
+    "commit": "f9a5c9cafe2bdadff7b1a1ea0be230f093752b18",
+    "tree": "f9355d277c7428d9a93e971644b61fc57c119229",
+    "filesSHA256": "52dc43eddb7d3bc03b9d2829916307f5fda0da4cbbc904864515af4034d13ada"
   },
   "toolchain": {
     "node": "25.9.0",
@@ -13,23 +13,23 @@
     "packageLockSHA256": "ce5862abc08b48a100f25be49c345ac1a973d9f96b11a52af077195d3e64ffb0"
   },
   "input": {
-    "manifestSHA256": "57afec75b90ced60c1b77517175fba05fc2f1482689c3a2eba0441060326c7a6",
-    "archiveSHA256": "4a14272c4cd8b9a66030b034f710ddc6ac6d9c14e5351a9ee70e735d267dd5fd",
-    "productSource": "0ce033cb76e03a0e01b5fcf62a04c13648d170c7",
-    "sourceLockDigest": "150ee497ff41be9c3d5cf0b11625df3a2d6b03a58dd84939821710c06d03fea5"
+    "manifestSHA256": "fb5da7f9176d77d52b9ce84b2c8bbed4260ab56493d1c29d64c7537821cfbbc1",
+    "archiveSHA256": "5ea44a4f79e3460c5139afbad7c92687ed2d85d595da290a6bccc95ef982494a",
+    "productSource": "452358dee3e586a37b2cf7db928cca374621c19c",
+    "sourceLockDigest": "2eb2e6cd18ac019f5dc4c0846a179c714815f1cc03405dca700ad26a4f10c5c7"
   },
   "sourceArchive": {
     "filename": "frontend-source.json.gz",
-    "sha256": "a9d95d3fdafd7e2b490f5e688267b92daed8fa786b3e369834f2490191a890c2",
-    "filesSHA256": "817465657e47d0704b5698c1ea3889b2abb0581362cfc2c0e3372ec0bbc0ad42"
+    "sha256": "fb8c915e791f503a446a922b4f1568d91beba46eab4b3ca28b16587627a721b8",
+    "filesSHA256": "52dc43eddb7d3bc03b9d2829916307f5fda0da4cbbc904864515af4034d13ada"
   },
   "profiles": {
     "full": {
       "archive": "frontend-full.json.gz",
-      "archiveSHA256": "261f3f5af2af269f6f978b4154c80affff05fa19c3d5dd62452ddb2aba61b1cf",
+      "archiveSHA256": "32d4acb7d549b64adf4774af5e1693c0c869e067f928195ee19e5ddc6c61f98a",
       "provenance": "frontend-full.provenance.json",
-      "provenanceSHA256": "82f59a74e1af27260705767648a6c5d16e1f18187a7f2fe476696f5b95d862b5",
-      "viteManifestSHA256": "4ac0aafda1bb7633292afeb3230a1006ff2ab0a40ed222443982cf73e098da70",
+      "provenanceSHA256": "0d9a9f641ef90d30415051e4d1351d2f2b5d3f180c701bea617331116a3bf41d",
+      "viteManifestSHA256": "b67f218f2eb870b777570c14462e392e666806082c03695938f759fb93f80577",
       "profile": "full",
       "componentIDs": [
         "fallback-html",
@@ -41,79 +41,79 @@
         "telegram",
         "zapret"
       ],
-      "inputManifestSHA256": "57afec75b90ced60c1b77517175fba05fc2f1482689c3a2eba0441060326c7a6",
+      "inputManifestSHA256": "fb5da7f9176d77d52b9ce84b2c8bbed4260ab56493d1c29d64c7537821cfbbc1",
       "files": 253
     },
     "core": {
       "archive": "frontend-core.json.gz",
-      "archiveSHA256": "f6d7f64cf21336578c430201772d1ef670578e495c1c93b29f330c3456fb62f4",
+      "archiveSHA256": "aa3fe20b9e14cfa313ecb01a957eacb51cc793a5b873f96d8b7f93dc0446823a",
       "provenance": "frontend-core.provenance.json",
-      "provenanceSHA256": "5b6e9afd9a8e8a4c68b012473955e2aabc7cc1358fe9f4bb32b5ec7e70fbf303",
-      "viteManifestSHA256": "c039f051bb2588cf51d8ea032b9a470db1b678b226f4be7d7e08d21a653c2c18",
+      "provenanceSHA256": "b40ad6397d4bbb8b91498d751ffb4c234bf6e34321d33998bd9bca73a677228f",
+      "viteManifestSHA256": "81c433b52971df48ab38c966cd68a5eeec71b5f03a62b20ea02c454785cb56ae",
       "profile": "core",
       "componentIDs": [],
-      "inputManifestSHA256": "57afec75b90ced60c1b77517175fba05fc2f1482689c3a2eba0441060326c7a6",
+      "inputManifestSHA256": "fb5da7f9176d77d52b9ce84b2c8bbed4260ab56493d1c29d64c7537821cfbbc1",
       "files": 165
     },
     "minimal": {
       "archive": "frontend-minimal.json.gz",
-      "archiveSHA256": "f6d7f64cf21336578c430201772d1ef670578e495c1c93b29f330c3456fb62f4",
+      "archiveSHA256": "aa3fe20b9e14cfa313ecb01a957eacb51cc793a5b873f96d8b7f93dc0446823a",
       "provenance": "frontend-minimal.provenance.json",
-      "provenanceSHA256": "01a55b9827422200b7dd1bd40b69d5c3ab32386341d73c72eacdd4aecc3e3520",
-      "viteManifestSHA256": "c039f051bb2588cf51d8ea032b9a470db1b678b226f4be7d7e08d21a653c2c18",
+      "provenanceSHA256": "7788da056ca5d03672f0567d52431eafa01d5f038877b264641cbd34aaae3b61",
+      "viteManifestSHA256": "81c433b52971df48ab38c966cd68a5eeec71b5f03a62b20ea02c454785cb56ae",
       "profile": "minimal",
       "componentIDs": [],
-      "inputManifestSHA256": "57afec75b90ced60c1b77517175fba05fc2f1482689c3a2eba0441060326c7a6",
+      "inputManifestSHA256": "fb5da7f9176d77d52b9ce84b2c8bbed4260ab56493d1c29d64c7537821cfbbc1",
       "files": 165
     },
     "custom-fallback-html": {
       "archive": "frontend-custom-fallback-html.json.gz",
-      "archiveSHA256": "96330330be5c39dae69a2ce3b3c225634bf49040dccd908e0e38c2b41b99674c",
+      "archiveSHA256": "4b5404df881e744219a7cb947477644a0aa997973478eb92ff169973b7dc0ce3",
       "provenance": "frontend-custom-fallback-html.provenance.json",
-      "provenanceSHA256": "ecdd1f2bda57e4e95d79424c698bcf5c0bdea1e68ac26f90132a2cc929eaa2e3",
-      "viteManifestSHA256": "614a38f85cf008f530f7af44181fe6a64e03d7a8f98068e8bdcf165b47437479",
+      "provenanceSHA256": "f5d216a51801d2542bf98b059e90938594b876bf4a195cbbeb2b3bf417c195f1",
+      "viteManifestSHA256": "f9d2964a0ea25c7a08fe09176313f9f7231a2ab6ae9cfcea12b5a37b66b1fbf1",
       "profile": "full",
       "componentIDs": [
         "fallback-html"
       ],
-      "inputManifestSHA256": "57afec75b90ced60c1b77517175fba05fc2f1482689c3a2eba0441060326c7a6",
+      "inputManifestSHA256": "fb5da7f9176d77d52b9ce84b2c8bbed4260ab56493d1c29d64c7537821cfbbc1",
       "files": 173
     },
     "custom-server-protection": {
       "archive": "frontend-custom-server-protection.json.gz",
-      "archiveSHA256": "29d845614f42949b3005776a3453053fda25d959fb60bcb9c7b4e21d68ae376a",
+      "archiveSHA256": "088f2eecec5b6d2abeb695d8b91184fae18428e2d6570d366efa1f590080d1ed",
       "provenance": "frontend-custom-server-protection.provenance.json",
-      "provenanceSHA256": "40754b32f4e1db05ae66f99086f31e11f1d95f7bc78610a84fe84b1da118add2",
-      "viteManifestSHA256": "73d59df960aba7da251cdc5487ccccb49aa7d0fbf38b5815a2de5775fd9e7b38",
+      "provenanceSHA256": "c053f6741093eca09d65315eac42538438914a38170ebdf746accb000a1aec34",
+      "viteManifestSHA256": "4305cb74cb9a7de3b96c760615d17a947d0725b0ef31d9ed867a2b4bb2060ee2",
       "profile": "full",
       "componentIDs": [
         "server-protection"
       ],
-      "inputManifestSHA256": "57afec75b90ced60c1b77517175fba05fc2f1482689c3a2eba0441060326c7a6",
+      "inputManifestSHA256": "fb5da7f9176d77d52b9ce84b2c8bbed4260ab56493d1c29d64c7537821cfbbc1",
       "files": 176
     },
     "custom-remote-outbound-subscriptions": {
       "archive": "frontend-custom-remote-outbound-subscriptions.json.gz",
-      "archiveSHA256": "cf5dce039935478842fb3b8a9b65689804ce8ad7c48b8f975f8e6123cfedb619",
+      "archiveSHA256": "a8a89c11df062ce05e767f3d1c7451a1dd1ca0f5790c74611d2fb6a2f5c8d405",
       "provenance": "frontend-custom-remote-outbound-subscriptions.provenance.json",
-      "provenanceSHA256": "96530066302b55b406619701eb003b959dd28273b6d315329c73e69e346bc5eb",
-      "viteManifestSHA256": "d0a5bc5ab713d7f709e3273b66f5821652429e53844de6db7448349cea698d73",
+      "provenanceSHA256": "4d3d9b5f2b37c9c5448d43d2dd8b2dee3180e9d673a81036fdadae77ac201fd3",
+      "viteManifestSHA256": "deb16b873314a00f16783db0805031f51a61cd9531206aca8cca19277dfc07a7",
       "profile": "full",
       "componentIDs": [
         "remote-outbound-subscriptions"
       ],
-      "inputManifestSHA256": "57afec75b90ced60c1b77517175fba05fc2f1482689c3a2eba0441060326c7a6",
+      "inputManifestSHA256": "fb5da7f9176d77d52b9ce84b2c8bbed4260ab56493d1c29d64c7537821cfbbc1",
       "files": 181
     },
     "core-empty-inputs": {
       "archive": "frontend-core-empty-inputs.json.gz",
-      "archiveSHA256": "f6d7f64cf21336578c430201772d1ef670578e495c1c93b29f330c3456fb62f4",
+      "archiveSHA256": "aa3fe20b9e14cfa313ecb01a957eacb51cc793a5b873f96d8b7f93dc0446823a",
       "provenance": "frontend-core-empty-inputs.provenance.json",
-      "provenanceSHA256": "54be4af7e795a72a1e00aaf767106aaa5d21cb4ed196d3bd919da5ecbe131183",
-      "viteManifestSHA256": "c039f051bb2588cf51d8ea032b9a470db1b678b226f4be7d7e08d21a653c2c18",
+      "provenanceSHA256": "e8f7b92c13154e3bd3365135250755cd33bbc7652256c7bf338c58cbcf255a2d",
+      "viteManifestSHA256": "81c433b52971df48ab38c966cd68a5eeec71b5f03a62b20ea02c454785cb56ae",
       "profile": "core",
       "componentIDs": [],
-      "inputManifestSHA256": "a32c7237d76a62aae72a5bd7ffb8be5ed861dccfcc888777592e077a4f391d7b",
+      "inputManifestSHA256": "22de40abe85a1cf7bd52110932dc0950471f433b939ab08b6e7ce9f62da48f70",
       "files": 165
     }
   }
