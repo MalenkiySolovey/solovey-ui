@@ -21,11 +21,12 @@ type pathOptions struct {
 	Outbounds   []string                           `json:"outbounds"`
 	Resolvers   []string                           `json:"resolvers"`
 	Unavailable map[feature.Mode]feature.PathError `json:"unavailable"`
+	History     bool                               `json:"history"`
 }
 
 func (localProvider) options() pathOptions {
 	outbounds, resolvers := service.LocalOutboundDiagnosticChoices()
-	result := pathOptions{Outbounds: outbounds, Resolvers: resolvers, Unavailable: map[feature.Mode]feature.PathError{
+	result := pathOptions{Outbounds: outbounds, Resolvers: resolvers, History: true, Unavailable: map[feature.Mode]feature.PathError{
 		feature.Panel: feature.ErrPanelIngressUnqualified, feature.HostBaseline: feature.ErrBaselineUnobservable,
 	}}
 	if len(outbounds) == 0 {
