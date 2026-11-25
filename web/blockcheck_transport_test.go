@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -40,9 +41,10 @@ func TestBlockCheckProductionStreamPreservesDeadlineAndExactCancellation(t *test
 	if !registered {
 		t.Fatal("BlockCheck fixture was not registered")
 	}
+	const catalogKey, historyKey = "blockcheckGroupsV1", "blockcheckHistoryV1"
 	settings := owner.Manifest.Database.Settings
-	if len(settings) != 1 {
-		t.Fatalf("unexpected BlockCheck catalog storage: %v", settings)
+	if len(settings) != 2 || !slices.Contains(settings, catalogKey) || !slices.Contains(settings, historyKey) {
+		t.Fatalf("unexpected BlockCheck storage ownership: %v", settings)
 	}
 	for _, useHTTP2 := range []bool{false, true} {
 		t.Run(fmt.Sprintf("http2=%t", useHTTP2), func(t *testing.T) {
@@ -55,7 +57,7 @@ func TestBlockCheckProductionStreamPreservesDeadlineAndExactCancellation(t *test
 			const base = "/qualification+v1/"
 			setWebRouterSetting(t, db, "webPath", base)
 			setWebRouterSetting(t, db, enabledstate.SettingKey(owner.Manifest.ID), "true")
-			setWebRouterSetting(t, db, settings[0], `{"schema":"solovey.blockcheck.groups/v1","groups":[
+			setWebRouterSetting(t, db, catalogKey, `{"schema":"solovey.blockcheck.groups/v1","groups":[
 				{"id":"first","name":"Local fixture","targets":[{"name":"No DNS for literal","host":"9.9.9.9","probes":["dns"]}]},
 				{"id":"second","name":"Closing fixture","targets":[{"name":"Synthetic CONNECT target","host":"9.9.9.9","probes":["http"]}]}
 			]}`)
