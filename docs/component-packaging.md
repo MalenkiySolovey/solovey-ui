@@ -153,6 +153,12 @@ ingress metadata. Configured transport is not wire evidence (UDP can retry
 over TCP). Probe results do not assert the effective interface, a group member,
 or a Zapret match when the owner does not observe it.
 
+For QUIC and HTTP/3, an applied Direct Outbound can open a connected UDP/443
+socket to the admitted literal address. The probe verifies TLS 1.3 on that
+socket; HTTP/3 issues one HEAD request without following redirects. A proxy's
+advertised UDP support does not establish a connected-datagram contract. On
+other paths the probes report unsupported without retrying via Direct or TCP.
+
 Compare DNS runs for the same target, family, Host, Outbound and generation.
 The report distinguishes NXDOMAIN, an empty answer, a resolver error, a
 policy-rejected address and different address sets. A difference alone does
