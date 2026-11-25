@@ -53,8 +53,10 @@ func diagnosticTCPMode(outbound adapter.Outbound) DiagnosticTCPMode {
 		return DiagnosticTCPDirect
 	case C.TypeHTTP, C.TypeSOCKS:
 		return DiagnosticTCPProxyConnect
-	case C.TypeSnell:
+	case C.TypeSnell, C.TypeVLESS:
 		// The endpoint request can be deferred to the first stream operation.
+		// Both pinned VLESS providers pass the admitted destination to their
+		// native stream dialer, including the configured multiplex path.
 		return DiagnosticTCPProxyStream
 	default:
 		return DiagnosticTCPUnavailable
