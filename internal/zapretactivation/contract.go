@@ -52,7 +52,7 @@ const (
 // contract; variable transports are supplied by the provider projection.
 func (s OuterSocket) Transports() OuterNetwork {
 	switch s.Kind {
-	case "http", "anytls", "shadowtls", "ssh", "socks":
+	case "http", "anytls", "shadowtls", "ssh", "socks", "snell":
 		if s.Network == "" {
 			return OuterTCP
 		}

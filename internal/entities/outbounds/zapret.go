@@ -74,6 +74,17 @@ func zapretOptions(row model.Outbound) (map[string]json.RawMessage, *hostoutboun
 	return fields, &binding, nil
 }
 
+// Native schema validation excludes the validated, Product-owned attachment.
+// The caller retains the complete options for persistence and lifecycle checks.
+func zapretNativeValidationOptions(row model.Outbound) (json.RawMessage, error) {
+	fields, binding, err := zapretOptions(row)
+	if err != nil || binding == nil {
+		return row.Options, err
+	}
+	delete(fields, zapretOption)
+	return json.Marshal(fields)
+}
+
 func requireExplicitZapretChange(previous, candidate model.Outbound) error {
 	_, binding, err := zapretOptions(previous)
 	if err != nil || binding == nil {

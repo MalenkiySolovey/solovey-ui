@@ -115,7 +115,11 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports) {
 	})
 }
 
-const maxPresetEnvelope = ((strategy.MaxPresetBytes+2)/3)*4 + 1024
+// In addition to the base64 payload, budget for the archive's explicitly
+// selected dependency IDs. The 256 KiB metadata allowance covers 128 ZIP
+// path/ID pairs (261-byte paths, 64-byte IDs), JSON escaping and fields.
+// The strategy owner still validates decoded content and all dependencies.
+const maxPresetEnvelope = ((strategy.MaxPresetBytes+2)/3)*4 + (256 << 10)
 const maxLuaDraftEnvelope = ((strategy.MaxCatalogBytes+2)/3)*4 + 2048
 
 func writeLuaDrafts(c *gin.Context, ports componenthost.Ports) {

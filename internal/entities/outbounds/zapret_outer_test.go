@@ -2,6 +2,7 @@ package outbounds
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -9,6 +10,55 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 	C "github.com/sagernet/sing-box/constant"
 )
+
+func TestZapretSnellSaveKeepsBindingOutsideNativeSchema(t *testing.T) {
+	for _, tc := range []struct {
+		name, attachment, extra, wantError string
+		quiesce                            bool
+	}{
+		{"off", `{"outboundRef":"snell-proxy","enabled":false,"strategyRef":"proof"}`, `,"detour":"underlay"`, "", false},
+		{"on", `{"outboundRef":"snell-proxy","enabled":true,"strategyRef":"proof"}`, "", "", true},
+		{"bad-native", `{"outboundRef":"snell-proxy","enabled":true,"strategyRef":"proof"}`, `,"obfs_mode":"http"`, "SNELL_OPTIONS_INVALID", false},
+		{"bad-binding", `{"outboundRef":"other","enabled":true,"strategyRef":"proof"}`, "", "binding identity does not match the outbound", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := newFailoverDB(t)
+			if err := db.AutoMigrate(&model.Endpoint{}, &model.Service{}, &model.Setting{}); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Create(&model.Outbound{Tag: "underlay", Type: "direct", Options: json.RawMessage(`{}`)}).Error; err != nil {
+				t.Fatal(err)
+			}
+			data := json.RawMessage(`{"type":"snell","tag":"snell-proxy","version":6,"psk":"fixture-psk-12","server":"203.0.113.2","server_port":19083,"zapret":` + tc.attachment + tc.extra + `}`)
+			if tc.quiesce {
+				if _, err := Save(db, "new", data); !errors.Is(err, ErrZapretPacketPathUnqualified) {
+					t.Fatalf("unqualified save accepted or wrong error: %v", err)
+				}
+			}
+			change, err := SaveForCoreLifecycle(db, "new", data)
+			if tc.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantError) {
+					t.Fatalf("expected %s, got %v", tc.wantError, err)
+				}
+				return
+			}
+			if err != nil || change.QuiesceCore != tc.quiesce {
+				t.Fatalf("change = %+v, err = %v", change, err)
+			}
+			var saved model.Outbound
+			if err := db.Where("tag = ?", "snell-proxy").First(&saved).Error; err != nil {
+				t.Fatal(err)
+			}
+			fields, binding, err := zapretOptions(saved)
+			if err != nil || binding == nil || binding.Enabled != tc.quiesce || binding.StrategyRef != "proof" {
+				t.Fatalf("stored binding = %+v, err = %v", binding, err)
+			}
+			if !tc.quiesce && string(fields["detour"]) != `"underlay"` {
+				t.Fatalf("OFF lost the native detour: %s", fields["detour"])
+			}
+		})
+	}
+}
 
 func TestZapretOuterSocketProjection(t *testing.T) {
 	domainTCP := func(kind string) zapretactivation.OuterSocket {
@@ -25,6 +75,9 @@ func TestZapretOuterSocketProjection(t *testing.T) {
 		{"http-detour-alias", "http", `"server":"198.18.0.2","server_port":3128,"Detour":"other"`, zapretactivation.OuterSocket{}, "ZAPRET_BINDING_INVALID"},
 		{"http-no-port", "http", `"server":"198.18.0.2"`, zapretactivation.OuterSocket{}, "explicit outer port"},
 		{"http-loopback", "http", `"server":"127.0.0.1","server_port":3128`, zapretactivation.OuterSocket{}, "admitted egress"},
+		{"snell-v4", "snell", `"server":"proxy.example","server_port":443,"version":4`, zapretactivation.OuterSocket{Kind: "snell", Port: 443}, ""},
+		{"snell-v6-logical-udp", "snell", `"server":"2001:db8::2","server_port":443,"version":6,"network":"udp"`, zapretactivation.OuterSocket{Kind: "snell", Port: 443, Family: zapretactivation.FamilyIPv6}, ""},
+		{"snell-detoured", "snell", `"server":"proxy.example","server_port":443,"detour":"underlay"`, zapretactivation.OuterSocket{}, "owns egress selection"},
 		{"group", "selector", `"outbounds":["member"]`, zapretactivation.OuterSocket{}, "no shared dial path"},
 		{"hysteria-ipv6", "hysteria2", `"server":"2001:db8::2","server_port":443`, zapretactivation.OuterSocket{Kind: "hysteria2", Port: 443, Family: zapretactivation.FamilyIPv6}, ""},
 		{"hysteria-realm", "hysteria2", `"realm":{}`, zapretactivation.OuterSocket{}, "dynamic peer sockets"},
@@ -81,7 +134,7 @@ func TestZapretOuterSocketProjection(t *testing.T) {
 }
 
 func TestZapretProxyOffPreservesOrdinaryDetour(t *testing.T) {
-	for _, kind := range []string{"http", "vless", "tuic", "socks", "shadowsocks"} {
+	for _, kind := range []string{"http", "vless", "tuic", "socks", "shadowsocks", "snell"} {
 		row := model.Outbound{Tag: "outer", Type: kind, Options: json.RawMessage(`{"server":"proxy.example","server_port":443,"detour":"group","zapret":{"outboundRef":"outer","enabled":false,"strategyRef":"proof"}}`)}
 		projected, err := projectZapretOutbound(row)
 		if err != nil || string(projected.Options) != `{"detour":"group","server":"proxy.example","server_port":443}` {

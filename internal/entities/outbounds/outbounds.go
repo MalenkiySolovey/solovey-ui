@@ -247,10 +247,14 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage, coreLifecycle 
 	if err != nil {
 		return nil, err
 	}
-	if err := diagnostics.FirstError(entityprotocol.StoredOutboundFindings(outbound.Type, "outbound.options", prepared.Candidate)); err != nil {
+	outbound.Options = prepared.Candidate
+	nativeOptions, err := zapretNativeValidationOptions(outbound)
+	if err != nil {
 		return nil, err
 	}
-	outbound.Options = prepared.Candidate
+	if err := diagnostics.FirstError(entityprotocol.StoredOutboundFindings(outbound.Type, "outbound.options", nativeOptions)); err != nil {
+		return nil, err
+	}
 	if err := validateNativeGroupCandidate(tx, outbound); err != nil {
 		return nil, err
 	}

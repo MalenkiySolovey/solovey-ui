@@ -154,6 +154,8 @@ func TestInstalledZapretOuterCoverageUsesTransportPortAndFamily(t *testing.T) {
 		ipv6, want bool
 	}{
 		{zapretactivation.OuterSocket{Kind: "http", Port: 3128, Family: zapretactivation.FamilyIPv4}, true, true},
+		{zapretactivation.OuterSocket{Kind: "snell", Port: 3128, Family: zapretactivation.FamilyIPv4}, true, true},
+		{zapretactivation.OuterSocket{Kind: "snell", Port: 443, Family: zapretactivation.FamilyIPv4}, false, false},
 		{zapretactivation.OuterSocket{Kind: "http", Port: 3128}, true, false},
 		{zapretactivation.OuterSocket{Kind: "http", Port: 443}, false, false},
 		{zapretactivation.OuterSocket{Kind: "hysteria2", Port: 3128}, false, false},
