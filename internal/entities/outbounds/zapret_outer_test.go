@@ -25,6 +25,9 @@ func TestZapretOuterSocketProjection(t *testing.T) {
 		{"http-detour-alias", "http", `"server":"198.18.0.2","server_port":3128,"Detour":"other"`, zapretactivation.OuterSocket{}, "ZAPRET_BINDING_INVALID"},
 		{"http-no-port", "http", `"server":"198.18.0.2"`, zapretactivation.OuterSocket{}, "explicit outer port"},
 		{"http-loopback", "http", `"server":"127.0.0.1","server_port":3128`, zapretactivation.OuterSocket{}, "admitted egress"},
+		{"snell-v4", "snell", `"server":"proxy.example","server_port":443,"version":4`, zapretactivation.OuterSocket{Kind: "snell", Port: 443}, ""},
+		{"snell-v6-logical-udp", "snell", `"server":"2001:db8::2","server_port":443,"version":6,"network":"udp"`, zapretactivation.OuterSocket{Kind: "snell", Port: 443, Family: zapretactivation.FamilyIPv6}, ""},
+		{"snell-detoured", "snell", `"server":"proxy.example","server_port":443,"detour":"underlay"`, zapretactivation.OuterSocket{}, "owns egress selection"},
 		{"group", "selector", `"outbounds":["member"]`, zapretactivation.OuterSocket{}, "no shared dial path"},
 		{"hysteria-ipv6", "hysteria2", `"server":"2001:db8::2","server_port":443`, zapretactivation.OuterSocket{Kind: "hysteria2", Port: 443, Family: zapretactivation.FamilyIPv6}, ""},
 		{"hysteria-realm", "hysteria2", `"realm":{}`, zapretactivation.OuterSocket{}, "dynamic peer sockets"},
@@ -81,7 +84,7 @@ func TestZapretOuterSocketProjection(t *testing.T) {
 }
 
 func TestZapretProxyOffPreservesOrdinaryDetour(t *testing.T) {
-	for _, kind := range []string{"http", "vless", "tuic", "socks", "shadowsocks"} {
+	for _, kind := range []string{"http", "vless", "tuic", "socks", "shadowsocks", "snell"} {
 		row := model.Outbound{Tag: "outer", Type: kind, Options: json.RawMessage(`{"server":"proxy.example","server_port":443,"detour":"group","zapret":{"outboundRef":"outer","enabled":false,"strategyRef":"proof"}}`)}
 		projected, err := projectZapretOutbound(row)
 		if err != nil || string(projected.Options) != `{"detour":"group","server":"proxy.example","server_port":443}` {

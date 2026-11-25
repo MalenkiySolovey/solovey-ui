@@ -22,7 +22,7 @@ func zapretOuterSocket(row model.Outbound) (zapretactivation.OuterSocket, error)
 	switch row.Type {
 	case C.TypeDirect:
 		return socket, nil
-	case C.TypeHTTP, C.TypeAnyTLS, C.TypeShadowTLS, C.TypeSSH, C.TypeTUIC:
+	case C.TypeHTTP, C.TypeAnyTLS, C.TypeShadowTLS, C.TypeSSH, C.TypeSnell, C.TypeTUIC:
 		if row.Type == C.TypeTUIC && !C.WithQUIC {
 			return fail("this Core build does not support TUIC")
 		}

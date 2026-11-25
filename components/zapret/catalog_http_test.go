@@ -55,8 +55,9 @@ func TestDraftAndPresetRoutesRequireAdminBeforeReadingInput(t *testing.T) {
 			allow = true
 			inputs := [][2]string{
 				{`{"preset":{"format":"native","content":"AA==","path":"local"}}`, "invalid Zapret request"},
+				{`{"preset":{"format":"native","format":"zip","content":"AA=="}}`, "invalid Zapret request"},
 				{`{"preset":{"format":"native","content":"AA=="}}`, "missing Zapret catalog revision"},
-				{strings.Repeat(" ", 512<<10), "transfer limit"},
+				{strings.Repeat(" ", maxPresetEnvelope+1), "transfer limit"},
 			}
 			if tc.path == "/strategies/lua-drafts" {
 				inputs = [][2]string{
