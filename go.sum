@@ -14,6 +14,8 @@ github.com/MalenkiySolovey/solovey-backend v0.1.3 h1:iFzmQm9QJcWerPn5Mvk0Ry7dWKj
 github.com/MalenkiySolovey/solovey-backend v0.1.3/go.mod h1:xTP4fs5T1LnPV/8r8H+Li97MsEFWkpy3T9ZRRJiZ8Ro=
 github.com/MalenkiySolovey/solovey-backend v0.1.4 h1:iBQDlK2tRuujfjwOqI63+pfbboUkNfIZndU8MpUv630=
 github.com/MalenkiySolovey/solovey-backend v0.1.4/go.mod h1:xTP4fs5T1LnPV/8r8H+Li97MsEFWkpy3T9ZRRJiZ8Ro=
+github.com/MalenkiySolovey/solovey-backend v0.1.5 h1:EchMQCEehhEyTjgLAHwsgri2H7KRxM95mjs/JO94GvI=
+github.com/MalenkiySolovey/solovey-backend v0.1.5/go.mod h1:xTP4fs5T1LnPV/8r8H+Li97MsEFWkpy3T9ZRRJiZ8Ro=
 github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.0 h1:Eb2rBYnTC0OjhfqOXwd8jDvq8Bwr5iklLQXndg7a8ng=
 github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.0/go.mod h1:b6gO/sDor7EWIH15rls58D3maUy+GmAGitARmS2w4X8=
 github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.1 h1:s6KMuZOFcgdI6JhxWxyinaVFBsWxNz2lO9UnoANSf6c=
