@@ -246,6 +246,30 @@ func expectProductionPlanStale(t *testing.T, source *productionFrontingSemanticS
 }
 
 func TestProductionComposedPrepareAcquiresExactLeaseAndCreatesProtectedArtifactWithoutSwitch(t *testing.T) {
+	// Prepare storage before issuing the short-lived topology evidence. Slow
+	// SQLite DDL on Windows is not part of the preview-to-prepare interval.
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "fronting-composition.db")), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := protectionrepository.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	repository := protectionrepository.New(db)
+	manager := protectionoperations.NewManager(backendstore.New(repository), protectionoperations.Options{InstanceID: "production-composition-test", PID: 77,
+		Audit: func(context.Context, protectionoperations.AuditEvent) error { return nil }})
+	t.Cleanup(func() { _ = manager.Stop(context.Background()) })
+	storage, err := protectionartifacts.New(filepath.Join(t.TempDir(), ".runtime", "server-protection"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := sptest.ManagedRoot(t, storage.Root())
+
 	now := time.Now().UTC().Truncate(time.Second)
 	fixture := newProductionSourceFixture(t, now)
 	resources, err := fixture.source.ResourcesV2(t.Context(), now)
@@ -263,21 +287,6 @@ func TestProductionComposedPrepareAcquiresExactLeaseAndCreatesProtectedArtifactW
 	if err != nil || plan.Strategy.Selected != protectionfronting.StrategyL4OneToOne {
 		t.Fatalf("production preview=%#v err=%v", plan, err)
 	}
-	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "fronting-composition.db")), &gorm.Config{})
-	if err != nil || protectionrepository.Migrate(db) != nil {
-		t.Fatalf("open/migrate workflow DB: %v", err)
-	}
-	sqlDB, _ := db.DB()
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	repository := protectionrepository.New(db)
-	manager := protectionoperations.NewManager(backendstore.New(repository), protectionoperations.Options{InstanceID: "production-composition-test", PID: 77,
-		Audit: func(context.Context, protectionoperations.AuditEvent) error { return nil }})
-	t.Cleanup(func() { _ = manager.Stop(context.Background()) })
-	storage, err := protectionartifacts.New(filepath.Join(t.TempDir(), ".runtime", "server-protection"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	root := sptest.ManagedRoot(t, storage.Root())
 	nginx := helperinvoker.NewNginx()
 	nginx.ActiveRevision, nginx.ActiveSHA256 = strings.Repeat("a", 64), strings.Repeat("b", 64)
 	nginx.Revisions[nginx.ActiveRevision] = nginx.ActiveSHA256
