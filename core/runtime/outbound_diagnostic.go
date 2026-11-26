@@ -195,7 +195,13 @@ func (d OutboundDiagnostic) DialTCP(ctx context.Context, dst netip.AddrPort, per
 }
 
 func (d OutboundDiagnostic) DialUDP(ctx context.Context, dst netip.AddrPort, permit func(netip.Addr) bool) (net.Conn, error) {
-	if !d.permits(dst, permit) || dst.Port() != 443 {
+	if !d.permits(dst, permit) {
+		return nil, ErrDiagnosticTarget
+	}
+	// Match the diagnostic catalog: QUIC/HTTP3 and its two STUN ports.
+	switch dst.Port() {
+	case 443, 3478, 19302:
+	default:
 		return nil, ErrDiagnosticTarget
 	}
 	if !d.SupportsUDP() {
