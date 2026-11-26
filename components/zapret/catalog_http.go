@@ -29,7 +29,7 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports) {
 			return
 		}
 		var change catalogChange
-		if err := readRequest(c, &change); err != nil {
+		if err := readRequestLimit(c, &change, maxPresetEnvelope); err != nil {
 			ports.HTTP.JSONObj(c, nil, err)
 			return
 		}
@@ -53,7 +53,7 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports) {
 			strategy.Draft
 			ExpectedRevision string `json:"expectedRevision,omitempty"`
 		}
-		if err := readRequest(c, &request); err != nil {
+		if err := readRequestLimit(c, &request, maxPresetEnvelope); err != nil {
 			ports.HTTP.JSONObj(c, nil, err)
 			return
 		}
@@ -126,7 +126,7 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports) {
 // path/ID pairs (261-byte paths, 64-byte IDs), JSON escaping and fields.
 // The strategy owner still validates decoded content and all dependencies.
 const maxPresetEnvelope = ((strategy.MaxPresetBytes+2)/3)*4 + (256 << 10)
-const maxLuaDraftEnvelope = ((strategy.MaxCatalogBytes+2)/3)*4 + 2048
+const maxLuaDraftEnvelope = ((strategy.MaxLuaSourceBytes+2)/3)*4 + 2048
 
 func writeLuaDrafts(c *gin.Context, ports componenthost.Ports) {
 	c.Header("Cache-Control", "no-store")

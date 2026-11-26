@@ -6,6 +6,13 @@
   "delivery": "in-process",
   "defaultEnabled": false,
   "frontend": {"entries": ["frontend/index.ts"]},
+  "database": {
+    "tables": ["zapret_catalog_v2"],
+    "settings": ["zapret.strategies"],
+    "schemaVersion": "2",
+    "migrationVersion": "2",
+    "compatibilityRange": {"minimumSchema": "1", "maximumSchema": "2"}
+  },
   "hostAPI": {
     "version": "solovey.component-host/v1",
     "api": ["http.request"]

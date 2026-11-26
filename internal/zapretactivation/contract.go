@@ -11,8 +11,6 @@ import (
 const (
 	SocketRoot            = "/run/solovey-ui/zapret"
 	CatalogKey            = "zapret.strategies"
-	MaxCatalogBytes       = 256 << 10
-	MaxDefinitionBytes    = 8 << 10
 	ManagedStrategyPrefix = "ui-zapret-"
 	TUNInterface          = "svzap-tun0"
 )

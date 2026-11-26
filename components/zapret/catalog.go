@@ -28,7 +28,7 @@ type catalogView struct {
 	EngineLicense  string                    `json:"engineLicense"`
 	Templates      []strategy.PresetTemplate `json:"templates"`
 	StorageUsed    int                       `json:"storageUsed"`
-	StorageLimit   int                       `json:"storageLimit"`
+	LuaSourceLimit int                       `json:"luaSourceLimit"`
 	NativeOnly     []string                  `json:"nativeOnly,omitempty"`
 	PreferenceKey  string                    `json:"preferenceKey,omitempty"`
 }
@@ -86,7 +86,7 @@ func makeCatalogView(snapshot service.ZapretCatalogSnapshot) (catalogView, error
 	}
 	view := catalogView{Catalog: catalog, Revision: catalog.Revision(), Ready: snapshot.Ready,
 		TransferSchema: strategy.TransferSchema, EngineCommit: strategy.EngineCommit, EngineVersion: strategy.EngineVersion, EngineLicense: strategy.EngineLicense,
-		Templates: strategy.PresetTemplates(), StorageUsed: len(snapshot.Catalog), StorageLimit: strategy.MaxCatalogBytes}
+		Templates: strategy.PresetTemplates(), StorageUsed: len(snapshot.Catalog), LuaSourceLimit: strategy.MaxLuaSourceBytes}
 	view.Catalog.LuaDrafts = nil // The draft endpoint requires administrator access.
 	view.Catalog.LuaRevisions = nil
 	for _, id := range slices.Sorted(maps.Keys(catalog.Records)) {

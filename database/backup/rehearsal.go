@@ -27,6 +27,8 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/assembly"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation/catalogstore"
 	"github.com/shirou/gopsutil/v4/disk"
 	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -320,7 +322,8 @@ func restoreOwnerCompatibility(manifest BackupManifest) []RestoreOwnerStatus {
 		}
 		if owner.ID == "core" {
 			status.Compatibility = "COMPATIBLE"
-		} else if available && ownerResourcesCompatible(owner.ResourceManifest, current.Database) {
+		} else if available && (ownerResourcesCompatible(owner.ResourceManifest, current.Database) ||
+			historicalZapretCatalogOwner(manifest, owner, current.Database)) {
 			status.Compatibility = "COMPATIBLE"
 		} else if available {
 			status.Compatibility = "INCOMPATIBLE"
@@ -346,6 +349,30 @@ func restoreOwnerCompatibility(manifest BackupManifest) []RestoreOwnerStatus {
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
 	return result
+}
+
+// The original Zapret catalog lived in core's settings table. Its descriptor
+// declared no resources. Migration, not this declaration, validates its data.
+func historicalZapretCatalogOwner(backup BackupManifest, owner BackupOwnerManifest, current componentmanifest.DurableResourceManifestV1) bool {
+	if owner.ID != "zapret" || owner.Mode != "NO_DURABLE_DATA" || owner.ResourceManifest == nil || owner.ResourceManifest.Declared() ||
+		current.SchemaVersion != "2" || current.CompatibilityRange.MinimumSchema != "1" ||
+		len(current.Tables) != 1 || current.Tables[0] != catalogstore.Table ||
+		len(current.Settings) != 1 || current.Settings[0] != zapretactivation.CatalogKey {
+		return false
+	}
+	for _, table := range backup.Tables {
+		if table.Owner == owner.ID || table.Name == catalogstore.Table {
+			return false
+		}
+	}
+	if backup.Files != nil {
+		for _, id := range backup.Files.Owners {
+			if id == owner.ID {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // A verified historical backup may list Panel Update without any owned data.
