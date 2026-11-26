@@ -21,11 +21,12 @@ type pathOptions struct {
 	Outbounds   []string                           `json:"outbounds"`
 	Resolvers   []string                           `json:"resolvers"`
 	Unavailable map[feature.Mode]feature.PathError `json:"unavailable"`
+	History     bool                               `json:"history"`
 }
 
 func (localProvider) options() pathOptions {
 	outbounds, resolvers := service.LocalOutboundDiagnosticChoices()
-	result := pathOptions{Outbounds: outbounds, Resolvers: resolvers, Unavailable: map[feature.Mode]feature.PathError{
+	result := pathOptions{Outbounds: outbounds, Resolvers: resolvers, History: true, Unavailable: map[feature.Mode]feature.PathError{
 		feature.Panel: feature.ErrPanelIngressUnqualified, feature.HostBaseline: feature.ErrBaselineUnobservable,
 	}}
 	if len(outbounds) == 0 {
@@ -63,7 +64,7 @@ func (localProvider) Open(_ context.Context, host hostref.Ref, selection feature
 	case coreruntime.DiagnosticTCPProxyStream:
 		scope = "outbound-proxy-stream"
 	}
-	return feature.Path{
+	path := feature.Path{
 		Evidence: feature.PathEvidence{Host: host, Mode: feature.Outbound, Generation: diagnostic.Generation(),
 			Scope: scope, Context: selection.Ref},
 		Current: func(ctx context.Context) error {
@@ -88,7 +89,14 @@ func (localProvider) Open(_ context.Context, host hostref.Ref, selection feature
 			}
 			return conn, observation, pathError(err)
 		},
-	}, nil
+	}
+	if diagnostic.SupportsUDP() {
+		path.DialUDP = func(ctx context.Context, destination netip.AddrPort) (net.Conn, feature.SocketEvidence, error) {
+			conn, err := diagnostic.DialUDP(ctx, destination, permitTarget)
+			return conn, feature.SocketEvidence{}, pathError(err)
+		}
+	}
+	return path, nil
 }
 
 func pathError(err error) error {
@@ -97,6 +105,8 @@ func pathError(err error) error {
 		return feature.ErrResolverUnsupported
 	case errors.Is(err, coreruntime.ErrDiagnosticOutbound):
 		return feature.PathError("outbound_policy_unverified")
+	case errors.Is(err, coreruntime.ErrDiagnosticDatagram):
+		return feature.ErrNoProbeCapability
 	case errors.Is(err, coreruntime.ErrOutboundNotFound):
 		return feature.ErrOutboundUnavailable
 	case errors.Is(err, coreruntime.ErrStaleGeneration), errors.Is(err, coreruntime.ErrCoreUnavailable):

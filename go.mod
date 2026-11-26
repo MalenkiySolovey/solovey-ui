@@ -58,7 +58,7 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0
-	github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.5
+	github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.13
 	github.com/MalenkiySolovey/solovey-component-import-xui v0.1.4
 	github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions v0.1.0
 	github.com/MalenkiySolovey/solovey-component-server-protection v0.1.0
@@ -220,6 +220,14 @@ require (
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.11
 	lukechampine.com/blake3 v1.4.1 // indirect
+)
+
+require (
+	github.com/pion/dtls/v3 v3.1.5 // indirect
+	github.com/pion/logging v0.2.4 // indirect
+	github.com/pion/stun/v3 v3.1.5 // indirect
+	github.com/pion/transport/v4 v4.0.2 // indirect
+	github.com/wlynxg/anet v0.0.5 // indirect
 )
 
 replace github.com/quic-go/quic-go => github.com/quic-go/quic-go v0.59.1

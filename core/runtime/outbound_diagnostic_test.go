@@ -32,6 +32,8 @@ func TestDiagnosticTCPModeDistinguishesProxyStreamFromAcknowledgement(t *testing
 		{C.TypeSOCKS, []string{"tcp", "udp"}, DiagnosticTCPProxyConnect},
 		{C.TypeSnell, []string{"tcp", "udp"}, DiagnosticTCPProxyStream},
 		{C.TypeSnell, []string{"udp"}, DiagnosticTCPUnavailable},
+		{C.TypeVLESS, []string{"tcp", "udp"}, DiagnosticTCPProxyStream},
+		{C.TypeVLESS, []string{"udp"}, DiagnosticTCPUnavailable},
 		{C.TypeSelector, []string{"tcp"}, DiagnosticTCPUnavailable},
 	} {
 		if got := diagnosticTCPMode(diagnosticOutboundFixture{kind: test.kind, networks: test.networks}); got != test.want {
@@ -86,5 +88,43 @@ func TestBlockCheckRefusesPrivateAndUnapprovedDestinationBeforeCoreDial(t *testi
 	}
 	if _, err := diagnostic.DialTCP(t.Context(), netip.MustParseAddrPort("8.8.8.8:443"), func(netip.Addr) bool { return false }); !errors.Is(err, ErrDiagnosticTarget) {
 		t.Fatalf("host destination policy ignored: %v", err)
+	}
+}
+
+func TestDiagnosticUDPRequiresAdmittedTargetAndConnectedTransport(t *testing.T) {
+	permits := func(netip.Addr) bool { return true }
+	for _, tc := range []struct {
+		kind     string
+		networks []string
+		want     bool
+	}{
+		{C.TypeDirect, []string{"udp", "tcp"}, true},
+		{C.TypeDirect, []string{"tcp"}, false},
+		{C.TypeSOCKS, []string{"tcp", "udp"}, false},
+		{C.TypeHTTP, []string{"tcp"}, false},
+		{C.TypeSnell, []string{"tcp", "udp"}, false},
+		{C.TypeVLESS, []string{"tcp", "udp"}, false},
+		{C.TypeSelector, []string{"tcp", "udp"}, false},
+	} {
+		diagnostic := OutboundDiagnostic{core: new(Core), outbound: diagnosticOutboundFixture{kind: tc.kind, networks: tc.networks}}
+		if got := diagnostic.SupportsUDP(); got != tc.want {
+			t.Errorf("type %s with networks %v: got %t, want %t", tc.kind, tc.networks, got, tc.want)
+		}
+		for _, destination := range []string{"127.0.0.1:3478", "[::ffff:169.254.169.254]:19302", "[2001:4860::1%fixture]:443", "8.8.8.8:80", "8.8.8.8:3479"} {
+			if _, err := diagnostic.DialUDP(t.Context(), netip.MustParseAddrPort(destination), permits); !errors.Is(err, ErrDiagnosticTarget) {
+				t.Fatalf("unsupported UDP destination was admitted: %s, %v", destination, err)
+			}
+		}
+		for _, destination := range []string{"8.8.8.8:443", "8.8.8.8:3478", "[2001:4860::1]:19302"} {
+			target := netip.MustParseAddrPort(destination)
+			if _, err := diagnostic.DialUDP(t.Context(), target, func(netip.Addr) bool { return false }); !errors.Is(err, ErrDiagnosticTarget) {
+				t.Fatalf("host UDP destination policy ignored for %s: %v", destination, err)
+			}
+			if !tc.want {
+				if _, err := diagnostic.DialUDP(t.Context(), target, permits); !errors.Is(err, ErrDiagnosticDatagram) {
+					t.Fatalf("unqualified UDP outbound was admitted: %s, %s, %v", tc.kind, destination, err)
+				}
+			}
+		}
 	}
 }

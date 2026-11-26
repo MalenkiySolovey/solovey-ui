@@ -21,6 +21,7 @@ var (
 	ErrDiagnosticOutbound = errors.New("outbound_policy_unverified")
 	ErrDiagnosticResolver = errors.New("dns_transport_not_available")
 	ErrDiagnosticTarget   = errors.New("target_policy_rejected")
+	ErrDiagnosticDatagram = errors.New("diagnostic_datagram_not_available")
 )
 
 // OutboundDiagnostic borrows exact existing owners. It does not perform a
@@ -52,8 +53,10 @@ func diagnosticTCPMode(outbound adapter.Outbound) DiagnosticTCPMode {
 		return DiagnosticTCPDirect
 	case C.TypeHTTP, C.TypeSOCKS:
 		return DiagnosticTCPProxyConnect
-	case C.TypeSnell:
+	case C.TypeSnell, C.TypeVLESS:
 		// The endpoint request can be deferred to the first stream operation.
+		// Both pinned VLESS providers pass the admitted destination to their
+		// native stream dialer, including the configured multiplex path.
 		return DiagnosticTCPProxyStream
 	default:
 		return DiagnosticTCPUnavailable
@@ -149,6 +152,12 @@ func (d OutboundDiagnostic) Generation() string { return d.generation }
 // TCPMode describes what a successful dial can establish before any probe IO.
 func (d OutboundDiagnostic) TCPMode() DiagnosticTCPMode { return diagnosticTCPMode(d.outbound) }
 
+// SupportsUDP is for a connected datagram path to a literal endpoint. Do not
+// infer it from Network alone: proxy UDP may negotiate a separate relay.
+func (d OutboundDiagnostic) SupportsUDP() bool {
+	return d.outbound != nil && d.outbound.Type() == C.TypeDirect && slices.Contains(d.outbound.Network(), "udp")
+}
+
 func (d OutboundDiagnostic) current(rt coreRuntime) bool {
 	if rt.generation != d.generation || rt.ctx.Err() != nil {
 		return false
@@ -181,11 +190,31 @@ func (d OutboundDiagnostic) Current() error {
 }
 
 func (d OutboundDiagnostic) DialTCP(ctx context.Context, dst netip.AddrPort, permit func(netip.Addr) bool) (net.Conn, error) {
-	if d.core == nil || dst.Addr().Zone() != "" || ssrf.IsBlockedAddr(dst.Addr()) ||
-		permit == nil || !permit(dst.Addr().Unmap()) || dst.Port() != 80 && dst.Port() != 443 {
+	if !d.permits(dst, permit) || dst.Port() != 80 && dst.Port() != 443 {
 		return nil, ErrDiagnosticTarget
 	}
 	return d.core.dialOutbound(ctx, d.outbound.Tag(), "tcp", M.Socksaddr{Addr: dst.Addr().Unmap(), Port: dst.Port()}, &d)
+}
+
+func (d OutboundDiagnostic) DialUDP(ctx context.Context, dst netip.AddrPort, permit func(netip.Addr) bool) (net.Conn, error) {
+	if !d.permits(dst, permit) {
+		return nil, ErrDiagnosticTarget
+	}
+	// Match the diagnostic catalog: QUIC/HTTP3 and its two STUN ports.
+	switch dst.Port() {
+	case 443, 3478, 19302:
+	default:
+		return nil, ErrDiagnosticTarget
+	}
+	if !d.SupportsUDP() {
+		return nil, ErrDiagnosticDatagram
+	}
+	return d.core.dialOutbound(ctx, d.outbound.Tag(), "udp", M.Socksaddr{Addr: dst.Addr().Unmap(), Port: dst.Port()}, &d)
+}
+
+func (d OutboundDiagnostic) permits(dst netip.AddrPort, permit func(netip.Addr) bool) bool {
+	return d.core != nil && dst.Addr().Zone() == "" && !ssrf.IsBlockedAddr(dst.Addr()) &&
+		permit != nil && permit(dst.Addr().Unmap())
 }
 
 type DiagnosticResolution struct {

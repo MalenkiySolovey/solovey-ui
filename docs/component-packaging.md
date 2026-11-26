@@ -131,9 +131,13 @@ their semantics. This is an in-process contract, not a process sandbox.
 
 Full can install BlockCheck independently of Zapret. It is disabled by
 default. Only an authenticated administrator can edit its catalog or start a
-bounded foreground run. Disable cancels that run and preserves the catalog.
-The ordinary database backup owns `blockcheckGroupsV1`; run observations are
-not stored there. Core/minimal omit the Component and its UI.
+bounded foreground run. Disable cancels that run and preserves the catalog and
+history. The existing component-owned settings and database backup hold
+`blockcheckGroupsV1` and `blockcheckHistoryV1`. Administrators can see retained
+run history for up to 14 days, within a 512 KiB storage budget. A group whose
+details do not fit is explicitly marked omitted. The stored reports exclude
+attempted addresses, raw DNS answer sets and local socket details. Core/minimal
+omit the Component and its UI.
 
 Each service card can run independently. Check All uses one active generation
 and the enabled groups in catalog order, runs up to three probes at a time,
@@ -152,6 +156,12 @@ and detour; without one, lookup uses the active Core's DNS policy without
 ingress metadata. Configured transport is not wire evidence (UDP can retry
 over TCP). Probe results do not assert the effective interface, a group member,
 or a Zapret match when the owner does not observe it.
+
+For QUIC and HTTP/3, an applied Direct Outbound can open a connected UDP/443
+socket to the admitted literal address. The probe verifies TLS 1.3 on that
+socket; HTTP/3 issues one HEAD request without following redirects. A proxy's
+advertised UDP support does not establish a connected-datagram contract. On
+other paths the probes report unsupported without retrying via Direct or TCP.
 
 Compare DNS runs for the same target, family, Host, Outbound and generation.
 The report distinguishes NXDOMAIN, an empty answer, a resolver error, a

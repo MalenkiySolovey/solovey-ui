@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/durableowner"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
@@ -22,7 +23,7 @@ import (
 
 func TestBlockCheckDurableCatalogRevision(t *testing.T) {
 	manifest, registered := durableowner.Lookup(feature.ID)
-	if !registered || !slices.Equal(manifest.Database.Settings, []string{feature.CatalogSettingKey}) || manifest.DefaultEnabled {
+	if !registered || !slices.Equal(manifest.Database.Settings, []string{feature.CatalogSettingKey, feature.HistorySettingKey}) || manifest.DefaultEnabled {
 		t.Fatalf("incorrect ComponentHost registration: %+v", manifest)
 	}
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "blockcheck.db")), &gorm.Config{})
@@ -65,7 +66,7 @@ func TestBlockCheckAuthorizationAndBoundsPrecedeExecution(t *testing.T) {
 		limit               int
 	}{
 		{"GET", "/groups", "blockcheck.groups.read", 0}, {"POST", "/groups", "blockcheck.groups.write", feature.MaxCatalogBytes + 2048},
-		{"GET", "/options", "blockcheck.options.read", 0}, {"POST", "/run", "blockcheck.run", 8 << 10},
+		{"GET", "/options", "blockcheck.options.read", 0}, {"GET", "/history", "blockcheck.history.read", 0}, {"POST", "/run", "blockcheck.run", 8 << 10},
 		{"POST", "/run/stream", "blockcheck.run", feature.MaxSuiteRequestBytes}, {"POST", "/run/cancel", "blockcheck.run", 512},
 	} {
 		t.Run(spec.method+spec.path, func(t *testing.T) {
@@ -102,5 +103,51 @@ func TestBlockCheckAuthorizationAndBoundsPrecedeExecution(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestBlockCheckHistorySurvivesDatabaseReopenWithoutChangingCatalog(t *testing.T) {
+	filename := filepath.Join(t.TempDir(), "blockcheck.db")
+	open := func() *gorm.DB {
+		t.Helper()
+		db, err := gorm.Open(sqlite.Open(filename), &gorm.Config{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return db
+	}
+	closeDB := func(db *gorm.DB) {
+		t.Helper()
+		conn, err := db.DB()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := conn.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db := open()
+	if err := db.AutoMigrate(&model.Setting{}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, now := t.Context(), time.Now().UTC()
+	catalog, err := readCatalog(ctx, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := feature.HistoryRun{ID: "test-run", StartedAt: now.Add(-time.Second), FinishedAt: now, Phase: "CANCELED"}
+	if err := retainHistory(ctx, db, run, now); err != nil {
+		t.Fatal(err)
+	}
+	closeDB(db)
+	db = open()
+	defer closeDB(db)
+	got, err := readHistory(ctx, db, now)
+	if err != nil || len(got.Runs) != 1 || got.Runs[0].ID != run.ID || got.Runs[0].Phase != run.Phase {
+		t.Fatalf("history not retained: %+v, %v", got, err)
+	}
+	untouched, err := readCatalog(ctx, db)
+	if err != nil || untouched.Revision() != catalog.Revision() {
+		t.Fatalf("history changed catalog: %v", err)
 	}
 }
