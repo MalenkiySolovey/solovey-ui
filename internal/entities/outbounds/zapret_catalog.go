@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
@@ -50,8 +51,8 @@ func ReadZapretCatalog(db *gorm.DB) (json.RawMessage, error) {
 }
 
 // ZapretValidation binds the selected definitions to the same writer snapshot
-// as the bindings. The broker verifies each sealed definition independently;
-// neither editor text nor environment/engine authority crosses this port.
+// as the bindings. The broker independently verifies the sealed definitions,
+// the selected Lua sources, and the installed operator's delegation.
 func ZapretValidation(db *gorm.DB, requests []zapretactivation.Request) (zapretactivation.Validation, error) {
 	result := zapretactivation.Validation{Bindings: requests}
 	if len(requests) == 0 {
@@ -74,13 +75,22 @@ func ZapretValidation(db *gorm.DB, requests []zapretactivation.Request) (zapreta
 		return result, err
 	}
 	result.DNS = requirements
+	managed := false
+	for _, request := range requests {
+		managed = managed || zapretactivation.ManagedStrategyRef(request.StrategyRef)
+	}
+	if !managed {
+		return result, nil
+	}
 	raw, err := ReadZapretCatalog(db)
 	if err != nil {
 		return result, err
 	}
 	var catalog struct {
-		Schema  string
-		Records map[string]struct{ Definition json.RawMessage }
+		Schema       string
+		Records      map[string]struct{ Definition json.RawMessage }
+		LuaDrafts    map[string]json.RawMessage
+		LuaRevisions map[string]json.RawMessage
 	}
 	if raw != nil && (json.Unmarshal(raw, &catalog) != nil || catalog.Schema != "solovey.zapret-catalog/v1" || catalog.Records == nil) {
 		return result, fmt.Errorf("%w: invalid stored strategy catalog", ErrZapretPacketPathUnqualified)
@@ -97,6 +107,31 @@ func ZapretValidation(db *gorm.DB, requests []zapretactivation.Request) (zapreta
 			result.Definitions = make(map[string]json.RawMessage)
 		}
 		result.Definitions[request.StrategyRef] = record.Definition
+		var definition struct {
+			ManagedLua []struct {
+				ID, Revision string
+			}
+		}
+		if err := json.Unmarshal(record.Definition, &definition); err != nil {
+			return result, fmt.Errorf("outbound %q: invalid sealed Zapret strategy: %w", request.OutboundRef, ErrZapretPacketPathUnqualified)
+		}
+		for _, ref := range definition.ManagedLua {
+			key := zapretactivation.LuaSourceKey(ref.ID, ref.Revision)
+			if ref.ID == "" || strings.Contains(ref.ID, "/") || !zapretactivation.ValidDigest(ref.Revision) {
+				return result, fmt.Errorf("outbound %q: invalid managed Lua reference: %w", request.OutboundRef, ErrZapretPacketPathUnqualified)
+			}
+			source := catalog.LuaRevisions[key]
+			if len(source) == 0 {
+				source = catalog.LuaDrafts[ref.ID]
+			}
+			if len(source) == 0 {
+				return result, fmt.Errorf("outbound %q: selected Lua revision for %q is unavailable: %w", request.OutboundRef, ref.ID, ErrZapretPacketPathUnqualified)
+			}
+			if result.LuaSources == nil {
+				result.LuaSources = make(map[string]json.RawMessage)
+			}
+			result.LuaSources[key] = source
+		}
 	}
 	return result, nil
 }

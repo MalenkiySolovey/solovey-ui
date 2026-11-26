@@ -88,6 +88,7 @@ func makeCatalogView(snapshot service.ZapretCatalogSnapshot) (catalogView, error
 		TransferSchema: strategy.TransferSchema, EngineCommit: strategy.EngineCommit, EngineVersion: strategy.EngineVersion, EngineLicense: strategy.EngineLicense,
 		Templates: strategy.PresetTemplates(), StorageUsed: len(snapshot.Catalog), StorageLimit: strategy.MaxCatalogBytes}
 	view.Catalog.LuaDrafts = nil // The draft endpoint requires administrator access.
+	view.Catalog.LuaRevisions = nil
 	for _, id := range slices.Sorted(maps.Keys(catalog.Records)) {
 		if !catalog.Records[id].VisualEditable() {
 			view.NativeOnly = append(view.NativeOnly, id)
@@ -142,7 +143,7 @@ func (c *catalogChange) prepare() error {
 		return errors.New("invalid Zapret preset change")
 	}
 	switch c.Action {
-	case "create-lua-draft", "edit-lua-draft", "delete-lua-draft":
+	case "create-lua-draft", "edit-lua-draft", "import-lua-draft", "delete-lua-draft":
 		if c.ID != "" && c.Draft == nil && c.Transfer == nil && c.List == nil && c.Blob == nil && (c.luaDraft != nil) == (c.Action != "delete-lua-draft") {
 			return nil
 		}
@@ -205,8 +206,8 @@ func (c catalogChange) mutate(raw json.RawMessage, refs []outbounds.ZapretRefere
 	}
 	next := previous
 	switch c.Action {
-	case "create-lua-draft", "edit-lua-draft", "delete-lua-draft":
-		if _, exists := previous.LuaDrafts[c.ID]; exists != (c.Action != "create-lua-draft") {
+	case "create-lua-draft", "edit-lua-draft", "import-lua-draft", "delete-lua-draft":
+		if _, exists := previous.LuaDrafts[c.ID]; exists != (c.Action == "edit-lua-draft" || c.Action == "delete-lua-draft") {
 			return nil, false, errors.New("the Lua draft ID is already in use or does not exist")
 		}
 		next, err = previous.WithLuaDraft(c.ID, c.luaDraft)
@@ -258,6 +259,7 @@ func (c catalogChange) mutate(raw json.RawMessage, refs []outbounds.ZapretRefere
 	if err != nil {
 		return nil, false, err
 	}
+	next = next.PruneLuaRevisions()
 	if err := next.Validate(); err != nil {
 		return nil, false, err
 	}

@@ -134,9 +134,12 @@ type NativeMatches struct {
 type Validation struct {
 	Bindings    []Request                       `json:"bindings"`
 	Definitions map[string]json.RawMessage      `json:"definitions,omitempty"`
+	LuaSources  map[string]json.RawMessage      `json:"luaSources,omitempty"`
 	DNS         map[string][]DNSPathRequirement `json:"dns,omitempty"`
 	TUN         *TUNRequest                     `json:"tun,omitempty"`
 }
+
+func LuaSourceKey(id, revision string) string { return id + "/" + revision }
 
 // TUNRequest identifies one candidate inbound; only the installed broker
 // profile can authorize the privileged device and network route scope.

@@ -43,8 +43,15 @@ type InstalledZapretStrategies struct {
 	Intents         []intent.ZapretPacketPathIntent
 	Families        []planner.ZapretFamilies
 	UsesCustomBlobs bool
+	UsesManagedLua  bool
 	HandlesQUIC     func(binding int, ipv6 bool, port uint16) bool
-	Compile         func(engineRoot string, queue uint16, loopMark uint32, queueMarks []uint32, trace, replies bool) ([]string, ZapretNativeTrace, error)
+	Compile         func(engineRoot string, queue uint16, loopMark uint32, queueMarks []uint32, trace, replies bool) (ZapretEngineCommand, error)
+}
+
+type ZapretEngineCommand struct {
+	Args  []string
+	Trace ZapretNativeTrace
+	Lua   string
 }
 
 func (s InstalledZapretStrategies) needsReturn() bool {
@@ -56,7 +63,7 @@ type ZapretNativeTrace interface {
 	MatchedProfiles(binding int) []string
 }
 
-type ResolveInstalledZapretStrategies func([]json.RawMessage, []zapretactivation.Request) (InstalledZapretStrategies, error)
+type ResolveInstalledZapretStrategies func([]json.RawMessage, []zapretactivation.Request, map[string]json.RawMessage) (InstalledZapretStrategies, error)
 
 type installedZapretProfile struct {
 	Schema       string            `json:"schema"`
@@ -67,9 +74,10 @@ type installedZapretProfile struct {
 	EngineDigest string            `json:"engineSHA256"`
 	Strategy     json.RawMessage   `json:"strategy,omitempty"`
 	Strategies   []json.RawMessage `json:"strategies,omitempty"`
-	// An operator may delegate bounded profiles, not egress, engine, or Lua authority.
+	// Managed Lua requires a separate operator decision from editor-managed profiles.
 	AllowManagedStrategies bool                `json:"allowManagedStrategies,omitempty"`
 	AllowCustomBlobs       bool                `json:"allowCustomBlobs,omitempty"`
+	AllowManagedLua        bool                `json:"allowManagedLua,omitempty"`
 	ObserveNativeProfiles  bool                `json:"observeNativeProfiles,omitempty"`
 	TUN                    *installedZapretTUN `json:"tun,omitempty"`
 }
