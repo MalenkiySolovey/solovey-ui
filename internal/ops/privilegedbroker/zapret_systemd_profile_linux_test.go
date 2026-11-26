@@ -145,6 +145,57 @@ func TestInstalledZapretPlainUDPIncludesTCPRetry(t *testing.T) {
 	}
 }
 
+func TestInstalledZapretDNSCoverageBeyond64UsesExistingScope(t *testing.T) {
+	const first, last = 1000, 1064
+	strategies := InstalledZapretStrategies{Families: []planner.ZapretFamilies{{
+		IPv4: planner.ZapretPorts{TCPRanges: []intent.PortInterval{{First: first, Last: last}}},
+	}}}
+	var needs []zapretactivation.DNSPathRequirement
+	for port := uint16(first); port <= last; port++ {
+		needs = append(needs, zapretactivation.DNSPathRequirement{Port: port, Family: zapretactivation.FamilyIPv4})
+	}
+	input := zapretactivation.Validation{
+		Bindings: []zapretactivation.Request{{OutboundRef: "direct"}},
+		DNS:      map[string][]zapretactivation.DNSPathRequirement{"direct": needs},
+	}
+	if err := strategies.verifyDNSRequirements(t.Context(), false, input); err != nil {
+		t.Fatalf("65 covered requirements were rejected: %v", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := strategies.verifyDNSRequirements(ctx, false, input); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled coverage check continued: %v", err)
+	}
+	for _, tc := range []struct {
+		name string
+		need zapretactivation.DNSPathRequirement
+		want string
+	}{
+		{"adjacent port", zapretactivation.DNSPathRequirement{Port: last + 1, Family: zapretactivation.FamilyIPv4}, "port 1065"},
+		{"other family", zapretactivation.DNSPathRequirement{Port: last, Family: zapretactivation.FamilyIPv6}, "family 6"},
+		{"plain UDP", zapretactivation.DNSPathRequirement{Port: last, Family: zapretactivation.FamilyIPv4, PlainUDP: true}, "UDP and its TCP retry"},
+		{"QUIC", zapretactivation.DNSPathRequirement{Port: last, Family: zapretactivation.FamilyIPv4, QUIC: true}, "QUIC true"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			input := input
+			input.DNS = map[string][]zapretactivation.DNSPathRequirement{"direct": append(slices.Clone(needs), tc.need)}
+			if err := strategies.verifyDNSRequirements(t.Context(), true, input); !errors.Is(err, errZapretDNSCoverage) || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("uncovered requirement accepted or misreported: %v", err)
+			}
+		})
+	}
+
+	input.DNS["not-selected"] = needs
+	if err := strategies.verifyDNSRequirements(t.Context(), false, input); !errors.Is(err, errZapretDNSCoverage) {
+		t.Fatalf("unselected outbound was admitted: %v", err)
+	}
+	delete(input.DNS, "not-selected")
+	input.Bindings[0].Outer.Kind = "http"
+	if err := strategies.verifyDNSRequirements(t.Context(), false, input); !errors.Is(err, errZapretDNSCoverage) {
+		t.Fatalf("DNS requirements on a proxy outer socket were admitted: %v", err)
+	}
+}
+
 func TestInstalledZapretCompactRangesKeepDNSAndProxyScope(t *testing.T) {
 	strategies := InstalledZapretStrategies{Families: []planner.ZapretFamilies{{
 		IPv4: planner.ZapretPorts{TCPRanges: []intent.PortInterval{{First: 40, Last: 500}},

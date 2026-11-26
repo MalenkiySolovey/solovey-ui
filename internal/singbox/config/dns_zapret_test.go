@@ -87,6 +87,32 @@ func TestZapretDNSAdmissionDoesNotChangeTLSVerification(t *testing.T) {
 	}
 }
 
+func TestZapretDNSRequirementDeduplicationKeepsLargeCatalogOrder(t *testing.T) {
+	var servers []string
+	var want []zapretactivation.DNSPathRequirement
+	for port := uint16(1064); port >= 1000; port-- {
+		servers = append(servers,
+			fmt.Sprintf(`{"type":"tcp","server":"192.0.2.1","server_port":%d,"detour":"a"}`, port),
+			fmt.Sprintf(`{"type":"tls","server":"192.0.2.2","server_port":%d,"detour":"a"}`, port))
+		want = append(want, zapretactivation.DNSPathRequirement{Port: port, Family: zapretactivation.DNSFamilyIPv4})
+	}
+	servers = append(servers,
+		`{"type":"tcp","server":"192.0.2.1","server_port":1000,"detour":"b"}`,
+		`{"type":"udp","server":"192.0.2.1","server_port":1000,"detour":"a"}`)
+	config := fmt.Appendf(nil, `{"dns":{"servers":[%s]}}`, strings.Join(servers, ","))
+	got, err := zapretDNSRequirements(config, map[string]bool{"a": true, "b": true}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = append(want, zapretactivation.DNSPathRequirement{Port: 1000, Family: zapretactivation.DNSFamilyIPv4, PlainUDP: true})
+	if !reflect.DeepEqual(got, map[string][]zapretactivation.DNSPathRequirement{
+		"a": want,
+		"b": {{Port: 1000, Family: zapretactivation.DNSFamilyIPv4}},
+	}) {
+		t.Fatalf("lost packet scope or first-occurrence order: %v", got)
+	}
+}
+
 func TestDNSBootstrapCycleRejectedWithoutChangingCandidate(t *testing.T) {
 	const config = `{"dns":{"servers":[
 		{"type":"https","tag":"a","server":"a.example","domain_resolver":"b"},

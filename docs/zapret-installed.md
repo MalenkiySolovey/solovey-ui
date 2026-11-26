@@ -48,6 +48,12 @@ earlier matching pass-through profile can prevent coverage. Keep authentication
 and explicit nonrecursive hostname bootstrap enabled. The broker rejects an
 uncovered DNS detour before replacing the current batch.
 
+Resolver endpoints on the same Direct with the same port, address family and
+transport coverage share one admission requirement; their DNS settings stay
+independent. Coverage checks are bounded by the broker request frame, not a
+resolver count. They do not allocate additional rules, queues or descriptors.
+A refusal identifies the uncovered port, family and required transport.
+
 Use the existing Strategy editor for ordered profiles and bounded native
 filters. Under **Shared native lists**, create a HostList (domains) or an
 IPSet (addresses or prefixes). Select it by ID in a profile's **Native
