@@ -145,7 +145,7 @@ func TestZapretSystemdScopesUDPAndIPv6ByFamily(t *testing.T) {
 		t.Fatal("protocol admission crossed families", err)
 	}
 	facts.Zapret.SystemdFamilies.IPv6.UDP[0] = 18444
-	if ports := plan.PortsForFamily(intent.PacketProtocolUDP, true); len(ports) != 1 || ports[0] != 18443 {
+	if ports := plan.PortIntervalsForFamily(intent.PacketProtocolUDP, true); !slices.Equal(ports, []intent.PortInterval{{First: 18443, Last: 18443}}) {
 		t.Fatal("caller mutated admitted ports", ports)
 	}
 	_, err = CompileZapret(request, facts)
@@ -177,11 +177,14 @@ func TestZapretSystemdReturnScopeRequiresRetainedGuard(t *testing.T) {
 	}
 	if plan.SocketMark() != ZapretSocketMarkBit|ZapretReturnSocketBit|7 || plan.QueueMark()&ZapretReturnSocketBit == 0 ||
 		plan.LoopMark()&ZapretReturnSocketBit != 0 || plan.FinalRouteBit()&ZapretReturnSocketBit != 0 ||
-		!slices.Equal(plan.ReplyTCPForFamily(false), []uint16{443}) || !slices.Equal(plan.ReplyTCPForFamily(true), []uint16{8443}) {
+		!slices.Equal(plan.ReplyPortsForFamily(false), []ZapretReplyPorts{
+			{PortInterval: intent.PortInterval{First: 443, Last: 443}, NeedsQueue: true},
+			{PortInterval: intent.PortInterval{First: 853, Last: 853}},
+		}) || !slices.Equal(plan.ReplyPortsForFamily(true), []ZapretReplyPorts{{PortInterval: intent.PortInterval{First: 8443, Last: 8443}, NeedsQueue: true}}) {
 		t.Fatal("reply scope escaped its selected family, mark or native queue")
 	}
 	facts.Zapret.SystemdFamilies.IPv6.ReplyTCP[0] = 443
-	if !slices.Equal(plan.ReplyTCPForFamily(true), []uint16{8443}) {
+	if !slices.Equal(plan.ReplyPortsForFamily(true), []ZapretReplyPorts{{PortInterval: intent.PortInterval{First: 8443, Last: 8443}, NeedsQueue: true}}) {
 		t.Fatal("caller mutated the admitted reply scope")
 	}
 	_, err = CompileZapret(request, facts)
@@ -199,6 +202,50 @@ func TestZapretSystemdReturnScopeRequiresRetainedGuard(t *testing.T) {
 	if err != nil || plan.SocketMark() != ZapretSocketMarkBit|7 {
 		t.Fatalf("static scope is unaffected by an unclaimed return bit: %x %v", plan.SocketMark(), err)
 	}
+}
+
+func TestZapretCompactScopesRequireExactFamilyUnionAndDisjointReplies(t *testing.T) {
+	span := func(a, b uint16) intent.PortInterval { return intent.PortInterval{First: a, Last: b} }
+	request, facts := zapretFixture()
+	request.TCPPorts, request.TCPPortRanges = nil, []intent.PortInterval{span(443, 500), span(1000, 65535)}
+	request.Directions = append(request.Directions, intent.PacketDirectionInbound)
+	request.NeedsReturn = true
+	facts.Capability.Backend = ZapretSystemdBackend
+	facts.Zapret.SystemdSerial = 7
+	facts.Zapret.SystemdReplyGuard = true
+	facts.Zapret.InstalledEgress = &ZapretEgress{NamespaceCookie: 11, IfIndex: 2,
+		IPv4Gateway: netip.MustParseAddr("192.0.2.1"), IPv6Gateway: netip.MustParseAddr("2001:db8::1"), RouteRevision: hash("egress")}
+	facts.Zapret.SystemdFamilies = &ZapretFamilies{
+		IPv4: ZapretPorts{TCPRanges: []intent.PortInterval{span(443, 500), span(1000, 1999)}, ReplyTCPRanges: []intent.PortInterval{span(470, 480), span(1400, 1600)}},
+		IPv6: ZapretPorts{TCPRanges: []intent.PortInterval{span(1999, 65535)}, ReplyTCPRanges: []intent.PortInterval{span(65534, 65535)}},
+	}
+	plan, err := CompileZapret(request, facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := plan.ReplyPortsForFamily(false); !slices.Equal(got, []ZapretReplyPorts{
+		{span(443, 469), false}, {span(470, 480), true}, {span(481, 500), false},
+		{span(1000, 1399), false}, {span(1400, 1600), true}, {span(1601, 1999), false},
+	}) {
+		t.Fatalf("IPv4 reply coverage widened or intersected: %+v", got)
+	}
+	if got := plan.ReplyPortsForFamily(true); !slices.Equal(got, []ZapretReplyPorts{{span(1999, 65533), false}, {span(65534, 65535), true}}) {
+		t.Fatalf("IPv6 reply coverage or port domain boundary changed: %+v", got)
+	}
+	families := facts.Zapret.SystemdFamilies
+	families.IPv6.TCPRanges[0].First = 2001 // missing port 2000 in the total union
+	_, err = CompileZapret(request, facts)
+	requireReason(t, err, InvalidIntent)
+	if got := plan.PortIntervalsForFamily(intent.PacketProtocolTCP, true); !slices.Equal(got, []intent.PortInterval{span(1999, 65535)}) {
+		t.Fatalf("caller mutated admitted ranges: %+v", got)
+	}
+	families.IPv6.TCPRanges[0].First = 999 // silently filling the unselected gap is not allowed
+	_, err = CompileZapret(request, facts)
+	requireReason(t, err, InvalidIntent)
+	families.IPv6.TCPRanges[0].First = 1999
+	families.IPv4.ReplyTCPRanges = []intent.PortInterval{span(470, 1000)} // crosses outside that family's TCP scope
+	_, err = CompileZapret(request, facts)
+	requireReason(t, err, InvalidIntent)
 }
 
 func TestInstalledZapretScopeBindsEgressAndRejectsProbe(t *testing.T) {

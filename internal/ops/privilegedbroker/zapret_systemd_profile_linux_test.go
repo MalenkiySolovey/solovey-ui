@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-host/network/intent"
 	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
 	packetfilter "github.com/MalenkiySolovey/solovey-ui/network/nftables"
 	"github.com/MalenkiySolovey/solovey-ui/network/planner"
@@ -141,6 +142,35 @@ func TestInstalledZapretPlainUDPIncludesTCPRetry(t *testing.T) {
 	need.QUIC = true
 	if strategies.handlesDNS(0, false, need) {
 		t.Fatal("ambiguous plain/QUIC request was admitted")
+	}
+}
+
+func TestInstalledZapretCompactRangesKeepDNSAndProxyScope(t *testing.T) {
+	strategies := InstalledZapretStrategies{Families: []planner.ZapretFamilies{{
+		IPv4: planner.ZapretPorts{TCPRanges: []intent.PortInterval{{First: 40, Last: 500}},
+			UDPRanges: []intent.PortInterval{{First: 53, Last: 53}, {First: 400, Last: 450}}},
+		IPv6: planner.ZapretPorts{TCPRanges: []intent.PortInterval{{First: 443, Last: 500}}},
+	}}}
+	plain := zapretactivation.DNSPathRequirement{Family: zapretactivation.DNSFamilyIPv4, Port: 53, PlainUDP: true}
+	quic := zapretactivation.DNSPathRequirement{Family: zapretactivation.DNSFamilyIPv4, Port: 443, QUIC: true}
+	if !strategies.handlesDNS(0, true, plain) || strategies.handlesDNS(0, true, quic) {
+		t.Fatal("the compact scope lost TCP-retry coverage or admitted UDP alone as a QUIC strategy")
+	}
+	strategies.HandlesQUIC = func(binding int, ipv6 bool, port uint16) bool { return binding == 0 && !ipv6 && port == 443 }
+	if !strategies.handlesDNS(0, true, quic) {
+		t.Fatal("QUIC in the admitted span with actual native action was rejected")
+	}
+	need := zapretactivation.OuterSocket{Kind: "http", Family: zapretactivation.FamilyIPv4, Port: 40}
+	if !strategies.handlesOuter(0, true, need) {
+		t.Fatal("TCP interval start was omitted")
+	}
+	need.Family = zapretactivation.FamilyIPv6
+	if strategies.handlesOuter(0, true, need) {
+		t.Fatal("accepting IPv4 widened IPv6")
+	}
+	need.Family, need.Port = zapretactivation.FamilyIPv4, 501
+	if strategies.handlesOuter(0, true, need) {
+		t.Fatal("admitting the right endpoint of the interval admitted the next port")
 	}
 }
 

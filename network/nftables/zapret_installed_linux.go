@@ -445,10 +445,10 @@ func (batch *zapretBatch) addZapretPath(plan planner.ZapretPlan) error {
 			if protocol == intent.PacketProtocolUDP {
 				l4 = unix.IPPROTO_UDP
 			}
-			for _, port := range plan.PortsForFamily(protocol, ipv6) {
+			for _, port := range plan.PortIntervalsForFamily(protocol, ipv6) {
 				match := append(append([]expr.Any(nil), originalPath...), meta(unix.NFT_META_L4PROTO), eq([]byte{l4}),
 					&expr.Payload{DestRegister: reg, Base: expr.PayloadBaseTransportHeader, Offset: 2, Len: 2},
-					eq(binary.BigEndian.AppendUint16(nil, port)))
+					zapretPortMatch(reg, port))
 				// A foreign packet-only mark cannot put another socket in our queue.
 				original := append(append([]expr.Any(nil), match...), &expr.Ct{Key: expr.CtKeyDIRECTION, Register: reg}, eq([]byte{0}),
 					meta(unix.NFT_META_MARK), eq(u32(plan.SocketMark())), socketMark, eq(u32(plan.SocketMark())))
@@ -481,6 +481,14 @@ func (batch *zapretBatch) addZapretPath(plan planner.ZapretPlan) error {
 		}
 	}
 	return nil
+}
+
+func zapretPortMatch(register uint32, port intent.PortInterval) expr.Any {
+	first := binary.BigEndian.AppendUint16(nil, port.First)
+	if port.First == port.Last {
+		return &expr.Cmp{Op: expr.CmpOpEq, Register: register, Data: first}
+	}
+	return &expr.Range{Op: expr.CmpOpEq, Register: register, FromData: first, ToData: binary.BigEndian.AppendUint16(nil, port.Last)}
 }
 
 type zapretBatch struct {
