@@ -146,6 +146,18 @@ operation. The legacy single-response endpoint still has a separate response
 budget. The saved-catalog byte limit bounds database and transfer work, not
 the number of checks in a streamed suite.
 
+Panel mode borrows an active anonymous HTTP or mixed ingress in the current
+Core generation. It models a local proxy client, not a remote client identity.
+The Core's DNS rules receive that ingress context; configured DNS transport is
+not inferred. The normal routing path may inspect the request before choosing
+an outbound. The dispatch guard admits only the requested literal address and
+port, or the original name resolved to that one permitted address, through a
+reviewed leaf outbound. An address rewrite, native rejection, or unverified
+egress yields no endpoint result and never retries through another path. A
+successful ingress CONNECT is not an endpoint TCP observation. Bare TCP,
+forced DNS transports, UDP, authenticated/TLS ingresses and ingress detours
+are not supported by this local diagnostic context.
+
 The selected Outbound mode borrows the active Core generation. It supports
 Direct and the audited literal-TCP HTTP, SOCKS and Snell paths, with no
 diagnostic fallback to another Outbound. Neither a CONNECT acknowledgment
@@ -168,9 +180,7 @@ The report distinguishes NXDOMAIN, an empty answer, a resolver error, a
 policy-rejected address and different address sets. A difference alone does
 not prove DNS tampering, and the report does not expose the raw answer sets.
 
-PANEL has no owner contract combining an actual ingress/user context with
-policy admission at the final destination socket. The existing local-proxy
-readiness probe is restricted to its own challenge sink. HOST_BASELINE has no
-owner proof that both DNS and the endpoint flow are outside Core, transparent
-routes and Zapret. Both modes explicitly report unavailability rather than
-silently substituting a local network client.
+HOST_BASELINE is not implemented. The current Host diagnostics cannot prove
+that both DNS and the endpoint flow are outside Core, transparent routes and
+Zapret. BlockCheck reports that limitation rather than silently substituting a
+local network client.

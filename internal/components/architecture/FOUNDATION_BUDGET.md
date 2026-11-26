@@ -455,3 +455,16 @@ confirmed, the generation does not release its independent deny. The PID 1
 FD-store retirement poll stops at the broker operation's deadline. None of
 these workers starts without an enabled binding. This admits only the eight
 exact reviewed sites; the R1 baseline and unrelated entries are unchanged.
+
+## R8E active Panel ingress diagnostic
+
+One explicitly requested stream probe launches the existing Core ingress on an
+in-memory pipe. `PanelDiagnostic.dialStream` registers its worker under the
+Core lifecycle lease before launch. The stream inherits the caller deadline and
+is canceled when either the request or the admitted generation ends. Cancel
+closes both pipe ends; closing the stream also releases its callbacks. Core
+retirement closes the provider and joins the registered worker. No listener,
+scheduler, or worker is created when there is no probe. The existing routing
+guard still rejects an unverified final egress or destination. Admit only the
+exact worker-lifetime digest for this site; the R1 base and all other entries
+are unchanged.

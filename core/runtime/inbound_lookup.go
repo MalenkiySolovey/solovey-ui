@@ -16,6 +16,7 @@ type InboundRuntimeRecord struct {
 	OptionsDigest     string
 	ManagerGeneration uint64
 	ownerTag          string
+	panelStream       bool
 }
 
 func inboundRuntimeRecords(ctx context.Context, options option.Inbound, generation uint64) ([]InboundRuntimeRecord, bool) {
@@ -78,9 +79,14 @@ func inboundRuntimeRecord(ctx context.Context, options option.Inbound, generatio
 		return InboundRuntimeRecord{}, false
 	}
 	sum := sha256.Sum256(content)
+	// The diagnostic injects a local anonymous, unencrypted proxy handshake.
+	// A listener that requires a user, TLS or an ingress detour is a different context.
+	proxy, isProxy := options.Options.(*option.HTTPMixedInboundOptions)
+	//nolint:staticcheck
+	panelStream := isProxy && (options.Type == "mixed" || options.Type == "http") && len(proxy.Users) == 0 && proxy.TLS == nil && proxy.Detour == ""
 	return InboundRuntimeRecord{
 		Tag: options.Tag, Type: options.Type,
-		OptionsDigest: hex.EncodeToString(sum[:]), ManagerGeneration: generation,
+		OptionsDigest: hex.EncodeToString(sum[:]), ManagerGeneration: generation, panelStream: panelStream,
 	}, true
 }
 

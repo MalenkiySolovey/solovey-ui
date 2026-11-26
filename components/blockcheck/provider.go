@@ -20,15 +20,20 @@ type localProvider struct{}
 type pathOptions struct {
 	Outbounds   []string                           `json:"outbounds"`
 	Resolvers   []string                           `json:"resolvers"`
+	Ingresses   []string                           `json:"ingresses"`
 	Unavailable map[feature.Mode]feature.PathError `json:"unavailable"`
 	History     bool                               `json:"history"`
 }
 
 func (localProvider) options() pathOptions {
 	outbounds, resolvers := service.LocalOutboundDiagnosticChoices()
-	result := pathOptions{Outbounds: outbounds, Resolvers: resolvers, History: true, Unavailable: map[feature.Mode]feature.PathError{
-		feature.Panel: feature.ErrPanelIngressUnqualified, feature.HostBaseline: feature.ErrBaselineUnobservable,
+	ingresses := service.LocalPanelDiagnosticChoices()
+	result := pathOptions{Outbounds: outbounds, Resolvers: resolvers, Ingresses: ingresses, History: true, Unavailable: map[feature.Mode]feature.PathError{
+		feature.HostBaseline: feature.ErrBaselineUnobservable,
 	}}
+	if len(ingresses) == 0 {
+		result.Unavailable[feature.Panel] = feature.ErrPanelIngressUnqualified
+	}
 	if len(outbounds) == 0 {
 		result.Unavailable[feature.Outbound] = feature.ErrOutboundUnavailable
 	}
@@ -41,7 +46,7 @@ func (localProvider) Open(_ context.Context, host hostref.Ref, selection feature
 	}
 	switch selection.Mode {
 	case feature.Panel:
-		return feature.Path{}, feature.ErrPanelIngressUnqualified
+		return openPanel(host, selection)
 	case feature.HostBaseline:
 		return feature.Path{}, feature.ErrBaselineUnobservable
 	case feature.Outbound:
@@ -99,10 +104,52 @@ func (localProvider) Open(_ context.Context, host hostref.Ref, selection feature
 	return path, nil
 }
 
+func openPanel(host hostref.Ref, selection feature.PathSelection) (feature.Path, error) {
+	if selection.Resolver != "" {
+		return feature.Path{}, feature.ErrResolverUnsupported
+	}
+	diagnostic, err := service.OpenLocalPanelDiagnostic(selection.Ref)
+	if err != nil {
+		return feature.Path{}, pathError(err)
+	}
+	return feature.Path{
+		Evidence: feature.PathEvidence{Host: host, Mode: feature.Panel, Generation: diagnostic.Generation(),
+			Scope: "panel-local-anonymous-proxy", Context: selection.Ref},
+		Current: func(ctx context.Context) error {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return pathError(diagnostic.Current())
+		},
+		Resolve: func(ctx context.Context, host string, _ feature.Family, probe feature.Probe) (feature.Resolution, error) {
+			value, err := diagnostic.Resolve(ctx, host, string(probe))
+			return feature.Resolution{Addresses: value.Addresses, Context: "active-core-dns-with-ingress"}, pathError(err)
+		},
+		DialNamedStream: func(ctx context.Context, host string, target netip.AddrPort) (net.Conn, func() (feature.SocketEvidence, error), error) {
+			conn, observe, err := diagnostic.DialStream(ctx, host, target, permitTarget)
+			if observe == nil {
+				return conn, nil, pathError(err)
+			}
+			return conn, func() (feature.SocketEvidence, error) {
+				result := observe()
+				return feature.SocketEvidence{Egress: result.Egress}, pathError(result.Err)
+			}, pathError(err)
+		},
+	}, nil
+}
+
 func pathError(err error) error {
 	switch {
 	case errors.Is(err, coreruntime.ErrDiagnosticResolver):
 		return feature.ErrResolverUnsupported
+	case errors.Is(err, coreruntime.ErrDiagnosticIngress):
+		return feature.ErrPanelIngressUnqualified
+	case errors.Is(err, coreruntime.ErrDiagnosticPanelRoute):
+		return feature.PathError(coreruntime.ErrDiagnosticPanelRoute.Error())
+	case errors.Is(err, coreruntime.ErrDiagnosticPanelDNS):
+		return feature.PathError(coreruntime.ErrDiagnosticPanelDNS.Error())
+	case errors.Is(err, coreruntime.ErrDiagnosticRouteDeny):
+		return feature.PathError(coreruntime.ErrDiagnosticRouteDeny.Error())
 	case errors.Is(err, coreruntime.ErrDiagnosticOutbound):
 		return feature.PathError("outbound_policy_unverified")
 	case errors.Is(err, coreruntime.ErrDiagnosticDatagram):

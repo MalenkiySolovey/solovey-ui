@@ -15,17 +15,18 @@
   },
   "replacement": {
     "module": "github.com/MalenkiySolovey/sing-box",
-    "version": "v1.14.3-0.20261012000247-8b914e4be510",
-    "commit": "8b914e4be5103d5f343dac94f26c3ebeeb226ffc",
+    "version": "v1.14.3-0.20261126015043-d127962a18c5",
+    "commit": "d127962a18c5a4ad5d56af0f4ed80a71bdb6e55f",
     "repository": "https://github.com/MalenkiySolovey/sing-box",
-    "sum": "h1:RkQg7xe/iBA9+PrEgN8oN0p9LNBNsd2OR65KUEmo4K0=",
+    "sum": "h1:mqTtL4AtY8ei7ogmUZu8hc14qI19IKGovXb82g6VZBc=",
     "goModSum": "h1:O4q0spxb+xwV/p9HYR+Es1cMjK3bBvYl6k08V9rSpwU="
   },
   "license": "GPL-3.0-or-later",
   "scopes": [
     "ssm-cache",
     "naive-http3-lifecycle",
-    "websocket-path-early-data"
+    "websocket-path-early-data",
+    "guarded-stream-dispatch"
   ],
   "additionalIntegrations": {
     "naiveHttp3": {
@@ -56,13 +57,29 @@
         "transport/v2raywebsocket/server.go",
         "transport/v2raywebsocket/server_path_test.go"
       ]
+    },
+    "guardedStream": {
+      "patched": true,
+      "scope": "per-stream-post-route-pre-dispatch",
+      "files": [
+        "adapter/stream_route_guard.go",
+        "route/route.go",
+        "route/stream_route_guard_test.go",
+        "route/stream_route_replay.go",
+        "route/stream_route_replay_test.go"
+      ]
     }
   },
   "sourceFiles": [
     "SOLOVEY_INTEGRATION.md",
+    "adapter/stream_route_guard.go",
     "protocol/naive/inbound.go",
     "protocol/naive/quic/inbound_init.go",
     "protocol/naive/quic/inbound_lifecycle.go",
+    "route/route.go",
+    "route/stream_route_guard_test.go",
+    "route/stream_route_replay.go",
+    "route/stream_route_replay_test.go",
     "service/ssmapi/cache.go",
     "service/ssmapi/cache_store.go",
     "service/ssmapi/cache_test.go",
@@ -75,22 +92,31 @@
     "format": "linear-git-commits/v1",
     "base": "af6e64c3b69e6132ebaee0e1a3d24e93903f6709",
     "upstreamTree": "d4edc37a0f8ea49f5307aefdbcaf67295c56c45c",
-    "patchedTree": "4ca03e05f360b25c958c2bfb6b4e246569789558",
+    "patchedTree": "358b8b9dc470e489953156d2297b3d8e45171067",
     "pristineRef": "refs/heads/mirror/v1.14.2",
     "branch": "solovey/official-patches",
     "commits": [
       "20fdbaa1cf7c7f9fd1c22116c63731d25916290d",
       "afd12f10473eb4d2d1459897488deb623527782e",
       "d0feb7cd0e3cfd46a2a90c06be901c6c87aaeed8",
-      "8b914e4be5103d5f343dac94f26c3ebeeb226ffc"
+      "8b914e4be5103d5f343dac94f26c3ebeeb226ffc",
+      "70eb276b145a296564e7fb388d128c24ba6c93ea",
+      "cac230a962e6faf43de5b39d97f51ce964c915d8",
+      "9f22ea32524665499e3228a54734a9d114529961",
+      "6b890862d432a7d3d422822501edeaf61cfff726",
+      "eff24df463c025a12b80ac3d7cdba9dab4ae47b9",
+      "ae3161c69d94f9a1777ab45769f1cf0f72e6ea99",
+      "d127962a18c5a4ad5d56af0f4ed80a71bdb6e55f"
     ],
     "patchCommits": [
       "20fdbaa1cf7c7f9fd1c22116c63731d25916290d",
       "afd12f10473eb4d2d1459897488deb623527782e",
       "d0feb7cd0e3cfd46a2a90c06be901c6c87aaeed8",
-      "8b914e4be5103d5f343dac94f26c3ebeeb226ffc"
+      "8b914e4be5103d5f343dac94f26c3ebeeb226ffc",
+      "6b890862d432a7d3d422822501edeaf61cfff726",
+      "ae3161c69d94f9a1777ab45769f1cf0f72e6ea99"
     ],
-    "patchCount": 4,
-    "identity": "b1c4c5f9289ddf5d25e8291491cb1e0c682553ea73bdbba249031c5fe8887e17"
+    "patchCount": 6,
+    "identity": "120da2dcfb9ded1c25753948bc87dc5b622ea9fbe6b743b48964983deae56f9e"
   }
 }
