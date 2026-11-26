@@ -6,7 +6,7 @@
       "id": "sing-box",
       "modFile": "go.mod",
       "buildTags": [],
-      "sourceRevision": "8b914e4be5103d5f343dac94f26c3ebeeb226ffc"
+      "sourceRevision": "eff24df463c025a12b80ac3d7cdba9dab4ae47b9"
     },
     {
       "id": "shtorm-extended",
@@ -18,19 +18,19 @@
         "with_openconnect",
         "with_openvpn"
       ],
-      "sourceRevision": "493b451cdac67dd69c6c9027729e242674ba81e5"
+      "sourceRevision": "11dc540c6d95027608a8cec22efda35bb1a90e79"
     }
   ],
   "sources": [
     {
       "id": "sing-box",
       "name": "Official",
-      "providerVersion": "v1.14.3-0.20261012000247-8b914e4be510",
+      "providerVersion": "v1.14.3-0.20261126010415-eff24df463c0",
       "runtimeSemanticVersion": "1.14.2",
       "module": "github.com/MalenkiySolovey/sing-box",
-      "moduleSum": "h1:RkQg7xe/iBA9+PrEgN8oN0p9LNBNsd2OR65KUEmo4K0=",
+      "moduleSum": "h1:urwiJHZ1HCi/UrThlCFJQ+gtnMPQ0Kf80nz1cSEFT4E=",
       "sourceRepository": "https://github.com/MalenkiySolovey/sing-box",
-      "sourceRevision": "8b914e4be5103d5f343dac94f26c3ebeeb226ffc",
+      "sourceRevision": "eff24df463c025a12b80ac3d7cdba9dab4ae47b9",
       "upstreamRepository": "https://github.com/SagerNet/sing-box",
       "upstreamRevision": "af6e64c3b69e6132ebaee0e1a3d24e93903f6709"
     },
@@ -49,12 +49,12 @@
     {
       "id": "shtorm-extended",
       "name": "Shtorm Extended",
-      "providerVersion": "v0.0.0-20261104205147-493b451cdac6",
+      "providerVersion": "v0.0.0-20261126010416-11dc540c6d95",
       "runtimeSemanticVersion": "1.14.3",
       "module": "github.com/MalenkiySolovey/sing-box-extended",
-      "moduleSum": "h1:+SDNvRHM8LZ1lqLILQDMR/pmGZDmZ0byg1i+Wvt21jg=",
+      "moduleSum": "h1:DR8yV9myp9ULsm+Fl74HZstwiCeYpoYO//FKlcB4Wqk=",
       "sourceRepository": "https://github.com/MalenkiySolovey/sing-box-extended",
-      "sourceRevision": "493b451cdac67dd69c6c9027729e242674ba81e5",
+      "sourceRevision": "11dc540c6d95027608a8cec22efda35bb1a90e79",
       "upstreamRepository": "https://github.com/shtorm-7/sing-box-extended",
       "upstreamRevision": "d9442d14b19ddd02605bf3ee893a171947038e19"
     }

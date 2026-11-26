@@ -26,7 +26,7 @@ prefixes are Go module resolution metadata.
 
 | Module requested by the product | Actual resolved integration | Exact source commit |
 |---|---|---|
-| `github.com/sagernet/sing-box@v1.14.2` | `github.com/MalenkiySolovey/sing-box@v1.14.3-0.20261012000247-8b914e4be510` | `8b914e4be5103d5f343dac94f26c3ebeeb226ffc` |
+| `github.com/sagernet/sing-box@v1.14.2` | `github.com/MalenkiySolovey/sing-box@v1.14.3-0.20261126010415-eff24df463c0` | `eff24df463c025a12b80ac3d7cdba9dab4ae47b9` |
 | `github.com/sagernet/sing-quic@v0.7.1-0.20260924092235-6a3a24d65b99` | `github.com/MalenkiySolovey/sing-quic@v0.7.1-0.20261010045634-b2eea8ca8762` | `b2eea8ca8762dd1e438171e2f7b56f9715c30cbb` |
 | `github.com/anytls/sing-anytls@v0.0.11` | `github.com/MalenkiySolovey/sing-anytls@v0.0.12-0.20261011014237-8f440972b353` | `8f440972b353f7ace3bbfbac9cf291938de5ab19` |
 
@@ -102,8 +102,8 @@ The separately compiled `shtorm-extended` flavor uses Shtorm
 `v1.14.3-extended-2.7.3`, source
 `d9442d14b19ddd02605bf3ee893a171947038e19`, with runtime semantics v1.14.3.
 Its actual maintained engine is
-`github.com/MalenkiySolovey/sing-box-extended@v0.0.0-20261104205147-493b451cdac6`,
-commit `493b451cdac67dd69c6c9027729e242674ba81e5`. Its maintained QUIC
+`github.com/MalenkiySolovey/sing-box-extended@v0.0.0-20261126010416-11dc540c6d95`,
+commit `11dc540c6d95027608a8cec22efda35bb1a90e79`. Its maintained QUIC
 integration uses the same `MalenkiySolovey/sing-quic` repository as Official,
 independently pinned at `9034c2c10c6331aca496fd9f2dc3a1546bc6f61b`.
 `deploy/dependencies/sing-box-extended-integration.json` records exact authority

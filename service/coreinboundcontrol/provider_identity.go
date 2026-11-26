@@ -15,9 +15,9 @@ func fallbackSourceQualified(source coreprovider.Identity) bool {
 		return false
 	}
 	switch source.SourceRevision {
-	case "8b914e4be5103d5f343dac94f26c3ebeeb226ffc":
+	case "eff24df463c025a12b80ac3d7cdba9dab4ae47b9":
 		return source.ID == "sing-box"
-	case "493b451cdac67dd69c6c9027729e242674ba81e5":
+	case "11dc540c6d95027608a8cec22efda35bb1a90e79":
 		return source.ID == "shtorm-extended"
 	default:
 		return false
