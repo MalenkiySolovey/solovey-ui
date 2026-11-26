@@ -54,7 +54,7 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports, componen
 			return
 		}
 		c.Header("Cache-Control", "no-store")
-		ports.HTTP.JSONObj(c, provider.options(), nil)
+		ports.HTTP.JSONObj(c, provider.options(c.Request.Context()), nil)
 	})
 	group.GET("/history", func(c *gin.Context) {
 		if !ports.Auth.RequireScope(c, "blockcheck.history.read", "admin") {

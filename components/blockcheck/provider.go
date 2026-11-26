@@ -25,12 +25,13 @@ type pathOptions struct {
 	History     bool                               `json:"history"`
 }
 
-func (localProvider) options() pathOptions {
+func (localProvider) options(ctx context.Context) pathOptions {
 	outbounds, resolvers := service.LocalOutboundDiagnosticChoices()
 	ingresses := service.LocalPanelDiagnosticChoices()
-	result := pathOptions{Outbounds: outbounds, Resolvers: resolvers, Ingresses: ingresses, History: true, Unavailable: map[feature.Mode]feature.PathError{
-		feature.HostBaseline: feature.ErrBaselineUnobservable,
-	}}
+	result := pathOptions{Outbounds: outbounds, Resolvers: resolvers, Ingresses: ingresses, History: true, Unavailable: make(map[feature.Mode]feature.PathError)}
+	if !hostBaselineAvailable(ctx) {
+		result.Unavailable[feature.HostBaseline] = feature.ErrBaselineUnobservable
+	}
 	if len(ingresses) == 0 {
 		result.Unavailable[feature.Panel] = feature.ErrPanelIngressUnqualified
 	}
@@ -40,7 +41,7 @@ func (localProvider) options() pathOptions {
 	return result
 }
 
-func (localProvider) Open(_ context.Context, host hostref.Ref, selection feature.PathSelection) (feature.Path, error) {
+func (localProvider) Open(ctx context.Context, host hostref.Ref, selection feature.PathSelection) (feature.Path, error) {
 	if !host.IsLocal() {
 		return feature.Path{}, feature.ErrInactive
 	}
@@ -48,7 +49,7 @@ func (localProvider) Open(_ context.Context, host hostref.Ref, selection feature
 	case feature.Panel:
 		return openPanel(host, selection)
 	case feature.HostBaseline:
-		return feature.Path{}, feature.ErrBaselineUnobservable
+		return openHostBaseline(ctx, host, selection)
 	case feature.Outbound:
 	default:
 		return feature.Path{}, feature.ErrInvalidRun

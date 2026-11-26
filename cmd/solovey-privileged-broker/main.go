@@ -60,6 +60,9 @@ func run() error {
 	if err := registerHandlerGraph(registry, composition, journal, registrars); err != nil {
 		return err
 	}
+	if err := broker.RegisterHostBaselineObserver(registry, composition.transport); err != nil {
+		return err
+	}
 	attestor, err := broker.NewManifestAttestor(manifest)
 	if err != nil {
 		return err

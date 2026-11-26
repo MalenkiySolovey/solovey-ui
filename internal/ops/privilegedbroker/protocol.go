@@ -62,6 +62,7 @@ const (
 	VerbZapretRelease  Verb = "zapret.path.release"
 	VerbZapretValidate Verb = "zapret.profile.validate"
 	VerbZapretObserve  Verb = "zapret.path.observe"
+	VerbHostBaseline   Verb = "host.baseline.observe"
 
 	VerbSSHObserve      Verb = "ssh.posture.observe"
 	VerbSSHPrepare      Verb = "ssh.policy.prepare"
@@ -234,6 +235,10 @@ type Definition struct {
 }
 
 type Registry struct{ definitions map[Verb]Definition }
+
+type HostBaselineObservation struct {
+	Namespace uint64 `json:"namespace"`
+}
 
 func NewRegistry() *Registry { return &Registry{definitions: make(map[Verb]Definition)} }
 

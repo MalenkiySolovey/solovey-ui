@@ -180,7 +180,13 @@ The report distinguishes NXDOMAIN, an empty answer, a resolver error, a
 policy-rejected address and different address sets. A difference alone does
 not prove DNS tampering, and the report does not expose the raw answer sets.
 
-HOST_BASELINE is not implemented. The current Host diagnostics cannot prove
-that both DNS and the endpoint flow are outside Core, transparent routes and
-Zapret. BlockCheck reports that limitation rather than silently substituting a
-local network client.
+HOST_BASELINE can use ordinary, unmarked Linux Host sockets in an attested
+systemd installation. The broker observes the socket namespace and local
+packet hooks; it does not connect to the test target. BlockCheck requires a
+consistent main-table route and local address before and after connecting
+to the system nameserver and to the target. It does not override the firewall,
+name servers or routing. A loopback DNS stub cannot attest its own upstream
+socket; TUN, policy routes and unreviewed packet steering can also make the
+baseline unobservable. Transport-specific DNS probes are not forced on this
+path. These observations are not a guarantee about third-party steering or
+filtering upstream of the observed Host route.
