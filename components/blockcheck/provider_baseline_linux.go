@@ -42,6 +42,7 @@ func openHostBaseline(ctx context.Context, host hostref.Ref, selection feature.P
 		Resolve:  baseline.resolve,
 		DialTCP:  baseline.dialTarget("tcp"),
 		DialUDP:  baseline.dialTarget("udp"),
+		EchoICMP: baseline.echoICMP,
 	}, nil
 }
 
@@ -164,18 +165,11 @@ func (b hostBaseline) dial(ctx context.Context, network string, target netip.Add
 	} else {
 		network += "6"
 	}
-	handle, err := netlink.NewHandle(unix.NETLINK_ROUTE)
-	if err != nil {
-		return nil, feature.SocketEvidence{}, feature.ErrBaselineUnobservable
-	}
-	defer handle.Close()
-	if err := handle.SetSocketTimeout(250 * time.Millisecond); err != nil {
-		return nil, feature.SocketEvidence{}, feature.ErrBaselineUnobservable
-	}
-	before, err := baselineLookup(ctx, handle, addr, netip.Addr{})
+	handle, before, err := beginBaselineRoute(ctx, addr)
 	if err != nil {
 		return nil, feature.SocketEvidence{}, err
 	}
+	defer handle.Close()
 	dialer := net.Dialer{ControlContext: b.inspectSocket}
 	conn, err := dialer.DialContext(ctx, network, target.String())
 	if err != nil {
@@ -228,6 +222,23 @@ type baselineRoute struct {
 	index   int
 	source  netip.Addr
 	gateway netip.Addr
+}
+
+func beginBaselineRoute(ctx context.Context, addr netip.Addr) (*netlink.Handle, baselineRoute, error) {
+	handle, err := netlink.NewHandle(unix.NETLINK_ROUTE)
+	if err != nil {
+		return nil, baselineRoute{}, feature.ErrBaselineUnobservable
+	}
+	if err := handle.SetSocketTimeout(250 * time.Millisecond); err != nil {
+		handle.Close()
+		return nil, baselineRoute{}, feature.ErrBaselineUnobservable
+	}
+	route, err := baselineLookup(ctx, handle, addr, netip.Addr{})
+	if err != nil {
+		handle.Close()
+		return nil, baselineRoute{}, err
+	}
+	return handle, route, nil
 }
 
 func baselineLookup(ctx context.Context, handle *netlink.Handle, addr, source netip.Addr) (baselineRoute, error) {
