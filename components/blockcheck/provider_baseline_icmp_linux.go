@@ -41,11 +41,6 @@ func (b hostBaseline) echoICMP(ctx context.Context, addr netip.Addr) (feature.So
 	if err != nil || id == 0 || local != before.source {
 		return feature.SocketEvidence{}, feature.ErrBaselineUnobservable
 	}
-	sockaddr, err = conn.Getpeername()
-	peer, _ := echoAddress(sockaddr)
-	if err != nil || peer != addr {
-		return feature.SocketEvidence{}, feature.ErrBaselineUnobservable
-	}
 	after, err := baselineLookup(ctx, handle, addr, local)
 	if err != nil || after != before || ctx.Err() != nil {
 		return feature.SocketEvidence{}, feature.ErrBaselineUnobservable
@@ -111,6 +106,9 @@ func (p hostEcho) exchange(ctx context.Context, conn *socket.Conn, dst netip.Add
 	if err != nil {
 		return feature.ErrICMPEchoNotSent
 	}
+	// Echo has no destination port, so Linux getpeername reports ENOTCONN
+	// even after a successful connect. Send without a per-message address to
+	// the connected peer and verify the source on receipt.
 	if n, err := conn.Sendmsg(ctx, data, nil, nil, 0); err != nil || n != len(data) {
 		return feature.ErrICMPEchoNotSent
 	}
