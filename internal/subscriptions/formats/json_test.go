@@ -191,3 +191,44 @@ func hasRuleSetTag(ruleSets []interface{}, tag string) bool {
 	}
 	return false
 }
+
+func TestJSONRuntimeOutboundsStripsSubscriptionMetadataFromGroups(t *testing.T) {
+	metadata := map[string]interface{}{
+		"source_format": "uri",
+	}
+
+	outbounds := []map[string]interface{}{
+		{
+			"type":                 "direct",
+			"tag":                  "node-a",
+			"_subscription_source": metadata,
+		},
+		{
+			"type":                 "core-failover",
+			"tag":                  "remote-group",
+			"outbounds":            []string{"node-a"},
+			"_subscription_source": metadata,
+		},
+	}
+
+	rendered, err := jsonRuntimeOutbounds(outbounds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rendered) != 2 {
+		t.Fatalf("expected 2 outbounds, got %d", len(rendered))
+	}
+
+	for i, outbound := range rendered {
+		if _, exists := outbound["_subscription_source"]; exists {
+			t.Errorf("rendered outbound %d still contains subscription metadata", i)
+		}
+	}
+
+	// Rendering must not mutate the internal model.
+	for i, outbound := range outbounds {
+		if _, exists := outbound["_subscription_source"]; !exists {
+			t.Errorf("original outbound %d lost subscription metadata", i)
+		}
+	}
+}
