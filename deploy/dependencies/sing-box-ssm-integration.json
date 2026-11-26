@@ -15,10 +15,10 @@
   },
   "replacement": {
     "module": "github.com/MalenkiySolovey/sing-box",
-    "version": "v1.14.3-0.20261126010415-eff24df463c0",
-    "commit": "eff24df463c025a12b80ac3d7cdba9dab4ae47b9",
+    "version": "v1.14.3-0.20261126015043-d127962a18c5",
+    "commit": "d127962a18c5a4ad5d56af0f4ed80a71bdb6e55f",
     "repository": "https://github.com/MalenkiySolovey/sing-box",
-    "sum": "h1:urwiJHZ1HCi/UrThlCFJQ+gtnMPQ0Kf80nz1cSEFT4E=",
+    "sum": "h1:mqTtL4AtY8ei7ogmUZu8hc14qI19IKGovXb82g6VZBc=",
     "goModSum": "h1:O4q0spxb+xwV/p9HYR+Es1cMjK3bBvYl6k08V9rSpwU="
   },
   "license": "GPL-3.0-or-later",
@@ -64,7 +64,9 @@
       "files": [
         "adapter/stream_route_guard.go",
         "route/route.go",
-        "route/stream_route_guard_test.go"
+        "route/stream_route_guard_test.go",
+        "route/stream_route_replay.go",
+        "route/stream_route_replay_test.go"
       ]
     }
   },
@@ -76,6 +78,8 @@
     "protocol/naive/quic/inbound_lifecycle.go",
     "route/route.go",
     "route/stream_route_guard_test.go",
+    "route/stream_route_replay.go",
+    "route/stream_route_replay_test.go",
     "service/ssmapi/cache.go",
     "service/ssmapi/cache_store.go",
     "service/ssmapi/cache_test.go",
@@ -88,7 +92,7 @@
     "format": "linear-git-commits/v1",
     "base": "af6e64c3b69e6132ebaee0e1a3d24e93903f6709",
     "upstreamTree": "d4edc37a0f8ea49f5307aefdbcaf67295c56c45c",
-    "patchedTree": "2888a8112999b573a1245727ecad81be5fce934d",
+    "patchedTree": "358b8b9dc470e489953156d2297b3d8e45171067",
     "pristineRef": "refs/heads/mirror/v1.14.2",
     "branch": "solovey/official-patches",
     "commits": [
@@ -100,16 +104,19 @@
       "cac230a962e6faf43de5b39d97f51ce964c915d8",
       "9f22ea32524665499e3228a54734a9d114529961",
       "6b890862d432a7d3d422822501edeaf61cfff726",
-      "eff24df463c025a12b80ac3d7cdba9dab4ae47b9"
+      "eff24df463c025a12b80ac3d7cdba9dab4ae47b9",
+      "ae3161c69d94f9a1777ab45769f1cf0f72e6ea99",
+      "d127962a18c5a4ad5d56af0f4ed80a71bdb6e55f"
     ],
     "patchCommits": [
       "20fdbaa1cf7c7f9fd1c22116c63731d25916290d",
       "afd12f10473eb4d2d1459897488deb623527782e",
       "d0feb7cd0e3cfd46a2a90c06be901c6c87aaeed8",
       "8b914e4be5103d5f343dac94f26c3ebeeb226ffc",
-      "6b890862d432a7d3d422822501edeaf61cfff726"
+      "6b890862d432a7d3d422822501edeaf61cfff726",
+      "ae3161c69d94f9a1777ab45769f1cf0f72e6ea99"
     ],
-    "patchCount": 5,
-    "identity": "d9d23d414f4b4fa7b145d6a227877796a01c207c30d1f224f29dabf067d9bece"
+    "patchCount": 6,
+    "identity": "120da2dcfb9ded1c25753948bc87dc5b622ea9fbe6b743b48964983deae56f9e"
   }
 }

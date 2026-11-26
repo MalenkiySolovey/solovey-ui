@@ -6,6 +6,8 @@ github.com/MalenkiySolovey/sing-anytls v0.0.12-0.20261011014237-8f440972b353 h1:
 github.com/MalenkiySolovey/sing-anytls v0.0.12-0.20261011014237-8f440972b353/go.mod h1:7rjN6IukwysmdusYsrV51Fgu1uW6vsrdd6ctjnEAln8=
 github.com/MalenkiySolovey/sing-box v1.14.3-0.20261126010415-eff24df463c0 h1:urwiJHZ1HCi/UrThlCFJQ+gtnMPQ0Kf80nz1cSEFT4E=
 github.com/MalenkiySolovey/sing-box v1.14.3-0.20261126010415-eff24df463c0/go.mod h1:O4q0spxb+xwV/p9HYR+Es1cMjK3bBvYl6k08V9rSpwU=
+github.com/MalenkiySolovey/sing-box v1.14.3-0.20261126015043-d127962a18c5 h1:mqTtL4AtY8ei7ogmUZu8hc14qI19IKGovXb82g6VZBc=
+github.com/MalenkiySolovey/sing-box v1.14.3-0.20261126015043-d127962a18c5/go.mod h1:O4q0spxb+xwV/p9HYR+Es1cMjK3bBvYl6k08V9rSpwU=
 github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762 h1:0x0RTO9IyqRHO9rmEpUhCKRBeISM5LwKLsIiIifFbRY=
 github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762/go.mod h1:rJFeVxbEej2iuyeCJ3drKW+p5rOgtLIW3XhZ6ty7Fig=
 github.com/MalenkiySolovey/solovey-backend v0.1.1 h1:Om4WfZZrKxq/Bz6r25oNMeJEixUu7wPBfF/T/GR5urs=
@@ -34,6 +36,8 @@ github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.10 h1:6KiZPU4UeWk0e
 github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.10/go.mod h1:l0FF9BTS4GMX1idPj3tmljrwpka+VmL0AlLDEWeIVSQ=
 github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.13 h1:Czgp7GMBmdKIr2rbHEMTM04YKpOFdke6ORGH8eC36sw=
 github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.13/go.mod h1:l0FF9BTS4GMX1idPj3tmljrwpka+VmL0AlLDEWeIVSQ=
+github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.15 h1:zVxr6nbP79aMjbB1Ece58JFylLTj8ENjpWQEE+/pzIM=
+github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.15/go.mod h1:l0FF9BTS4GMX1idPj3tmljrwpka+VmL0AlLDEWeIVSQ=
 github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0 h1:De1pv/fpu8uoM0pfkAJX5roZ8WPCxlHZ4OpALNq+jFI=
 github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0/go.mod h1:JsuupXylmHWCSHtBJAqbHHEXzPfk/JeI4r4ytBjErQk=
 github.com/MalenkiySolovey/solovey-component-import-xui v0.1.0 h1:hOo+dX6oe4iSED9HkilWVcRXPXJLNC4+3ej36Y9Z5hA=

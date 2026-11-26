@@ -21,7 +21,7 @@ requireFact(goSum.includes(`${lock.replacement.module} ${lock.replacement.versio
 requireFact(goSum.includes(`${lock.replacement.module} ${lock.replacement.version}/go.mod ${lock.replacement.goModSum}\n`), 'replacement Go module checksum missing')
 requireFact(lock.original.version === 'v1.14.2' && lock.original.commit === 'af6e64c3b69e6132ebaee0e1a3d24e93903f6709', 'SSM baseline differs')
 requireFact(lock.original.commit === lock.semanticBaseline.commit, 'SSM source baseline mismatch')
-const guardedStreamFiles = ['adapter/stream_route_guard.go', 'route/route.go', 'route/stream_route_guard_test.go']
+const guardedStreamFiles = ['adapter/stream_route_guard.go', 'route/route.go', 'route/stream_route_guard_test.go', 'route/stream_route_replay.go', 'route/stream_route_replay_test.go']
 const allowed = ['SOLOVEY_INTEGRATION.md', 'protocol/naive/inbound.go', 'protocol/naive/quic/inbound_init.go', 'protocol/naive/quic/inbound_lifecycle.go', 'service/ssmapi/cache.go', 'service/ssmapi/cache_store.go', 'service/ssmapi/cache_test.go', 'service/ssmapi/server.go', 'transport/v2raywebsocket/server.go', 'transport/v2raywebsocket/server_path_test.go', ...guardedStreamFiles].sort()
 requireFact(JSON.stringify([...lock.sourceFiles].sort()) === JSON.stringify(allowed), 'SSM source scope differs')
 const quicLock = JSON.parse(fs.readFileSync(path.join(root, 'deploy/dependencies/sing-quic-integration.json'), 'utf8'))
