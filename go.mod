@@ -58,7 +58,7 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0
-	github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.15
+	github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.16
 	github.com/MalenkiySolovey/solovey-component-import-xui v0.1.4
 	github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions v0.1.0
 	github.com/MalenkiySolovey/solovey-component-server-protection v0.1.0
