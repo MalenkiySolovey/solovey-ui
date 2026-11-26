@@ -131,9 +131,13 @@ their semantics. This is an in-process contract, not a process sandbox.
 
 Full can install BlockCheck independently of Zapret. It is disabled by
 default. Only an authenticated administrator can edit its catalog or start a
-bounded foreground run. Disable cancels that run and preserves the catalog.
-The ordinary database backup owns `blockcheckGroupsV1`; run observations are
-not stored there. Core/minimal omit the Component and its UI.
+bounded foreground run. Disable cancels that run and preserves the catalog and
+history. The existing component-owned settings and database backup hold
+`blockcheckGroupsV1` and `blockcheckHistoryV1`. Administrators can see retained
+run history for up to 14 days, within a 512 KiB storage budget. A group whose
+details do not fit is explicitly marked omitted. The stored reports exclude
+attempted addresses, raw DNS answer sets and local socket details. Core/minimal
+omit the Component and its UI.
 
 Each service card can run independently. Check All uses one active generation
 and the enabled groups in catalog order, runs up to three probes at a time,

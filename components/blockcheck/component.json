@@ -6,7 +6,7 @@
   "delivery": "in-process",
   "defaultEnabled": false,
   "frontend": {"entries": ["frontend/index.ts"]},
-  "database": {"settings": ["blockcheckGroupsV1"]},
+  "database": {"settings": ["blockcheckGroupsV1", "blockcheckHistoryV1"]},
   "hostAPI": {
     "version": "solovey.component-host/v1",
     "api": ["http.request"],

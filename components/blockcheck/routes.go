@@ -56,6 +56,14 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports, componen
 		c.Header("Cache-Control", "no-store")
 		ports.HTTP.JSONObj(c, provider.options(), nil)
 	})
+	group.GET("/history", func(c *gin.Context) {
+		if !ports.Auth.RequireScope(c, "blockcheck.history.read", "admin") {
+			return
+		}
+		c.Header("Cache-Control", "no-store")
+		history, err := readHistory(c.Request.Context(), dbsqlite.DB(), time.Now())
+		ports.HTTP.JSONObj(c, history, err)
+	})
 	group.POST("/run", func(c *gin.Context) {
 		if !ports.Auth.RequireScope(c, "blockcheck.run", "admin") {
 			return
@@ -104,10 +112,17 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports, componen
 		}
 		controller := http.NewResponseController(c.Writer)
 		encoder := json.NewEncoder(c.Writer)
+		capture := feature.NewHistoryCapture(catalog, request)
 		err = component.RunSuite(ctx, ports.Host, catalog, request, provider, permitTarget, func(event feature.SuiteEvent) error {
 			if event.Kind == "started" {
 				c.Header("Content-Type", "application/x-ndjson")
 				c.Header("X-Accel-Buffering", "no")
+			}
+			if run := capture.Observe(event); run != nil {
+				writeCtx, stop := context.WithTimeout(ctx, time.Second)
+				saved := retainHistory(writeCtx, dbsqlite.DB(), *run, run.FinishedAt) == nil
+				stop()
+				event.HistorySaved = &saved
 			}
 			if event.Kind == "finished" && ports.Audit.Audit != nil {
 				ports.Audit.Audit(c, "blockcheck_run", feature.ID, event.Job.ResourceID, "", map[string]any{
@@ -141,6 +156,40 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports, componen
 		}
 		err := component.CancelSuite(ports.Host, request.OperationID)
 		ports.HTTP.JSONObj(c, nil, err)
+	})
+}
+
+var errHistoryStorage = errors.New("blockcheck_history_unavailable")
+
+func readHistory(ctx context.Context, db *gorm.DB, now time.Time) (feature.History, error) {
+	if db == nil {
+		return feature.History{}, errHistoryStorage
+	}
+	var row model.Setting
+	err := db.WithContext(ctx).Where("key = ?", feature.HistorySettingKey).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return feature.DecodeHistory(nil, now)
+	}
+	if err != nil {
+		return feature.History{}, errHistoryStorage
+	}
+	return feature.DecodeHistory([]byte(row.Value), now)
+}
+
+func retainHistory(ctx context.Context, db *gorm.DB, run feature.HistoryRun, now time.Time) error {
+	if db == nil {
+		return errHistoryStorage
+	}
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		current, err := readHistory(ctx, tx, now)
+		if err != nil {
+			return err
+		}
+		payload, err := current.WithRun(run, now)
+		if err != nil {
+			return err
+		}
+		return store.UpsertValue(tx, feature.HistorySettingKey, string(payload))
 	})
 }
 
