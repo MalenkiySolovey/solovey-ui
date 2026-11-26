@@ -74,6 +74,8 @@ github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.10 h1:6KiZPU4UeWk0e
 github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.10/go.mod h1:l0FF9BTS4GMX1idPj3tmljrwpka+VmL0AlLDEWeIVSQ=
 github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.13 h1:Czgp7GMBmdKIr2rbHEMTM04YKpOFdke6ORGH8eC36sw=
 github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.13/go.mod h1:l0FF9BTS4GMX1idPj3tmljrwpka+VmL0AlLDEWeIVSQ=
+github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.14 h1:B7X4imdiaOGx7IyhJ0Gri8sq7UdFrbIrXU0qZ0kUJuk=
+github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.14/go.mod h1:l0FF9BTS4GMX1idPj3tmljrwpka+VmL0AlLDEWeIVSQ=
 github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0 h1:De1pv/fpu8uoM0pfkAJX5roZ8WPCxlHZ4OpALNq+jFI=
 github.com/MalenkiySolovey/solovey-component-fallback-html v0.1.0/go.mod h1:JsuupXylmHWCSHtBJAqbHHEXzPfk/JeI4r4ytBjErQk=
 github.com/MalenkiySolovey/solovey-component-import-xui v0.1.0 h1:hOo+dX6oe4iSED9HkilWVcRXPXJLNC4+3ej36Y9Z5hA=
