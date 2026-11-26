@@ -32,6 +32,8 @@ func TestDiagnosticTCPModeDistinguishesProxyStreamFromAcknowledgement(t *testing
 		{C.TypeSOCKS, []string{"tcp", "udp"}, DiagnosticTCPProxyConnect},
 		{C.TypeSnell, []string{"tcp", "udp"}, DiagnosticTCPProxyStream},
 		{C.TypeSnell, []string{"udp"}, DiagnosticTCPUnavailable},
+		{C.TypeVLESS, []string{"tcp", "udp"}, DiagnosticTCPProxyStream},
+		{C.TypeVLESS, []string{"udp"}, DiagnosticTCPUnavailable},
 		{C.TypeSelector, []string{"tcp"}, DiagnosticTCPUnavailable},
 	} {
 		if got := diagnosticTCPMode(diagnosticOutboundFixture{kind: test.kind, networks: test.networks}); got != test.want {
@@ -101,6 +103,7 @@ func TestDiagnosticUDPRequiresAdmittedTargetAndConnectedTransport(t *testing.T) 
 		{C.TypeSOCKS, []string{"tcp", "udp"}, false},
 		{C.TypeHTTP, []string{"tcp"}, false},
 		{C.TypeSnell, []string{"tcp", "udp"}, false},
+		{C.TypeVLESS, []string{"tcp", "udp"}, false},
 		{C.TypeSelector, []string{"tcp", "udp"}, false},
 	} {
 		diagnostic := OutboundDiagnostic{core: new(Core), outbound: diagnosticOutboundFixture{kind: tc.kind, networks: tc.networks}}
