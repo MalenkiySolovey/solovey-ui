@@ -146,9 +146,10 @@ starting an engine, or replacing the live rules. Activation checks again
 against its own allocation. Reduce port/profile scope or disable a binding
 if the reported budget cannot fit; no partial batch is installed.
 
-Activation preflight also checks the available Host memory and the tightest
-observable cgroup v2 `memory.max` or `memory.high` headroom in the broker's
-ancestry. The candidate needs space for its arguments, the pinned NFQUEUE
+Activation preflight also checks available Host memory and the tightest
+applicable cgroup v2 hard limit (`memory.max`) in the broker's ancestry.
+It separately reports insufficient headroom before throttling (`memory.high`),
+which is not a kernel allocation limit. The candidate needs space for its arguments, the pinned NFQUEUE
 receive buffer and an engine working set. For a replacement, the working-set
 estimate incorporates the active engine's observed peak resident memory while
 that engine is still running. A replacement that cannot fit even before

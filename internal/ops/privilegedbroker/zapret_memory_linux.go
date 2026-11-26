@@ -32,12 +32,17 @@ type zapretMemoryHeadroom struct {
 	bytes  uint64
 }
 
+type zapretMemoryLimits struct {
+	hard     zapretMemoryHeadroom
+	throttle zapretMemoryHeadroom
+}
+
 func checkZapretMemoryBudget(ctx context.Context, args []string, activePID int) error {
 	host, err := mem.VirtualMemoryWithContext(ctx)
 	if err != nil {
 		return fmt.Errorf("%w: Host MemAvailable is unavailable", errZapretMemoryEvidence)
 	}
-	available := zapretMemoryHeadroom{source: "Host MemAvailable", bytes: host.Available}
+	limits := zapretMemoryLimits{hard: zapretMemoryHeadroom{source: "Host MemAvailable", bytes: host.Available}}
 	if cgroup2Filesystem(zapretCgroupRoot) {
 		mount, mountErr := mountevidence.ObserveUniqueMount(zapretCgroupRoot)
 		before := processevidence.SelfCgroup()
@@ -45,7 +50,7 @@ func checkZapretMemoryBudget(ctx context.Context, args []string, activePID int) 
 		if mountErr != nil || mount.MountPoint != zapretCgroupRoot || mount.Root != "/" || !ok {
 			return fmt.Errorf("%w: broker cgroup v2 membership or mount is unavailable", errZapretMemoryEvidence)
 		}
-		available, err = zapretCgroupHeadroom(available, zapretCgroupRoot, leaf, readZapretCgroupNumber)
+		limits, err = zapretCgroupHeadroom(limits.hard, zapretCgroupRoot, leaf, readZapretCgroupNumber)
 		after := processevidence.SelfCgroup()
 		if err != nil {
 			return fmt.Errorf("%w: %s", errZapretMemoryEvidence, err)
@@ -70,55 +75,67 @@ func checkZapretMemoryBudget(ctx context.Context, args []string, activePID int) 
 		}
 		workingSet = max(workingSet, peak)
 	}
-	return admitZapretMemory(available, workingSet, args)
+	return admitZapretMemory(limits, workingSet, args)
 }
 
-func admitZapretMemory(available zapretMemoryHeadroom, workingSet uint64, args []string) error {
+func admitZapretMemory(limits zapretMemoryLimits, workingSet uint64, args []string) error {
 	reserve := uint64(zapretQueueBufferReserve)
 	for _, arg := range args {
 		reserve += uint64(len(arg)) + 1 + strconv.IntSize/8
 	}
-	// Compare without adding the working set to a potentially full uint64.
-	if workingSet > available.bytes || reserve > available.bytes-workingSet {
-		return fmt.Errorf("%w: %s leaves %d bytes; reserve %d bytes for the engine plus %d bytes for arguments and the receive buffer",
-			errZapretMemoryBudget, available.source, available.bytes, workingSet, reserve)
+	for _, available := range []zapretMemoryHeadroom{limits.hard, limits.throttle} {
+		// Compare without adding the working set to a potentially full uint64.
+		if available.source == "" || workingSet <= available.bytes && reserve <= available.bytes-workingSet {
+			continue
+		}
+		detail := ""
+		if available == limits.throttle {
+			detail = " before throttling"
+		}
+		// Keep the reason within the broker's public response limit.
+		required := workingSet + min(reserve, ^uint64(0)-workingSet)
+		return fmt.Errorf("%w: %s leaves %d bytes%s; need %d bytes",
+			errZapretMemoryBudget, available.source, available.bytes, detail, required)
 	}
 	return nil
 }
 
-func zapretCgroupHeadroom(available zapretMemoryHeadroom, root, leaf string, read func(string) (string, error)) (zapretMemoryHeadroom, error) {
+func zapretCgroupHeadroom(host zapretMemoryHeadroom, root, leaf string, read func(string) (string, error)) (zapretMemoryLimits, error) {
 	if !filepath.IsAbs(leaf) || filepath.Clean(leaf) != leaf {
-		return zapretMemoryHeadroom{}, errors.New("noncanonical cgroup membership")
+		return zapretMemoryLimits{}, errors.New("noncanonical cgroup membership")
 	}
+	result := zapretMemoryLimits{hard: host}
 	for dir := filepath.Join(root, strings.TrimPrefix(leaf, "/")); dir != root; dir = filepath.Dir(dir) {
-		var limit zapretMemoryHeadroom
-		for _, file := range []string{"memory.max", "memory.high"} {
+		var current uint64
+		measured := false
+		for i, file := range []string{"memory.max", "memory.high"} {
 			raw, err := read(filepath.Join(dir, file))
 			if errors.Is(err, os.ErrNotExist) || err == nil && raw == "max" {
 				continue
 			}
 			bytes, parseErr := strconv.ParseUint(raw, 10, 64)
 			if err != nil || parseErr != nil {
-				return zapretMemoryHeadroom{}, errors.New("finite cgroup memory limit is unreadable")
+				return zapretMemoryLimits{}, errors.New("finite cgroup memory limit is unreadable")
 			}
-			if limit.source == "" || bytes < limit.bytes {
-				limit = zapretMemoryHeadroom{source: file, bytes: bytes}
+			if !measured {
+				raw, err = read(filepath.Join(dir, "memory.current"))
+				current, parseErr = strconv.ParseUint(raw, 10, 64)
+				if err != nil || parseErr != nil {
+					return zapretMemoryLimits{}, errors.New("current cgroup memory charge is unreadable")
+				}
+				measured = true
 			}
-		}
-		if limit.source == "" {
-			continue
-		}
-		raw, err := read(filepath.Join(dir, "memory.current"))
-		current, parseErr := strconv.ParseUint(raw, 10, 64)
-		if err != nil || parseErr != nil {
-			return zapretMemoryHeadroom{}, errors.New("current cgroup memory charge is unreadable")
-		}
-		remaining := max(limit.bytes, current) - current
-		if remaining < available.bytes {
-			available = zapretMemoryHeadroom{source: "broker cgroup v2 " + limit.source, bytes: remaining}
+			remaining := max(bytes, current) - current
+			target := &result.hard
+			if i != 0 {
+				target = &result.throttle
+			}
+			if target.source == "" || remaining < target.bytes {
+				*target = zapretMemoryHeadroom{source: "broker cgroup v2 " + file, bytes: remaining}
+			}
 		}
 	}
-	return available, nil
+	return result, nil
 }
 
 func readZapretCgroupNumber(path string) (string, error) {

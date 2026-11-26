@@ -82,8 +82,17 @@ func (z *installedZapret) observe(ctx context.Context, call Request, peer PeerId
 	}
 	path := z.active
 	if path == nil || path.peer != peer.Revision || path.uid != peer.UID || path.grant.BatchID != expected.BatchID ||
-		path.ctx.Err() != nil || path.verify(ctx) != nil || path.ctx.Err() != nil {
+		path.ctx.Err() != nil {
 		return nil, Failure(CodeFence, "Zapret generation is not active")
+	}
+	if err := path.verify(ctx); err != nil {
+		if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) {
+			return nil, Failure(CodeDeadline, "Zapret generation could not be verified before the observation deadline")
+		}
+		return nil, Failure(CodeFence, "Zapret generation's live packet path could not be verified")
+	}
+	if path.ctx.Err() != nil {
+		return nil, Failure(CodeFence, "Zapret generation retired during observation")
 	}
 	result := make([]zapretactivation.AppliedBinding, 0, len(path.grant.Bindings))
 	for i, g := range path.grant.Bindings {
