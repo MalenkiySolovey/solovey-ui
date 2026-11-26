@@ -4,6 +4,7 @@ package blockcheck
 
 import (
 	"context"
+	"encoding/binary"
 	"net"
 	"net/netip"
 	"os"
@@ -15,6 +16,8 @@ import (
 	"github.com/MalenkiySolovey/solovey-host/hostref"
 	"github.com/MalenkiySolovey/solovey-host/operationref"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
+	rtnl "github.com/mdlayher/netlink"
+	"github.com/mdlayher/socket"
 	"github.com/sagernet/netlink"
 	"golang.org/x/sys/unix"
 )
@@ -156,7 +159,7 @@ func (b hostBaseline) dial(ctx context.Context, network string, target netip.Add
 	if err := handle.SetSocketTimeout(250 * time.Millisecond); err != nil {
 		return nil, feature.SocketEvidence{}, feature.ErrBaselineUnobservable
 	}
-	before, err := baselineLookup(handle, addr, netip.Addr{})
+	before, err := baselineLookup(ctx, handle, addr, netip.Addr{})
 	if err != nil {
 		return nil, feature.SocketEvidence{}, err
 	}
@@ -181,7 +184,7 @@ func (b hostBaseline) dial(ctx context.Context, network string, target netip.Add
 		_ = conn.Close()
 		return nil, feature.SocketEvidence{}, feature.ErrBaselineUnobservable
 	}
-	after, err := baselineLookup(handle, addr, local.Addr())
+	after, err := baselineLookup(ctx, handle, addr, local.Addr())
 	if err != nil || after != before || ctx.Err() != nil {
 		_ = conn.Close()
 		return nil, feature.SocketEvidence{}, feature.ErrBaselineUnobservable
@@ -214,13 +217,12 @@ type baselineRoute struct {
 	gateway netip.Addr
 }
 
-func baselineLookup(handle *netlink.Handle, addr, source netip.Addr) (baselineRoute, error) {
+func baselineLookup(ctx context.Context, handle *netlink.Handle, addr, source netip.Addr) (baselineRoute, error) {
 	family := unix.AF_INET6
 	if addr.Is4() {
 		family = unix.AF_INET
 	}
-	rules, err := handle.RuleList(family)
-	if err != nil || !baselineRoutingRulesObservable(rules) {
+	if !baselineRoutingRulesObservable(ctx, family) {
 		return baselineRoute{}, feature.ErrBaselineUnobservable
 	}
 	uid := uint32(os.Geteuid())
@@ -257,21 +259,100 @@ func baselineLookup(handle *netlink.Handle, addr, source netip.Addr) (baselineRo
 	return baselineRoute{name: link.Attrs().Name, index: route.LinkIndex, source: routeSource.Unmap(), gateway: gateway.Unmap()}, nil
 }
 
-// In the initial scope a kernel lookup without a transport tuple is only
-// used when policy rules cannot select a different route for that tuple.
-func baselineRoutingRulesObservable(rules []netlink.Rule) bool {
-	if len(rules) == 0 {
+const fibRuleHeaderSize = 12
+
+// RuleList omits the kernel action and selectors, and Execute hides the dump
+// terminator. Validate the complete read-only snapshot for a tuple-less lookup.
+func baselineRoutingRulesObservable(ctx context.Context, family int) bool {
+	ctx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
+	defer cancel()
+	conn, err := socket.Socket(unix.AF_NETLINK, unix.SOCK_RAW, unix.NETLINK_ROUTE, "blockcheck-route-rules", nil)
+	if err != nil {
 		return false
 	}
-	for _, rule := range rules {
-		if rule.Type != unix.FR_ACT_TO_TBL || (rule.Table != unix.RT_TABLE_MAIN && rule.Table != unix.RT_TABLE_LOCAL && rule.Table != unix.RT_TABLE_DEFAULT) ||
-			rule.Src.IsValid() || rule.Dst.IsValid() || rule.MarkSet || rule.Mask != -1 || rule.Tos != 0 || rule.TunID != 0 || rule.Goto != -1 || rule.Flow != -1 ||
-			rule.IifName != "" || rule.OifName != "" || rule.SuppressIfgroup != -1 || rule.SuppressPrefixlen != -1 || rule.Invert ||
-			rule.Dport != nil || rule.Sport != nil || rule.IPProto != 0 || rule.UIDRange != nil {
+	defer conn.Close()
+	kernel := &unix.SockaddrNetlink{Family: unix.AF_NETLINK}
+	if err := conn.Bind(kernel); err != nil {
+		return false
+	}
+	addr, err := conn.Getsockname()
+	local, ok := addr.(*unix.SockaddrNetlink)
+	if err != nil || !ok {
+		return false
+	}
+	request := rtnl.Message{Header: rtnl.Header{Length: unix.NLMSG_HDRLEN + fibRuleHeaderSize,
+		Type: unix.RTM_GETRULE, Flags: rtnl.Request | rtnl.Dump, Sequence: 1, PID: local.Pid}, Data: make([]byte, fibRuleHeaderSize)}
+	request.Data[0] = byte(family)
+	wire, err := request.MarshalBinary()
+	if err != nil {
+		return false
+	}
+	if n, err := conn.Sendmsg(ctx, wire, nil, kernel, 0); err != nil || n != len(wire) {
+		return false
+	}
+	buffer := make([]byte, 32<<10) // Each datagram is bounded; dumps can span multiple datagrams.
+	found := false
+	for ctx.Err() == nil {
+		n, _, flags, from, err := conn.Recvmsg(ctx, buffer, nil, 0)
+		peer, ok := from.(*unix.SockaddrNetlink)
+		if err != nil || !ok || peer.Pid != 0 || peer.Groups != 0 || flags&unix.MSG_TRUNC != 0 {
+			return false
+		}
+		messages, err := syscall.ParseNetlinkMessage(buffer[:n])
+		if err != nil || len(messages) == 0 {
+			return false
+		}
+		for i, msg := range messages {
+			if msg.Header.Seq != request.Header.Sequence || msg.Header.Pid != local.Pid || msg.Header.Flags&unix.NLM_F_DUMP_INTR != 0 {
+				return false
+			}
+			if msg.Header.Type == unix.NLMSG_DONE {
+				return found && i == len(messages)-1 && len(msg.Data) >= 4 && binary.NativeEndian.Uint32(msg.Data) == 0 && ctx.Err() == nil
+			}
+			if msg.Header.Type != unix.RTM_NEWRULE || !baselineRuleObservable(msg.Data, byte(family)) {
+				return false
+			}
+			found = true
+		}
+	}
+	return false
+}
+
+func baselineRuleObservable(rule []byte, family byte) bool {
+	if len(rule) < fibRuleHeaderSize || rule[0] != family || rule[1] != 0 || rule[2] != 0 || rule[3] != 0 ||
+		rule[5] != 0 || rule[6] != 0 || rule[7] != unix.FR_ACT_TO_TBL ||
+		binary.NativeEndian.Uint32(rule[8:fibRuleHeaderSize]) & ^uint32(unix.FIB_RULE_PERMANENT) != 0 {
+		return false
+	}
+	table := uint32(rule[4])
+	attrs, err := rtnl.NewAttributeDecoder(rule[fibRuleHeaderSize:])
+	if err != nil {
+		return false
+	}
+	for attrs.Next() {
+		if attrs.TypeFlags() != 0 {
+			return false
+		}
+		switch attrs.Type() {
+		case unix.FRA_TABLE:
+			value := attrs.Uint32()
+			if table != unix.RT_TABLE_UNSPEC && table != value {
+				return false
+			}
+			table = value
+		case unix.FRA_PRIORITY:
+			_ = attrs.Uint32()
+		case unix.FRA_PROTOCOL:
+			_ = attrs.Uint8() // Rule provenance, not the packet's IP protocol.
+		case unix.FRA_SUPPRESS_PREFIXLEN, unix.FRA_SUPPRESS_IFGROUP:
+			if attrs.Uint32() != ^uint32(0) {
+				return false
+			}
+		default:
 			return false
 		}
 	}
-	return true
+	return attrs.Err() == nil && (table == unix.RT_TABLE_MAIN || table == unix.RT_TABLE_LOCAL || table == unix.RT_TABLE_DEFAULT)
 }
 
 func baselineLinkObservable(link netlink.Link) bool {
