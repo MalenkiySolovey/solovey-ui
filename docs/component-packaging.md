@@ -180,9 +180,7 @@ The report distinguishes NXDOMAIN, an empty answer, a resolver error, a
 policy-rejected address and different address sets. A difference alone does
 not prove DNS tampering, and the report does not expose the raw answer sets.
 
-PANEL has no owner contract combining an actual ingress/user context with
-policy admission at the final destination socket. The existing local-proxy
-readiness probe is restricted to its own challenge sink. HOST_BASELINE has no
-owner proof that both DNS and the endpoint flow are outside Core, transparent
-routes and Zapret. Both modes explicitly report unavailability rather than
-silently substituting a local network client.
+HOST_BASELINE is not implemented. The current Host diagnostics cannot prove
+that both DNS and the endpoint flow are outside Core, transparent routes and
+Zapret. BlockCheck reports that limitation rather than silently substituting a
+local network client.
