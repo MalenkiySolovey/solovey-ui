@@ -105,6 +105,13 @@ func (z *installedZapret) validate(ctx context.Context, call Request, peer PeerI
 	if err := checkZapretDescriptorBudget(len(input.Bindings), input.TUN != nil); err != nil {
 		return nil, Failure(CodeValidation, err.Error())
 	}
+	if path := z.activeForPeer(peer); path != nil {
+		// Reject a replacement that cannot fit even without its arguments,
+		// before profile and rule validation allocate into the same cgroup.
+		if err := checkZapretMemoryBudget(ctx, nil, path.enginePID); err != nil {
+			return nil, Failure(CodeValidation, err.Error())
+		}
+	}
 	profile, selected, err := z.selectStrategies(ctx, input)
 	if err == nil {
 		err = profile.verifyDialBindings(input.Bindings, 0)

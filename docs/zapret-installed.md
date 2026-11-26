@@ -151,9 +151,11 @@ observable cgroup v2 `memory.max` or `memory.high` headroom in the broker's
 ancestry. The candidate needs space for its arguments, the pinned NFQUEUE
 receive buffer and an engine working set. For a replacement, the working-set
 estimate incorporates the active engine's observed peak resident memory while
-that engine is still running. A refusal identifies the limiting resource and
-happens before a configuration save retires the active generation. Editing an
-inactive catalog entry does not reserve runtime resources. This snapshot is
+that engine is still running. A replacement that cannot fit even before
+accounting for its arguments is rejected before the more expensive profile and
+rule validation. A candidate that clears that check is measured again with its
+compiled arguments before a configuration save retires the active generation.
+Editing an inactive catalog entry does not reserve runtime resources. This snapshot is
 not a throughput forecast or a guarantee against memory or CPU contention
 after admission. It does not replace the kernel queue limit or the retained
 deny and does not route protected traffic through a fallback.

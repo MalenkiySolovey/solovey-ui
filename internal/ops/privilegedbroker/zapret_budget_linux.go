@@ -65,10 +65,20 @@ func zapretCapacityFailure(err error) bool {
 		errors.Is(err, errZapretMemoryBudget) || errors.Is(err, errZapretMemoryEvidence)
 }
 
+// Called under the broker mutation fence; an old peer cannot borrow another
+// generation's process or network observation.
+func (z *installedZapret) activeForPeer(peer PeerIdentity) *installedZapretPath {
+	path := z.active
+	if path == nil || path.peer != peer.Revision || path.uid != peer.UID || path.ctx.Err() != nil {
+		return nil
+	}
+	return path
+}
+
 func (z *installedZapret) checkBatchBudget(ctx context.Context, input zapretactivation.Validation, peer PeerIdentity, profile installedZapretProfile, selected InstalledZapretStrategies) error {
 	var verifyActive func(context.Context) error
 	var activePID int
-	if path := z.active; path != nil && path.peer == peer.Revision && path.uid == peer.UID && path.ctx.Err() == nil {
+	if path := z.activeForPeer(peer); path != nil {
 		verifyActive = path.verify
 		activePID = path.enginePID
 	}
