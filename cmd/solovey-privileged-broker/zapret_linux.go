@@ -88,7 +88,7 @@ func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivati
 			continue
 		}
 		if !zapretactivation.ManagedStrategyRef(request.StrategyRef) {
-			return broker.InstalledZapretStrategies{}, errors.New("Lua sources can only be selected by an editor-managed strategy")
+			return broker.InstalledZapretStrategies{}, errors.New("only editor-managed strategies can select Lua sources")
 		}
 		catalog := strategy.Catalog{LuaRevisions: make(map[string]strategy.LuaDraft, len(refs))}
 		for _, ref := range refs {
