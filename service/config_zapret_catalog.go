@@ -8,12 +8,12 @@ import (
 	"errors"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-backend/settings/store"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation/catalogstore"
 	"gorm.io/gorm"
 )
 
@@ -68,8 +68,10 @@ func (s *ConfigService) zapretCatalogLocked() (view ZapretCatalogSnapshot, err e
 	core := s.coreInstance()
 	if batch := s.runtime().zapretBatch; batch != "" && core != nil && core.IsRunning() && view.Ready {
 		client := broker.NewClient(broker.RolePanel)
+		// One read must account for both owned nftables tables, the bound
+		// interfaces and the queue owner, including on a throttled broker.
 		_, err := client.Invoke(context.Background(), broker.Call{Verb: broker.VerbZapretObserve, OperationID: "zapret-observe",
-			Payload: zapretactivation.BatchIdentity{BatchID: batch}, Timeout: time.Second}, &view.Applied)
+			Payload: zapretactivation.BatchIdentity{BatchID: batch}, Timeout: 3 * time.Second}, &view.Applied)
 		if err != nil {
 			view.Applied = nil
 		}
@@ -124,13 +126,10 @@ func (s *ConfigService) SaveZapretCatalog(action, id, revision, actor string,
 				if err != nil {
 					return err
 				}
-				if len(next) > zapretactivation.MaxCatalogBytes || !json.Valid(next) {
-					return errors.New("the Zapret strategy catalog exceeds its storage limit or is invalid")
-				}
 				if rebind {
 					plan.MergeOutboundChange(&singboxapply.Change{NeedsRestart: true, QuiesceCore: true, RestartReason: "A bound Zapret strategy changed"})
 				}
-				return store.UpsertValue(tx, zapretactivation.CatalogKey, string(next))
+				return catalogstore.Save(tx, current, next)
 			})
 		return err
 	})

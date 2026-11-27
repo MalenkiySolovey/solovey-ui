@@ -23,18 +23,18 @@ func registerInstalledZapret(ctx context.Context, server *broker.Server, transpo
 	return broker.RegisterInstalledZapret(ctx, server, transport, listeners, resolveZapretBatch)
 }
 
-func resolveZapretBatch(inputs []json.RawMessage, requests []zapretactivation.Request) (broker.InstalledZapretStrategies, error) {
-	result, err := resolveZapretStrategies(inputs, requests)
+func resolveZapretBatch(inputs []json.RawMessage, requests []zapretactivation.Request, luaSources map[string]json.RawMessage) (broker.InstalledZapretStrategies, error) {
+	result, err := resolveZapretStrategies(inputs, requests, luaSources)
 	if err != nil {
 		return result, err
 	}
 	compile := result.Compile
-	result.Compile = func(root string, queue uint16, loopMark uint32, marks []uint32, trace, replies bool) ([]string, broker.ZapretNativeTrace, error) {
-		args, evidence, err := compile(root, queue, loopMark, marks, trace, replies)
+	result.Compile = func(root string, queue uint16, loopMark uint32, marks []uint32, trace, replies bool) (broker.ZapretEngineCommand, error) {
+		command, err := compile(root, queue, loopMark, marks, trace, replies)
 		if errors.Is(err, strategy.ErrEngineArgumentBudget) {
-			return nil, nil, fmt.Errorf("%w: %w", broker.ErrZapretEngineBudget, err)
+			return broker.ZapretEngineCommand{}, fmt.Errorf("%w: %w", broker.ErrZapretEngineBudget, err)
 		}
-		return args, evidence, err
+		return command, err
 	}
 	return result, nil
 }
@@ -45,12 +45,14 @@ func (value installedStrategy) LookupStrategy(ref string) (strategy.Strategy, bo
 	return value.Strategy, ref == value.ID
 }
 
-func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivation.Request) (broker.InstalledZapretStrategies, error) {
+func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivation.Request, luaSources map[string]json.RawMessage) (broker.InstalledZapretStrategies, error) {
 	if len(inputs) != len(requests) {
 		return broker.InstalledZapretStrategies{}, errors.New("incomplete Zapret strategy set")
 	}
 	var result broker.InstalledZapretStrategies
 	strategies := make([]strategy.Strategy, len(inputs))
+	sources := make([][]strategy.LuaModule, len(inputs))
+	usedSources := make(map[string]bool, len(luaSources))
 	for i, request := range requests {
 		var source installedStrategy
 		if err := broker.DecodeRawPayload(inputs[i], &source.Strategy); err != nil {
@@ -81,7 +83,33 @@ func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivati
 		})
 		strategies[i] = selected.Strategy
 		result.UsesCustomBlobs = result.UsesCustomBlobs || len(selected.Strategy.BlobData) != 0
+		refs := selected.Strategy.ManagedLua
+		if len(refs) == 0 {
+			continue
+		}
+		if !zapretactivation.ManagedStrategyRef(request.StrategyRef) {
+			return broker.InstalledZapretStrategies{}, errors.New("only editor-managed strategies can select Lua sources")
+		}
+		catalog := strategy.Catalog{LuaRevisions: make(map[string]strategy.LuaDraft, len(refs))}
+		for _, ref := range refs {
+			key := zapretactivation.LuaSourceKey(ref.ID, ref.Revision)
+			var draft strategy.LuaDraft
+			if err := broker.DecodeRawPayload(luaSources[key], &draft); err != nil {
+				return broker.InstalledZapretStrategies{}, errors.New("missing or invalid selected Zapret Lua source")
+			}
+			catalog.LuaRevisions[key] = draft
+			usedSources[key] = true
+		}
+		sources[i], err = catalog.SelectedLua(refs)
+		if err != nil {
+			return broker.InstalledZapretStrategies{}, err
+		}
+		result.UsesManagedLua = true
 	}
+	if len(usedSources) != len(luaSources) {
+		return broker.InstalledZapretStrategies{}, errors.New("installed Zapret received unselected Lua sources")
+	}
+	usesManagedLua := result.UsesManagedLua
 	result.HandlesQUIC = func(i int, ipv6 bool, port uint16) bool {
 		family := strategy.IPv4
 		if ipv6 {
@@ -89,22 +117,31 @@ func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivati
 		}
 		return strategies[i].HandlesQUIC(family, port)
 	}
-	result.Compile = func(root string, queue uint16, loopMark uint32, marks []uint32, trace, replies bool) ([]string, broker.ZapretNativeTrace, error) {
+	result.Compile = func(root string, queue uint16, loopMark uint32, marks []uint32, trace, replies bool) (broker.ZapretEngineCommand, error) {
 		if len(marks) != len(strategies) {
-			return nil, nil, errors.New("incomplete Zapret mark allocation")
+			return broker.ZapretEngineCommand{}, errors.New("incomplete Zapret mark allocation")
 		}
 		marked := make([]strategy.MarkedStrategy, len(marks))
 		for i, mark := range marks {
 			marked[i] = strategy.MarkedStrategy{Strategy: strategies[i], QueueMark: mark}
 		}
-		if replies {
-			return strategy.CompileBindingsForReturnPath(root, queue, loopMark, marked, trace)
+		var command broker.ZapretEngineCommand
+		var evidence *strategy.NativeTrace
+		var err error
+		switch {
+		case usesManagedLua:
+			command.Args, evidence, command.Lua, err = strategy.CompileManagedBindings(root, broker.ZapretLuaBundlePath, queue, loopMark, marked, sources, trace, replies)
+		case replies:
+			command.Args, evidence, err = strategy.CompileBindingsForReturnPath(root, queue, loopMark, marked, trace)
+		case trace:
+			command.Args, evidence, err = strategy.CompileBindingsWithNativeTrace(root, queue, loopMark, marked)
+		default:
+			command.Args, err = strategy.CompileBindings(root, queue, loopMark, marked)
 		}
-		if trace {
-			return strategy.CompileBindingsWithNativeTrace(root, queue, loopMark, marked)
+		if evidence != nil {
+			command.Trace = evidence
 		}
-		args, err := strategy.CompileBindings(root, queue, loopMark, marked)
-		return args, nil, err
+		return command, err
 	}
 	return result, nil
 }

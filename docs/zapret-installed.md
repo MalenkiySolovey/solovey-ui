@@ -75,8 +75,31 @@ stable ID, not a path or Lua variable. Asset edits re-seal the referencing
 strategies; the broker reads the permission on admission of each generation
 and denies those strategies without it. Only the built-in blob qualifies as QUIC DNS
 coverage. Do not put secrets in an asset: these bytes are transmitted as
-configured. Host file paths and Lua drafts are never admitted. Bounded native
+configured. Host file paths are never admitted. Bounded native
 Circular requires the installed selected TCP return-path capability.
+
+### Managed Lua execution
+
+In the Strategy editor, select the exact Lua source revisions in dependency
+order and reference a declared callback in the native Strategy. Saving or
+importing source never applies it. Imported libraries require a provenance
+note and explicit approval for the selected revision. Strategy ZIP/JSON does
+not carry that approval to a new import.
+
+The root-owned installed Host profile must separately set
+`"allowManagedLua": true` along with its managed-strategy delegation. The
+broker seals the selected sources in an inherited descriptor and checks their
+initializers using the pinned nfqws2 engine before replacing an active plan.
+An invalid source or missing dependency is refused without retiring the
+active generation. No changes to Panel or Core privileges are required.
+
+Managed callbacks receive selected packet data and private per-flow Lua state.
+They may pass or drop; they cannot write back the packet, send arbitrary
+packets, or obtain filesystem, shell or package-loader access through the
+managed API. The native engine still has its normal network capabilities;
+this contract is not a host-wide sandbox for untrusted code. Authorize only
+reviewed code, which shares CPU and memory with the engine serving the other
+bindings. Existing pinned native actions are unchanged.
 
 Set `"observeNativeProfiles": true` in the root-owned installed profile to
 record native profile matches for the next engine generation. Refresh the
@@ -217,5 +240,5 @@ does not make the corresponding Core feature unavailable.
 | TCP/UDP DNS, DoT, DoH, DoQ, DoH3 | **Qualified** for explicit admitted Direct given endpoint family, port, same-port TCP retry for UDP, build capability and nonrecursive bootstrap. Over a proxy, only the fixed outer path is protected. Implicit selection isn't marked automatically. Explicit `tls.insecure` is preserved with a DNS editor warning: TLS authentication is not a packet admission requirement. Default verification and ordinary Core TLS validation are unchanged. |
 | Hosts, fakeip, local, resolved, DHCP, mDNS and native VPN DNS; Extended SDNS/fallback | No independent Zapret switch. Hosts/fakeip have no remote socket; local/resolved use resolver-specific ownership; DHCP/mDNS use interface discovery; VPN DNS uses its endpoint. Extended SDNS constructs a stamp-derived DNSCrypt client; fallback delegates to configured DNS transports. These are not equivalent to the six admitted direct detour types. |
 | TUN stacks, auto-route, auto-redirect, DNS mode | **Qualified** only for the prepared scoped IPv4/gVisor path above. System/mixed need local listener/INPUT ownership; IPv6 needs its own ingress/return scope. Automatic routes/redirect/system DNS would add privileged writes outside this contract. Ordinary supported TUN is not another Zapret egress. |
-| Native options and Lua | The Component owns typed profiles, source review and managed dependencies. Combined TCP/UDP profiles retain one name, order and list scope; passive L7 selection and `pass` retain native selectors without transforming traffic. Template import is review-only: the pinned `dp_copy` replaces marked scalar filters, merges lists and port filters, and copies the ordered action list. The current typed projection cannot yet calculate the effective scope of those operations. Administrator Lua is saved as text only: the pinned engine's Lua process retains network authority and has no per-script isolation. |
+| Native options and Lua | The Component owns typed profiles, source review and managed dependencies. Combined TCP/UDP profiles retain one name, order and list scope; passive L7 selection and `pass` retain native selectors without transforming traffic. Template import is review-only: the pinned `dp_copy` replaces marked scalar filters, merges lists and port filters, and copies the ordered action list. The current typed projection cannot yet calculate the effective scope of those operations. Selected administrator source and compatible libraries execute through the [managed callback contract](#managed-lua-execution) after Host delegation. Unrestricted native helpers are not exposed to managed scripts: the pinned engine retains network authority after dropping its UID. |
 | OpenWrt and FriendlyWrt | Stock OpenWrt `25.12.5` removes retained denial on firewall teardown; pinned procd has no equivalent systemd FD store. FriendlyWrt parity and authorized physical signoff remain pending. |

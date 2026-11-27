@@ -81,8 +81,17 @@ func (z *installedZapret) observe(ctx context.Context, call Request, peer PeerId
 	}
 	path := z.active
 	if path == nil || path.peer != peer.Revision || path.uid != peer.UID || path.grant.BatchID != expected.BatchID ||
-		path.ctx.Err() != nil || path.verify(ctx) != nil || path.ctx.Err() != nil {
+		path.ctx.Err() != nil {
 		return nil, Failure(CodeFence, "Zapret generation is not active")
+	}
+	if err := path.verify(ctx); err != nil {
+		if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) {
+			return nil, Failure(CodeDeadline, "Zapret generation could not be verified before the observation deadline")
+		}
+		return nil, Failure(CodeFence, "Zapret generation's live packet path could not be verified")
+	}
+	if path.ctx.Err() != nil {
+		return nil, Failure(CodeFence, "Zapret generation retired during observation")
 	}
 	result := make([]zapretactivation.AppliedBinding, 0, len(path.grant.Bindings))
 	for i, g := range path.grant.Bindings {
@@ -116,7 +125,7 @@ func (z *installedZapret) validate(ctx context.Context, call Request, peer PeerI
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "installed Zapret profile validation:", err)
-		if errors.Is(err, errZapretCustomBlobsDenied) || errors.Is(err, errZapretDialBinding) || errors.Is(err, errZapretOuterScope) ||
+		if errors.Is(err, errZapretCustomBlobsDenied) || errors.Is(err, errZapretManagedLuaDenied) || errors.Is(err, errZapretManagedLuaStart) || errors.Is(err, errZapretDialBinding) || errors.Is(err, errZapretOuterScope) ||
 			errors.Is(err, errZapretReplyAsset) || errors.Is(err, errZapretReplyHook) || errors.Is(err, errZapretDNSCoverage) || zapretCapacityFailure(err) {
 			return nil, Failure(CodeValidation, err.Error())
 		}
@@ -153,7 +162,8 @@ func (z *installedZapret) acquire(ctx context.Context, call Request, peer PeerId
 	if err != nil {
 		// Only fixed, owner-classified startup errors are returned to Panel.
 		fmt.Fprintln(os.Stderr, "installed Zapret activation:", err)
-		if errors.Is(err, errZapretReplyAsset) || errors.Is(err, errZapretReplyHook) || errors.Is(err, errZapretDNSCoverage) || zapretCapacityFailure(err) {
+		if errors.Is(err, errZapretReplyAsset) || errors.Is(err, errZapretReplyHook) || errors.Is(err, errZapretDNSCoverage) ||
+			errors.Is(err, errZapretManagedLuaDenied) || errors.Is(err, errZapretManagedLuaStart) || zapretCapacityFailure(err) {
 			return nil, Failure(CodeExecution, err.Error())
 		}
 		return nil, Failure(CodeExecution, "Zapret packet path not ready; see privileged broker journal")
@@ -232,7 +242,10 @@ func (z *installedZapret) selectStrategies(ctx context.Context, input zapretacti
 	if err := profile.verifyEngine(); err != nil {
 		return profile, InstalledZapretStrategies{}, err
 	}
-	selected, err := z.resolve(definitions, input.Bindings)
+	if len(input.LuaSources) != 0 && !profile.AllowManagedLua {
+		return profile, InstalledZapretStrategies{}, errZapretManagedLuaDenied
+	}
+	selected, err := z.resolve(definitions, input.Bindings, input.LuaSources)
 	if err != nil {
 		return profile, InstalledZapretStrategies{}, err
 	}
@@ -241,6 +254,9 @@ func (z *installedZapret) selectStrategies(ctx context.Context, input zapretacti
 	}
 	if selected.UsesCustomBlobs && !profile.AllowCustomBlobs {
 		return profile, InstalledZapretStrategies{}, errZapretCustomBlobsDenied
+	}
+	if selected.UsesManagedLua && !profile.AllowManagedLua {
+		return profile, InstalledZapretStrategies{}, errZapretManagedLuaDenied
 	}
 	if selected.needsReturn() {
 		if err := verifyZapretReplyAsset(); err != nil {
@@ -400,7 +416,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 	if err != nil {
 		return nil, err
 	}
-	args, trace, err := compileInstalledZapret(plans, selected, plans[0].Queue(), profile.ObserveNativeProfiles)
+	command, err := compileInstalledZapret(plans, selected, plans[0].Queue(), profile.ObserveNativeProfiles)
 	if err != nil {
 		return nil, err
 	}
@@ -437,7 +453,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 			}
 		}()
 	}
-	engine, fact, err := startZapretEngine(ctx, plans[0], args, profile.EngineDigest, trace)
+	engine, fact, err := startZapretEngine(ctx, plans[0], command, profile.EngineDigest)
 	if err != nil {
 		return nil, err
 	}
@@ -537,7 +553,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 		return nil, errors.New("installed Zapret generation changed before publication")
 	}
 	path := &installedZapretPath{ctx: authority.Context, release: release, done: make(chan struct{}), peer: peer.Revision, uid: peer.UID,
-		queue: plans[0].Queue(), trace: trace,
+		queue: plans[0].Queue(), trace: command.Trace,
 		grant: zapretactivation.BatchGrant{BatchID: batch.BatchID, Bindings: grants, TUN: batch.TUN}}
 	// Observation and FD admission check the same table and queue owners.
 	// Observation never creates a lease or extends the batch lifetime.
@@ -704,7 +720,7 @@ func makeZapretSocketRoot(gid uint32) error {
 	return nil
 }
 
-func startZapretEngine(ctx context.Context, plan planner.ZapretPlan, args []string, engineDigest string, trace ZapretNativeTrace) (_ *installedZapretEngine, _ processevidence.Fact, failure error) {
+func startZapretEngine(ctx context.Context, plan planner.ZapretPlan, command ZapretEngineCommand, engineDigest string) (_ *installedZapretEngine, _ processevidence.Fact, failure error) {
 	credential := fmt.Sprintf("--uid=%d:%d", zapretEngineUID, zapretEngineUID)
 	// Match the admitted socket's egress for generated packets. A raw
 	// send via an alternate route can fail and make nfqws2 pass the original.
@@ -712,15 +728,23 @@ func startZapretEngine(ctx context.Context, plan planner.ZapretPlan, args []stri
 	if err != nil {
 		return nil, processevidence.Fact{}, err
 	}
-	args = append(args, "--bind-fix4")
+	args := append(command.Args, "--bind-fix4")
 	if scope.Egress().IPv6Gateway.IsValid() {
 		args = append(args, "--bind-fix6")
 	}
 	cmd := exec.Command(zapretEnginePath, append(args, credential)...)
 	cmd.Dir = zapretEngineRoot
 	cmd.Env = []string{"LANG=C", "LC_ALL=C"}
-	if trace != nil {
-		cmd.Stdout = trace
+	if command.Lua != "" {
+		bundle, err := openZapretLuaBundle(command.Lua)
+		if err != nil {
+			return nil, processevidence.Fact{}, err
+		}
+		defer bundle.Close()
+		cmd.ExtraFiles = []*os.File{bundle}
+	}
+	if command.Trace != nil {
+		cmd.Stdout = command.Trace
 		cmd.WaitDelay = 250 * time.Millisecond
 	}
 	pidfd := -1
@@ -757,8 +781,14 @@ func startZapretEngine(ctx context.Context, plan planner.ZapretPlan, args []stri
 		}
 		select {
 		case <-engine.done:
+			if command.Lua != "" {
+				return nil, processevidence.Fact{}, errZapretManagedLuaStart
+			}
 			return nil, processevidence.Fact{}, errors.Join(errors.New("pinned nfqws2 exited before binding NFQUEUE"), engine.waitErr, cause)
 		case <-ready.Done():
+			if command.Lua != "" && ctx.Err() == nil {
+				return nil, processevidence.Fact{}, errZapretManagedLuaStart
+			}
 			return nil, processevidence.Fact{}, errors.Join(errors.New("pinned nfqws2 queue readiness could not be established"), cause)
 		case <-ticker.C:
 		}

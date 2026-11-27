@@ -2,12 +2,12 @@ package outbounds
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation/catalogstore"
 	"gorm.io/gorm"
 )
 
@@ -36,22 +36,12 @@ func ZapretReferences(db *gorm.DB) ([]ZapretReference, error) {
 }
 
 func ReadZapretCatalog(db *gorm.DB) (json.RawMessage, error) {
-	var setting model.Setting
-	if err := db.Where("key = ?", zapretactivation.CatalogKey).Limit(1).Find(&setting).Error; err != nil {
-		return nil, err
-	}
-	if setting.Key == "" {
-		return nil, nil
-	}
-	if len(setting.Value) > zapretactivation.MaxCatalogBytes || !json.Valid([]byte(setting.Value)) {
-		return nil, errors.New("invalid stored Zapret strategy catalog")
-	}
-	return json.RawMessage(setting.Value), nil
+	return catalogstore.Read(db)
 }
 
 // ZapretValidation binds the selected definitions to the same writer snapshot
-// as the bindings. The broker verifies each sealed definition independently;
-// neither editor text nor environment/engine authority crosses this port.
+// as the bindings. The broker independently verifies the sealed definitions,
+// the selected Lua sources, and the installed operator's delegation.
 func ZapretValidation(db *gorm.DB, requests []zapretactivation.Request) (zapretactivation.Validation, error) {
 	result := zapretactivation.Validation{Bindings: requests}
 	if len(requests) == 0 {
@@ -74,29 +64,15 @@ func ZapretValidation(db *gorm.DB, requests []zapretactivation.Request) (zapreta
 		return result, err
 	}
 	result.DNS = requirements
-	raw, err := ReadZapretCatalog(db)
-	if err != nil {
-		return result, err
-	}
-	var catalog struct {
-		Schema  string
-		Records map[string]struct{ Definition json.RawMessage }
-	}
-	if raw != nil && (json.Unmarshal(raw, &catalog) != nil || catalog.Schema != "solovey.zapret-catalog/v1" || catalog.Records == nil) {
-		return result, fmt.Errorf("%w: invalid stored strategy catalog", ErrZapretPacketPathUnqualified)
-	}
+	managed := false
 	for _, request := range requests {
-		if !zapretactivation.ManagedStrategyRef(request.StrategyRef) {
-			continue
-		}
-		record := catalog.Records[request.StrategyRef]
-		if len(record.Definition) == 0 || len(record.Definition) > zapretactivation.MaxDefinitionBytes {
-			return result, fmt.Errorf("outbound %q: Zapret strategy %q is unavailable: %w", request.OutboundRef, request.StrategyRef, ErrZapretPacketPathUnqualified)
-		}
-		if result.Definitions == nil {
-			result.Definitions = make(map[string]json.RawMessage)
-		}
-		result.Definitions[request.StrategyRef] = record.Definition
+		managed = managed || zapretactivation.ManagedStrategyRef(request.StrategyRef)
+	}
+	if !managed {
+		return result, nil
+	}
+	if err := catalogstore.LoadSelected(db, &result); err != nil {
+		return result, fmt.Errorf("%w: %w", ErrZapretPacketPathUnqualified, err)
 	}
 	return result, nil
 }
