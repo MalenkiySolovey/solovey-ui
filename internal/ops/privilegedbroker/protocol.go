@@ -341,7 +341,7 @@ func MarshalPayload(value any) (json.RawMessage, string, error) {
 		return nil, "", err
 	}
 	if len(data) == 0 || len(data) > MaxArtifactBytes*2 {
-		return nil, "", errors.New("broker payload exceeds its bounded contract")
+		return nil, "", fmt.Errorf("broker payload requires %d bytes; limit is %d bytes", len(data), MaxArtifactBytes*2)
 	}
 	return data, Digest(data), nil
 }
@@ -354,19 +354,31 @@ func DecodePayload(raw json.RawMessage, target any) error {
 }
 
 func WriteFrame(writer io.Writer, value any, limit int) error {
-	data, err := json.Marshal(value)
+	data, err := marshalFrame(value, limit)
 	if err != nil {
 		return err
 	}
-	if len(data) == 0 || len(data) > limit {
-		return errors.New("broker frame exceeds its bounded contract")
+	return writeFrameBytes(writer, data)
+}
+
+func marshalFrame(value any, limit int) ([]byte, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
 	}
+	if len(data) == 0 || len(data) > limit {
+		return nil, fmt.Errorf("broker frame requires %d bytes; limit is %d bytes", len(data), limit)
+	}
+	return data, nil
+}
+
+func writeFrameBytes(writer io.Writer, data []byte) error {
 	var header [4]byte
 	binary.BigEndian.PutUint32(header[:], uint32(len(data)))
 	if _, err := writer.Write(header[:]); err != nil {
 		return err
 	}
-	_, err = writer.Write(data)
+	_, err := writer.Write(data)
 	return err
 }
 
