@@ -9,11 +9,75 @@ import (
 	"net"
 	"os"
 	"testing"
+	"time"
 
+	feature "github.com/MalenkiySolovey/solovey-component-blockcheck"
+	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	rtnl "github.com/mdlayher/netlink"
 	"github.com/sagernet/netlink"
 	"golang.org/x/sys/unix"
 )
+
+func TestBaselineObservationDeadline(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		budget time.Duration
+		code   broker.ErrorCode
+		want   error
+	}{
+		{name: "diagnostic budget"},
+		{name: "remaining caller budget", budget: feature.ProbeBudget / 2},
+		{name: "observer deadline", code: broker.CodeDeadline, want: context.DeadlineExceeded},
+		{name: "observer refusal", code: broker.CodeCapability, want: feature.ErrBaselineUnobservable},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			now, ctx := time.Now(), t.Context()
+			wantBudget := feature.ProbeBudget
+			if test.budget > 0 {
+				var stop context.CancelFunc
+				ctx, stop = context.WithDeadline(ctx, now.Add(test.budget))
+				defer stop()
+				wantBudget = test.budget
+			}
+			peer, dial := net.Pipe()
+			defer dial.Close()
+			defer peer.Close()
+			if err := peer.SetDeadline(now.Add(feature.ProbeBudget)); err != nil {
+				t.Fatal(err)
+			}
+			requests := make(chan broker.Request, 1)
+			sent := make(chan error, 1)
+			go func() {
+				var request broker.Request
+				if err := broker.ReadFrame(peer, &request, broker.MaxRequestBytes); err != nil {
+					sent <- err
+					return
+				}
+				requests <- request
+				response := broker.Response{ProtocolVersion: request.ProtocolVersion, CapabilityRevision: request.CapabilityRevision,
+					RequestID: request.RequestID, OperationID: request.OperationID, Verb: request.Verb, OK: test.code == "", Code: test.code}
+				if response.OK {
+					response.Payload, response.PayloadDigest, _ = broker.MarshalPayload(broker.HostBaselineObservation{Namespace: 123})
+				}
+				sent <- broker.WriteFrame(peer, response, broker.MaxResponseBytes)
+			}()
+			client := &broker.Client{Role: broker.RolePanel, BootID: "fixture", Now: func() time.Time { return now },
+				Dial: func(context.Context, string) (net.Conn, error) { return dial, nil }}
+			observed, err := observeBaseline(ctx, client)
+			if !errors.Is(err, test.want) || (test.want == nil && observed.Namespace != 123) {
+				t.Fatalf("observation: %+v, %v; want %v", observed, err, test.want)
+			}
+			if err := <-sent; err != nil {
+				t.Fatal(err)
+			}
+			request := <-requests
+			if request.Verb != broker.VerbHostBaseline || request.DeadlineAt > now.Add(wantBudget).UnixMilli() ||
+				request.DeadlineAt <= now.Add(time.Second).UnixMilli() {
+				t.Fatalf("observer deadline %dms not within the allotted budget %v", request.DeadlineAt-now.UnixMilli(), wantBudget)
+			}
+		})
+	}
+}
 
 func TestBaselineChecksSocketNamespace(t *testing.T) {
 	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)

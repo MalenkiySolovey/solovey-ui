@@ -245,11 +245,7 @@ func (d PanelDiagnostic) dialStream(ctx context.Context, host string, dst netip.
 	}()
 	authority := net.JoinHostPort(host, strconv.Itoa(int(dst.Port())))
 	if _, err = fmt.Fprintf(stream, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", authority, authority); err == nil {
-		var response *http.Response
-		response, err = http.ReadResponse(stream.reader, &http.Request{Method: http.MethodConnect})
-		if err == nil && response.StatusCode != http.StatusOK {
-			err = ErrDiagnosticIngress
-		}
+		err = readPanelConnectResponse(stream.reader)
 	}
 	if err != nil {
 		_ = stream.Close()
@@ -258,6 +254,20 @@ func (d PanelDiagnostic) dialStream(ctx context.Context, host string, dst netip.
 	// This only establishes the ingress tunnel. Native routing may wait for
 	// the probe's TLS ClientHello or HTTP request before dispatching anything.
 	return stream, observe, nil
+}
+
+func readPanelConnectResponse(reader *bufio.Reader) error {
+	// Use header-only parsing: after CONNECT 200 the buffered bytes belong
+	// to the tunnel, not to an HTTP body. A refusal closes the stream.
+	response, err := http.ReadResponse(reader, &http.Request{Method: http.MethodHead})
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return ErrDiagnosticIngress
+	}
+	return nil
 }
 
 func panelAuthority(host string, address netip.Addr) bool {
