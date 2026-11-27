@@ -19,7 +19,7 @@ import (
 const ZapretLuaBundlePath = "/proc/self/fd/3"
 
 var errZapretManagedLuaDenied = errors.New("installed Zapret profile does not delegate managed Lua; the Host administrator must enable allowManagedLua")
-var errZapretManagedLuaStart = errors.New("Zapret did not initialize the selected Lua revisions; check the declared functions, dependency order, and source syntax")
+var errZapretManagedLuaStart = errors.New("unable to initialize the selected Zapret Lua revisions; check the declared functions, dependency order, and source syntax")
 
 // With interception off, nfqws2 loads and validates all Lua initializers
 // and function references, but never joins an NFQUEUE.
