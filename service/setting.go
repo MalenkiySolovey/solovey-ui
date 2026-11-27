@@ -4,8 +4,8 @@ import (
 	settingcatalog "github.com/MalenkiySolovey/solovey-backend/settings/catalog"
 	"github.com/MalenkiySolovey/solovey-backend/settings/store"
 	"github.com/MalenkiySolovey/solovey-backend/storage/model"
-	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation/catalogstore"
 	"gorm.io/gorm"
 )
 
@@ -33,7 +33,7 @@ func (s *SettingService) ResetSettings() error {
 		if err != nil {
 			return err
 		}
-		catalog, err := outbounds.ReadZapretCatalog(tx)
+		catalog, err := catalogstore.Legacy(tx)
 		if err != nil {
 			return err
 		}

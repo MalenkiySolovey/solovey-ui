@@ -77,6 +77,16 @@ func (c *Client) Invoke(ctx context.Context, call Call, target any) (*Receipt, e
 		IdempotencyKey: call.IdempotencyKey, Fence: call.Fence, Expected: call.Expected,
 		DeadlineAt: now.Add(timeout).UnixMilli(), Purpose: call.Purpose, RecoveryRef: call.RecoveryRef,
 		PayloadDigest: payloadDigest, Payload: payload}
+	var encodedZapret []byte
+	if call.Verb == VerbZapretValidate || call.Verb == VerbZapretAcquire {
+		encodedZapret, err = marshalFrame(request, MaxRequestBytes)
+		if err == nil {
+			err = validateJSON(encodedZapret)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("selected Zapret bindings exceed or violate the broker request contract: %w", err)
+		}
+	}
 	dial := c.Dial
 	if dial == nil {
 		dialer := &net.Dialer{Timeout: minDuration(timeout, 5*time.Second)}
@@ -102,7 +112,12 @@ func (c *Client) Invoke(ctx context.Context, call Call, target any) (*Receipt, e
 	}
 	deadline := now.Add(timeout)
 	_ = connection.SetDeadline(deadline)
-	if err := WriteFrame(connection, request, MaxRequestBytes); err != nil {
+	if encodedZapret != nil {
+		err = writeFrameBytes(connection, encodedZapret)
+	} else {
+		err = WriteFrame(connection, request, MaxRequestBytes)
+	}
+	if err != nil {
 		return nil, fmt.Errorf("write privileged broker request: %w", err)
 	}
 	var response Response

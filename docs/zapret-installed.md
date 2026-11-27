@@ -75,8 +75,31 @@ stable ID, not a path or Lua variable. Asset edits re-seal the referencing
 strategies; the broker reads the permission on admission of each generation
 and denies those strategies without it. Only the built-in blob qualifies as QUIC DNS
 coverage. Do not put secrets in an asset: these bytes are transmitted as
-configured. Host file paths and Lua drafts are never admitted. Bounded native
+configured. Host file paths are never admitted. Bounded native
 Circular requires the installed selected TCP return-path capability.
+
+### Managed Lua execution
+
+In the Strategy editor, select the exact Lua source revisions in dependency
+order and reference a declared callback in the native Strategy. Saving or
+importing source never applies it. Imported libraries require a provenance
+note and explicit approval for the selected revision. Strategy ZIP/JSON does
+not carry that approval to a new import.
+
+The root-owned installed Host profile must separately set
+`"allowManagedLua": true` along with its managed-strategy delegation. The
+broker seals the selected sources in an inherited descriptor and checks their
+initializers using the pinned nfqws2 engine before replacing an active plan.
+An invalid source or missing dependency is refused without retiring the
+active generation. No changes to Panel or Core privileges are required.
+
+Managed callbacks receive selected packet data and private per-flow Lua state.
+They may pass or drop; they cannot write back the packet, send arbitrary
+packets, or obtain filesystem, shell or package-loader access through the
+managed API. The native engine still has its normal network capabilities;
+this contract is not a host-wide sandbox for untrusted code. Authorize only
+reviewed code, which shares CPU and memory with the engine serving the other
+bindings. Existing pinned native actions are unchanged.
 
 Set `"observeNativeProfiles": true` in the root-owned installed profile to
 record native profile matches for the next engine generation. Refresh the
@@ -149,8 +172,10 @@ if the reported budget cannot fit; no partial batch is installed.
 Activation preflight also checks available Host memory and the tightest
 applicable cgroup v2 hard limit (`memory.max`) in the broker's ancestry.
 It separately reports insufficient headroom before throttling (`memory.high`),
-which is not a kernel allocation limit. The candidate needs space for its arguments, the pinned NFQUEUE
-receive buffer and an engine working set. For a replacement, the working-set
+which is not a kernel allocation limit. The candidate needs space for its
+arguments, selected Lua bundle and loader allowance, the pinned NFQUEUE receive
+buffer, and an engine working set. Unselected catalog entries are not charged.
+For a replacement, the working-set
 estimate incorporates the active engine's observed peak resident memory while
 that engine is still running. A replacement that cannot fit even before
 accounting for its arguments is rejected before the more expensive profile and

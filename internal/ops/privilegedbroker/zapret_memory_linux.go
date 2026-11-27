@@ -37,7 +37,7 @@ type zapretMemoryLimits struct {
 	throttle zapretMemoryHeadroom
 }
 
-func checkZapretMemoryBudget(ctx context.Context, args []string, activePID int) error {
+func checkZapretMemoryBudget(ctx context.Context, command ZapretEngineCommand, activePID int) error {
 	host, err := mem.VirtualMemoryWithContext(ctx)
 	if err != nil {
 		return fmt.Errorf("%w: Host MemAvailable is unavailable", errZapretMemoryEvidence)
@@ -75,12 +75,14 @@ func checkZapretMemoryBudget(ctx context.Context, args []string, activePID int) 
 		}
 		workingSet = max(workingSet, peak)
 	}
-	return admitZapretMemory(limits, workingSet, args)
+	return admitZapretMemory(limits, workingSet, command)
 }
 
-func admitZapretMemory(limits zapretMemoryLimits, workingSet uint64, args []string) error {
-	reserve := uint64(zapretQueueBufferReserve)
-	for _, arg := range args {
+func admitZapretMemory(limits zapretMemoryLimits, workingSet uint64, command ZapretEngineCommand) error {
+	// Reserve the sealed Lua memfd and a source-sized loader allowance.
+	// This does not predict Lua bytecode or callback allocations.
+	reserve := zapretQueueBufferReserve + 2*uint64(len(command.Lua))
+	for _, arg := range command.Args {
 		reserve += uint64(len(arg)) + 1 + strconv.IntSize/8
 	}
 	for _, available := range []zapretMemoryHeadroom{limits.hard, limits.throttle} {

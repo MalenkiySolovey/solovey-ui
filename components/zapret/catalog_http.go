@@ -29,7 +29,7 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports) {
 			return
 		}
 		var change catalogChange
-		if err := readRequest(c, &change); err != nil {
+		if err := readRequestLimit(c, &change, maxPresetEnvelope); err != nil {
 			ports.HTTP.JSONObj(c, nil, err)
 			return
 		}
@@ -53,7 +53,7 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports) {
 			strategy.Draft
 			ExpectedRevision string `json:"expectedRevision,omitempty"`
 		}
-		if err := readRequest(c, &request); err != nil {
+		if err := readRequestLimit(c, &request, maxPresetEnvelope); err != nil {
 			ports.HTTP.JSONObj(c, nil, err)
 			return
 		}
@@ -91,6 +91,12 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports) {
 			ports.HTTP.JSONObj(c, nil, err)
 			return
 		}
+		if len(catalog.Records[c.Param("id")].Definition.ManagedLua) != 0 {
+			if !ports.Auth.RequireScope(c, "zapret.strategies.read", "admin") {
+				return
+			}
+			c.Header("Cache-Control", "no-store")
+		}
 		exportPreset(c, ports, catalog)
 	})
 	group.POST("/diagnose", func(c *gin.Context) {
@@ -120,7 +126,7 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports) {
 // path/ID pairs (261-byte paths, 64-byte IDs), JSON escaping and fields.
 // The strategy owner still validates decoded content and all dependencies.
 const maxPresetEnvelope = ((strategy.MaxPresetBytes+2)/3)*4 + (256 << 10)
-const maxLuaDraftEnvelope = ((strategy.MaxCatalogBytes+2)/3)*4 + 2048
+const maxLuaDraftEnvelope = ((strategy.MaxLuaSourceBytes+2)/3)*4 + 2048
 
 func writeLuaDrafts(c *gin.Context, ports componenthost.Ports) {
 	c.Header("Cache-Control", "no-store")
@@ -135,9 +141,21 @@ func writeLuaDrafts(c *gin.Context, ports componenthost.Ports) {
 		return
 	}
 	ports.HTTP.JSONObj(c, struct {
-		Revision string                       `json:"revision"`
-		Drafts   map[string]strategy.LuaDraft `json:"drafts"`
-	}{catalog.Revision(), catalog.LuaDrafts}, nil)
+		Revision        string                       `json:"revision"`
+		Drafts          map[string]strategy.LuaDraft `json:"drafts"`
+		DraftRevisions  map[string]string            `json:"draftRevisions"`
+		RevisionSources map[string]strategy.LuaDraft `json:"revisionSources,omitempty"`
+	}{catalog.Revision(), catalog.LuaDrafts, luaDraftRevisions(catalog.LuaDrafts), catalog.LuaRevisions}, nil)
+}
+
+func luaDraftRevisions(drafts map[string]strategy.LuaDraft) map[string]string {
+	revisions := make(map[string]string, len(drafts))
+	for id, draft := range drafts {
+		if draft.Source != "" {
+			revisions[id] = draft.Revision()
+		}
+	}
+	return revisions
 }
 
 func handleLuaDraft(c *gin.Context, ports componenthost.Ports) {
@@ -159,7 +177,7 @@ func handleLuaDraft(c *gin.Context, ports componenthost.Ports) {
 		return
 	}
 	switch request.Action {
-	case "create", "edit", "delete":
+	case "create", "edit", "import", "delete":
 	default:
 		ports.HTTP.JSONObj(c, nil, errors.New("unknown Lua draft change"))
 		return
@@ -170,7 +188,9 @@ func handleLuaDraft(c *gin.Context, ports componenthost.Ports) {
 			ports.HTTP.JSONObj(c, nil, errors.New("missing Lua draft source"))
 			return
 		}
-		change.luaDraft = &strategy.LuaDraft{Origin: draft.Origin, SourceRef: draft.SourceRef, Source: string(*draft.Source)}
+		change.luaDraft = &strategy.LuaDraft{
+			Origin: draft.Origin, SourceRef: draft.SourceRef, Source: string(*draft.Source), Imported: request.Action == "import",
+		}
 	}
 	if err := change.prepare(); err != nil {
 		ports.HTTP.JSONObj(c, nil, err)
@@ -243,8 +263,8 @@ func exportPreset(c *gin.Context, ports componenthost.Ports, catalog strategy.Ca
 			ports.HTTP.JSONObj(c, nil, errors.New("native strategy does not exist"))
 			return
 		}
-		if len(record.ListRefs) != 0 || len(record.Definition.BlobData) != 0 {
-			ports.HTTP.JSONObj(c, nil, errors.New("export ZIP or JSON to keep this Strategy's managed lists and assets"))
+		if len(record.ListRefs) != 0 || len(record.Definition.BlobData) != 0 || len(record.Definition.ManagedLua) != 0 {
+			ports.HTTP.JSONObj(c, nil, errors.New("export ZIP or JSON to keep this Strategy's managed dependencies"))
 			return
 		}
 		c.Header("Content-Disposition", `attachment; filename="strategy.txt"`)

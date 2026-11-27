@@ -106,11 +106,11 @@ func (z *installedZapret) checkBatchBudget(ctx context.Context, input zapretacti
 	}
 	// Queue selection may change after retirement. Charge the longest native
 	// uint16 spelling; the binary rules use fixed-width queue and mark fields.
-	args, _, err := compileInstalledZapret(plans, selected, math.MaxUint16, profile.ObserveNativeProfiles)
+	command, err := compileInstalledZapret(plans, selected, math.MaxUint16, profile.ObserveNativeProfiles)
 	if err != nil {
 		return err
 	}
-	if err := checkZapretMemoryBudget(ctx, args, activePID); err != nil {
+	if err := checkZapretMemoryBudget(ctx, command, activePID); err != nil {
 		return err
 	}
 	var tun *planner.ZapretTUNForward
@@ -122,10 +122,13 @@ func (z *installedZapret) checkBatchBudget(ctx context.Context, input zapretacti
 		// fixed on-wire width; preview does not create a TUN device.
 		tun = &planner.ZapretTUNForward{Scope: profile.TUN.Scope, IngressIfIndex: 1, DeviceIfIndex: 2}
 	}
-	return nftables.CheckZapretOwnedBatchBudget(ctx, plans, tun)
+	if err := nftables.CheckZapretOwnedBatchBudget(ctx, plans, tun); err != nil {
+		return err
+	}
+	return checkZapretLuaInit(ctx, command)
 }
 
-func compileInstalledZapret(plans []planner.ZapretPlan, selected InstalledZapretStrategies, queue uint16, observe bool) ([]string, ZapretNativeTrace, error) {
+func compileInstalledZapret(plans []planner.ZapretPlan, selected InstalledZapretStrategies, queue uint16, observe bool) (ZapretEngineCommand, error) {
 	marks := make([]uint32, len(plans))
 	replies := false
 	for i, plan := range plans {

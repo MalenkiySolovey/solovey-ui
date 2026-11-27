@@ -8,12 +8,12 @@ import (
 	"errors"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-backend/settings/store"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation"
+	"github.com/MalenkiySolovey/solovey-ui/internal/zapretactivation/catalogstore"
 	"gorm.io/gorm"
 )
 
@@ -126,13 +126,10 @@ func (s *ConfigService) SaveZapretCatalog(action, id, revision, actor string,
 				if err != nil {
 					return err
 				}
-				if len(next) > zapretactivation.MaxCatalogBytes || !json.Valid(next) {
-					return errors.New("the Zapret strategy catalog exceeds its storage limit or is invalid")
-				}
 				if rebind {
 					plan.MergeOutboundChange(&singboxapply.Change{NeedsRestart: true, QuiesceCore: true, RestartReason: "A bound Zapret strategy changed"})
 				}
-				return store.UpsertValue(tx, zapretactivation.CatalogKey, string(next))
+				return catalogstore.Save(tx, current, next)
 			})
 		return err
 	})

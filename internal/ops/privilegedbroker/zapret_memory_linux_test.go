@@ -74,7 +74,7 @@ func TestZapretReplacementMemoryHeadroom(t *testing.T) {
 		if expected := (zapretMemoryHeadroom{source, bytes}); err != nil || headroom != expected {
 			t.Fatalf("headroom = %+v (%v), want %+v", got, err, expected)
 		}
-		err = admitZapretMemory(got, 3*mib, []string{"--filter-l3=ipv4", "--filter-tcp=443"})
+		err = admitZapretMemory(got, 3*mib, ZapretEngineCommand{Args: []string{"--filter-l3=ipv4", "--filter-tcp=443"}})
 		if wantAdmission && err != nil || !wantAdmission && !errors.Is(err, errZapretMemoryBudget) {
 			t.Fatalf("admission = %v, want success %t", err, wantAdmission)
 		}
@@ -105,5 +105,22 @@ func TestZapretReplacementMemoryHeadroom(t *testing.T) {
 	}
 	if _, err := zapretCgroupHeadroom(host, root, "/system.slice/../other", read); err == nil {
 		t.Fatal("noncanonical membership was accepted")
+	}
+}
+
+func TestZapretReplacementMemoryChargesSelectedLua(t *testing.T) {
+	const workingSet = 3 << 20
+	command := ZapretEngineCommand{Args: []string{"--lua-init=@/proc/self/fd/3"}}
+	limits := zapretMemoryLimits{hard: zapretMemoryHeadroom{source: "broker cgroup v2 memory.max", bytes: workingSet + zapretQueueBufferReserve + 4096}}
+	if err := admitZapretMemory(limits, workingSet, command); err != nil {
+		t.Fatalf("command without a bundle does not fit: %v", err)
+	}
+	command.Lua = strings.Repeat("x", 4096)
+	if err := admitZapretMemory(limits, workingSet, command); !errors.Is(err, errZapretMemoryBudget) {
+		t.Fatalf("the selected bundle was not charged: %v", err)
+	}
+	limits.hard.bytes += 2 * uint64(len(command.Lua))
+	if err := admitZapretMemory(limits, workingSet, command); err != nil {
+		t.Fatalf("the same command does not fit with additional headroom: %v", err)
 	}
 }
