@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_commit || format('refs/tags/{0}', inputs.tag) }}
           submodules: recursive
@@ -64,7 +64,7 @@ jobs:
           [ "$VERSION" = "$EXPECTED_VERSION" ] || { echo "release tag $RELEASE_TAG_INPUT does not match source version $EXPECTED_VERSION" >&2; exit 1; }
 
       - name: Set up component source resolver
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v6
         with:
           go-version-file: go.mod
           cache: true
@@ -73,7 +73,7 @@ jobs:
             go.extended.sum
 
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version-file: .node-version
           registry-url: "https://registry.npmjs.org"
@@ -93,7 +93,7 @@ jobs:
           node scripts/check-frontend-profile.mjs --profile core --dist .release-frontend-core
 
       - name: Upload frontend build artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: frontend-dist
           path: .release-frontend-full
@@ -101,7 +101,7 @@ jobs:
           retention-days: 1
 
       - name: Upload core frontend build artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: frontend-core-dist
           path: .release-frontend-core
@@ -123,7 +123,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_commit || format('refs/tags/{0}', inputs.tag) }}
 
@@ -145,19 +145,19 @@ jobs:
           [xml](Get-Content windows/s-ui-windows.xml -Raw) | Out-Null
 
       - name: Download frontend build artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: ${{ matrix.profile == 'core' && 'frontend-core-dist' || 'frontend-dist' }}
           path: .release/frontend
 
       - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v6
         with:
           cache: false
           go-version-file: go.mod
 
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version-file: .node-version
 
@@ -172,7 +172,7 @@ jobs:
       - name: Set up native ARM64 C toolchain
         id: msys2
         if: matrix.arch == 'arm64'
-        uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2
+        uses: msys2/setup-msys2@3c51bf698df1e37b2261f53cb67797b97761185c # v2
         with:
           msystem: CLANGARM64
           update: true
@@ -243,7 +243,7 @@ jobs:
           NODE
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: solovey-ui${{ matrix.provider == 'shtorm-extended' && '-shtorm-extended' || '' }}${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}
           path: |
@@ -281,7 +281,7 @@ jobs:
 
       - name: Retain sanitized native runtime observations
         if: always() && matrix.provider == 'shtorm-extended'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: native-runtime-windows-${{ matrix.arch }}-${{ matrix.profile }}
           path: ${{ runner.temp }}/native-installed-panel/logs/qualification/windows-${{ matrix.arch }}-${{ matrix.profile }}/result.json
@@ -293,21 +293,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out immutable product verifier
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_commit || format('refs/tags/{0}', inputs.tag) }}
       - name: Download Windows candidates
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: solovey-ui*windows-*
           path: windows-assets
           merge-multiple: true
       - name: Set up verifier Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v6
         with:
           go-version-file: go.mod
       - name: Set up verifier Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version-file: .node-version
       - name: Verify complete Windows candidates before publication eligibility

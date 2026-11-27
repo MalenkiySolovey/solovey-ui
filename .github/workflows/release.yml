@@ -71,14 +71,14 @@ jobs:
             echo 'Renewal requires canonical main, preflight_only=false and no source or resume override' >&2
             exit 1
           fi
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
-      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v6
         with:
           go-version-file: go.mod
       - name: Build the existing release verifier
@@ -92,7 +92,7 @@ jobs:
         run: node scripts/release-channel.mjs renew "$RUNNER_TEMP/channel-main" "$RELEASE_TAG_INPUT"
       - name: Retain verified renewal bytes if publication is interrupted
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: interrupted-channel-renewal
           path: ${{ runner.temp }}/channel-main/solovey-ui-release.json*
@@ -138,12 +138,12 @@ jobs:
       source-fingerprint: ${{ steps.product.outputs.fingerprint }}
     steps:
       - name: Check out release orchestrator
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
 
@@ -159,7 +159,7 @@ jobs:
           cp scripts/release-publish-gate.mjs "$RUNNER_TEMP/release-publish-gate.mjs"
 
       - name: Check out immutable product source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.preflight_only && inputs.source_commit || format('refs/tags/{0}', env.RELEASE_TAG_INPUT) }}
 
@@ -219,17 +219,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-preflight.outputs.product-commit }}
 
       - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v6
         with:
           go-version-file: go.mod
 
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
 
@@ -295,14 +295,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-preflight.outputs.product-commit }}
           submodules: recursive
           fetch-depth: 1
 
       - name: Set up component source resolver
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v6
         with:
           go-version-file: go.mod
           cache: true
@@ -311,7 +311,7 @@ jobs:
             go.extended.sum
 
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version-file: .node-version
           cache: "npm"
@@ -358,7 +358,7 @@ jobs:
           node scripts/frontend-assets.mjs verify --dist .artifacts/frontend-dist --components-dir .release/components
 
       - name: Upload full frontend build artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: frontend-dist-full
           path: .artifacts/frontend-dist/
@@ -366,7 +366,7 @@ jobs:
           retention-days: 1
 
       - name: Upload component frontend packs
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: component-frontend-packs
           path: .release/components/
@@ -379,7 +379,7 @@ jobs:
         run: node scripts/check-frontend-profile.mjs --profile core --dist .artifacts/frontend-dist
 
       - name: Upload core frontend build artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: frontend-dist-core
           path: .artifacts/frontend-dist/
@@ -392,7 +392,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out test execution owner
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
 
@@ -402,17 +402,17 @@ jobs:
           cp scripts/go-test.mjs scripts/go-test-capabilities.json scripts/go-test-root-exec.sh "$RUNNER_TEMP/test-executor/"
 
       - name: Check out repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-preflight.outputs.product-commit }}
 
       - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v6
         with:
           go-version-file: go.mod
 
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version-file: .node-version
 
@@ -450,36 +450,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-preflight.outputs.product-commit }}
 
       - name: Download full frontend build artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: frontend-dist-full
           path: .release/frontend-full
 
       - name: Download component asset contract
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: component-frontend-packs
           path: .release/components
 
       - name: Download core frontend build artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: frontend-dist-core
           path: .release/frontend-core
 
       - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v6
         with:
           cache: false
           go-version-file: go.mod
 
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version-file: .node-version
 
@@ -682,7 +682,7 @@ jobs:
             --out-dir .
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: solovey-ui${{ matrix.artifact_suffix }}-linux-${{ matrix.platform }}
           path: |
@@ -699,15 +699,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out immutable product source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-preflight.outputs.product-commit }}
       - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v6
         with:
           go-version-file: go.mod
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version-file: .node-version
       - name: Produce and verify immutable release disclosure
@@ -717,7 +717,7 @@ jobs:
           node scripts/release-metadata.mjs produce "$RUNNER_TEMP/release-metadata" "$PRODUCT_COMMIT"
           node scripts/release-metadata.mjs verify "$RUNNER_TEMP/release-metadata" "$PRODUCT_COMMIT"
       - name: Retain complete source and disclosure candidate
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: complete-release-metadata
           path: ${{ runner.temp }}/release-metadata/*
@@ -735,7 +735,7 @@ jobs:
       notes_path: ${{ steps.vars.outputs.notes_path }}
     steps:
       - name: Check out repository (for release notes)
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-preflight.outputs.product-commit }}
           fetch-depth: 1
@@ -761,12 +761,12 @@ jobs:
           fi
 
       - name: Set up Go for canonical release inspection
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v6
         with:
           go-version-file: go.mod
 
       - name: Set up Node.js for release tooling
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version-file: .node-version
 
@@ -782,7 +782,7 @@ jobs:
           fi
 
       - name: Download component frontend packs
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: component-frontend-packs
           path: .release/components
@@ -793,7 +793,7 @@ jobs:
           bash scripts/release-package-components.sh --components-dir .release/components --out-dir release-assets
 
       - name: Download Linux build artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: solovey-ui*linux-*
           path: release-assets
@@ -851,7 +851,7 @@ jobs:
           node scripts/release-verify.mjs release-assets "$RELEASE_TAG_INPUT"
 
       - name: Retain complete release candidate
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ${{ github.event_name == 'workflow_dispatch' && inputs.preflight_only && 'preflight-linux-release' || 'complete-linux-release' }}
           path: release-assets/
@@ -868,22 +868,22 @@ jobs:
       - name: Initialize external candidate staging
         run: printf 'RELEASE_CANDIDATE_DIR=%s/release-candidate\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - name: Check out recovery orchestrator
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
       - name: Retain execution-only recovery verifier
         run: cp scripts/release-resume.mjs scripts/release-candidate.mjs scripts/release-openwrt.mjs scripts/release-publish-gate.mjs "$RUNNER_TEMP/"
       - name: Check out immutable product source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-preflight.outputs.product-commit }}
           fetch-depth: 0
       - name: Set up Go for recovery inspection
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v6
         with:
           go-version-file: go.mod
       - name: Set up Node.js for recovery inspection
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version-file: .node-version
       - name: Verify original complete candidate and existing registry
@@ -895,35 +895,35 @@ jobs:
           SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
         run: node "$RUNNER_TEMP/release-resume.mjs"
       - name: Retain verified Linux candidate
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: complete-linux-release
           path: ${{ env.RELEASE_CANDIDATE_DIR }}/linux/*
           if-no-files-found: error
           retention-days: 1
       - name: Retain verified Windows candidate
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: solovey-ui-windows-recovered
           path: ${{ env.RELEASE_CANDIDATE_DIR }}/windows/*
           if-no-files-found: error
           retention-days: 1
       - name: Retain original source and disclosure candidate
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: complete-release-metadata
           path: ${{ env.RELEASE_CANDIDATE_DIR }}/metadata/*
           if-no-files-found: error
           retention-days: 1
       - name: Retain original OpenWrt candidate and proofs
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: complete-openwrt-release
           path: ${{ env.RELEASE_CANDIDATE_DIR }}/openwrt/
           if-no-files-found: error
           retention-days: 1
       - name: Retain original-byte recovery receipt
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-recovery-receipt
           path: ${{ runner.temp }}/release-recovery-receipt/RECOVERY_RECEIPT.json
@@ -943,7 +943,7 @@ jobs:
         provider: [sing-box, shtorm-extended]
     steps:
       - name: Check out release orchestrator
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
       - name: Retain execution adapters
@@ -951,11 +951,11 @@ jobs:
           cp scripts/release-openwrt.mjs scripts/release-openwrt-build.sh scripts/release-openwrt-references.mjs "$RUNNER_TEMP/"
           cp .github/build-inputs/OPENWRT_REFERENCE_LOCK.md "$RUNNER_TEMP/OPENWRT_REFERENCE_LOCK.md"
       - name: Check out immutable product source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-preflight.outputs.product-commit }}
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version-file: .node-version
       - name: Prepare native SDK executor
@@ -969,7 +969,7 @@ jobs:
           SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
         run: bash "$RUNNER_TEMP/release-openwrt-build.sh" "${{ matrix.profile }}" "${{ needs.release-preflight.outputs.product-commit }}" "${{ matrix.provider }}"
       - name: Retain APK and complete producer evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: openwrt-${{ matrix.profile }}-${{ matrix.provider }}
           path: openwrt-candidate/
@@ -983,17 +983,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out release orchestrator
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
       - name: Retain release admission verifier
         run: cp scripts/release-openwrt.mjs "$RUNNER_TEMP/"
       - name: Check out immutable product source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-preflight.outputs.product-commit }}
       - name: Download canonical APK candidates
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: openwrt-*
           path: openwrt-candidate
@@ -1004,7 +1004,7 @@ jobs:
           (cd openwrt-candidate/assets && sha256sum solovey-ui-friendlywrt-storage.json > solovey-ui-friendlywrt-storage.json.sha256)
           node "$RUNNER_TEMP/release-openwrt.mjs" verify openwrt-candidate "${{ needs.release-preflight.outputs.product-commit }}"
       - name: Retain complete verified OpenWrt candidate
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: complete-openwrt-release
           path: openwrt-candidate/
@@ -1031,7 +1031,7 @@ jobs:
       - name: Initialize external candidate staging
         run: printf 'RELEASE_CANDIDATE_DIR=%s/release-candidate\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - name: Check out release orchestrator
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
       - name: Retain publication execution gates
@@ -1039,21 +1039,21 @@ jobs:
           cp scripts/release-publish-gate.mjs scripts/release-openwrt.mjs scripts/release-candidate.mjs "$RUNNER_TEMP/"
           cp .github/RELEASE_OPENWRT_ASSETS.md "$RUNNER_TEMP/RELEASE_OPENWRT_ASSETS.md"
       - name: Check out release notes
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release-preflight.outputs.product-commit }}
 
       - name: Set up Go for publication inspection
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v6
         with:
           go-version-file: go.mod
       - name: Set up Node.js for publication inspection
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version-file: .node-version
 
       - name: Download verified complete candidate
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: complete-linux-release
           path: ${{ env.RELEASE_CANDIDATE_DIR }}/linux
@@ -1064,7 +1064,7 @@ jobs:
         run: node scripts/release-verify.mjs "$RELEASE_CANDIDATE_DIR/linux" "$RELEASE_TAG_INPUT"
 
       - name: Download Windows candidates
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: solovey-ui*windows-*
           path: ${{ env.RELEASE_CANDIDATE_DIR }}/windows
@@ -1074,7 +1074,7 @@ jobs:
         run: node scripts/release-verify.mjs "$RELEASE_CANDIDATE_DIR/windows" "$RELEASE_TAG_INPUT" --windows
 
       - name: Download source and disclosure candidate
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: complete-release-metadata
           path: ${{ env.RELEASE_CANDIDATE_DIR }}/metadata
@@ -1084,7 +1084,7 @@ jobs:
         run: node scripts/release-metadata.mjs verify "$RELEASE_CANDIDATE_DIR/metadata" "$PRODUCT_COMMIT"
 
       - name: Download complete OpenWrt candidate
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: complete-openwrt-release
           path: ${{ env.RELEASE_CANDIDATE_DIR }}/openwrt
@@ -1093,7 +1093,7 @@ jobs:
 
       - name: Download original-byte recovery receipt
         if: inputs.resume_run_id != ''
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: release-recovery-receipt
           path: ${{ runner.temp }}/release-recovery-receipt
@@ -1122,7 +1122,7 @@ jobs:
           echo "path=$RUNNER_TEMP/release-notes.md" >> "$GITHUB_OUTPUT"
 
       - name: Publish to current repository Release
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
           tag_name: ${{ env.RELEASE_TAG_INPUT }}
           name: Solovey UI ${{ env.RELEASE_TAG_INPUT }}
