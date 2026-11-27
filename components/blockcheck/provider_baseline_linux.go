@@ -5,6 +5,7 @@ package blockcheck
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"net"
 	"net/netip"
 	"os"
@@ -82,9 +83,21 @@ func (b hostBaseline) current(ctx context.Context) error {
 
 func observeBaseline(ctx context.Context, client *broker.Client) (broker.HostBaselineObservation, error) {
 	var result broker.HostBaselineObservation
-	_, err := client.Invoke(ctx, broker.Call{Verb: broker.VerbHostBaseline, OperationID: "blockcheck-host-baseline", Timeout: time.Second, Payload: struct{}{}}, &result)
+	budget := feature.ProbeBudget
+	if deadline, ok := ctx.Deadline(); ok {
+		budget = min(budget, time.Until(deadline))
+		if budget <= 0 {
+			return result, context.DeadlineExceeded
+		}
+	}
+	_, err := client.Invoke(ctx, broker.Call{Verb: broker.VerbHostBaseline, OperationID: "blockcheck-host-baseline", Timeout: budget, Payload: struct{}{}}, &result)
 	if ctx.Err() != nil {
 		return result, ctx.Err()
+	}
+	var rejection *broker.PublicError
+	var networkError net.Error
+	if errors.As(err, &rejection) && rejection.Code == broker.CodeDeadline || errors.As(err, &networkError) && networkError.Timeout() {
+		return result, context.DeadlineExceeded
 	}
 	if err != nil || result.Namespace == 0 {
 		return result, feature.ErrBaselineUnobservable

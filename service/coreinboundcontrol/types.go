@@ -18,10 +18,10 @@ const (
 	PinnedUTLSModuleSum         = "h1:Cp+yWkNTFkSihETgGWq34hlVFds5HpYWVOR1xovUVTs="
 	PinnedUTLSSourceRevision    = "f7d52c22f3a8d2f510ad1470f75cb6c3fe26aa37"
 
-	CapabilityResolverRevisionV1            = "cfbda64b8f432625e892de52080d54215dcd5c5a03af9701fb53825f88b0c771"
+	CapabilityResolverRevisionV1            = "222a63015909114a36417e5d266d82a8b05fc31b41895b9bc80242ecbd3fc8de"
 	BuildProfileWithUTLSRevision            = "2573ebf675608c4e589ebc062ecf46078f77244489cb5a1578ecb2b649ae0608"
 	BuildProfileWithoutUTLSRevision         = "a55ee5ad8f16d0ab527a612e4a89e2170b2751af200430a90022df99cc33192d"
-	PinnedRuntimeIdentityWithUTLSRevisionV1 = "4fedb2d7d6cdf06fed0bee755311eb053bb8e611b262d7fadc839f43c22efc25"
+	PinnedRuntimeIdentityWithUTLSRevisionV1 = "223229648c25d969470e9f5ab3961f0d40bccac30454d569c1ffb13f985fba13"
 )
 
 type ReasonCode = canonical.ReasonCode

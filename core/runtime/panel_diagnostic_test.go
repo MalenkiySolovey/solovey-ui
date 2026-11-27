@@ -11,10 +11,29 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestPanelConnectResponsePreservesBufferedTunnel(t *testing.T) {
+	const payload = "first upstream bytes"
+	for _, header := range []string{"", "Content-Length: 20\r\n", "Transfer-Encoding: chunked\r\n"} {
+		reader := bufio.NewReader(strings.NewReader("HTTP/1.1 200 Connection established\r\n" + header + "\r\n" + payload))
+		if err := readPanelConnectResponse(reader); err != nil {
+			t.Fatalf("CONNECT with header %q: %v", header, err)
+		}
+		got, err := io.ReadAll(reader)
+		if err != nil || string(got) != payload {
+			t.Fatalf("changed buffered tunnel data with header %q: %q, %v", header, got, err)
+		}
+	}
+	reader := bufio.NewReader(strings.NewReader("HTTP/1.1 407 Proxy Authentication Required\r\nContent-Length: 64\r\n\r\n"))
+	if err := readPanelConnectResponse(reader); !errors.Is(err, ErrDiagnosticIngress) {
+		t.Fatalf("CONNECT did not reject a refusal with an unread body: %v", err)
+	}
+}
 
 func TestPanelDiagnosticUsesActiveIngressDNSAndRouting(t *testing.T) {
 	const host = "fixture.invalid"
@@ -103,6 +122,9 @@ func TestPanelDiagnosticUsesActiveIngressDNSAndRouting(t *testing.T) {
 			}
 			_, writeErr := io.WriteString(conn, "HEAD /proof HTTP/1.1\r\nHost: fixture.invalid\r\nConnection: close\r\n\r\n")
 			response, readErr := http.ReadResponse(bufio.NewReader(conn), &http.Request{Method: http.MethodHead})
+			if readErr == nil {
+				defer response.Body.Close()
+			}
 			observation := observe()
 			if tc.want == nil {
 				if writeErr != nil || readErr != nil || response.StatusCode != http.StatusNoContent || observation.Egress != "admitted-egress" || observation.Err != nil {
@@ -129,6 +151,18 @@ func TestPanelDiagnosticUsesActiveIngressDNSAndRouting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	canceledCtx, cancelProbe := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancelProbe()
+	canceledConn, _, err := path.dialStream(canceledCtx, host, target, permit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = canceledConn.Close() })
+	cancelProbe()
+	if _, err := canceledConn.Read(make([]byte, 1)); !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrClosedPipe) {
+		t.Fatalf("caller cancellation did not close the established ingress tunnel: %v", err)
+	}
+
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 	conn, observe, err := path.dialStream(ctx, host, target, permit)

@@ -2785,6 +2785,12 @@
       "path": "internal/ops/privilegedbroker/zapret_systemd_linux.go",
       "symbol": "*installedZapret.prepare",
       "digest": "c593964c846ddd5ec9111791e8bd90a90835d2b19edfc6320f1f4bd5f80a0e38"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "core/runtime/panel_diagnostic.go",
+      "symbol": "PanelDiagnostic.dialStream",
+      "digest": "c030f4381c90bd9b351645d9a1aa5ee2ec48d101ebf27b9391695fbe48d16409"
     }
   ]
 }
