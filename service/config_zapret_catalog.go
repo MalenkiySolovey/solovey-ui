@@ -68,8 +68,10 @@ func (s *ConfigService) zapretCatalogLocked() (view ZapretCatalogSnapshot, err e
 	core := s.coreInstance()
 	if batch := s.runtime().zapretBatch; batch != "" && core != nil && core.IsRunning() && view.Ready {
 		client := broker.NewClient(broker.RolePanel)
+		// One read must account for both owned nftables tables, the bound
+		// interfaces and the queue owner, including on a throttled broker.
 		_, err := client.Invoke(context.Background(), broker.Call{Verb: broker.VerbZapretObserve, OperationID: "zapret-observe",
-			Payload: zapretactivation.BatchIdentity{BatchID: batch}, Timeout: time.Second}, &view.Applied)
+			Payload: zapretactivation.BatchIdentity{BatchID: batch}, Timeout: 3 * time.Second}, &view.Applied)
 		if err != nil {
 			view.Applied = nil
 		}
