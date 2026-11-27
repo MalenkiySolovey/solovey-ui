@@ -255,7 +255,7 @@ func Parse(data []byte, target string) (Fact, error) {
 			selected, found = fact, true
 		}
 	}
-	// Namespace handles are valid inventory, not filesystem backing.
+	// Namespace handles and unlinked roots are inventory, not filesystem backing.
 	if !found || !canonicalAbsoluteAllowRoot(selected.Root) {
 		return Fact{}, ErrUnavailable
 	}
@@ -363,6 +363,11 @@ func parseLine(line, target string) (Fact, error) {
 
 func validMountInfoRoot(root, filesystem string) bool {
 	if canonicalAbsoluteAllowRoot(root) {
+		return true
+	}
+	// Linux dentry_path appends //deleted when a bind mount's source was unlinked.
+	// Keep the marker so Parse cannot attest this mount as backing storage.
+	if name, unlinked := strings.CutSuffix(root, "//deleted"); unlinked && canonicalAbsolute(name) {
 		return true
 	}
 	if filesystem != "nsfs" {
