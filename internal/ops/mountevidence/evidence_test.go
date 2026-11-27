@@ -96,6 +96,22 @@ func TestParseToleratesUnrelatedNetworkNamespaceMount(t *testing.T) {
 	}
 }
 
+func TestParseToleratesUnrelatedUnlinkedMountRoot(t *testing.T) {
+	const unlinked = "50 44 0:41 /.#proc-kmsgb94a960b85f66013//deleted /proc/kmsg rw,nosuid,nodev - tmpfs tmpfs rw\n"
+	data := []byte(fixture + unlinked)
+	fact, err := ParseUniqueMount(data, "/run/solovey-ui/server-protection")
+	if err != nil || fact.MountID != 45 {
+		t.Fatalf("unlinked mount changed runtime backing evidence: %#v, %v", fact, err)
+	}
+	if _, err := Parse(data, "/proc/kmsg"); err != ErrUnavailable {
+		t.Fatalf("unlinked mount must not fall back to its containing mount: %v", err)
+	}
+	malformed := strings.Replace(unlinked, "/.#proc-kmsgb94a960b85f66013//deleted", "/tmp/../kmsg//deleted", 1)
+	if _, err := Parse([]byte(fixture+malformed), "/run/solovey-ui"); err == nil {
+		t.Fatal("noncanonical unlinked path was accepted")
+	}
+}
+
 func TestFilesystemMountPointsReturnsExactCanonicalType(t *testing.T) {
 	data := fixture + "50 36 0:50 / /sys/fs/cgroup rw,nosuid,nodev,noexec,relatime - cgroup2 cgroup rw\n"
 	points, err := FilesystemMountPoints([]byte(data), "cgroup2")
