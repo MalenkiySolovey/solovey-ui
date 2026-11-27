@@ -104,7 +104,7 @@ func (z *installedZapret) validate(ctx context.Context, call Request, peer PeerI
 	if err := checkZapretDescriptorBudget(len(input.Bindings), input.TUN != nil); err != nil {
 		return nil, Failure(CodeValidation, err.Error())
 	}
-	profile, selected, err := z.selectStrategies(input)
+	profile, selected, err := z.selectStrategies(ctx, input)
 	if err == nil {
 		err = profile.verifyDialBindings(input.Bindings, 0)
 	}
@@ -117,7 +117,7 @@ func (z *installedZapret) validate(ctx context.Context, call Request, peer PeerI
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "installed Zapret profile validation:", err)
 		if errors.Is(err, errZapretCustomBlobsDenied) || errors.Is(err, errZapretDialBinding) || errors.Is(err, errZapretOuterScope) ||
-			errors.Is(err, errZapretReplyAsset) || errors.Is(err, errZapretReplyHook) || zapretCapacityFailure(err) {
+			errors.Is(err, errZapretReplyAsset) || errors.Is(err, errZapretReplyHook) || errors.Is(err, errZapretDNSCoverage) || zapretCapacityFailure(err) {
 			return nil, Failure(CodeValidation, err.Error())
 		}
 		return nil, Failure(CodeValidation, "installed Zapret does not authorize the selected binding or Strategy")
@@ -153,7 +153,7 @@ func (z *installedZapret) acquire(ctx context.Context, call Request, peer PeerId
 	if err != nil {
 		// Only fixed, owner-classified startup errors are returned to Panel.
 		fmt.Fprintln(os.Stderr, "installed Zapret activation:", err)
-		if errors.Is(err, errZapretReplyAsset) || errors.Is(err, errZapretReplyHook) || zapretCapacityFailure(err) {
+		if errors.Is(err, errZapretReplyAsset) || errors.Is(err, errZapretReplyHook) || errors.Is(err, errZapretDNSCoverage) || zapretCapacityFailure(err) {
 			return nil, Failure(CodeExecution, err.Error())
 		}
 		return nil, Failure(CodeExecution, "Zapret packet path not ready; see privileged broker journal")
@@ -220,7 +220,7 @@ func (z *installedZapret) retire(ctx context.Context, call Request, peer PeerIde
 	return nil, nil
 }
 
-func (z *installedZapret) selectStrategies(input zapretactivation.Validation) (installedZapretProfile, InstalledZapretStrategies, error) {
+func (z *installedZapret) selectStrategies(ctx context.Context, input zapretactivation.Validation) (installedZapretProfile, InstalledZapretStrategies, error) {
 	profile, err := readInstalledZapretProfile()
 	if err != nil {
 		return profile, InstalledZapretStrategies{}, err
@@ -247,7 +247,6 @@ func (z *installedZapret) selectStrategies(input zapretactivation.Validation) (i
 			return profile, InstalledZapretStrategies{}, err
 		}
 	}
-	used := 0
 	for i, request := range input.Bindings {
 		if selected.Families[i].RequiresIPv6 && !profile.IPv6 {
 			return profile, InstalledZapretStrategies{}, fmt.Errorf("strategy for outbound %q requires IPv6 in the installed Zapret profile", request.OutboundRef)
@@ -256,25 +255,47 @@ func (z *installedZapret) selectStrategies(input zapretactivation.Validation) (i
 			return profile, InstalledZapretStrategies{}, fmt.Errorf("%w: %s %s outer port %d, family %d", errZapretOuterScope,
 				request.Outer.Kind, request.Outer.Transports(), request.Outer.Port, request.Outer.Family)
 		}
-		if requirements, ok := input.DNS[request.OutboundRef]; ok {
-			used++
-			if request.Outer.Kind != "" || len(requirements) == 0 || len(requirements) > 64 {
-				return profile, InstalledZapretStrategies{}, errors.New("invalid protected DNS packet requirements")
+	}
+	if err := selected.verifyDNSRequirements(ctx, profile.IPv6, input); err != nil {
+		return profile, InstalledZapretStrategies{}, err
+	}
+	return profile, selected, nil
+}
+
+var errZapretDNSCoverage = errors.New("protected DNS scope is invalid")
+
+func (s InstalledZapretStrategies) verifyDNSRequirements(ctx context.Context, ipv6 bool, input zapretactivation.Validation) error {
+	if len(input.DNS) == 0 {
+		return nil
+	}
+	used := 0
+	for i, request := range input.Bindings {
+		requirements, ok := input.DNS[request.OutboundRef]
+		if !ok {
+			continue
+		}
+		used++
+		if request.Outer.Kind != "" || len(requirements) == 0 {
+			return fmt.Errorf("%w: outbound %q must be a selected Direct with nonempty packet requirements", errZapretDNSCoverage, request.OutboundRef)
+		}
+		// The broker frame bounds the input. Coverage checks do not add
+		// rules, queues or descriptors to the already selected packet path.
+		for _, need := range requirements {
+			if err := ctx.Err(); err != nil {
+				return err
 			}
-			for _, need := range requirements {
-				if !selected.handlesDNS(i, profile.IPv6, need) {
-					if need.PlainUDP {
-						return profile, InstalledZapretStrategies{}, fmt.Errorf("strategy for Direct %q must cover UDP and its TCP retry on DNS port %d, family %d", request.OutboundRef, need.Port, need.Family)
-					}
-					return profile, InstalledZapretStrategies{}, fmt.Errorf("strategy for Direct %q does not cover protected DNS (port %d, family %d, QUIC %t)", request.OutboundRef, need.Port, need.Family, need.QUIC)
+			if !s.handlesDNS(i, ipv6, need) {
+				if need.PlainUDP {
+					return fmt.Errorf("%w: strategy for Direct %q must cover UDP and its TCP retry on DNS port %d, family %d", errZapretDNSCoverage, request.OutboundRef, need.Port, need.Family)
 				}
+				return fmt.Errorf("%w: strategy for Direct %q does not cover port %d, family %d (QUIC %t)", errZapretDNSCoverage, request.OutboundRef, need.Port, need.Family, need.QUIC)
 			}
 		}
 	}
 	if len(input.DNS) != used {
-		return profile, InstalledZapretStrategies{}, errors.New("protected DNS does not refer to a selected Direct")
+		return fmt.Errorf("%w: DNS requirements must refer to a selected Direct", errZapretDNSCoverage)
 	}
-	return profile, selected, nil
+	return nil
 }
 
 func (s InstalledZapretStrategies) handlesDNS(binding int, ipv6 bool, need zapretactivation.DNSPathRequirement) bool {
@@ -336,7 +357,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 	if err := checkZapretDescriptorBudget(len(batch.Bindings), batch.TUN != nil); err != nil {
 		return nil, err
 	}
-	profile, selected, err := z.selectStrategies(batch.Validation)
+	profile, selected, err := z.selectStrategies(ctx, batch.Validation)
 	if err != nil {
 		return nil, err
 	}

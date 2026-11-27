@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/netip"
 	"reflect"
-	"slices"
 
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
@@ -78,6 +77,11 @@ func ZapretDNSRequirements(config []byte, selected map[string]bool) (map[string]
 func zapretDNSRequirements(config []byte, selected map[string]bool, withQUIC bool) (map[string][]zapretactivation.DNSPathRequirement, error) {
 	servers, _ := dnsTransportSections(config)
 	var requirements map[string][]zapretactivation.DNSPathRequirement
+	type packetRequirement struct {
+		outbound string
+		need     zapretactivation.DNSPathRequirement
+	}
+	seen := make(map[packetRequirement]struct{})
 	for i, server := range servers {
 		ref := dnsString(server, "detour")
 		if !selected[ref] {
@@ -131,12 +135,15 @@ func zapretDNSRequirements(config []byte, selected map[string]bool, withQUIC boo
 		}
 		// Resolver authentication is a Core TLS option, not a packet admission
 		// requirement. Keep the operator's setting and the same egress scope.
+		key := packetRequirement{ref, need}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
 		if requirements == nil {
 			requirements = make(map[string][]zapretactivation.DNSPathRequirement)
 		}
-		if !slices.Contains(requirements[ref], need) {
-			requirements[ref] = append(requirements[ref], need)
-		}
+		requirements[ref] = append(requirements[ref], need)
 	}
 	return requirements, nil
 }
