@@ -195,6 +195,42 @@
     },
     {
       "rule": "component-model-mutation",
+      "path": "components/blockcheck/catalog_storage.go",
+      "symbol": "changeCatalog",
+      "digest": "2f564408170659f4824cae6e37e0a796d31ad450e3b310cf1cc089ac345ec06f"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/blockcheck/catalog_storage.go",
+      "symbol": "dropCatalog",
+      "digest": "f2731c700f6de66d8ec188192f552bee4b88373c86a12d77246e50b0071293ff"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/blockcheck/catalog_storage.go",
+      "symbol": "migrateCatalog",
+      "digest": "17666c5f9c165ac02945ff8d112f6d75f7d3a8ccd6721ad75d7c59a37498a482"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/blockcheck/catalog_storage.go",
+      "symbol": "migrateCatalog",
+      "digest": "315cb01f4f2b3e414fb64ce796ac41df6af2024d553048e0fa5686c28226b25f"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/blockcheck/catalog_storage.go",
+      "symbol": "writeCatalogGroup",
+      "digest": "8f5491f2bbefb0b714c9c4b17ddd9d78002475aa750725f55141360856426cf7"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/blockcheck/catalog_storage.go",
+      "symbol": "writeStoredBlockCheck",
+      "digest": "bd9ba6f868552d11b51bf33ad846d6c328100e8b46740ce6eb09aa004894f8c5"
+    },
+    {
+      "rule": "component-model-mutation",
       "path": "components/fallback-html/authority/store.go",
       "symbol": "EnsureSchema",
       "digest": "534b744de5f03ad23e5bbd6d0679e8668d8e9b61c1f4cd49b6dbbb8d0ed02cbe"

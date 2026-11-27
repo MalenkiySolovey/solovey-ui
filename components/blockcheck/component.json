@@ -6,10 +6,15 @@
   "delivery": "in-process",
   "defaultEnabled": false,
   "frontend": {"entries": ["frontend/index.ts"]},
-  "database": {"settings": ["blockcheckGroupsV1", "blockcheckHistoryV1"]},
+  "database": {
+    "tables": ["blockcheck_group_catalog_v2"],
+    "settings": ["blockcheckGroupsV1", "blockcheckGroupsRevisionV2", "blockcheckHistoryV1"],
+    "schemaVersion": "2",
+    "migrationVersion": "2",
+    "compatibilityRange": {"minimumSchema": "1", "maximumSchema": "2"}
+  },
   "hostAPI": {
     "version": "solovey.component-host/v1",
-    "api": ["http.request"],
-    "dropData": ["settings.drop-owned"]
+    "api": ["http.request"]
   }
 }

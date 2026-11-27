@@ -4,6 +4,7 @@
 package blockcheck
 
 import (
+	"github.com/MalenkiySolovey/solovey-backend/storage/durableowner"
 	feature "github.com/MalenkiySolovey/solovey-component-blockcheck"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
@@ -12,7 +13,14 @@ import (
 
 func init() {
 	component := new(feature.Component)
-	registry.Register(registry.Component{Manifest: feature.Manifest(), PortLifecycle: component})
+	manifest := feature.Manifest()
+	binding, err := durableowner.Bind(manifest, feature.CatalogOwner{}, durableowner.BackendAdapter{
+		Migrate: migrateCatalog, Restore: migrateCatalog, Inspect: inspectCatalogDrop, Drop: dropCatalog,
+	})
+	if err != nil {
+		panic(err)
+	}
+	registry.Register(registry.Component{Manifest: manifest, PortLifecycle: component, Durable: binding})
 	registry.RegisterPortAPIRoutes(feature.ID, func(group *gin.RouterGroup, ports componenthost.Ports) error {
 		registerRoutes(group, ports, component, localProvider{})
 		return nil

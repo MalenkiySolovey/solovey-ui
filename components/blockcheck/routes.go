@@ -21,8 +21,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var errStorage = errors.New("blockcheck_catalog_storage_unavailable")
-
 func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports, component *feature.Component, provider localProvider) {
 	group := routes.Group("/components/blockcheck")
 	group.GET("/groups", func(c *gin.Context) {
@@ -39,7 +37,7 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports, componen
 		}
 		c.Header("Cache-Control", "no-store")
 		var request feature.CatalogChange
-		if !readRequest(c, &request, feature.MaxCatalogBytes+2048) {
+		if !readRequest(c, &request, feature.MaxGroupChangeBytes) {
 			ports.HTTP.JSONObj(c, nil, feature.ErrInvalidGroup)
 			return
 		}
@@ -78,7 +76,7 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports, componen
 			return
 		}
 		ctx := c.Request.Context()
-		catalog, err := readCatalog(ctx, dbsqlite.DB())
+		catalog, err := readRunCatalog(ctx, dbsqlite.DB(), request.CatalogRevision, request.GroupID, false)
 		if err != nil {
 			ports.HTTP.JSONObj(c, nil, err)
 			return
@@ -105,7 +103,7 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports, componen
 			return
 		}
 		ctx := c.Request.Context()
-		catalog, err := readCatalog(ctx, dbsqlite.DB())
+		catalog, err := readRunCatalog(ctx, dbsqlite.DB(), request.CatalogRevision, request.GroupID, request.All)
 		if err != nil {
 			ports.HTTP.JSONObj(c, nil, err)
 			return
@@ -180,7 +178,7 @@ func retainHistory(ctx context.Context, db *gorm.DB, run feature.HistoryRun, now
 	if db == nil {
 		return errHistoryStorage
 	}
-	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return writeStoredBlockCheck(ctx, db, errHistoryStorage, func(tx *gorm.DB) error {
 		current, err := readHistory(ctx, tx, now)
 		if err != nil {
 			return err
@@ -213,44 +211,4 @@ func readRequest(c *gin.Context, target any, limit int64) bool {
 	d := json.NewDecoder(bytes.NewReader(data))
 	d.DisallowUnknownFields()
 	return d.Decode(target) == nil && d.Decode(new(any)) == io.EOF
-}
-
-func readCatalog(ctx context.Context, db *gorm.DB) (feature.Catalog, error) {
-	if db == nil {
-		return feature.Catalog{}, errStorage
-	}
-	var row model.Setting
-	err := db.WithContext(ctx).Where("key = ?", feature.CatalogSettingKey).Take(&row).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return feature.DecodeCatalog(nil)
-	}
-	if err != nil || row.Value == "" {
-		return feature.Catalog{}, errStorage
-	}
-	return feature.DecodeCatalog([]byte(row.Value))
-}
-
-func changeCatalog(ctx context.Context, db *gorm.DB, request feature.CatalogChange) (catalog feature.Catalog, err error) {
-	if db == nil {
-		return catalog, errStorage
-	}
-	err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		current, err := readCatalog(ctx, tx)
-		if err != nil {
-			return err
-		}
-		catalog, err = current.Apply(request)
-		if err != nil {
-			return err
-		}
-		payload, err := json.Marshal(catalog)
-		if err != nil {
-			return feature.ErrInvalidCatalog
-		}
-		if err := store.UpsertValue(tx, feature.CatalogSettingKey, string(payload)); err != nil {
-			return errStorage
-		}
-		return nil
-	})
-	return catalog, err
 }
