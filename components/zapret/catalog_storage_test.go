@@ -202,6 +202,56 @@ func TestZapretCatalogMigrationLargeArchiveAndSelectedActivationProjection(t *te
 	assertProjection(dbsqlite.DB())
 }
 
+func TestZapretCatalogSelectedActivationFallsBackToCurrentLuaDraft(t *testing.T) {
+	openZapretArchiveDB(t)
+	if err := supervisor.New(componenthost.Deps{}).Migrate(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	const id = "ui-zapret-active-lua"
+	const luaID = "observe"
+	initial, err := catalogstore.Read(dbsqlite.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := readCatalog(initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := strategy.LuaDraft{Origin: "administrator", Source: "function observe() return VERDICT_PASS end\n"}
+	current, err = current.WithLuaDraft(luaID, &source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := "--filter-tcp=18080 --filter-l7=http --payload=http_req --lua-desync=observe\n"
+	record, err := current.SealDraft(strategy.Draft{
+		ID: id, Name: "Current Lua draft", Raw: &raw,
+		ManagedLua: []strategy.LuaReference{{ID: luaID, Revision: source.Revision()}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	current.Records[id] = record
+	data, err := json.Marshal(current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error { return catalogstore.Save(tx, initial, data) }); err != nil {
+		t.Fatal(err)
+	}
+
+	projected := zapretactivation.Validation{Bindings: []zapretactivation.Request{{OutboundRef: "one", StrategyRef: id}}}
+	if err := catalogstore.LoadSelected(dbsqlite.DB(), &projected); err != nil {
+		t.Fatal(err)
+	}
+	var loaded strategy.LuaDraft
+	if err := json.Unmarshal(projected.LuaSources[zapretactivation.LuaSourceKey(luaID, source.Revision())], &loaded); err != nil {
+		t.Fatal(err)
+	}
+	if loaded != source {
+		t.Fatalf("activation did not select the current Lua draft: %#v", loaded)
+	}
+}
+
 type zapretArchive struct{ *bytes.Reader }
 
 func (zapretArchive) Close() error { return nil }

@@ -234,8 +234,12 @@ func (r reader) lookup(kind, id string, definition bool) (json.RawMessage, error
 		column = "definition"
 	}
 	var item row
-	if err := r.db.Select(column).Where("kind = ? AND id = ?", kind, id).Limit(1).Find(&item).Error; err != nil {
-		return nil, err
+	result := r.db.Select(column).Where("kind = ? AND id = ?", kind, id).Limit(1).Find(&item)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return nil, nil
 	}
 	if definition {
 		return json.RawMessage(item.Definition), nil
