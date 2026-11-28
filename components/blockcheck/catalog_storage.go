@@ -18,7 +18,7 @@ import (
 
 var errStorage = errors.New("blockcheck_catalog_storage_unavailable")
 
-// Reserve the SQLite writer before reading a revision or history snapshot.
+// Reserve the SQLite writer before reading a revision or migrating storage.
 // Another Panel writer could otherwise invalidate a deferred WAL snapshot.
 func writeStoredBlockCheck(ctx context.Context, db *gorm.DB, storageErr error, fn func(*gorm.DB) error) error {
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -224,44 +224,51 @@ func writeCatalogGroup(tx *gorm.DB, position int, group feature.Group) error {
 	return nil
 }
 
-func migrateCatalog(_ context.Context, db *gorm.DB) error {
-	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.AutoMigrate(&catalogGroup{}); err != nil {
+func migrateStorage(ctx context.Context, db *gorm.DB) error {
+	return writeStoredBlockCheck(ctx, db, errStorage, func(tx *gorm.DB) error {
+		if err := migrateCatalogRows(tx); err != nil {
 			return err
 		}
-		legacy, err := catalogSetting(tx, feature.CatalogSettingKey)
-		if err != nil {
-			return err
-		}
-		if legacy == "" {
-			_, _, err := loadCatalog(tx)
-			return err
-		}
-		existing, err := catalogSetting(tx, feature.CatalogRevisionSettingKey)
-		if err != nil {
-			return err
-		}
-		hasRows, err := catalogHasRows(tx)
-		if err != nil {
-			return err
-		}
-		if existing != "" || hasRows {
-			return feature.ErrInvalidCatalog
-		}
-		catalog, err := feature.DecodeCatalog([]byte(legacy))
-		if err != nil {
-			return err
-		}
-		for i, group := range catalog.Groups {
-			if err := writeCatalogGroup(tx, i, group); err != nil {
-				return err
-			}
-		}
-		if err := store.UpsertValue(tx, feature.CatalogRevisionSettingKey, catalog.Revision()); err != nil {
-			return err
-		}
-		return tx.Where("key = ?", feature.CatalogSettingKey).Delete(&model.Setting{}).Error
+		return migrateHistory(tx, time.Now())
 	})
+}
+
+func migrateCatalogRows(tx *gorm.DB) error {
+	if err := tx.AutoMigrate(&catalogGroup{}); err != nil {
+		return err
+	}
+	legacy, err := catalogSetting(tx, feature.CatalogSettingKey)
+	if err != nil {
+		return err
+	}
+	if legacy == "" {
+		_, _, err := loadCatalog(tx)
+		return err
+	}
+	existing, err := catalogSetting(tx, feature.CatalogRevisionSettingKey)
+	if err != nil {
+		return err
+	}
+	hasRows, err := catalogHasRows(tx)
+	if err != nil {
+		return err
+	}
+	if existing != "" || hasRows {
+		return feature.ErrInvalidCatalog
+	}
+	catalog, err := feature.DecodeCatalog([]byte(legacy))
+	if err != nil {
+		return err
+	}
+	for i, group := range catalog.Groups {
+		if err := writeCatalogGroup(tx, i, group); err != nil {
+			return err
+		}
+	}
+	if err := store.UpsertValue(tx, feature.CatalogRevisionSettingKey, catalog.Revision()); err != nil {
+		return err
+	}
+	return tx.Where("key = ?", feature.CatalogSettingKey).Delete(&model.Setting{}).Error
 }
 
 func inspectCatalogDrop(context.Context, *gorm.DB, time.Time) durable.AuthorityStatus {
@@ -270,7 +277,7 @@ func inspectCatalogDrop(context.Context, *gorm.DB, time.Time) durable.AuthorityS
 
 func dropCatalog(_ context.Context, db *gorm.DB) error {
 	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Migrator().DropTable(&catalogGroup{}); err != nil {
+		if err := tx.Migrator().DropTable(&historyGroupRow{}, &historyRunRow{}, &catalogGroup{}); err != nil {
 			return err
 		}
 		return tx.Where("key IN ?", []string{feature.CatalogSettingKey, feature.CatalogRevisionSettingKey, feature.HistorySettingKey}).Delete(&model.Setting{}).Error

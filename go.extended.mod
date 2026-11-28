@@ -271,7 +271,7 @@ require (
 )
 
 require (
-	github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.18
+	github.com/MalenkiySolovey/solovey-component-blockcheck v0.1.19
 	github.com/MalenkiySolovey/solovey-component-paid-subscriptions v0.1.4
 )
 

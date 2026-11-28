@@ -6,19 +6,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"time"
 	"unicode/utf8"
 
-	"github.com/MalenkiySolovey/solovey-backend/settings/store"
-	"github.com/MalenkiySolovey/solovey-backend/storage/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-backend/storage/sqlite"
 	feature "github.com/MalenkiySolovey/solovey-component-blockcheck"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports, component *feature.Component, provider localProvider) {
@@ -59,7 +55,14 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports, componen
 			return
 		}
 		c.Header("Cache-Control", "no-store")
-		history, err := readHistory(c.Request.Context(), dbsqlite.DB(), time.Now())
+		view, groupID := c.Query("view"), c.Query("groupId")
+		if view != "" && view != "all" {
+			ports.HTTP.JSONObj(c, nil, feature.ErrInvalidHistory)
+			return
+		}
+		history, err := readHistoryPage(c.Request.Context(), dbsqlite.DB(), time.Now(), historyFilter{
+			all: view == "all", groupID: groupID, before: c.Query("before"),
+		})
 		ports.HTTP.JSONObj(c, history, err)
 	})
 	group.POST("/run", func(c *gin.Context) {
@@ -111,14 +114,29 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports, componen
 		controller := http.NewResponseController(c.Writer)
 		encoder := json.NewEncoder(c.Writer)
 		capture := feature.NewHistoryCapture(catalog, request)
+		db := dbsqlite.DB()
+		var historyID string
+		var historyPosition int
+		var historyErr error
 		err = component.RunSuite(ctx, ports.Host, catalog, request, provider, permitTarget, func(event feature.SuiteEvent) error {
 			if event.Kind == "started" {
 				c.Header("Content-Type", "application/x-ndjson")
 				c.Header("X-Accel-Buffering", "no")
-			}
-			if run := capture.Observe(event); run != nil {
+				historyID = event.Job.OperationID
 				writeCtx, stop := context.WithTimeout(ctx, time.Second)
-				saved := retainHistory(writeCtx, dbsqlite.DB(), *run, run.FinishedAt) == nil
+				historyErr = beginHistory(writeCtx, db, historyID, *event.StartedAt)
+				stop()
+			}
+			run, item := capture.Observe(event)
+			if item != nil && historyErr == nil {
+				writeCtx, stop := context.WithTimeout(ctx, time.Second)
+				historyErr = writeHistoryGroup(db.WithContext(writeCtx), historyID, historyPosition, *item)
+				stop()
+				historyPosition++
+			}
+			if run != nil {
+				writeCtx, stop := context.WithTimeout(ctx, time.Second)
+				saved := historyErr == nil && retainHistory(writeCtx, db, *run) == nil
 				stop()
 				event.HistorySaved = &saved
 			}
@@ -154,40 +172,6 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports, componen
 		}
 		err := component.CancelSuite(ports.Host, request.OperationID)
 		ports.HTTP.JSONObj(c, nil, err)
-	})
-}
-
-var errHistoryStorage = errors.New("blockcheck_history_unavailable")
-
-func readHistory(ctx context.Context, db *gorm.DB, now time.Time) (feature.History, error) {
-	if db == nil {
-		return feature.History{}, errHistoryStorage
-	}
-	var row model.Setting
-	err := db.WithContext(ctx).Where("key = ?", feature.HistorySettingKey).Take(&row).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return feature.DecodeHistory(nil, now)
-	}
-	if err != nil {
-		return feature.History{}, errHistoryStorage
-	}
-	return feature.DecodeHistory([]byte(row.Value), now)
-}
-
-func retainHistory(ctx context.Context, db *gorm.DB, run feature.HistoryRun, now time.Time) error {
-	if db == nil {
-		return errHistoryStorage
-	}
-	return writeStoredBlockCheck(ctx, db, errHistoryStorage, func(tx *gorm.DB) error {
-		current, err := readHistory(ctx, tx, now)
-		if err != nil {
-			return err
-		}
-		payload, err := current.WithRun(run, now)
-		if err != nil {
-			return err
-		}
-		return store.UpsertValue(tx, feature.HistorySettingKey, string(payload))
 	})
 }
 

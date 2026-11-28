@@ -31,9 +31,10 @@ import (
 )
 
 type suiteFrame struct {
-	Kind     string
-	Job      operationref.Job
-	Progress struct{ GroupsDone, ProbesDone int }
+	Kind         string
+	Job          operationref.Job
+	Progress     struct{ GroupsDone, ProbesDone int }
+	HistorySaved *bool
 }
 
 func TestBlockCheckProductionStreamPreservesDeadlineAndExactCancellation(t *testing.T) {
@@ -43,7 +44,7 @@ func TestBlockCheckProductionStreamPreservesDeadlineAndExactCancellation(t *test
 	}
 	const catalogKey, historyKey = "blockcheckGroupsV1", "blockcheckHistoryV1"
 	settings := owner.Manifest.Database.Settings
-	if !slices.Contains(settings, catalogKey) || !slices.Contains(settings, historyKey) || owner.Manifest.Database.SchemaVersion != "2" {
+	if !slices.Contains(settings, catalogKey) || !slices.Contains(settings, historyKey) || owner.Manifest.Database.SchemaVersion != "3" {
 		t.Fatalf("unexpected BlockCheck storage ownership: %v", settings)
 	}
 	for _, useHTTP2 := range []bool{false, true} {
@@ -222,8 +223,29 @@ func TestBlockCheckProductionStreamPreservesDeadlineAndExactCancellation(t *test
 				}
 				last = event
 			}
-			if last.Kind != "finished" || last.Job.Phase != "CANCELED" || last.Progress.GroupsDone != 1 || last.Progress.ProbesDone != 1 {
+			if last.Kind != "finished" || last.Job.Phase != "CANCELED" || last.Progress.GroupsDone != 1 || last.Progress.ProbesDone != 1 ||
+				last.HistorySaved == nil || !*last.HistorySaved {
 				t.Fatalf("cancellation discarded prior work or lost the terminal frame: %+v", last)
+			}
+			requestHistory, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"components/blockcheck/history?groupId=first", nil)
+			saved, err := server.Client().Do(requestHistory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer saved.Body.Close()
+			var history struct {
+				Obj struct {
+					Runs []struct {
+						ID, Phase string
+						Groups    []struct{ Report struct{ GroupID string } }
+					}
+				}
+			}
+			err = json.NewDecoder(io.LimitReader(saved.Body, 64<<10)).Decode(&history)
+			runs := history.Obj.Runs
+			if err != nil || len(runs) != 1 || runs[0].ID != started.Job.OperationID || runs[0].Phase != "CANCELED" ||
+				len(runs[0].Groups) != 1 || runs[0].Groups[0].Report.GroupID != "first" {
+				t.Fatalf("canceled run missing scoped durable evidence: %+v %v", history, err)
 			}
 		})
 	}

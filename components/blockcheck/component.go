@@ -15,7 +15,7 @@ func init() {
 	component := new(feature.Component)
 	manifest := feature.Manifest()
 	binding, err := durableowner.Bind(manifest, feature.CatalogOwner{}, durableowner.BackendAdapter{
-		Migrate: migrateCatalog, Restore: migrateCatalog, Inspect: inspectCatalogDrop, Drop: dropCatalog,
+		Migrate: migrateStorage, Restore: migrateStorage, Inspect: inspectCatalogDrop, Drop: dropCatalog,
 	})
 	if err != nil {
 		panic(err)
