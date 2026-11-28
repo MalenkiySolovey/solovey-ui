@@ -2772,7 +2772,7 @@
       "rule": "worker-lifetime",
       "path": "internal/ops/privilegedbroker/zapret_systemd_linux.go",
       "symbol": "startZapretEngine",
-      "digest": "dd00b0b4d6ac8c680b31da31b1a56a6e6d4a6082428c07e74bd42c0578228c97"
+      "digest": "91f24813f4f97cb87e13139ff316d5d172ebad3341bddb4659f5b3571eb85a90"
     },
     {
       "rule": "direct-policy",
