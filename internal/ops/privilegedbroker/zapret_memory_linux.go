@@ -19,6 +19,7 @@ import (
 
 var errZapretMemoryBudget = errors.New("installed Zapret replacement memory headroom is insufficient")
 var errZapretMemoryEvidence = errors.New("installed Zapret memory headroom could not be verified")
+var errZapretListWorkspace = errors.New("insufficient Zapret list workspace")
 
 const (
 	zapretCgroupRoot = "/sys/fs/cgroup"
@@ -104,15 +105,29 @@ func reserveZapretListWorkspace(ctx context.Context) func(bytes, lines int) erro
 		}
 		// Decoded text, normalized entries and compiler copies may coexist.
 		// Keep the other half for the broker, engine startup and rollback.
-		remaining := budget.bytes/2 - consumed
-		const copyAllowance, entryAllowance = 8, 128
-		if uint64(bytes) > remaining/copyAllowance || uint64(lines) > (remaining-copyAllowance*uint64(bytes))/entryAllowance {
-			return fmt.Errorf("%w: %s allows %d bytes of list workspace; next input is %d text bytes and %d entries",
-				errZapretMemoryBudget, budget.source, remaining, bytes, lines)
+		remaining := zapretMemoryHeadroom{source: budget.source, bytes: budget.bytes/2 - consumed}
+		charge, err := admitZapretListWorkspace(remaining, bytes, lines)
+		if err != nil {
+			return err
 		}
-		consumed += copyAllowance*uint64(bytes) + entryAllowance*uint64(lines)
+		consumed += charge
 		return nil
 	}
+}
+
+func admitZapretListWorkspace(budget zapretMemoryHeadroom, bytes, lines int) (uint64, error) {
+	const copyAllowance, entryAllowance = 8, 128
+	charge := ^uint64(0)
+	if uint64(bytes) <= charge/copyAllowance {
+		text := copyAllowance * uint64(bytes)
+		if uint64(lines) <= (charge-text)/entryAllowance {
+			charge = text + entryAllowance*uint64(lines)
+		}
+	}
+	if charge > budget.bytes {
+		return 0, fmt.Errorf("%w: %s leaves %d bytes; need %d bytes", errZapretListWorkspace, budget.source, budget.bytes, charge)
+	}
+	return charge, nil
 }
 
 func admitZapretMemory(limits zapretMemoryLimits, workingSet uint64, command ZapretEngineCommand) error {

@@ -64,7 +64,7 @@ func zapretBindingDescriptorCapacity(limit, open uint64, tun bool) uint64 {
 func zapretCapacityFailure(err error) bool {
 	return errors.Is(err, errZapretDescriptorBudget) || errors.Is(err, errZapretMarkBudget) ||
 		errors.Is(err, ErrZapretEngineBudget) || errors.Is(err, nftables.ErrZapretAtomicBudget) ||
-		errors.Is(err, errZapretMemoryBudget) || errors.Is(err, errZapretMemoryEvidence) ||
+		errors.Is(err, errZapretMemoryBudget) || errors.Is(err, errZapretMemoryEvidence) || errors.Is(err, errZapretListWorkspace) ||
 		errors.Is(err, errZapretListStage) || errors.Is(err, errZapretListStart)
 }
 

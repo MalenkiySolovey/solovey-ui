@@ -143,3 +143,23 @@ func TestZapretReplacementMemoryChargesSelectedListEntries(t *testing.T) {
 		t.Fatalf("same list did not fit with more headroom: %v", err)
 	}
 }
+
+func TestZapretListWorkspaceRefusalSurvivesBrokerResponse(t *testing.T) {
+	const textBytes, entries = 1_110_026, 30_002
+	const charge = 12_720_464
+	budget := zapretMemoryHeadroom{source: "broker cgroup v2 memory.max", bytes: 7_639_040}
+	got, err := admitZapretListWorkspace(budget, textBytes, entries)
+	if got != 0 || !errors.Is(err, errZapretListWorkspace) || !zapretCapacityFailure(err) {
+		t.Fatalf("list workspace charge = %d, refusal = %v", got, err)
+	}
+	code, detail := publicFailure(Failure(CodeValidation, err.Error()))
+	response := failureResponse(Request{}, code, detail)
+	const want = "insufficient Zapret list workspace: broker cgroup v2 memory.max leaves 7639040 bytes; need 12720464 bytes"
+	if response.Code != CodeValidation || response.Message != want {
+		t.Fatalf("broker lost the available/required workspace: %+v", response)
+	}
+	budget.bytes = charge
+	if got, err := admitZapretListWorkspace(budget, textBytes, entries); got != charge || err != nil {
+		t.Fatalf("list workspace charge = %d, refusal = %v", got, err)
+	}
+}
