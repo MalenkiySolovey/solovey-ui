@@ -185,7 +185,11 @@ func checkDiagnosticVLESSQUIC(t *testing.T, client *Core, path OutboundDiagnosti
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer session.CloseWithError(0, "")
+	defer func() {
+		if err := session.CloseWithError(0, ""); err != nil {
+			t.Logf("closing the test QUIC session: %v", err)
+		}
+	}()
 	if state := session.ConnectionState().TLS; len(state.VerifiedChains) == 0 || state.NegotiatedProtocol != alpn {
 		t.Fatalf("QUIC did not authenticate the fixture target: %+v", state)
 	}
