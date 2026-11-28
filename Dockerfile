@@ -1,6 +1,6 @@
-FROM --platform=$BUILDPLATFORM golang:1.26.11-alpine@sha256:ae52b5bc6ed045a9ed26ab03dc19327a802a9cc9aa8b27ed57f5c6b60579b0bb AS component-source-tools
+FROM --platform=$BUILDPLATFORM golang:1.27.4-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS component-source-tools
 
-FROM --platform=$BUILDPLATFORM node:alpine@sha256:3ad34ca6292aec4a91d8ddeb9229e29d9c2f689efd0dd242860889ac71842eba AS front-builder
+FROM --platform=$BUILDPLATFORM node:alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS front-builder
 COPY --from=component-source-tools /usr/local/go/ /usr/local/go/
 ENV PATH="/usr/local/go/bin:${PATH}" GOWORK=off
 RUN apk add --no-cache git ca-certificates
@@ -28,7 +28,7 @@ RUN node scripts/quic-integration-provenance.mjs manifest > QUIC_INTEGRATION.jso
     && node scripts/frontend-artifacts.mjs verify-release-input full web/html component-packs >/dev/null \
     && node scripts/generate-component-imports.mjs --profile full --out generated/components_generated.go --cmd-out generated/optional_commands_generated.go
 
-FROM --platform=$TARGETPLATFORM golang:1.26.11-alpine@sha256:ae52b5bc6ed045a9ed26ab03dc19327a802a9cc9aa8b27ed57f5c6b60579b0bb AS backend-builder
+FROM --platform=$TARGETPLATFORM golang:1.27.4-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS backend-builder
 WORKDIR /app
 ARG TARGETARCH
 ARG TARGETVARIANT
@@ -82,7 +82,7 @@ RUN --mount=type=cache,id=solovey-ui-go-build,target=/root/.cache/go-build,shari
       node scripts/extended-integration-provenance.mjs manifest > /app/integration-provenance/EXTENDED_INTEGRATION.json; \
     fi
 
-FROM alpine:latest@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acaeb241c829f4 AS runtime
+FROM alpine:latest@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS runtime
 ENV TZ=Europe/Moscow SUI_DB_FOLDER=/data SUI_COMPONENTS_INSTALLED_FILE=/app/components/installed.json
 WORKDIR /app
 RUN apk add --no-cache --upgrade ca-certificates gcompat libgcc \
