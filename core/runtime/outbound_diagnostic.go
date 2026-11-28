@@ -63,6 +63,15 @@ func diagnosticTCPMode(outbound adapter.Outbound) DiagnosticTCPMode {
 	}
 }
 
+func diagnosticUDPSupported(outbound adapter.Outbound) bool {
+	if outbound == nil || !slices.Contains(outbound.Network(), "udp") {
+		return false
+	}
+	// Direct uses a connected socket; VLESS keeps the destination scoped
+	// through its native packet path. Neither is inferred from Network alone.
+	return outbound.Type() == C.TypeDirect || outbound.Type() == C.TypeVLESS
+}
+
 func diagnosticTransport(transport adapter.DNSTransport) string {
 	if transport == nil {
 		return ""
@@ -95,7 +104,7 @@ func (c *Core) DiagnosticChoices() (outbounds, resolvers []string) {
 			return ErrCoreUnavailable
 		}
 		for _, outbound := range rt.outboundManager.Outbounds() {
-			if outbound.Tag() != privateAPITag && diagnosticTCPMode(outbound) != DiagnosticTCPUnavailable {
+			if outbound.Tag() != privateAPITag && (diagnosticTCPMode(outbound) != DiagnosticTCPUnavailable || diagnosticUDPSupported(outbound)) {
 				outbounds = append(outbounds, outbound.Tag())
 			}
 		}
@@ -126,7 +135,7 @@ func (c *Core) OpenOutboundDiagnostic(tag, resolver string) (OutboundDiagnostic,
 		if !exists {
 			return ErrOutboundNotFound
 		}
-		if diagnosticTCPMode(selected) == DiagnosticTCPUnavailable {
+		if diagnosticTCPMode(selected) == DiagnosticTCPUnavailable && !diagnosticUDPSupported(selected) {
 			return ErrDiagnosticOutbound
 		}
 		diagnostic = OutboundDiagnostic{core: c, generation: rt.generation, outbound: selected}
@@ -155,7 +164,7 @@ func (d OutboundDiagnostic) TCPMode() DiagnosticTCPMode { return diagnosticTCPMo
 // SupportsUDP is for a connected datagram path to a literal endpoint. Do not
 // infer it from Network alone: proxy UDP may negotiate a separate relay.
 func (d OutboundDiagnostic) SupportsUDP() bool {
-	return d.outbound != nil && d.outbound.Type() == C.TypeDirect && slices.Contains(d.outbound.Network(), "udp")
+	return diagnosticUDPSupported(d.outbound)
 }
 
 func (d OutboundDiagnostic) current(rt coreRuntime) bool {
@@ -192,6 +201,9 @@ func (d OutboundDiagnostic) Current() error {
 func (d OutboundDiagnostic) DialTCP(ctx context.Context, dst netip.AddrPort, permit func(netip.Addr) bool) (net.Conn, error) {
 	if !d.permits(dst, permit) || dst.Port() != 80 && dst.Port() != 443 {
 		return nil, ErrDiagnosticTarget
+	}
+	if d.TCPMode() == DiagnosticTCPUnavailable {
+		return nil, ErrDiagnosticOutbound
 	}
 	return d.core.dialOutbound(ctx, d.outbound.Tag(), "tcp", M.Socksaddr{Addr: dst.Addr().Unmap(), Port: dst.Port()}, &d)
 }

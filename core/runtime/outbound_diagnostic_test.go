@@ -103,7 +103,9 @@ func TestDiagnosticUDPRequiresAdmittedTargetAndConnectedTransport(t *testing.T) 
 		{C.TypeSOCKS, []string{"tcp", "udp"}, false},
 		{C.TypeHTTP, []string{"tcp"}, false},
 		{C.TypeSnell, []string{"tcp", "udp"}, false},
-		{C.TypeVLESS, []string{"tcp", "udp"}, false},
+		{C.TypeVLESS, []string{"tcp", "udp"}, true},
+		{C.TypeVLESS, []string{"udp"}, true},
+		{C.TypeVLESS, []string{"tcp"}, false},
 		{C.TypeSelector, []string{"tcp", "udp"}, false},
 	} {
 		diagnostic := OutboundDiagnostic{core: new(Core), outbound: diagnosticOutboundFixture{kind: tc.kind, networks: tc.networks}}

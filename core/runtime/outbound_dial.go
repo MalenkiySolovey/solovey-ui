@@ -13,6 +13,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/util/jsonfields"
 	"github.com/sagernet/sing-box/adapter"
+	C "github.com/sagernet/sing-box/constant"
 	corelog "github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	M "github.com/sagernet/sing/common/metadata"
@@ -148,7 +149,11 @@ func (c *Core) dialOutbound(ctx context.Context, tag, network string, destinatio
 	if _, ok := corelog.IDFromContext(dialContext); !ok {
 		dialContext = corelog.ContextWithNewID(dialContext)
 	}
-	connection, err = selected.DialContext(dialContext, network, destination)
+	if diagnostic != nil && network == "udp" && selected.Type() == C.TypeVLESS {
+		connection, err = dialDiagnosticDatagram(dialContext, selected, destination)
+	} else {
+		connection, err = selected.DialContext(dialContext, network, destination)
+	}
 	if generation.Err() != nil {
 		if connection != nil {
 			_ = connection.Close()
