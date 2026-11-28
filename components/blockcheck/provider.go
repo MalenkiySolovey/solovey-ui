@@ -86,6 +86,8 @@ func (localProvider) Open(ctx context.Context, host hostref.Ref, selection featu
 	scope := "outbound-pinned-ip"
 	tcpMode := diagnostic.TCPMode()
 	switch tcpMode {
+	case coreruntime.DiagnosticTCPUnavailable:
+		scope = "outbound-pinned-datagram"
 	case coreruntime.DiagnosticTCPProxyConnect:
 		scope = "outbound-proxy-connect"
 	case coreruntime.DiagnosticTCPProxyStream:
@@ -107,7 +109,9 @@ func (localProvider) Open(ctx context.Context, host hostref.Ref, selection featu
 			value, err := diagnostic.Resolve(ctx, host, string(family), string(probe))
 			return feature.Resolution{Addresses: value.Addresses, RCode: value.RCode, Context: dnsContext, ConfiguredTransport: value.ConfiguredTransport}, pathError(err)
 		},
-		DialTCP: func(ctx context.Context, destination netip.AddrPort) (net.Conn, feature.SocketEvidence, error) {
+	}
+	if tcpMode != coreruntime.DiagnosticTCPUnavailable {
+		path.DialTCP = func(ctx context.Context, destination netip.AddrPort) (net.Conn, feature.SocketEvidence, error) {
 			conn, err := diagnostic.DialTCP(ctx, destination, permitTarget)
 			var observation feature.SocketEvidence
 			if err == nil && conn != nil {
@@ -115,7 +119,7 @@ func (localProvider) Open(ctx context.Context, host hostref.Ref, selection featu
 				observation.ProxyTransportOnly = tcpMode == coreruntime.DiagnosticTCPProxyStream
 			}
 			return conn, observation, pathError(err)
-		},
+		}
 	}
 	if diagnostic.SupportsUDP() {
 		path.DialUDP = func(ctx context.Context, destination netip.AddrPort) (net.Conn, feature.SocketEvidence, error) {
