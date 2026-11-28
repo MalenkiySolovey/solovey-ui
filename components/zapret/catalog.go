@@ -18,19 +18,20 @@ import (
 )
 
 type catalogView struct {
-	Catalog        strategy.Catalog          `json:"catalog"`
-	Revision       string                    `json:"revision"`
-	References     []bindingStatus           `json:"references"`
-	Ready          bool                      `json:"ready"`
-	TransferSchema string                    `json:"transferSchema"`
-	EngineCommit   string                    `json:"engineCommit"`
-	EngineVersion  string                    `json:"engineVersion"`
-	EngineLicense  string                    `json:"engineLicense"`
-	Templates      []strategy.PresetTemplate `json:"templates"`
-	StorageUsed    int                       `json:"storageUsed"`
-	LuaSourceLimit int                       `json:"luaSourceLimit"`
-	NativeOnly     []string                  `json:"nativeOnly,omitempty"`
-	PreferenceKey  string                    `json:"preferenceKey,omitempty"`
+	Catalog             strategy.Catalog          `json:"catalog"`
+	Revision            string                    `json:"revision"`
+	References          []bindingStatus           `json:"references"`
+	Ready               bool                      `json:"ready"`
+	TransferSchema      string                    `json:"transferSchema"`
+	EngineCommit        string                    `json:"engineCommit"`
+	EngineVersion       string                    `json:"engineVersion"`
+	EngineLicense       string                    `json:"engineLicense"`
+	Templates           []strategy.PresetTemplate `json:"templates"`
+	StorageUsed         int                       `json:"storageUsed"`
+	LuaSourceLimit      int                       `json:"luaSourceLimit"`
+	PresetTransferLimit int                       `json:"presetTransferLimit"`
+	NativeOnly          []string                  `json:"nativeOnly,omitempty"`
+	PreferenceKey       string                    `json:"preferenceKey,omitempty"`
 }
 
 type bindingStatus struct {
@@ -51,6 +52,7 @@ type catalogChange struct {
 	List             *strategy.NamedList `json:"list,omitempty"`
 	Blob             *string             `json:"blob,omitempty"`
 	preset           *strategy.PresetInput
+	presetWorkspace  int
 	luaDraft         *strategy.LuaDraft
 }
 
@@ -86,7 +88,8 @@ func makeCatalogView(snapshot service.ZapretCatalogSnapshot) (catalogView, error
 	}
 	view := catalogView{Catalog: catalog, Revision: catalog.Revision(), Ready: snapshot.Ready,
 		TransferSchema: strategy.TransferSchema, EngineCommit: strategy.EngineCommit, EngineVersion: strategy.EngineVersion, EngineLicense: strategy.EngineLicense,
-		Templates: strategy.PresetTemplates(), StorageUsed: len(snapshot.Catalog), LuaSourceLimit: strategy.MaxLuaSourceBytes}
+		Templates: strategy.PresetTemplates(), StorageUsed: len(snapshot.Catalog), LuaSourceLimit: strategy.MaxLuaSourceBytes,
+		PresetTransferLimit: strategy.MaxPresetTransferBytes}
 	view.Catalog.LuaDrafts = nil // The draft endpoint requires administrator access.
 	view.Catalog.LuaRevisions = nil
 	for _, id := range slices.Sorted(maps.Keys(catalog.Records)) {
@@ -228,7 +231,7 @@ func (c catalogChange) mutate(raw json.RawMessage, refs []outbounds.ZapretRefere
 			return nil, false, errors.New("missing Zapret preset")
 		}
 		var review strategy.PresetPreview
-		next, review, err = previous.PreparePreset(c.ID, *c.preset)
+		next, review, err = previous.PreparePresetWithin(c.ID, *c.preset, c.presetWorkspace)
 		if err == nil && review.Record == nil {
 			if len(review.Issues) == 0 {
 				return nil, false, errors.New("preset cannot be imported; review the source before saving")
