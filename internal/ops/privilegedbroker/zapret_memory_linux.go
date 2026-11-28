@@ -38,31 +38,13 @@ type zapretMemoryLimits struct {
 }
 
 func checkZapretMemoryBudget(ctx context.Context, command ZapretEngineCommand, activePID int) error {
-	host, err := mem.VirtualMemoryWithContext(ctx)
+	limits, err := observeZapretMemoryLimits(ctx)
 	if err != nil {
-		return fmt.Errorf("%w: Host MemAvailable is unavailable", errZapretMemoryEvidence)
-	}
-	limits := zapretMemoryLimits{hard: zapretMemoryHeadroom{source: "Host MemAvailable", bytes: host.Available}}
-	if cgroup2Filesystem(zapretCgroupRoot) {
-		mount, mountErr := mountevidence.ObserveUniqueMount(zapretCgroupRoot)
-		before := processevidence.SelfCgroup()
-		leaf, ok := processevidence.UnifiedCgroup(before)
-		if mountErr != nil || mount.MountPoint != zapretCgroupRoot || mount.Root != "/" || !ok {
-			return fmt.Errorf("%w: broker cgroup v2 membership or mount is unavailable", errZapretMemoryEvidence)
-		}
-		limits, err = zapretCgroupHeadroom(limits.hard, zapretCgroupRoot, leaf, readZapretCgroupNumber)
-		after := processevidence.SelfCgroup()
-		if err != nil {
-			return fmt.Errorf("%w: %s", errZapretMemoryEvidence, err)
-		}
-		if before.CgroupRevision != after.CgroupRevision {
-			return fmt.Errorf("%w: broker cgroup v2 membership changed", errZapretMemoryEvidence)
-		}
+		return err
 	}
 	// The active engine is still charged during preflight. Reserve an
 	// additional working set before risking a restart; for a cold start the
-	// pinned executable size is only a lower-bound proxy. This is a capacity
-	// check at admission, not a prediction of peak packet-processing memory.
+	// pinned executable size is only a lower-bound proxy.
 	image, err := os.Stat(zapretEnginePath)
 	if err != nil || image.Size() <= 0 {
 		return fmt.Errorf("%w: pinned engine image size is unavailable", errZapretMemoryEvidence)
@@ -78,12 +60,72 @@ func checkZapretMemoryBudget(ctx context.Context, command ZapretEngineCommand, a
 	return admitZapretMemory(limits, workingSet, command)
 }
 
+func observeZapretMemoryLimits(ctx context.Context) (zapretMemoryLimits, error) {
+	host, err := mem.VirtualMemoryWithContext(ctx)
+	if err != nil {
+		return zapretMemoryLimits{}, fmt.Errorf("%w: Host MemAvailable is unavailable", errZapretMemoryEvidence)
+	}
+	limits := zapretMemoryLimits{hard: zapretMemoryHeadroom{source: "Host MemAvailable", bytes: host.Available}}
+	if cgroup2Filesystem(zapretCgroupRoot) {
+		mount, mountErr := mountevidence.ObserveUniqueMount(zapretCgroupRoot)
+		before := processevidence.SelfCgroup()
+		leaf, ok := processevidence.UnifiedCgroup(before)
+		if mountErr != nil || mount.MountPoint != zapretCgroupRoot || mount.Root != "/" || !ok {
+			return zapretMemoryLimits{}, fmt.Errorf("%w: broker cgroup v2 membership or mount is unavailable", errZapretMemoryEvidence)
+		}
+		limits, err = zapretCgroupHeadroom(limits.hard, zapretCgroupRoot, leaf, readZapretCgroupNumber)
+		after := processevidence.SelfCgroup()
+		if err != nil {
+			return zapretMemoryLimits{}, fmt.Errorf("%w: %s", errZapretMemoryEvidence, err)
+		}
+		if before.CgroupRevision != after.CgroupRevision {
+			return zapretMemoryLimits{}, fmt.Errorf("%w: broker cgroup v2 membership changed", errZapretMemoryEvidence)
+		}
+	}
+	return limits, nil
+}
+
+func reserveZapretListWorkspace(ctx context.Context) func(bytes, lines int) error {
+	var budget zapretMemoryHeadroom
+	var consumed uint64
+	return func(bytes, lines int) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if budget.source == "" {
+			limits, err := observeZapretMemoryLimits(ctx)
+			if err != nil {
+				return err
+			}
+			budget = limits.hard
+			if limits.throttle.source != "" && limits.throttle.bytes < budget.bytes {
+				budget = limits.throttle
+			}
+		}
+		// Decoded text, normalized entries and compiler copies may coexist.
+		// Keep the other half for the broker, engine startup and rollback.
+		remaining := budget.bytes/2 - consumed
+		const copyAllowance, entryAllowance = 8, 128
+		if uint64(bytes) > remaining/copyAllowance || uint64(lines) > (remaining-copyAllowance*uint64(bytes))/entryAllowance {
+			return fmt.Errorf("%w: %s allows %d bytes of list workspace; next input is %d text bytes and %d entries",
+				errZapretMemoryBudget, budget.source, remaining, bytes, lines)
+		}
+		consumed += copyAllowance*uint64(bytes) + entryAllowance*uint64(lines)
+		return nil
+	}
+}
+
 func admitZapretMemory(limits zapretMemoryLimits, workingSet uint64, command ZapretEngineCommand) error {
 	// Reserve the sealed Lua memfd and a source-sized loader allowance.
 	// This does not predict Lua bytecode or callback allocations.
 	reserve := zapretQueueBufferReserve + 2*uint64(len(command.Lua))
 	for _, arg := range command.Args {
 		reserve += uint64(len(arg)) + 1 + strconv.IntSize/8
+	}
+	for _, list := range command.ListFiles {
+		// Charge the staged text, its loader copy and per-entry native
+		// hash/trie nodes and allocator overhead. Not a future RSS guarantee.
+		reserve += 2*uint64(len(list)) + 128*uint64(strings.Count(list, "\n"))
 	}
 	for _, available := range []zapretMemoryHeadroom{limits.hard, limits.throttle} {
 		// Compare without adding the working set to a potentially full uint64.

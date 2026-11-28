@@ -253,7 +253,7 @@ func (z *installedZapret) selectStrategies(ctx context.Context, input zapretacti
 	if len(input.LuaSources) != 0 && !profile.AllowManagedLua {
 		return profile, InstalledZapretStrategies{}, errZapretManagedLuaDenied
 	}
-	selected, err := z.resolve(definitions, input.Bindings, input.LuaSources)
+	selected, err := z.resolve(definitions, input.Bindings, input.LuaSources, reserveZapretListWorkspace(ctx))
 	if err != nil {
 		return profile, InstalledZapretStrategies{}, err
 	}
@@ -760,11 +760,21 @@ func startZapretEngine(ctx context.Context, plan planner.ZapretPlan, command Zap
 	}
 	pidfd := -1
 	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL, PidFD: &pidfd}
-	if err := cmd.Start(); err != nil {
+	cleanupLists, err := stageZapretLists(command)
+	if err != nil {
 		return nil, processevidence.Fact{}, err
 	}
+	if err := cmd.Start(); err != nil {
+		return nil, processevidence.Fact{}, errors.Join(err, cleanupLists())
+	}
 	engine := &installedZapretEngine{process: cmd.Process, pidfd: os.NewFile(uintptr(pidfd), "nfqws2"), done: make(chan struct{})}
-	go func() { engine.waitErr = cmd.Wait(); close(engine.done) }()
+	go func() {
+		engine.waitErr = cmd.Wait()
+		if err := cleanupLists(); err != nil {
+			fmt.Fprintln(os.Stderr, "installed Zapret list retirement:", err)
+		}
+		close(engine.done)
+	}()
 	defer func() {
 		if failure != nil {
 			failure = errors.Join(failure, engine.stop())
@@ -794,6 +804,9 @@ func startZapretEngine(ctx context.Context, plan planner.ZapretPlan, command Zap
 		case <-engine.done:
 			if command.Lua != "" {
 				return nil, processevidence.Fact{}, errZapretManagedLuaStart
+			}
+			if len(command.ListFiles) != 0 {
+				return nil, processevidence.Fact{}, errZapretListStart
 			}
 			return nil, processevidence.Fact{}, errors.Join(errors.New("pinned nfqws2 exited before binding NFQUEUE"), engine.waitErr, cause)
 		case <-ready.Done():

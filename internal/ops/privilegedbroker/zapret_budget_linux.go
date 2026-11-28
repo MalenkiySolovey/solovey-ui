@@ -4,6 +4,8 @@ package privilegedbroker
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -62,7 +64,8 @@ func zapretBindingDescriptorCapacity(limit, open uint64, tun bool) uint64 {
 func zapretCapacityFailure(err error) bool {
 	return errors.Is(err, errZapretDescriptorBudget) || errors.Is(err, errZapretMarkBudget) ||
 		errors.Is(err, ErrZapretEngineBudget) || errors.Is(err, nftables.ErrZapretAtomicBudget) ||
-		errors.Is(err, errZapretMemoryBudget) || errors.Is(err, errZapretMemoryEvidence)
+		errors.Is(err, errZapretMemoryBudget) || errors.Is(err, errZapretMemoryEvidence) ||
+		errors.Is(err, errZapretListStage) || errors.Is(err, errZapretListStart)
 }
 
 // Called under the broker mutation fence; an old peer cannot borrow another
@@ -125,7 +128,7 @@ func (z *installedZapret) checkBatchBudget(ctx context.Context, input zapretacti
 	if err := nftables.CheckZapretOwnedBatchBudget(ctx, plans, tun); err != nil {
 		return err
 	}
-	return checkZapretLuaInit(ctx, command)
+	return checkZapretEngineInputs(ctx, command)
 }
 
 func compileInstalledZapret(plans []planner.ZapretPlan, selected InstalledZapretStrategies, queue uint16, observe bool) (ZapretEngineCommand, error) {
@@ -135,5 +138,14 @@ func compileInstalledZapret(plans []planner.ZapretPlan, selected InstalledZapret
 		marks[i] = plan.QueueMark()
 		replies = replies || plan.NeedsReturn()
 	}
-	return selected.Compile(zapretEngineRoot, queue, plans[0].LoopMark(), marks, observe, replies)
+	var token [32]byte
+	if _, err := rand.Read(token[:]); err != nil {
+		return ZapretEngineCommand{}, err
+	}
+	dir := zapretListDirPrefix + hex.EncodeToString(token[:])
+	command, err := selected.Compile(zapretEngineRoot, dir, queue, plans[0].LoopMark(), marks, observe, replies)
+	if len(command.ListFiles) != 0 {
+		command.listDir = dir
+	}
+	return command, err
 }

@@ -124,3 +124,22 @@ func TestZapretReplacementMemoryChargesSelectedLua(t *testing.T) {
 		t.Fatalf("the same command does not fit with additional headroom: %v", err)
 	}
 }
+
+func TestZapretReplacementMemoryChargesSelectedListEntries(t *testing.T) {
+	const workingSet = 3 << 20
+	command := ZapretEngineCommand{Args: []string{"--hostlist=/tmp/list-0"}}
+	limits := zapretMemoryLimits{hard: zapretMemoryHeadroom{
+		source: "broker cgroup v2 memory.max", bytes: workingSet + zapretQueueBufferReserve + (128 << 10),
+	}}
+	if err := admitZapretMemory(limits, workingSet, command); err != nil {
+		t.Fatalf("the fixed launch command should fit: %v", err)
+	}
+	command.ListFiles = []string{strings.Repeat("example.test\n", 1500)}
+	if err := admitZapretMemory(limits, workingSet, command); !errors.Is(err, errZapretMemoryBudget) {
+		t.Fatalf("native list entries did not consume current headroom: %v", err)
+	}
+	limits.hard.bytes += 256 << 10
+	if err := admitZapretMemory(limits, workingSet, command); err != nil {
+		t.Fatalf("same list did not fit with more headroom: %v", err)
+	}
+}

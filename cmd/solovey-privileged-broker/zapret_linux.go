@@ -23,14 +23,14 @@ func registerInstalledZapret(ctx context.Context, server *broker.Server, transpo
 	return broker.RegisterInstalledZapret(ctx, server, transport, listeners, resolveZapretBatch)
 }
 
-func resolveZapretBatch(inputs []json.RawMessage, requests []zapretactivation.Request, luaSources map[string]json.RawMessage) (broker.InstalledZapretStrategies, error) {
-	result, err := resolveZapretStrategies(inputs, requests, luaSources)
+func resolveZapretBatch(inputs []json.RawMessage, requests []zapretactivation.Request, luaSources map[string]json.RawMessage, reserve func(bytes, lines int) error) (broker.InstalledZapretStrategies, error) {
+	result, err := resolveZapretStrategies(inputs, requests, luaSources, reserve)
 	if err != nil {
 		return result, err
 	}
 	compile := result.Compile
-	result.Compile = func(root string, queue uint16, loopMark uint32, marks []uint32, trace, replies bool) (broker.ZapretEngineCommand, error) {
-		command, err := compile(root, queue, loopMark, marks, trace, replies)
+	result.Compile = func(root, listDir string, queue uint16, loopMark uint32, marks []uint32, trace, replies bool) (broker.ZapretEngineCommand, error) {
+		command, err := compile(root, listDir, queue, loopMark, marks, trace, replies)
 		if errors.Is(err, strategy.ErrEngineArgumentBudget) {
 			return broker.ZapretEngineCommand{}, fmt.Errorf("%w: %w", broker.ErrZapretEngineBudget, err)
 		}
@@ -45,7 +45,7 @@ func (value installedStrategy) LookupStrategy(ref string) (strategy.Strategy, bo
 	return value.Strategy, ref == value.ID
 }
 
-func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivation.Request, luaSources map[string]json.RawMessage) (broker.InstalledZapretStrategies, error) {
+func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivation.Request, luaSources map[string]json.RawMessage, reserve func(bytes, lines int) error) (broker.InstalledZapretStrategies, error) {
 	if len(inputs) != len(requests) {
 		return broker.InstalledZapretStrategies{}, errors.New("incomplete Zapret strategy set")
 	}
@@ -54,8 +54,8 @@ func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivati
 	sources := make([][]strategy.LuaModule, len(inputs))
 	usedSources := make(map[string]bool, len(luaSources))
 	for i, request := range requests {
-		var source installedStrategy
-		if err := broker.DecodeRawPayload(inputs[i], &source.Strategy); err != nil {
+		source, err := decodeInstalledZapretStrategy(inputs[i], reserve)
+		if err != nil {
 			return broker.InstalledZapretStrategies{}, err
 		}
 		outboundType := request.Outer.Kind
@@ -117,7 +117,7 @@ func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivati
 		}
 		return strategies[i].HandlesQUIC(family, port)
 	}
-	result.Compile = func(root string, queue uint16, loopMark uint32, marks []uint32, trace, replies bool) (broker.ZapretEngineCommand, error) {
+	result.Compile = func(root, listDir string, queue uint16, loopMark uint32, marks []uint32, trace, replies bool) (broker.ZapretEngineCommand, error) {
 		if len(marks) != len(strategies) {
 			return broker.ZapretEngineCommand{}, errors.New("incomplete Zapret mark allocation")
 		}
@@ -125,25 +125,64 @@ func resolveZapretStrategies(inputs []json.RawMessage, requests []zapretactivati
 		for i, mark := range marks {
 			marked[i] = strategy.MarkedStrategy{Strategy: strategies[i], QueueMark: mark}
 		}
-		var command broker.ZapretEngineCommand
-		var evidence *strategy.NativeTrace
-		var err error
-		switch {
-		case usesManagedLua:
-			command.Args, evidence, command.Lua, err = strategy.CompileManagedBindings(root, broker.ZapretLuaBundlePath, queue, loopMark, marked, sources, trace, replies)
-		case replies:
-			command.Args, evidence, err = strategy.CompileBindingsForReturnPath(root, queue, loopMark, marked, trace)
-		case trace:
-			command.Args, evidence, err = strategy.CompileBindingsWithNativeTrace(root, queue, loopMark, marked)
-		default:
-			command.Args, err = strategy.CompileBindings(root, queue, loopMark, marked)
+		var selectedLua [][]strategy.LuaModule
+		if usesManagedLua {
+			selectedLua = sources
 		}
-		if evidence != nil {
-			command.Trace = evidence
+		material, err := strategy.CompileInstalledBindings(root, listDir, broker.ZapretLuaBundlePath, queue, loopMark, marked, selectedLua, trace, replies)
+		if err != nil {
+			return broker.ZapretEngineCommand{}, err
 		}
-		return command, err
+		command := broker.ZapretEngineCommand{Args: material.Args, Lua: material.Lua, ListFiles: material.ListFiles}
+		if material.Trace != nil {
+			command.Trace = material.Trace
+		}
+		return command, nil
 	}
 	return result, nil
+}
+
+func decodeInstalledZapretStrategy(raw json.RawMessage, reserve func(bytes, lines int) error) (installedStrategy, error) {
+	var wire struct {
+		strategy.Strategy
+		Profiles []struct {
+			strategy.Profile
+			Packed *struct {
+				HostList        *zapretactivation.PackedList `json:"hostList,omitempty"`
+				HostListExclude *zapretactivation.PackedList `json:"hostListExclude,omitempty"`
+				IPSet           *zapretactivation.PackedList `json:"ipSet,omitempty"`
+				IPSetExclude    *zapretactivation.PackedList `json:"ipSetExclude,omitempty"`
+			} `json:"packedLists,omitempty"`
+		} `json:"profiles"`
+	}
+	if err := broker.DecodeRawPayload(raw, &wire); err != nil {
+		return installedStrategy{}, err
+	}
+	wire.Strategy.Profiles = make([]strategy.Profile, 0, len(wire.Profiles))
+	for _, profile := range wire.Profiles {
+		value := profile.Profile
+		if profile.Packed != nil {
+			if value.Lists != nil {
+				return installedStrategy{}, errors.New("ambiguous installed Zapret list input")
+			}
+			lists := new(strategy.NativeLists)
+			for i, input := range [...]*zapretactivation.PackedList{
+				profile.Packed.HostList, profile.Packed.HostListExclude, profile.Packed.IPSet, profile.Packed.IPSetExclude,
+			} {
+				if input == nil {
+					continue
+				}
+				entries, err := input.Expand(reserve)
+				if err != nil {
+					return installedStrategy{}, err
+				}
+				*([4]*[]string{&lists.HostList, &lists.HostListExclude, &lists.IPSet, &lists.IPSetExclude})[i] = entries
+			}
+			value.Lists = lists
+		}
+		wire.Strategy.Profiles = append(wire.Strategy.Profiles, value)
+	}
+	return installedStrategy{wire.Strategy}, nil
 }
 
 func zapretPlannerPorts(scope strategy.Scope) planner.ZapretPorts {
