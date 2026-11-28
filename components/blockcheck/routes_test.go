@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -76,13 +77,13 @@ func TestBlockCheckReservesSQLiteWriterBeforeReading(t *testing.T) {
 
 func TestBlockCheckDurableCatalogRevision(t *testing.T) {
 	manifest, registered := durableowner.Lookup(feature.ID)
-	if !registered || !slices.Equal(manifest.Database.Tables, []string{feature.CatalogGroupTable}) ||
+	if !registered || !slices.Equal(manifest.Database.Tables, []string{feature.CatalogGroupTable, feature.HistoryGroupTable, feature.HistoryRunTable}) ||
 		!slices.Equal(manifest.Database.Settings, []string{feature.CatalogRevisionSettingKey, feature.CatalogSettingKey, feature.HistorySettingKey}) ||
 		manifest.Database.SchemaVersion != "2" || manifest.DefaultEnabled {
 		t.Fatalf("incorrect ComponentHost registration: %+v", manifest)
 	}
 	db := openCatalogTestDB(t)
-	if err := migrateCatalog(t.Context(), db); err != nil {
+	if err := migrateStorage(t.Context(), db); err != nil {
 		t.Fatal(err)
 	}
 	ctx := t.Context()
@@ -126,7 +127,7 @@ func TestBlockCheckMigratesLegacyCatalogWithoutReseeding(t *testing.T) {
 				t.Fatal(err)
 			}
 			for range 2 {
-				if err := migrateCatalog(t.Context(), db); err != nil {
+				if err := migrateStorage(t.Context(), db); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -148,7 +149,7 @@ func TestBlockCheckMigratesLegacyCatalogWithoutReseeding(t *testing.T) {
 func TestBlockCheckRunReadsOnlySelectedGroups(t *testing.T) {
 	db := openCatalogTestDB(t)
 	ctx := t.Context()
-	if err := migrateCatalog(ctx, db); err != nil {
+	if err := migrateStorage(ctx, db); err != nil {
 		t.Fatal(err)
 	}
 	catalog, err := readCatalog(ctx, db)
@@ -263,7 +264,7 @@ func TestBlockCheckHistorySurvivesDatabaseReopenWithoutChangingCatalog(t *testin
 	if err := db.AutoMigrate(&model.Setting{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrateCatalog(t.Context(), db); err != nil {
+	if err := migrateStorage(t.Context(), db); err != nil {
 		t.Fatal(err)
 	}
 	ctx, now := t.Context(), time.Now().UTC()
@@ -271,19 +272,120 @@ func TestBlockCheckHistorySurvivesDatabaseReopenWithoutChangingCatalog(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	run := feature.HistoryRun{ID: "test-run", StartedAt: now.Add(-time.Second), FinishedAt: now, Phase: "CANCELED"}
-	if err := retainHistory(ctx, db, run, now); err != nil {
-		t.Fatal(err)
+	for i := range 12 {
+		// Equal finish times also exercise the ID tiebreaker in the cursor.
+		run := feature.HistoryRun{ID: fmt.Sprintf("test-run-%02d", i), StartedAt: now.Add(-time.Second), FinishedAt: now, Phase: "CANCELED",
+			All: i%2 == 0, GroupIDs: []string{"voice"}, Groups: []feature.HistoryGroup{largeHistoryGroup("voice", 64<<10)}}
+		if err := retainHistory(ctx, db, run); err != nil {
+			t.Fatal(err)
+		}
 	}
 	closeDB(db)
+	info, err := os.Stat(filename)
+	if err != nil || info.Size() <= feature.MaxHistoryBytes {
+		t.Fatalf("fixture does not exceed the old history budget: %v, %v", info, err)
+	}
 	db = open()
 	defer closeDB(db)
-	got, err := readHistory(ctx, db, now)
-	if err != nil || len(got.Runs) != 1 || got.Runs[0].ID != run.ID || got.Runs[0].Phase != run.Phase {
-		t.Fatalf("history not retained: %+v, %v", got, err)
+	got, err := readHistoryPage(ctx, db, now, historyFilter{groupID: "voice"})
+	if err != nil || len(got.Runs) != 8 || got.Next == "" || got.Runs[0].ID != "test-run-11" || got.Runs[7].ID != "test-run-04" {
+		t.Fatalf("wrong first history page: count=%d next=%q err=%v", len(got.Runs), got.Next, err)
+	}
+	older, err := readHistoryPage(ctx, db, now, historyFilter{groupID: "voice", before: got.Next})
+	if err != nil || len(older.Runs) != 4 || older.Next != "" || older.Runs[0].ID != "test-run-03" ||
+		older.Runs[3].ID != "test-run-00" || older.Runs[3].Phase != "CANCELED" || len(older.Runs[3].Groups) != 1 {
+		t.Fatalf("wrong history continuation: count=%d next=%q err=%v", len(older.Runs), older.Next, err)
+	}
+	row := older.Runs[3].Groups[0].Report.Results[0]
+	if row.AttemptedAddress != "" || row.Socket.Interface != "" || row.Socket.Egress != "fixture" {
+		t.Fatal("history lost redaction or comparison evidence")
+	}
+	all, err := readHistoryPage(ctx, db, now, historyFilter{all: true})
+	if err != nil || len(all.Runs) != 6 || all.Runs[0].ID != "test-run-10" || all.Runs[5].ID != "test-run-00" {
+		t.Fatal("Check All page is not independent of single-group runs", err)
 	}
 	untouched, err := readCatalog(ctx, db)
 	if err != nil || untouched.Revision() != catalog.Revision() {
 		t.Fatalf("history changed catalog: %v", err)
+	}
+}
+
+func largeHistoryGroup(id string, size int) feature.HistoryGroup {
+	return feature.HistoryGroup{Report: feature.Report{GroupID: id, Results: []feature.Result{
+		{Status: feature.OK, Reason: strings.Repeat("x", size), AttemptedAddress: "9.9.9.9", Socket: &feature.SocketEvidence{Egress: "fixture", Interface: "secret-if"}},
+	}}}
+}
+
+func TestBlockCheckLargeHistoryRunHasScopedDetailAndPrunesInterruptedRuns(t *testing.T) {
+	db := openCatalogTestDB(t)
+	ctx, now := t.Context(), time.Now().UTC()
+	if err := migrateStorage(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	if err := beginHistory(ctx, db, "interrupted", now); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeHistoryGroup(db, "interrupted", 0, largeHistoryGroup("discard", 32)); err != nil {
+		t.Fatal(err)
+	}
+	if err := beginHistory(ctx, db, "large", now); err != nil {
+		t.Fatal(err)
+	}
+	ids := []string{"first", "second", "third"}
+	for i, id := range ids {
+		if err := writeHistoryGroup(db, "large", i, largeHistoryGroup(id, 800<<10)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pending, err := readHistoryPage(ctx, db, now, historyFilter{})
+	if err != nil || len(pending.Runs) != 0 {
+		t.Fatal("unfinished history became visible", err)
+	}
+	if err := retainHistory(ctx, db, feature.HistoryRun{ID: "large", All: true, Phase: "COMPLETED", GroupIDs: ids,
+		StartedAt: now.Add(-time.Second), FinishedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	overview, err := readHistoryPage(ctx, db, now, historyFilter{all: true})
+	if err != nil || len(overview.Runs) != 1 || overview.Runs[0].Hidden != 1 || overview.Runs[0].Omitted != 0 {
+		t.Fatalf("oversize response was not identified as a view limit: %d %v", len(overview.Runs), err)
+	}
+	saved, err := readHistoryPage(ctx, db, now, historyFilter{groupID: "third"})
+	if err != nil || len(saved.Runs) != 1 || len(saved.Runs[0].Groups) != 1 || saved.Runs[0].Hidden != 0 ||
+		len(saved.Runs[0].Groups[0].Report.Results[0].Reason) != 800<<10 {
+		t.Fatal("response bound lost saved group detail", err)
+	}
+	var remaining int64
+	if err := db.Model(&historyGroupRow{}).Where("run_id = ?", "interrupted").Count(&remaining).Error; err != nil || remaining != 0 {
+		t.Fatal("interrupted group rows were not pruned", remaining, err)
+	}
+}
+
+func TestBlockCheckMigratesLegacyHistoryWithoutChangingCatalog(t *testing.T) {
+	db := openCatalogTestDB(t)
+	ctx, now := t.Context(), time.Now().UTC()
+	legacy := feature.History{Version: 1, Runs: []feature.HistoryRun{{ID: "legacy-run", StartedAt: now.Add(-time.Second), FinishedAt: now,
+		Phase: "CANCELED", GroupIDs: []string{"voice"}, Groups: []feature.HistoryGroup{largeHistoryGroup("voice", 20)}}}}
+	payload, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertValue(db, feature.HistorySettingKey, string(payload)); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := migrateStorage(ctx, db); err != nil {
+			t.Fatal(err)
+		}
+	}
+	saved, err := readHistoryPage(ctx, db, now, historyFilter{groupID: "voice"})
+	if err != nil || len(saved.Runs) != 1 || saved.Runs[0].ID != "legacy-run" || saved.Runs[0].Phase != "CANCELED" ||
+		len(saved.Runs[0].Groups) != 1 || saved.Runs[0].Groups[0].Report.Results[0].AttemptedAddress != "" {
+		t.Fatal("legacy history migration lost or exposed results", err)
+	}
+	if legacy, err := catalogSetting(db, feature.HistorySettingKey); err != nil || legacy != "" {
+		t.Fatal("legacy value remains after verified migration", err)
+	}
+	if err := dropCatalog(ctx, db); err != nil || db.Migrator().HasTable(&historyRunRow{}) || db.Migrator().HasTable(&historyGroupRow{}) {
+		t.Fatal("approved data drop did not remove history tables", err)
 	}
 }

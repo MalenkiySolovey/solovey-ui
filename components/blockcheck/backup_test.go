@@ -103,7 +103,8 @@ func TestBlockCheckBackupRestorePreservesCatalogRevisionAndUserEdits(t *testing.
 		t.Fatalf("fixture does not exceed the legacy %d byte limit: %d %v", feature.MaxCatalogBytes, len(payload), err)
 	}
 	now := time.Now().UTC()
-	if err := retainHistory(ctx, dbsqlite.DB(), feature.HistoryRun{ID: "archive-run", StartedAt: now.Add(-time.Second), FinishedAt: now, Phase: "CANCELED"}, now); err != nil {
+	if err := retainHistory(ctx, dbsqlite.DB(), feature.HistoryRun{ID: "archive-run", StartedAt: now.Add(-time.Second), FinishedAt: now, Phase: "CANCELED",
+		GroupIDs: []string{"voice"}, Groups: []feature.HistoryGroup{largeHistoryGroup("voice", 1024)}}); err != nil {
 		t.Fatal(err)
 	}
 	archive, err := dbbackup.Export("")
@@ -125,9 +126,14 @@ func TestBlockCheckBackupRestorePreservesCatalogRevisionAndUserEdits(t *testing.
 	if _, exists := restored.Group("youtube"); exists {
 		t.Fatal("restore resurrected a deleted default group")
 	}
-	history, err := readHistory(ctx, dbsqlite.DB(), now)
-	if err != nil || len(history.Runs) != 1 || history.Runs[0].ID != "archive-run" {
-		t.Fatalf("catalog migration affected history: %+v %v", history, err)
+	history, err := readHistoryPage(ctx, dbsqlite.DB(), now, historyFilter{groupID: "voice"})
+	if err != nil || len(history.Runs) != 1 || history.Runs[0].ID != "archive-run" || history.Runs[0].Phase != "CANCELED" ||
+		len(history.Runs[0].Groups) != 1 || len(history.Runs[0].Groups[0].Report.Results) != 1 {
+		t.Fatalf("backup restore lost scoped history: %+v %v", history, err)
+	}
+	row := history.Runs[0].Groups[0].Report.Results[0]
+	if row.AttemptedAddress != "" || row.Socket == nil || row.Socket.Interface != "" || row.Socket.Egress != "fixture" {
+		t.Fatal("backup restore lost redaction or comparison evidence")
 	}
 }
 

@@ -7,11 +7,11 @@
   "defaultEnabled": false,
   "frontend": {"entries": ["frontend/index.ts"]},
   "database": {
-    "tables": ["blockcheck_group_catalog_v2"],
+    "tables": ["blockcheck_group_catalog_v2", "blockcheck_history_run_v3", "blockcheck_history_group_v3"],
     "settings": ["blockcheckGroupsV1", "blockcheckGroupsRevisionV2", "blockcheckHistoryV1"],
-    "schemaVersion": "2",
-    "migrationVersion": "2",
-    "compatibilityRange": {"minimumSchema": "1", "maximumSchema": "2"}
+    "schemaVersion": "3",
+    "migrationVersion": "3",
+    "compatibilityRange": {"minimumSchema": "1", "maximumSchema": "3"}
   },
   "hostAPI": {
     "version": "solovey.component-host/v1",
