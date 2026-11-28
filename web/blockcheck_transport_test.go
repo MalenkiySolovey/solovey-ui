@@ -43,7 +43,7 @@ func TestBlockCheckProductionStreamPreservesDeadlineAndExactCancellation(t *test
 	}
 	const catalogKey, historyKey = "blockcheckGroupsV1", "blockcheckHistoryV1"
 	settings := owner.Manifest.Database.Settings
-	if len(settings) != 2 || !slices.Contains(settings, catalogKey) || !slices.Contains(settings, historyKey) {
+	if !slices.Contains(settings, catalogKey) || !slices.Contains(settings, historyKey) || owner.Manifest.Database.SchemaVersion != "2" {
 		t.Fatalf("unexpected BlockCheck storage ownership: %v", settings)
 	}
 	for _, useHTTP2 := range []bool{false, true} {
@@ -99,6 +99,9 @@ func TestBlockCheckProductionStreamPreservesDeadlineAndExactCancellation(t *test
 			t.Cleanup(func() { service.SetDefaultRuntime(previous) })
 			t.Cleanup(func() { stopWebRouterTestWriters(t, runtime) })
 			lifecycle := supervisor.New(componenthost.Deps{})
+			if err := lifecycle.Migrate(t.Context()); err != nil {
+				t.Fatal(err)
+			}
 			if err := lifecycle.Start(t.Context()); err != nil {
 				t.Fatal(err)
 			}

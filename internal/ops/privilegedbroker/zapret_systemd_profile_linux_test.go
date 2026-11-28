@@ -100,6 +100,12 @@ func TestInstalledZapretObserveReturnsOnlyVerifiedGeneration(t *testing.T) {
 	if value, err := owner.observe(ctx, Request{Payload: input}, peer); err == nil || value != nil {
 		t.Fatalf("observation reported an unverified queue: %+v, %v", value, err)
 	}
+	owner.active.verify = func(context.Context) error { return context.DeadlineExceeded }
+	value, err = owner.observe(ctx, Request{Payload: input}, peer)
+	var publicErr *PublicError
+	if value != nil || !errors.As(err, &publicErr) || publicErr.Code != CodeDeadline {
+		t.Fatalf("observation deadline was not classified separately: %+v, %v", value, err)
+	}
 }
 
 func TestInstalledZapretDNSRequiresFamilyAndEffectiveQUICProfile(t *testing.T) {

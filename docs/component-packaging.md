@@ -132,8 +132,9 @@ their semantics. This is an in-process contract, not a process sandbox.
 Full can install BlockCheck independently of Zapret. It is disabled by
 default. Only an authenticated administrator can edit its catalog or start a
 bounded foreground run. Disable cancels that run and preserves the catalog and
-history. The existing component-owned settings and database backup hold
-`blockcheckGroupsV1` and `blockcheckHistoryV1`. Administrators can see retained
+history. The component's SQLite migration moves the legacy `blockcheckGroupsV1`
+setting to ordered group rows and preserves the catalog revision. Backup and
+Restore retain the rows and `blockcheckHistoryV1`. Administrators can see retained
 run history for up to 14 days, within a 512 KiB storage budget. A group whose
 details do not fit is explicitly marked omitted. The stored reports exclude
 attempted addresses, raw DNS answer sets and local socket details. Core/minimal
@@ -141,10 +142,10 @@ omit the Component and its UI.
 
 Each service card can run independently. Check All uses one active generation
 and the enabled groups in catalog order, runs up to three probes at a time,
-and streams per-probe and per-group results. Cancellation names that exact
+and streams per-probe and per-group results. The Host can lower concurrency
+at the next batch when capacity is limited. Cancellation names that exact
 operation. The legacy single-response endpoint still has a separate response
-budget. The saved-catalog byte limit bounds database and transfer work, not
-the number of checks in a streamed suite.
+budget. Each edit or import has a request limit, not a total catalog limit.
 
 Panel mode borrows an active anonymous HTTP or mixed ingress in the current
 Core generation. It models a local proxy client, not a remote client identity.

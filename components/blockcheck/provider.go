@@ -7,15 +7,36 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"runtime"
 
 	"github.com/MalenkiySolovey/solovey-backend/security/ssrf"
 	feature "github.com/MalenkiySolovey/solovey-component-blockcheck"
 	"github.com/MalenkiySolovey/solovey-host/hostref"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
+	pressure "github.com/MalenkiySolovey/solovey-ui/internal/ops/resourcepressure"
 	"github.com/MalenkiySolovey/solovey-ui/service"
+	pressureservice "github.com/MalenkiySolovey/solovey-ui/service/resourcepressure"
 )
 
 type localProvider struct{}
+
+func (localProvider) SuiteProbeParallelism() int {
+	return localProbeParallelism(runtime.GOMAXPROCS(0), pressureservice.Shared().Current().State)
+}
+
+func localProbeParallelism(processors int, state pressure.State) int {
+	// Keep capacity for the Core and management requests. GOMAXPROCS
+	// reflects the effective process limit, including an operator override.
+	spare := max(1, processors-1)
+	switch state {
+	case pressure.StateNormal:
+		return spare
+	case pressure.StateWarning, pressure.StateRecovering:
+		return min(spare, 2)
+	default:
+		return 1
+	}
+}
 
 type pathOptions struct {
 	Outbounds   []string                           `json:"outbounds"`
