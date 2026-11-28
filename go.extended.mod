@@ -105,7 +105,7 @@ require (
 	github.com/MalenkiySolovey/solovey-component-import-xui v0.1.4
 	github.com/MalenkiySolovey/solovey-component-remote-outbound-subscriptions v0.1.0
 	github.com/MalenkiySolovey/solovey-component-server-protection v0.1.0
-	github.com/MalenkiySolovey/solovey-component-zapret v0.1.19
+	github.com/MalenkiySolovey/solovey-component-zapret v0.1.20
 	github.com/OneOfOne/xxhash v1.2.8 // indirect
 	github.com/ajg/form v1.5.1 // indirect
 	github.com/akutz/memconn v0.1.0 // indirect
