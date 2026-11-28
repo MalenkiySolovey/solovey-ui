@@ -23,7 +23,7 @@ func TestPortablePresetEnvelopeIncludesDependencyIDsAtArchiveLimit(t *testing.T)
 	for i := range 14 {
 		input.DependencyIDs = append(input.DependencyIDs, strategy.PresetDependencyID{
 			Path: fmt.Sprintf("lists/%d-%s.txt", i, strings.Repeat("long-", 36)),
-			ID:   fmt.Sprintf("%d-%s", i, strings.Repeat("l", 62)),
+			ID:   fmt.Sprintf("%02d-%s", i, strings.Repeat("l", 61)),
 		})
 	}
 	archive := func(comment string) []byte {
