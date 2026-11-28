@@ -126,6 +126,9 @@ func jsonRuntimeOutbounds(outbounds []map[string]interface{}) ([]map[string]inte
 			if err := json.Unmarshal(raw, &rendered); err != nil {
 				return nil, err
 			}
+			// Subscription metadata belongs to Solovey's internal model,
+			// not to the sing-box runtime configuration.
+			delete(rendered, subcanonical.MetadataKey)
 			result = append(result, rendered)
 			continue
 		}
