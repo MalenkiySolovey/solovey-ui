@@ -468,3 +468,13 @@ scheduler, or worker is created when there is no probe. The existing routing
 guard still rejects an unverified final egress or destination. Admit only the
 exact worker-lifetime digest for this site; the R1 base and all other entries
 are unchanged.
+
+## R8E managed list retirement
+
+The existing broker reaper in `startZapretEngine` waits for the same engine
+process, removes only the generation's staged read-only list files, then
+closes `engine.done`. Startup failure before launch cleans up synchronously;
+after launch the existing retirement owner still stops and joins the reaper.
+The list directory and its entries belong to this generation under the
+broker's private temporary directory. No new worker, listener, or timer is
+introduced. Replace only the reviewed reaper digest.

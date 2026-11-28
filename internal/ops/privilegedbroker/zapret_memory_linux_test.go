@@ -124,3 +124,42 @@ func TestZapretReplacementMemoryChargesSelectedLua(t *testing.T) {
 		t.Fatalf("the same command does not fit with additional headroom: %v", err)
 	}
 }
+
+func TestZapretReplacementMemoryChargesSelectedListEntries(t *testing.T) {
+	const workingSet = 3 << 20
+	command := ZapretEngineCommand{Args: []string{"--hostlist=/tmp/list-0"}}
+	limits := zapretMemoryLimits{hard: zapretMemoryHeadroom{
+		source: "broker cgroup v2 memory.max", bytes: workingSet + zapretQueueBufferReserve + (128 << 10),
+	}}
+	if err := admitZapretMemory(limits, workingSet, command); err != nil {
+		t.Fatalf("the fixed launch command should fit: %v", err)
+	}
+	command.ListFiles = []string{strings.Repeat("example.test\n", 1500)}
+	if err := admitZapretMemory(limits, workingSet, command); !errors.Is(err, errZapretMemoryBudget) {
+		t.Fatalf("native list entries did not consume current headroom: %v", err)
+	}
+	limits.hard.bytes += 256 << 10
+	if err := admitZapretMemory(limits, workingSet, command); err != nil {
+		t.Fatalf("same list did not fit with more headroom: %v", err)
+	}
+}
+
+func TestZapretListWorkspaceRefusalSurvivesBrokerResponse(t *testing.T) {
+	const textBytes, entries = 1_110_026, 30_002
+	const charge = 12_720_464
+	budget := zapretMemoryHeadroom{source: "broker cgroup v2 memory.max", bytes: 7_639_040}
+	got, err := admitZapretListWorkspace(budget, textBytes, entries)
+	if got != 0 || !errors.Is(err, errZapretListWorkspace) || !zapretCapacityFailure(err) {
+		t.Fatalf("list workspace charge = %d, refusal = %v", got, err)
+	}
+	code, detail := publicFailure(Failure(CodeValidation, err.Error()))
+	response := failureResponse(Request{}, code, detail)
+	const want = "insufficient Zapret list workspace: broker cgroup v2 memory.max leaves 7639040 bytes; need 12720464 bytes"
+	if response.Code != CodeValidation || response.Message != want {
+		t.Fatalf("broker lost the available/required workspace: %+v", response)
+	}
+	budget.bytes = charge
+	if got, err := admitZapretListWorkspace(budget, textBytes, entries); got != charge || err != nil {
+		t.Fatalf("list workspace charge = %d, refusal = %v", got, err)
+	}
+}

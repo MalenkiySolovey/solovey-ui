@@ -21,17 +21,17 @@ const ZapretLuaBundlePath = "/proc/self/fd/3"
 var errZapretManagedLuaDenied = errors.New("installed Zapret profile does not delegate managed Lua; the Host administrator must enable allowManagedLua")
 var errZapretManagedLuaStart = errors.New("unable to initialize the selected Zapret Lua revisions; check the declared functions, dependency order, and source syntax")
 
-// With interception off, nfqws2 loads and validates all Lua initializers
-// and function references, but never joins an NFQUEUE.
-func checkZapretLuaInit(ctx context.Context, command ZapretEngineCommand) error {
-	if command.Lua == "" {
+// With interception off, nfqws2 loads the selected native lists and Lua
+// initializers, but never joins an NFQUEUE or replaces the running generation.
+func checkZapretEngineInputs(ctx context.Context, command ZapretEngineCommand) (failure error) {
+	if command.Lua == "" && len(command.ListFiles) == 0 {
 		return nil
 	}
-	bundle, err := openZapretLuaBundle(command.Lua)
+	cleanup, err := stageZapretLists(command)
 	if err != nil {
 		return err
 	}
-	defer bundle.Close()
+	defer func() { failure = errors.Join(failure, cleanup()) }()
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	args := make([]string, 0, len(command.Args)+2)
@@ -40,13 +40,22 @@ func checkZapretLuaInit(ctx context.Context, command ZapretEngineCommand) error 
 	cmd := exec.CommandContext(ctx, zapretEnginePath, args...)
 	cmd.Dir = zapretEngineRoot
 	cmd.Env = []string{"LANG=C", "LC_ALL=C"}
-	cmd.ExtraFiles = []*os.File{bundle}
+	reason := errZapretListStart
+	if command.Lua != "" {
+		bundle, err := openZapretLuaBundle(command.Lua)
+		if err != nil {
+			return err
+		}
+		defer bundle.Close()
+		cmd.ExtraFiles = []*os.File{bundle}
+		reason = errZapretManagedLuaStart
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() != nil {
-			return fmt.Errorf("%w: %w", errZapretManagedLuaStart, ctx.Err())
+			return fmt.Errorf("%w: %w", reason, ctx.Err())
 		}
-		return errZapretManagedLuaStart
+		return reason
 	}
 	return nil
 }

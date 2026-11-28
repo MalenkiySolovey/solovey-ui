@@ -28,13 +28,17 @@ func (r *Runtime) installedZapretAdmitter(ctx context.Context, admitted *string,
 		if *admitted != "" || !r.zapretComponentStarted() {
 			return nil, outbounds.ErrZapretPacketPathUnqualified
 		}
+		packed, err := zapretactivation.PackSelectedLists(input)
+		if err != nil {
+			return nil, errors.Join(outbounds.ErrZapretPacketPathUnqualified, err)
+		}
 		var token [32]byte
 		if _, err := rand.Read(token[:]); err != nil {
 			return nil, err
 		}
 		// Retain the batch identity if the broker publishes but the reply is lost.
 		*admitted = hex.EncodeToString(token[:])
-		target := zapretactivation.BatchRequest{BatchID: *admitted, Validation: input}
+		target := zapretactivation.BatchRequest{BatchID: *admitted, Validation: packed}
 		var grant zapretactivation.BatchGrant
 		client := broker.NewClient(broker.RolePanel)
 		if _, err := client.Invoke(ctx, broker.Call{Verb: broker.VerbZapretAcquire, OperationID: "zapret-core-start", Payload: target, Timeout: 10 * time.Second}, &grant); err != nil {
@@ -122,6 +126,10 @@ func validateInstalledZapret(tx *gorm.DB) error {
 	input.TUN, err = assembly.InstalledZapretTUNRequest(tx)
 	if err != nil {
 		return err
+	}
+	input, err = zapretactivation.PackSelectedLists(input)
+	if err != nil {
+		return errors.Join(outbounds.ErrZapretPacketPathUnqualified, err)
 	}
 	client := broker.NewClient(broker.RolePanel)
 	_, err = client.Invoke(tx.Statement.Context, broker.Call{Verb: broker.VerbZapretValidate, OperationID: "zapret-preflight",

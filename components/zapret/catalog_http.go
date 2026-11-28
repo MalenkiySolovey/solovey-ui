@@ -3,16 +3,19 @@
 package zapret
 
 import (
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 
 	"github.com/MalenkiySolovey/solovey-component-zapret/strategy"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	"github.com/MalenkiySolovey/solovey-ui/service"
+	pressureservice "github.com/MalenkiySolovey/solovey-ui/service/resourcepressure"
 	"github.com/gin-gonic/gin"
 )
 
@@ -29,7 +32,7 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports) {
 			return
 		}
 		var change catalogChange
-		if err := readRequestLimit(c, &change, maxPresetEnvelope); err != nil {
+		if err := readRequestLimit(c, &change, maxEditorEnvelope); err != nil {
 			ports.HTTP.JSONObj(c, nil, err)
 			return
 		}
@@ -53,7 +56,7 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports) {
 			strategy.Draft
 			ExpectedRevision string `json:"expectedRevision,omitempty"`
 		}
-		if err := readRequestLimit(c, &request, maxPresetEnvelope); err != nil {
+		if err := readRequestLimit(c, &request, maxEditorEnvelope); err != nil {
 			ports.HTTP.JSONObj(c, nil, err)
 			return
 		}
@@ -121,12 +124,21 @@ func registerRoutes(routes *gin.RouterGroup, ports componenthost.Ports) {
 	})
 }
 
+const maxEditorEnvelope = ((strategy.MaxPresetBytes+2)/3)*4 + (256 << 10)
+
 // In addition to the base64 payload, budget for the archive's explicitly
 // selected dependency IDs. The 256 KiB metadata allowance covers 128 ZIP
 // path/ID pairs (261-byte paths, 64-byte IDs), JSON escaping and fields.
 // The strategy owner still validates decoded content and all dependencies.
-const maxPresetEnvelope = ((strategy.MaxPresetBytes+2)/3)*4 + (256 << 10)
+const maxPresetEnvelope = ((strategy.MaxPresetTransferBytes+2)/3)*4 + (256 << 10)
 const maxLuaDraftEnvelope = ((strategy.MaxLuaSourceBytes+2)/3)*4 + 2048
+
+// Do not grant the same transient extraction workspace to concurrent archives.
+var presetArchive sync.Mutex
+
+func presetWorkspace(ctx context.Context) int {
+	return pressureservice.Shared().MemoryWorkspace(ctx, strategy.DefaultPresetExpandedBytes, strategy.MaxPresetExpandedBytes)
+}
 
 func writeLuaDrafts(c *gin.Context, ports componenthost.Ports) {
 	c.Header("Cache-Control", "no-store")
@@ -225,13 +237,21 @@ func handlePreset(c *gin.Context, ports componenthost.Ports, preview bool) {
 		ports.HTTP.JSONObj(c, nil, err)
 		return
 	}
+	if request.Preset.Format == "zip" {
+		if !presetArchive.TryLock() {
+			ports.HTTP.JSONObj(c, nil, errors.New("another Zapret preset archive is being processed; retry after it finishes"))
+			return
+		}
+		defer presetArchive.Unlock()
+		change.presetWorkspace = presetWorkspace(c.Request.Context())
+	}
 	if preview {
 		catalog, err := readCatalogAtRevision(change.ExpectedRevision)
 		if err != nil {
 			ports.HTTP.JSONObj(c, nil, err)
 			return
 		}
-		_, review, err := catalog.PreparePreset(change.ID, request.Preset)
+		_, review, err := catalog.PreparePresetWithin(change.ID, request.Preset, change.presetWorkspace)
 		ports.HTTP.JSONObj(c, review, err)
 		return
 	}
@@ -250,7 +270,12 @@ func exportPreset(c *gin.Context, ports componenthost.Ports, catalog strategy.Ca
 		transfer, err := catalog.Export(id)
 		ports.HTTP.JSONObj(c, transfer, err)
 	case "zip":
-		data, err := catalog.ExportPackage(id)
+		if !presetArchive.TryLock() {
+			ports.HTTP.JSONObj(c, nil, errors.New("another Zapret preset archive is being processed; retry after it finishes"))
+			return
+		}
+		defer presetArchive.Unlock()
+		data, err := catalog.ExportPackageWithin(id, presetWorkspace(c.Request.Context()))
 		if err != nil {
 			ports.HTTP.JSONObj(c, nil, err)
 			return
@@ -314,7 +339,7 @@ func readRequestLimit(c *gin.Context, target any, limit int64) error {
 	if errors.As(err, &size) {
 		return fmt.Errorf("the Zapret request exceeds its %d-byte transfer limit", limit)
 	}
-	if err != nil || broker.DecodeRawPayload(data, target) != nil {
+	if err != nil || broker.DecodeBoundedJSON(data, target, limit) != nil {
 		return errors.New("invalid Zapret request")
 	}
 	return nil

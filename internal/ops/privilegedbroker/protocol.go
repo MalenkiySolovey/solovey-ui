@@ -353,6 +353,15 @@ func DecodePayload(raw json.RawMessage, target any) error {
 	return decodeStrict(raw, target)
 }
 
+// DecodeBoundedJSON applies the same JSON shape checks to an already bounded
+// non-broker request. It does not change the privileged frame or payload limit.
+func DecodeBoundedJSON(data []byte, target any, limit int64) error {
+	if len(data) == 0 || int64(len(data)) > limit {
+		return errors.New("JSON request size is invalid")
+	}
+	return decodeStrict(data, target)
+}
+
 func WriteFrame(writer io.Writer, value any, limit int) error {
 	data, err := marshalFrame(value, limit)
 	if err != nil {

@@ -35,11 +35,11 @@ func TestResolveZapretBatchBindsManagedLuaToExactSource(t *testing.T) {
 	requests := []zapretactivation.Request{{OutboundRef: "direct", StrategyRef: id, OutboundRevision: strings.Repeat("a", 64)}}
 	sourceKey := zapretactivation.LuaSourceKey(scriptID, script.Revision())
 	sources := map[string]json.RawMessage{sourceKey: encode(script)}
-	selection, err := resolveZapretBatch(definitions, requests, sources)
+	selection, err := resolveZapretBatch(definitions, requests, sources, nil)
 	if err != nil || !selection.UsesManagedLua {
 		t.Fatalf("broker managed Lua selection: %v", err)
 	}
-	command, err := selection.Compile("/engine", 401, 0x40000000, []uint32{0x120000}, false, false)
+	command, err := selection.Compile("/engine", "/tmp/zapret-test-lists", 401, 0x40000000, []uint32{0x120000}, false, false)
 	if err != nil || command.Trace != nil || !strings.Contains(command.Lua, script.Source) {
 		t.Fatalf("broker managed Lua compilation: %v", err)
 	}
@@ -48,13 +48,13 @@ func TestResolveZapretBatchBindsManagedLuaToExactSource(t *testing.T) {
 		t.Fatal("managed callback was not compiled inside the owned packet scope")
 	}
 	sources["other/"+script.Revision()] = encode(script)
-	if _, err := resolveZapretBatch(definitions, requests, sources); err == nil {
+	if _, err := resolveZapretBatch(definitions, requests, sources, nil); err == nil {
 		t.Fatal("unselected source accepted")
 	}
 	delete(sources, "other/"+script.Revision())
 	script.Source += "\n-- replaced"
 	sources[sourceKey] = encode(script)
-	if _, err := resolveZapretBatch(definitions, requests, sources); err == nil {
+	if _, err := resolveZapretBatch(definitions, requests, sources, nil); err == nil {
 		t.Fatal("substituted source accepted for a different revision")
 	}
 }

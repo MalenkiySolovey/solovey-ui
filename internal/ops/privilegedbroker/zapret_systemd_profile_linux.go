@@ -45,13 +45,15 @@ type InstalledZapretStrategies struct {
 	UsesCustomBlobs bool
 	UsesManagedLua  bool
 	HandlesQUIC     func(binding int, ipv6 bool, port uint16) bool
-	Compile         func(engineRoot string, queue uint16, loopMark uint32, queueMarks []uint32, trace, replies bool) (ZapretEngineCommand, error)
+	Compile         func(engineRoot, listDir string, queue uint16, loopMark uint32, queueMarks []uint32, trace, replies bool) (ZapretEngineCommand, error)
 }
 
 type ZapretEngineCommand struct {
-	Args  []string
-	Trace ZapretNativeTrace
-	Lua   string
+	Args      []string
+	Trace     ZapretNativeTrace
+	Lua       string
+	ListFiles []string
+	listDir   string
 }
 
 func (s InstalledZapretStrategies) needsReturn() bool {
@@ -63,7 +65,7 @@ type ZapretNativeTrace interface {
 	MatchedProfiles(binding int) []string
 }
 
-type ResolveInstalledZapretStrategies func([]json.RawMessage, []zapretactivation.Request, map[string]json.RawMessage) (InstalledZapretStrategies, error)
+type ResolveInstalledZapretStrategies func([]json.RawMessage, []zapretactivation.Request, map[string]json.RawMessage, func(bytes, lines int) error) (InstalledZapretStrategies, error)
 
 type installedZapretProfile struct {
 	Schema       string            `json:"schema"`

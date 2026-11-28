@@ -20,10 +20,10 @@ import (
 
 func TestPortablePresetEnvelopeIncludesDependencyIDsAtArchiveLimit(t *testing.T) {
 	input := strategy.PresetInput{Format: "zip", Name: "Bounded portable preset"}
-	for i := range 6 {
+	for i := range 14 {
 		input.DependencyIDs = append(input.DependencyIDs, strategy.PresetDependencyID{
 			Path: fmt.Sprintf("lists/%d-%s.txt", i, strings.Repeat("long-", 36)),
-			ID:   fmt.Sprintf("%d-%s", i, strings.Repeat("l", 62)),
+			ID:   fmt.Sprintf("%02d-%s", i, strings.Repeat("l", 61)),
 		})
 	}
 	archive := func(comment string) []byte {
@@ -45,11 +45,7 @@ func TestPortablePresetEnvelopeIncludesDependencyIDsAtArchiveLimit(t *testing.T)
 			path := override.Path
 			name := strings.TrimPrefix(path, "lists/")
 			content := fmt.Sprintf("192.0.2.%d/32\n", i+1)
-			padding := ""
-			if i < 4 {
-				padding = strings.Repeat("x", 52<<10)
-			}
-			add(path, content, padding)
+			add(path, content, strings.Repeat("x", 52<<10))
 			lists = append(lists, map[string]string{"file_name": name, "archive_path": path, "kind": "ipset", "storage": "standalone", "sha256": fmt.Sprintf("%x", sha256.Sum256([]byte(content)))})
 			if i > 0 {
 				source.WriteString("--new\n")
@@ -70,7 +66,7 @@ func TestPortablePresetEnvelopeIncludesDependencyIDsAtArchiveLimit(t *testing.T)
 		}
 		return data.Bytes()
 	}
-	input.Content = archive(strings.Repeat("x", strategy.MaxPresetBytes-len(archive(""))))
+	input.Content = archive(strings.Repeat("x", strategy.MaxPresetTransferBytes-len(archive(""))))
 	catalog := strategy.Catalog{Schema: strategy.CatalogSchema, Records: map[string]strategy.Record{}}
 	if _, preview, err := catalog.PreparePreset("portable", input); err != nil || preview.Record == nil {
 		t.Fatalf("at-limit archive must be admissible before HTTP decoding: %v, %+v", err, preview.Issues)
@@ -98,6 +94,9 @@ func TestPortablePresetEnvelopeIncludesDependencyIDsAtArchiveLimit(t *testing.T)
 	}
 	if !bytes.Equal(decoded.Content, input.Content) || !slices.Equal(decoded.DependencyIDs, input.DependencyIDs) {
 		t.Fatal("the archive and ID overrides must reach the strategy importer intact")
+	}
+	if len(data) <= maxEditorEnvelope {
+		t.Fatal("fixture must exceed the ordinary editor envelope")
 	}
 	oversized := append(data, strings.Repeat(" ", maxPresetEnvelope-len(data)+1)...)
 	if _, err := decode(oversized); err == nil || !strings.Contains(err.Error(), "transfer limit") {
