@@ -169,6 +169,23 @@ starting an engine, or replacing the live rules. Activation checks again
 against its own allocation. Reduce port/profile scope or disable a binding
 if the reported budget cannot fit; no partial batch is installed.
 
+Activation preflight also checks available Host memory and the tightest
+applicable cgroup v2 hard limit (`memory.max`) in the broker's ancestry.
+It separately reports insufficient headroom before throttling (`memory.high`),
+which is not a kernel allocation limit. The candidate needs space for its
+arguments, selected Lua bundle and loader allowance, the pinned NFQUEUE receive
+buffer, and an engine working set. Unselected catalog entries are not charged.
+For a replacement, the working-set
+estimate incorporates the active engine's observed peak resident memory while
+that engine is still running. A replacement that cannot fit even before
+accounting for its arguments is rejected before the more expensive profile and
+rule validation. A candidate that clears that check is measured again with its
+compiled arguments before a configuration save retires the active generation.
+Editing an inactive catalog entry does not reserve runtime resources. This snapshot is
+not a throughput forecast or a guarantee against memory or CPU contention
+after admission. It does not replace the kernel queue limit or the retained
+deny and does not route protected traffic through a fallback.
+
 The architecture budget entries for the batch are reviewed individually:
 
 - `resolveZapretStrategies` uses the component's binding resolver for each

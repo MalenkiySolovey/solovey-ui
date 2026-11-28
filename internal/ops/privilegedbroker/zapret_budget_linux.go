@@ -61,13 +61,26 @@ func zapretBindingDescriptorCapacity(limit, open uint64, tun bool) uint64 {
 
 func zapretCapacityFailure(err error) bool {
 	return errors.Is(err, errZapretDescriptorBudget) || errors.Is(err, errZapretMarkBudget) ||
-		errors.Is(err, ErrZapretEngineBudget) || errors.Is(err, nftables.ErrZapretAtomicBudget)
+		errors.Is(err, ErrZapretEngineBudget) || errors.Is(err, nftables.ErrZapretAtomicBudget) ||
+		errors.Is(err, errZapretMemoryBudget) || errors.Is(err, errZapretMemoryEvidence)
+}
+
+// Called under the broker mutation fence; an old peer cannot borrow another
+// generation's process or network observation.
+func (z *installedZapret) activeForPeer(peer PeerIdentity) *installedZapretPath {
+	path := z.active
+	if path == nil || path.peer != peer.Revision || path.uid != peer.UID || path.ctx.Err() != nil {
+		return nil
+	}
+	return path
 }
 
 func (z *installedZapret) checkBatchBudget(ctx context.Context, input zapretactivation.Validation, peer PeerIdentity, profile installedZapretProfile, selected InstalledZapretStrategies) error {
 	var verifyActive func(context.Context) error
-	if path := z.active; path != nil && path.peer == peer.Revision && path.uid == peer.UID && path.ctx.Err() == nil {
+	var activePID int
+	if path := z.activeForPeer(peer); path != nil {
 		verifyActive = path.verify
+		activePID = path.enginePID
 	}
 	replies := selected.needsReturn()
 	egress, occupied, err := observeInstalledZapretNetwork(ctx, profile.Interface, profile.IPv6, input.TUN != nil, replies, z.deny.port != 0, verifyActive)
@@ -95,6 +108,9 @@ func (z *installedZapret) checkBatchBudget(ctx context.Context, input zapretacti
 	// uint16 spelling; the binary rules use fixed-width queue and mark fields.
 	command, err := compileInstalledZapret(plans, selected, math.MaxUint16, profile.ObserveNativeProfiles)
 	if err != nil {
+		return err
+	}
+	if err := checkZapretMemoryBudget(ctx, command, activePID); err != nil {
 		return err
 	}
 	var tun *planner.ZapretTUNForward

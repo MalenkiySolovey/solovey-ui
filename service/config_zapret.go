@@ -72,6 +72,11 @@ func (r *Runtime) retireZapretBatch() error {
 }
 
 func (s *ConfigService) validateCoreSaveCandidate(tx *gorm.DB, obj string, plan configSavePlan) error {
+	if obj == zapretCatalogObject && !plan.RequiresCoreRestart() {
+		// The catalog owner checks affected bindings before marking a rebind.
+		// An inactive catalog edit neither launches nor replaces an engine.
+		return nil
+	}
 	switch obj {
 	case "inbounds", "outbounds", "endpoints", "config", zapretCatalogObject:
 		bound, err := outbounds.CheckZapretStartup(tx, true)

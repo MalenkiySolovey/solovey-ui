@@ -40,6 +40,7 @@ type installedZapretPath struct {
 	inputDigest string
 	grant       zapretactivation.BatchGrant
 	queue       uint16
+	enginePID   int
 	peer        string
 	uid         uint32
 	ctx         context.Context
@@ -112,6 +113,13 @@ func (z *installedZapret) validate(ctx context.Context, call Request, peer PeerI
 	}
 	if err := checkZapretDescriptorBudget(len(input.Bindings), input.TUN != nil); err != nil {
 		return nil, Failure(CodeValidation, err.Error())
+	}
+	if path := z.activeForPeer(peer); path != nil {
+		// Reject a replacement that cannot fit even without its arguments,
+		// before profile and rule validation allocate into the same cgroup.
+		if err := checkZapretMemoryBudget(ctx, ZapretEngineCommand{}, path.enginePID); err != nil {
+			return nil, Failure(CodeValidation, err.Error())
+		}
 	}
 	profile, selected, err := z.selectStrategies(ctx, input)
 	if err == nil {
@@ -420,6 +428,9 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 	if err != nil {
 		return nil, err
 	}
+	if err := checkZapretMemoryBudget(ctx, command, 0); err != nil {
+		return nil, err
+	}
 	hadDeny := z.deny.port != 0
 	deny, err := z.openDeny(ctx, egress.NamespaceCookie, tunScope, replies)
 	if err != nil {
@@ -553,7 +564,7 @@ func (z *installedZapret) prepare(ctx context.Context, batch zapretactivation.Ba
 		return nil, errors.New("installed Zapret generation changed before publication")
 	}
 	path := &installedZapretPath{ctx: authority.Context, release: release, done: make(chan struct{}), peer: peer.Revision, uid: peer.UID,
-		queue: plans[0].Queue(), trace: command.Trace,
+		queue: plans[0].Queue(), enginePID: fact.PID, trace: command.Trace,
 		grant: zapretactivation.BatchGrant{BatchID: batch.BatchID, Bindings: grants, TUN: batch.TUN}}
 	// Observation and FD admission check the same table and queue owners.
 	// Observation never creates a lease or extends the batch lifetime.

@@ -92,6 +92,38 @@ func observeAt(procRoot string, pid int) (Fact, error) {
 	return fact, nil
 }
 
+// SelfCgroup observes membership without reopening or hashing the executable.
+func SelfCgroup() Fact {
+	availability, groups, revision := observeCgroups("/proc/self/cgroup")
+	return Fact{CgroupAvailability: availability, Cgroups: groups, CgroupRevision: revision}
+}
+
+// ResidentHighWater reads the process's recent peak resident memory in bytes.
+// Callers that need process identity must establish it separately.
+func ResidentHighWater(pid int) (uint64, error) {
+	if pid <= 1 {
+		return 0, errors.New("invalid process identity for memory observation")
+	}
+	data, err := readBounded(filepath.Join("/proc", strconv.Itoa(pid), "status"), maxStatusBytes)
+	if err != nil {
+		return 0, err
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		raw, ok := strings.CutPrefix(line, "VmHWM:")
+		if !ok {
+			continue
+		}
+		fields := strings.Fields(raw)
+		if len(fields) == 2 && fields[1] == "kB" {
+			if bytes, err := strconv.ParseUint(fields[0], 10, 54); err == nil && bytes != 0 {
+				return bytes << 10, nil
+			}
+		}
+		break
+	}
+	return 0, errors.New("process resident high-water mark is unavailable")
+}
+
 func observeCgroups(path string) (CgroupAvailability, []CgroupEntry, string) {
 	data, err := readBounded(path, maxCgroupBytes)
 	if err != nil {
